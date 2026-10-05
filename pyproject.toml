@@ -1,0 +1,44 @@
+[project]
+name = "yara-gate"
+version = "0.1.0"
+description = "Quarantine untrusted files until a YARA scan finishes."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "oletools>=0.60.2",
+    "pydantic>=2.7",
+    "typer>=0.12",
+    "watchdog>=4.0",
+    "yara-x>=1.20",
+]
+
+[project.scripts]
+yara-gate = "yara_gate.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["mypy>=1.11", "pytest>=8.2", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["yara_gate"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["yara_x", "oletools", "oletools.*", "watchdog", "watchdog.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

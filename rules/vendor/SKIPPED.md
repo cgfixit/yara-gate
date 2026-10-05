@@ -1,0 +1,15 @@
+# Rules skipped because yara-x could not compile them
+
+configured_vulns_ext_vars.yar: CompileError
+expl_citrix_netscaler_adc_exploitation_cve_2023_3519.yar: CompileError
+expl_connectwise_screenconnect_vuln_feb24.yar: CompileError
+gen_fake_amsi_dll.yar: CompileError
+gen_mal_3cx_compromise_mar23.yar: CompileError
+gen_susp_obfuscation.yar: CompileError
+gen_vcruntime140_dll_sideloading.yar: CompileError
+gen_webshells_ext_vars.yar: CompileError
+general_cloaking.yar: CompileError
+generic_anomalies.yar: CompileError
+thor_inverse_matches.yar: CompileError
+yara-rules_vuln_drivers_strict_renamed.yar: CompileError
+yara_mixed_ext_vars.yar: CompileError

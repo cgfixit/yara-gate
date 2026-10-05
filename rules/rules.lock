@@ -1,0 +1,22 @@
+{
+  "packs": [
+    {
+      "name": "yara-forge-core",
+      "url": "https://github.com/YARAHQ/yara-forge/releases/download/20261004/yara-forge-rules-core.zip",
+      "pin": "20261004",
+      "sha256": "0b548dff76139b7a041d20923ccfddfa614db6b6ee8710c181ff037a753ffe69"
+    },
+    {
+      "name": "signature-base",
+      "url": "https://codeload.github.com/Neo23x0/signature-base/tar.gz/94a1c48d7ab499879287ff611dfe7f9c56376030",
+      "pin": "94a1c48d7ab499879287ff611dfe7f9c56376030",
+      "sha256": "13895e9219e844beeba1f5d7d3e3261a81e4e8f69cf18cc823d3abcc16e601a3"
+    },
+    {
+      "name": "elastic",
+      "url": "https://codeload.github.com/elastic/protections-artifacts/tar.gz/83e227669df8a13a2a2fee52c14b742c0d5f17cc",
+      "pin": "83e227669df8a13a2a2fee52c14b742c0d5f17cc",
+      "sha256": "ed1d0e2a11f5deab2de5c8978cf6667d1a53202b5bdb5c11b96c30cdb153ef8a"
+    }
+  ]
+}

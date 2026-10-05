@@ -1,0 +1,3 @@
+The quarterly notes mention a meeting, a calendar, and a shared folder.
+Microsoft Word can store a document without a macro.
+Nothing in this paragraph is a payload.

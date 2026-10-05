@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+rules/.cache/
+rules/vendor/**
+!rules/vendor/.gitkeep
+!rules/vendor/SKIPPED.md
