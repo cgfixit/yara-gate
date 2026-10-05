@@ -25,7 +25,7 @@ def test_version() -> None:
         check=False,
     )
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "yara-gate 0.1.0"
+    assert proc.stdout.strip() == "yara-gate 0.2.0"
 
 
 def test_rules_update_refuses_without_the_flag() -> None:

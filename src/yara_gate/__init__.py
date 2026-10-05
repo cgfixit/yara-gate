@@ -3,6 +3,6 @@
 from yara_gate.models import ScanResult
 from yara_gate.scanner import scan_file
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["ScanResult", "__version__", "scan_file"]

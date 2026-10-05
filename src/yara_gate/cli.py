@@ -69,6 +69,39 @@ def watch_inbox(
 
 
 @app.command()
+def demo(
+    port: int = typer.Option(0, "--port", help="Loopback port. 0 picks a free port."),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+) -> None:
+    """Serve a loopback page that scans samples without moving them."""
+    from yara_gate.demo import serve_demo
+
+    try:
+        serve_demo(port, rules)
+    except KeyboardInterrupt:
+        raise typer.Exit(code=0) from None
+    except Exception as exc:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
+
+
+@app.command("install-agent")
+def install_agent(
+    dest: Path = typer.Option(..., "--dest", help="Where to write the plist."),
+    home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
+) -> None:
+    """Write a launchd plist for watch. This command does not load the agent."""
+    from yara_gate.launchd import write_launch_agent
+
+    try:
+        path = write_launch_agent(dest, home=home)
+    except Exception as exc:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(path)
+
+
+@app.command()
 def selftest() -> None:
     """Run the fixture matrix. Exit 0 only when every verdict matches."""
     raise typer.Exit(code=run_selftest())

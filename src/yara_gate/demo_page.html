@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>yara-gate demo</title>
+  <style nonce="__NONCE__">
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #f4f1ea;
+      color: #1c1915;
+      line-height: 1.45;
+    }
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 1.25rem;
+    }
+    fieldset {
+      border: 1px solid #1c1915;
+      margin: 0 0 1.25rem;
+      padding: 0.75rem;
+    }
+    legend {
+      padding: 0 0.25rem;
+    }
+    .samples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 8rem;
+      box-sizing: border-box;
+      font: inherit;
+      margin-bottom: 0.5rem;
+    }
+    button {
+      min-height: 2.75rem;
+      padding: 0.4rem 0.8rem;
+      font: inherit;
+      background: #1f4b3a;
+      color: #ffffff;
+      border: 0;
+    }
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid #1c1915;
+      outline-offset: 2px;
+    }
+    #paste-help {
+      margin: 0 0 0.5rem;
+    }
+    #error {
+      color: #7a1f1f;
+      min-height: 1.25rem;
+    }
+    #result {
+      white-space: pre-wrap;
+      margin: 0;
+    }
+    @media (max-width: 40rem) {
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="content">
+    <h1>yara-gate demo</h1>
+    <p>This page scans a built-in sample or a short paste. It does not move files into the drop folder, and it does not download rules.</p>
+    <fieldset>
+      <legend>Built-in samples</legend>
+      <div class="samples">
+        <button type="button" id="plain">Scan plain note</button>
+        <button type="button" id="base64">Scan base64 text</button>
+        <button type="button" id="pe_pdf">Scan PE saved as PDF</button>
+      </div>
+    </fieldset>
+    <form id="paste-form">
+      <fieldset>
+        <legend>Paste text</legend>
+        <label for="paste">Text to scan</label>
+        <p id="paste-help">64 KiB maximum. The page shows the verdict, not the text you paste.</p>
+        <textarea id="paste" name="paste" autocomplete="off" aria-describedby="paste-help"></textarea>
+        <button type="submit">Scan paste</button>
+      </fieldset>
+    </form>
+    <p id="error" role="alert"></p>
+    <h2>Verdict</h2>
+    <div id="result" aria-live="polite"></div>
+  </main>
+  <script nonce="__NONCE__">
+    const error = document.getElementById("error");
+    const result = document.getElementById("result");
+
+    function show(data, ok) {
+      result.textContent = "";
+      error.textContent = "";
+      if (!ok) {
+        error.textContent = typeof data.error === "string" ? data.error : "Scan failed";
+        return;
+      }
+      const lines = [
+        "verdict " + data.verdict,
+        "exit " + String(data.exit_code),
+        "sha256 " + data.sha256
+      ];
+      if (data.incomplete_reason) {
+        lines.push("incomplete " + data.incomplete_reason);
+      }
+      const findings = Array.isArray(data.findings) ? data.findings : [];
+      for (const item of findings) {
+        lines.push(
+          item.rule_id + " " + item.severity + " offset " + String(item.offset) + " length " + String(item.length)
+        );
+      }
+      result.textContent = lines.join("\n");
+    }
+
+    async function postScan(body) {
+      const response = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      show(data, response.ok);
+    }
+
+    document.getElementById("plain").addEventListener("click", function () {
+      postScan({ sample: "plain" });
+    });
+    document.getElementById("base64").addEventListener("click", function () {
+      postScan({ sample: "base64" });
+    });
+    document.getElementById("pe_pdf").addEventListener("click", function () {
+      postScan({ sample: "pe_pdf" });
+    });
+    document.getElementById("paste-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const text = document.getElementById("paste").value;
+      postScan({ text: text });
+    });
+  </script>
+</body>
+</html>

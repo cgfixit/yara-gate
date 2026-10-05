@@ -784,7 +784,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/89/8d/7aad74930380c8972
 
 [[package]]
 name = "yara-gate"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "oletools" },
