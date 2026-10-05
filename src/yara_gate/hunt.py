@@ -1,6 +1,7 @@
 """Build a candidate rule only after a file in blocked/ is confirmed."""
 
 from pathlib import Path
+from typing import Any
 
 from yara_gate.quarantine import GatePaths
 from yara_gate.rules import default_rules_dir, project_root
@@ -102,11 +103,11 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _hit(rules: object, path: Path) -> bool:
+def _hit(rules: Any, path: Path) -> bool:
     try:
         if path.stat().st_size > MAX_FILE_BYTES:
             return False
-        scan = getattr(rules, "scan")
+        scan = rules.scan
         return bool(scan(path.read_bytes()).matching_rules)
     except OSError:
         return False

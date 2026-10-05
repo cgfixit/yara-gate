@@ -28,7 +28,13 @@ target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer requires Option() calls in argument defaults.
+"src/yara_gate/cli.py" = ["B008"]
+# Tests assert, bind a rejected address, redact a /tmp example, and launch the local CLI.
+"tests/**" = ["S101", "S104", "S108", "S310", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"
