@@ -13,6 +13,13 @@ def _home(tmp_path: Path) -> GatePaths:
     return home
 
 
+def test_gate_directories_are_owner_only(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    folders = (home.root, home.inbox, home.quarantine, home.clean, home.blocked, home.reports)
+    for folder in folders:
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+
+
 def test_clean_lands_in_clean_with_reports(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     src = home.inbox / "notes.txt"

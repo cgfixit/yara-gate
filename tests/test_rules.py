@@ -1,6 +1,24 @@
 from pathlib import Path
 
-from yara_gate.rules import _vendor_member, compile_sources
+import pytest
+
+from yara_gate.rules import _allowed_url, _vendor_member, compile_sources
+
+
+def test_rule_download_url_allowlist() -> None:
+    kept = _allowed_url("https://github.com/YARAHQ/yara-forge/releases/download/x/y.zip")
+    assert kept.startswith("https://github.com/")
+    assert _allowed_url("https://codeload.github.com/org/repo/tar.gz/abc").startswith("https://")
+    refused = (
+        "http://github.com/org/repo",
+        "https://evil.example/rule.zip",
+        "https://user:pass@github.com/org/repo",
+        "https://github.com.evil/org/repo",
+        "https://github.com:8443/org/repo",
+    )
+    for url in refused:
+        with pytest.raises(ValueError, match="refusing rule URL"):
+            _allowed_url(url)
 
 
 def test_vendor_member_rejects_parent_segments(tmp_path: Path) -> None:

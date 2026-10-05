@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import tarfile
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
 _RULE_NAME = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)")
 _CACHE_SALT = b"yara-gate-rules-v1"
+_ALLOWED_DOWNLOAD_HOSTS = frozenset({"github.com", "codeload.github.com"})
 
 
 class PackPin(BaseModel):
@@ -230,20 +232,33 @@ def _json(url: str) -> dict[str, Any]:
     return parsed
 
 
+def _allowed_url(url: str) -> str:
+    """Allow only https URLs on the two GitHub hosts used by the lock file."""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname
+    if parsed.scheme != "https" or host not in _ALLOWED_DOWNLOAD_HOSTS:
+        raise ValueError("refusing rule URL")
+    if parsed.username or parsed.password or parsed.port not in (None, 443):
+        raise ValueError("refusing rule URL")
+    return url
+
+
 def _bytes(url: str) -> bytes:
-    request = urllib.request.Request(
-        url,
+    # Host allowlist already ran. An empty proxy map stops HTTP_PROXY from redirecting this call.
+    request = urllib.request.Request(  # noqa: S310
+        _allowed_url(url),
         headers={"User-Agent": "yara-gate", "Accept": "application/vnd.github+json"},
     )
-    with urllib.request.urlopen(request, timeout=180) as response:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=180) as response:
         body = response.read()
     if not isinstance(body, bytes):
         raise TypeError("rule download was not bytes")
     return body
 
 
-def _validate_one(yara_x: object, path: Path, text: str) -> None:
-    compiler_type = getattr(yara_x, "Compiler")
+def _validate_one(yara_x: Any, path: Path, text: str) -> None:
+    compiler_type = yara_x.Compiler
     compiler = compiler_type(relaxed_re_syntax=True)
     compiler.define_global("yara_gate_ext", "bin")
     include = getattr(compiler, "add_include_dir", None)
@@ -305,11 +320,11 @@ def _read_cache(rules_dir: Path, digest: str) -> object | None:
         return yara_x.Rules.deserialize_from(handle)
 
 
-def _write_cache(rules_dir: Path, digest: str, rules: object) -> None:
+def _write_cache(rules_dir: Path, digest: str, rules: Any) -> None:
     path = _cache_file(rules_dir, digest)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as handle:
-        serialize = getattr(rules, "serialize_into")
+        serialize = rules.serialize_into
         serialize(handle)
 
 

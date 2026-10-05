@@ -38,8 +38,12 @@ class GatePaths:
         return self.root / "reports"
 
     def ensure(self) -> None:
+        """Create the gate folders and keep them private to this user."""
+        self.root.mkdir(parents=True, exist_ok=True)
+        os.chmod(self.root, stat.S_IRWXU)
         for folder in (self.inbox, self.quarantine, self.clean, self.blocked, self.reports):
             folder.mkdir(parents=True, exist_ok=True)
+            os.chmod(folder, stat.S_IRWXU)
 
 
 def default_home() -> GatePaths:
