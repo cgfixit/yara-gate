@@ -145,7 +145,7 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 
 `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
-`origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Secret scanning on a user-owned private repository requires GitHub Secret Protection. `.github/dependabot.yml` schedules version updates. Dependabot alerts are a separate repository setting.
+`origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Secret scanning on a user-owned private repository requires GitHub Secret Protection. The CodeQL job still runs the Python queries and does not upload results, because code scanning is not enabled on this user-owned private repository. `.github/dependabot.yml` schedules version updates. Dependabot alerts are a separate repository setting.
 
 ## Project files
 
