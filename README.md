@@ -48,6 +48,25 @@ A path inside the inbox is quarantined and then moved. Any other path stays wher
 
 On intake the tool hashes the file, copies it into `quarantine/<sha256>/`, strips the executable bit, and removes the inbox copy. Dropping the same bytes again reuses that slot.
 
+```mermaid
+flowchart TD
+    drop["inbox/ file"] --> watch["watch or yara-gate scan"]
+    watch --> settle["skip dotfiles; size stable 0.2s"]
+    settle --> intake["intake: sha256 copy into quarantine/sha/"]
+    intake --> known{"same sha already in clean, blocked, or quarantine?"}
+    known -->|yes| reuse["keep the existing slot; delete the new inbox copy"]
+    known -->|no| slot["quarantine/sha/name, exec bit stripped"]
+    reuse --> scan
+    slot --> scan["scan_file: yara-x, heuristics, filetype"]
+    scan --> report["write reports/sha.sarif and reports/sha.json"]
+    report --> verdict{"verdict"}
+    verdict -->|incomplete| stay["stay in quarantine/"]
+    verdict -->|block| blocked["blocked/sha/"]
+    verdict -->|clean or advisory| clean["clean/sha/"]
+    outside["path outside inbox/"] --> inplace["scan_in_place: file stays put"]
+    inplace --> report
+```
+
 ## Exit codes
 
 | Code | Verdict | Where the file goes |
