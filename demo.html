@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-yaragate'; script-src 'nonce-yaragate'; base-uri 'none'; form-action 'none'">
+  <title>yara-gate demo</title>
+  <style nonce="yaragate">
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #f4f1ea;
+      color: #1c1915;
+      line-height: 1.45;
+    }
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 1.25rem;
+    }
+    fieldset {
+      border: 1px solid #1c1915;
+      margin: 0 0 1.25rem;
+      padding: 0.75rem;
+    }
+    legend {
+      padding: 0 0.25rem;
+    }
+    .samples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 8rem;
+      box-sizing: border-box;
+      font: inherit;
+      margin-bottom: 0.5rem;
+    }
+    button {
+      min-height: 2.75rem;
+      padding: 0.4rem 0.8rem;
+      font: inherit;
+      background: #1f4b3a;
+      color: #ffffff;
+      border: 0;
+    }
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid #1c1915;
+      outline-offset: 2px;
+    }
+    #paste-help {
+      margin: 0 0 0.5rem;
+    }
+    #error {
+      color: #7a1f1f;
+      min-height: 1.25rem;
+    }
+    #result {
+      white-space: pre-wrap;
+      margin: 0;
+    }
+    @media (max-width: 40rem) {
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="content">
+    <h1>yara-gate demo</h1>
+    <p>Open this file in a browser, or host this one file on any static site. It does not need a server.</p>
+    <p>The buttons and the paste box run the local text patterns in the page. They do not run yara-x, they do not load the vendor rule packs, and they do not move a file.</p>
+    <fieldset>
+      <legend>Built-in samples</legend>
+      <div class="samples">
+        <button type="button" id="plain">Scan plain note</button>
+        <button type="button" id="base64">Scan base64 text</button>
+        <button type="button" id="pe_pdf">Scan PE saved as PDF</button>
+      </div>
+    </fieldset>
+    <form id="paste-form" method="post" action="#scan">
+      <fieldset>
+        <legend>Paste text</legend>
+        <label for="paste">Text to scan</label>
+        <p id="paste-help">64 KiB maximum. The page shows the verdict, not the text you paste.</p>
+        <textarea id="paste" autocomplete="off" enterkeyhint="done" aria-describedby="paste-help"></textarea>
+        <button type="submit">Scan paste</button>
+      </fieldset>
+    </form>
+    <p id="error" role="alert"></p>
+    <h2>Verdict</h2>
+    <div id="result" aria-live="polite"></div>
+  </main>
+  <script nonce="yaragate">
+    const errorBox = document.getElementById("error");
+    const result = document.getElementById("result");
+    const MAX_TEXT = 64 * 1024;
+    const PHRASES = [
+      "ignore previous instructions",
+      "ignore all previous instructions",
+      "disregard the above",
+      "you are now",
+      "system prompt:",
+      "exfiltrate",
+      "do not tell the user"
+    ];
+    const HIDE = ["display:none", "display: none", "font-size:0", "font-size: 0"];
+    const K = new Uint32Array([
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ]);
+
+    function rotr(x, n) {
+      return (x >>> n) | (x << (32 - n));
+    }
+
+    function sha256(bytes) {
+      const size = (bytes.length + 72) & ~63;
+      const padded = new Uint8Array(size);
+      padded.set(bytes);
+      padded[bytes.length] = 0x80;
+      const view = new DataView(padded.buffer);
+      view.setUint32(size - 4, bytes.length * 8, false);
+      let h0 = 0x6a09e667;
+      let h1 = 0xbb67ae85;
+      let h2 = 0x3c6ef372;
+      let h3 = 0xa54ff53a;
+      let h4 = 0x510e527f;
+      let h5 = 0x9b05688c;
+      let h6 = 0x1f83d9ab;
+      let h7 = 0x5be0cd19;
+      const w = new Uint32Array(64);
+      for (let i = 0; i < size; i += 64) {
+        for (let t = 0; t < 16; t += 1) {
+          w[t] = view.getUint32(i + t * 4, false);
+        }
+        for (let t = 16; t < 64; t += 1) {
+          const s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+          const s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+          w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+        }
+        let a = h0;
+        let b = h1;
+        let c = h2;
+        let d = h3;
+        let e = h4;
+        let f = h5;
+        let g = h6;
+        let h = h7;
+        for (let t = 0; t < 64; t += 1) {
+          const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+          const ch = (e & f) ^ (~e & g);
+          const temp1 = (h + s1 + ch + K[t] + w[t]) >>> 0;
+          const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+          const maj = (a & b) ^ (a & c) ^ (b & c);
+          const temp2 = (s0 + maj) >>> 0;
+          h = g;
+          g = f;
+          f = e;
+          e = (d + temp1) >>> 0;
+          d = c;
+          c = b;
+          b = a;
+          a = (temp1 + temp2) >>> 0;
+        }
+        h0 = (h0 + a) >>> 0;
+        h1 = (h1 + b) >>> 0;
+        h2 = (h2 + c) >>> 0;
+        h3 = (h3 + d) >>> 0;
+        h4 = (h4 + e) >>> 0;
+        h5 = (h5 + f) >>> 0;
+        h6 = (h6 + g) >>> 0;
+        h7 = (h7 + h) >>> 0;
+      }
+      return [h0, h1, h2, h3, h4, h5, h6, h7].map(function (n) {
+        return n.toString(16).padStart(8, "0");
+      }).join("");
+    }
+
+    function asciiFoldAt(bytes, text, from) {
+      const n = text.length;
+      const start = from || 0;
+      outer: for (let i = start; i <= bytes.length - n; i += 1) {
+        for (let j = 0; j < n; j += 1) {
+          let c = bytes[i + j];
+          if (c >= 65 && c <= 90) {
+            c += 32;
+          }
+          if (c !== text.charCodeAt(j)) {
+            continue outer;
+          }
+        }
+        return i;
+      }
+      return -1;
+    }
+
+    function firstPhrase(bytes) {
+      let best = -1;
+      let hit = "";
+      for (const phrase of PHRASES) {
+        const at = asciiFoldAt(bytes, phrase, 0);
+        if (at >= 0 && (best < 0 || at < best)) {
+          best = at;
+          hit = phrase;
+        }
+      }
+      return best < 0 ? null : { offset: best, length: hit.length };
+    }
+
+    function firstHide(bytes) {
+      let best = -1;
+      let hit = "";
+      for (const marker of HIDE) {
+        const at = asciiFoldAt(bytes, marker, 0);
+        if (at >= 0 && (best < 0 || at < best)) {
+          best = at;
+          hit = marker;
+        }
+      }
+      return best < 0 ? null : { offset: best, length: hit.length };
+    }
+
+    function findTriple(bytes, triples) {
+      for (let i = 0; i <= bytes.length - 3; i += 1) {
+        const key = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+        if (triples.has(key)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function findBom(bytes) {
+      for (let i = 1; i <= bytes.length - 3; i += 1) {
+        if (bytes[i] === 0xef && bytes[i + 1] === 0xbb && bytes[i + 2] === 0xbf) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function findTag(bytes) {
+      for (let i = 0; i <= bytes.length - 4; i += 1) {
+        if (bytes[i] === 0xf3 && bytes[i + 1] === 0xa0 && (bytes[i + 2] === 0x80 || bytes[i + 2] === 0x81)) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function peAt(bytes) {
+      if (bytes.length < 0x44 || bytes[0] !== 0x4d || bytes[1] !== 0x5a) {
+        return false;
+      }
+      const e = bytes[0x3c] | (bytes[0x3d] << 8) | (bytes[0x3e] << 16) | (bytes[0x3f] << 24);
+      if (e < 0x40 || e > 0x400) {
+        return false;
+      }
+      const pe = e;
+      return pe + 4 <= bytes.length && bytes[pe] === 0x50 && bytes[pe + 1] === 0x45 && bytes[pe + 2] === 0 && bytes[pe + 3] === 0;
+    }
+
+    const BIDI = new Set([
+      0xe280aa, 0xe280ab, 0xe280ac, 0xe280ad, 0xe280ae,
+      0xe281a6, 0xe281a7, 0xe281a8, 0xe281a9
+    ]);
+    const INVISIBLE = new Set([
+      0xe2808b, 0xe2808c, 0xe2808d, 0xe2808e, 0xe2808f,
+      0xe281a0, 0xe281a1, 0xe281a2, 0xe281a3, 0xe281a4
+    ]);
+
+    function textFindings(bytes) {
+      const findings = [];
+      const bidi = findTriple(bytes, BIDI);
+      if (bidi >= 0) {
+        findings.push({ rule_id: "agent_bidi_override", severity: "block", offset: bidi, length: 3 });
+      }
+      const invisible = findTriple(bytes, INVISIBLE);
+      const bom = findBom(bytes);
+      const tag = findTag(bytes);
+      const hiddenAt = [invisible, bom, tag].filter(function (n) { return n >= 0; }).sort(function (a, b) { return a - b; })[0];
+      if (hiddenAt !== undefined) {
+        const length = hiddenAt === tag ? 4 : 3;
+        findings.push({ rule_id: "agent_invisible_unicode", severity: "block", offset: hiddenAt, length: length });
+      }
+      const phrase = firstPhrase(bytes);
+      const hide = firstHide(bytes);
+      if (phrase && hide) {
+        findings.push({
+          rule_id: "agent_hidden_html",
+          severity: "advisory",
+          offset: Math.min(phrase.offset, hide.offset),
+          length: phrase.offset <= hide.offset ? phrase.length : hide.length
+        });
+      }
+      if (phrase) {
+        findings.push({
+          rule_id: "agent_prompt_injection_phrases",
+          severity: "advisory",
+          offset: phrase.offset,
+          length: phrase.length
+        });
+      }
+      let latin = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        latin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      }
+      const blob = /[A-Za-z0-9+/]{400}={0,2}/.exec(latin);
+      if (blob) {
+        findings.push({
+          rule_id: "agent_base64_blob",
+          severity: "advisory",
+          offset: blob.index,
+          length: blob[0].length
+        });
+      }
+      return findings;
+    }
+
+    function finish(bytes, findings) {
+      let verdict = "clean";
+      let exitCode = 0;
+      for (const item of findings) {
+        if (item.severity === "block") {
+          verdict = "block";
+          exitCode = 1;
+          break;
+        }
+        if (item.severity === "advisory") {
+          verdict = "advisory";
+        }
+      }
+      return { verdict: verdict, exit_code: exitCode, sha256: sha256(bytes), findings: findings };
+    }
+
+    function scanText(bytes) {
+      return finish(bytes, textFindings(bytes));
+    }
+
+    function plainNote() {
+      return new TextEncoder().encode("The meeting notes are in the folder on the desk.\n");
+    }
+
+    function base64Note() {
+      const prefix = new TextEncoder().encode("payload:\n");
+      const blob = new Uint8Array(401);
+      blob.fill(0x41, 0, 200);
+      blob.fill(0x42, 200, 400);
+      blob[400] = 0x3d;
+      const out = new Uint8Array(prefix.length + blob.length + 1);
+      out.set(prefix, 0);
+      out.set(blob, prefix.length);
+      out[out.length - 1] = 0x0a;
+      return out;
+    }
+
+    function miniPe() {
+      const buf = new Uint8Array(0x80);
+      buf[0] = 0x4d;
+      buf[1] = 0x5a;
+      buf[0x3c] = 0x40;
+      buf[0x40] = 0x50;
+      buf[0x41] = 0x45;
+      return buf;
+    }
+
+    function show(data, ok) {
+      result.textContent = "";
+      errorBox.textContent = "";
+      if (!ok) {
+        errorBox.textContent = data.error;
+        return;
+      }
+      const lines = [
+        "verdict " + data.verdict,
+        "exit " + String(data.exit_code),
+        "sha256 " + data.sha256
+      ];
+      for (const item of data.findings) {
+        lines.push(item.rule_id + " " + item.severity + " offset " + String(item.offset) + " length " + String(item.length));
+      }
+      result.textContent = lines.join("\n");
+    }
+
+    function showSample(bytes, ext) {
+      if (ext === "pdf" && peAt(bytes)) {
+        show(finish(bytes, [{
+          rule_id: "filetype_mismatch_pe",
+          severity: "block",
+          offset: null,
+          length: null
+        }]), true);
+        return;
+      }
+      show(scanText(bytes), true);
+    }
+
+    document.getElementById("plain").addEventListener("click", function () {
+      showSample(plainNote(), "txt");
+    });
+    document.getElementById("base64").addEventListener("click", function () {
+      showSample(base64Note(), "txt");
+    });
+    document.getElementById("pe_pdf").addEventListener("click", function () {
+      showSample(miniPe(), "pdf");
+    });
+    document.getElementById("paste-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      const text = document.getElementById("paste").value;
+      if (text.length === 0) {
+        show({ error: "empty text" }, false);
+        return;
+      }
+      const bytes = new TextEncoder().encode(text);
+      if (bytes.length > MAX_TEXT) {
+        show({ error: "text too large" }, false);
+        return;
+      }
+      show(scanText(bytes), true);
+    });
+  </script>
+</body>
+</html>

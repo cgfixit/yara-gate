@@ -120,7 +120,9 @@ result.verdict  # "clean", "advisory", "block", or "incomplete"
 
 ## Demo
 
-`yara-gate demo` serves one page on `127.0.0.1` and prints the URL. Port `0` picks a free port. The page can scan three built-in samples or a paste of at most 64 KiB. The scan uses `scan_file` on a temporary file that the server creates and deletes. The page does not move files into `~/YaraGate`, and it does not download rules.
+`demo.html` is one file. Open it in a browser, or put that file alone on any static host. It does not need localhost. The three sample buttons and the paste box apply the local text patterns in the page. That file does not run yara-x, it does not load the vendor packs, and it does not move a file into `~/YaraGate`.
+
+`yara-gate demo` is the full scan. It serves a page on `127.0.0.1` and prints the URL. Port `0` picks a free port. That page calls `scan_file` on a temporary file the server creates and deletes.
 
 ```bash
 uv run yara-gate demo --rules rules
@@ -145,12 +147,23 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 
 This directory has no git remote. Those files do not enable secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Turn those on in the repository settings after you publish.
 
+## Project files
+
+`pyproject.toml` names the package, the `yara-gate` command, and the ruff and mypy settings. `uv.lock` is the only dependency pin. Do not add a `requirements.txt` beside it. `.python-version` contains `3.12`, which is the interpreter `uv sync` should use. `src/yara_gate/py.typed` marks the importable package as typed. `LICENSE` is the MIT license. `.editorconfig` sets UTF-8, LF, and four-space Python indents so an editor matches ruff.
+
+`.gitignore` drops the virtualenv, caches, `.env` files, `build/`, and coverage output. `rules/vendor/` stays untracked except `rules/vendor/SKIPPED.md` and `rules/vendor/.gitkeep`. `rules/.cache/` stays untracked. The vendor bodies include Elastic rules. This tree does not redistribute those rules.
+
 ## Layout
 
 ```text
-src/yara_gate/    cli, quarantine, scanner, filetype, heuristics, rules, hunt, report, demo, launchd
-rules/local/      agent rules and promoted or candidate hunt rules
-rules/vendor/     curated packs after an explicit update (not committed, except SKIPPED.md)
-rules/rules.lock  pins for those packs
-tests/            fixtures are generated at run time, except the small benign text corpus
+demo.html              single-file browser page for the local patterns
+pyproject.toml         package metadata, the yara-gate script, ruff, mypy, pytest
+uv.lock                locked dependency set
+.python-version        Python 3.12 pin for uv
+src/yara_gate/         cli, quarantine, scanner, filetype, heuristics, rules, hunt, report, demo, launchd
+src/yara_gate/py.typed empty marker that the package ships types
+rules/local/           agent rules and promoted or candidate hunt rules
+rules/vendor/          curated packs after an explicit update (not committed, except SKIPPED.md)
+rules/rules.lock       pins for those packs
+tests/                 fixtures are generated at run time, except the small benign text corpus
 ```

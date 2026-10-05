@@ -12,7 +12,11 @@ uv sync
 uv run yara-gate --version
 ```
 
-You should see `yara-gate 0.1.0`.
+You should see `yara-gate 0.2.0`.
+
+The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
+
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/`, and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
 
 Check the install with the built-in fixture run:
 
@@ -152,13 +156,15 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 ## 9. Try a verdict in the browser
 
+Open `demo.html` from this project in a browser. You can also copy that one file to any static host. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**. Or paste text and choose **Scan paste**. The page prints the verdict and the exit code. It does not print the paste, and it does not move a file into `~/YaraGate`. This file checks the local patterns only.
+
+The full yara-x scan is still the loopback command.
+
 ```bash
 uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
 ```
 
-Open `http://127.0.0.1:8765/`. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**. Or paste text and choose **Scan paste**. The page prints the verdict and the exit code. It does not print the paste, and it does not move a file into `~/YaraGate`.
-
-Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
+Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
 
 ## Verification already done on this machine
 
