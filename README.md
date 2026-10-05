@@ -4,7 +4,7 @@ yara-gate holds untrusted files until a local scan finishes. Drop a document in 
 
 The scan does not use the network. Curated rule packs are downloaded only when you run `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
 
-This tree is local. It is not a GitHub repo.
+The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate).
 
 ## Install
 
@@ -145,7 +145,7 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 
 `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
-This directory has no git remote. Those files do not enable secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Turn those on in the repository settings after you publish.
+`origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Secret scanning on a user-owned private repository requires GitHub Secret Protection. `.github/dependabot.yml` schedules version updates. Dependabot alerts are a separate repository setting.
 
 ## Project files
 
