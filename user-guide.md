@@ -74,6 +74,18 @@ Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` 
 
 Stop watch with Control-C. If a previous watch crashed, the next start takes over a dead pid in `~/YaraGate/.watch.pid`.
 
+The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
+
+To leave watch running after you log in, write a plist and load it yourself.
+
+```bash
+mkdir -p ~/Library/Logs/yara-gate
+uv run yara-gate install-agent --dest ~/Library/LaunchAgents/com.cgfixit.yaragate.watch.plist --home ~/YaraGate
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cgfixit.yaragate.watch.plist
+```
+
+`install-agent` does not run `launchctl`. The plist has no secrets in it. Unload with `launchctl bootout gui/$(id -u)/com.cgfixit.yaragate.watch` when you want watch to stop.
+
 ## 4. Scan one file without moving it
 
 ```bash
@@ -137,6 +149,16 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 - `rules update` without `--allow-network` is supposed to exit 2.
 - Two watches at once: the second exits 2 with `incomplete: RuntimeError`.
 - Vendor files that fail to compile are skipped. The scan still runs if at least one rule compiled. Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
+
+## 9. Try a verdict in the browser
+
+```bash
+uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
+```
+
+Open `http://127.0.0.1:8765/`. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**. Or paste text and choose **Scan paste**. The page prints the verdict and the exit code. It does not print the paste, and it does not move a file into `~/YaraGate`.
+
+Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
 
 ## Verification already done on this machine
 

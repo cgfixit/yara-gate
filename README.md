@@ -16,13 +16,13 @@ uv sync
 uv run yara-gate --version
 ```
 
-`yara-gate 0.1.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.21.0). It does not call the Homebrew `yara` binary.
+`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.21.0). It does not call the Homebrew `yara` binary.
 
 `uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
 
 ## Drop folder
 
-The default root is `~/YaraGate/`. Pass `--home` to use another directory.
+The default root is `~/YaraGate/`. Pass `--home` to use another directory. `ensure` creates the root and the five folders at mode `0700`, so other accounts on the Mac cannot list them. File bytes copied in stay mode `0644` with the executable bit removed.
 
 | Directory | Role |
 | --- | --- |
@@ -64,7 +64,7 @@ Every scan writes both report files, including a clean scan. A finding stores th
 
 ## Rule packs
 
-`rules update` refuses to run unless you pass `--allow-network`. That is the only command that opens a network connection.
+`rules update` refuses to run unless you pass `--allow-network`. That is the only command that opens a network connection. The download allows only `https` URLs on `github.com` and `codeload.github.com`, and it ignores `HTTP_PROXY`.
 
 ```bash
 uv run yara-gate rules update --allow-network
@@ -118,10 +118,37 @@ result.verdict  # "clean", "advisory", "block", or "incomplete"
 
 `scan_file` does not move files and does not open a socket. Pass `rules_dir` to point at a different rules tree. The default is this project's `rules/` directory. A later caller, including CyClaw before chunking, can use this function without taking the drop folder.
 
+## Demo
+
+`yara-gate demo` serves one page on `127.0.0.1` and prints the URL. Port `0` picks a free port. The page can scan three built-in samples or a paste of at most 64 KiB. The scan uses `scan_file` on a temporary file that the server creates and deletes. The page does not move files into `~/YaraGate`, and it does not download rules.
+
+```bash
+uv run yara-gate demo --rules rules
+```
+
+Pass `--rules` when you want a rules directory other than this project's `rules/`. The JSON answer has the verdict, the exit code, the sha256, and finding metadata. It does not include the file path or the pasted text.
+
+## Launch agent
+
+`install-agent` writes a launchd plist and does not load it. You choose the destination. The plist runs `yara-gate watch` with the `--home` you pass. It stores no environment secrets. Logs are named under `~/Library/Logs/yara-gate/`.
+
+```bash
+uv run yara-gate install-agent --dest /tmp/com.cgfixit.yaragate.watch.plist --home ~/YaraGate
+plutil -lint /tmp/com.cgfixit.yaragate.watch.plist
+```
+
+Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a separate `launchctl bootstrap` that this tree does not run for you.
+
+## CI files
+
+`.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
+
+This directory has no git remote. Those files do not enable secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Turn those on in the repository settings after you publish.
+
 ## Layout
 
 ```text
-src/yara_gate/    cli, quarantine, scanner, filetype, heuristics, rules, hunt, report
+src/yara_gate/    cli, quarantine, scanner, filetype, heuristics, rules, hunt, report, demo, launchd
 rules/local/      agent rules and promoted or candidate hunt rules
 rules/vendor/     curated packs after an explicit update (not committed, except SKIPPED.md)
 rules/rules.lock  pins for those packs
