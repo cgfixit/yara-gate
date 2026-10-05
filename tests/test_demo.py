@@ -99,13 +99,15 @@ def test_demo_refuses_public_bind() -> None:
 def test_install_agent_plist_is_private(tmp_path: Path) -> None:
     dest = tmp_path / "com.cgfixit.yaragate.watch.plist"
     write_launch_agent(dest, home=tmp_path / "gate", binary=Path("/usr/bin/true"))
-    lint = subprocess.run(
-        ["/usr/bin/plutil", "-lint", str(dest)],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert lint.returncode == 0, lint.stderr
+    plutil = Path("/usr/bin/plutil")
+    if plutil.is_file():
+        lint = subprocess.run(
+            [str(plutil), "-lint", str(dest)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert lint.returncode == 0, lint.stderr
     with dest.open("rb") as handle:
         payload = plistlib.load(handle)
     assert "EnvironmentVariables" not in payload
