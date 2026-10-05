@@ -1,0 +1,52 @@
+import json
+from pathlib import Path
+
+from yara_gate.models import Verdict
+from yara_gate.quarantine import GatePaths, process_inbox_file
+from yara_gate.report import redact, write_reports
+from yara_gate.samples import EICAR, clean_text, eicar_bytes, injection_markdown
+from yara_gate.scanner import scan_file
+
+
+def test_redact_home_prefix() -> None:
+    home = str(Path.home())
+    assert redact(home + "/YaraGate/clean/abc") == "~/YaraGate/clean/abc"
+    assert redact("/tmp/other") == "/tmp/other"
+
+
+def test_reports_omit_matched_text(tmp_path: Path, rules_copy: Path) -> None:
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    eicar = home.inbox / "eicar.com"
+    eicar.write_bytes(eicar_bytes())
+    blocked = process_inbox_file(home, eicar, rules_dir=rules_copy)
+    note = home.inbox / "note.md"
+    note.write_bytes(injection_markdown())
+    noted = process_inbox_file(home, note, rules_dir=rules_copy)
+    phrase = "ignore previous instructions"
+    for digest in (blocked.sha256, noted.sha256):
+        for suffix in (".sarif", ".json"):
+            text = (home.reports / f"{digest}{suffix}").read_text(encoding="utf-8")
+            assert EICAR.decode() not in text
+            assert phrase not in text
+    sarif = json.loads((home.reports / f"{blocked.sha256}.sarif").read_text(encoding="utf-8"))
+    assert sarif["version"] == "2.1.0"
+    result = sarif["runs"][0]["results"][0]
+    assert result["ruleId"] == "agent_eicar"
+    assert "byteOffset" in result["locations"][0]["physicalLocation"]["region"]
+    compact = json.loads((home.reports / f"{noted.sha256}.json").read_text(encoding="utf-8"))
+    assert compact["verdict"] == "advisory"
+    assert compact["advisory"] is True
+    assert compact["exit_code"] == 0
+
+
+def test_clean_still_writes_both_reports(tmp_path: Path, rules_copy: Path) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_bytes(clean_text())
+    result = scan_file(path, rules_dir=rules_copy)
+    assert result.verdict is Verdict.clean
+    sarif, js = write_reports(tmp_path / "reports", result)
+    assert sarif.is_file() and js.is_file()
+    body = js.read_text(encoding="utf-8")
+    assert '"verdict": "clean"' in body
+    assert result.findings == []
