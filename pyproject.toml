@@ -2,8 +2,17 @@
 name = "yara-gate"
 version = "0.2.0"
 description = "Quarantine untrusted files until a YARA scan finishes."
+readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
+authors = [{ name = "Christopher Grady" }]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "oletools>=0.60.2",
     "pydantic>=2.7",
