@@ -4,6 +4,8 @@ Research date: October 7, 2026, America/New_York. Source revision: `3667747ee439
 
 Implementation follow-up: this document preserves the baseline and proposal at that revision. The first implementation adds the P1 rule families, contextual Unicode verdicts, bounded archive/derived views, report provenance, and an opt-in agent-ingest policy. See the [verification record](../verification/intake-coverage.md) for delivered behavior and deferred work. Statements below about six rules or absent policy describe the baseline, not the implementation branch.
 
+The [October 8 delivery-rule expansion](modern-delivery-rules.md) adds four advisory rules for ClickFix lures, HTML smuggling, encoded PowerShell combinations, and remote MSHTA targets, bringing the shipped local pack to 16. Its evidence and boundaries are recorded separately; the baseline observations below remain tied to their original revision.
+
 Broader coverage should combine contextual YARA rules, consistent scanning of extracted content, and explicit policy for each consumer. The strongest first additions are agent authority spoofing, requests to transfer secrets, encoded instruction variants, document references to external payloads, and script download/execute combinations. Before enabling broad blocking, address the existing Unicode false positives and archive coverage differences demonstrated below.
 
 “More universal” here means reusable across agent/RAG ingestion, ordinary document intake, and developer files, including multilingual text and files originating on Windows, macOS, or Linux. It does not mean that a signature match proves malicious intent or that no match establishes safety.

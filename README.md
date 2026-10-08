@@ -112,7 +112,7 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The on-disk rule-set hash is `47c2df1280a7fabf1d0110d7177b1ab215b8e2109d378f954886a44b336330c2` (`rules/.cache/<hash>.yarc`, not committed). Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 16 local rules in `rules/local/` ship with the tool and need no download. A fresh checkout has these rules only; `rules.lock` is a record of previous downloads, not an installed pack. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 16 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules update` refreshes vendor packs only. A fresh checkout has these rules only; `rules.lock` is a record of previous downloads, not an installed pack. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 ## What this catches, and what it does not
 
@@ -120,7 +120,16 @@ Installed curated packs add known malware signatures. Local heuristics check Off
 
 Explicit left/right bidi overrides still block. Ordinary joiners used by emoji and language shaping no longer match the invisible-Unicode rule. Directional embeddings/isolates, zero-width spaces, internal BOMs, and Unicode tags are advisory. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
 
-Additional advisory rules identify ClickFix-like verification/clipboard/shell-instruction combinations, HTML payload assembly through base64/Blob/download APIs, encoded PowerShell launches with hidden-window or execution-policy-bypass flags, and remote HTTP(S) `mshta` commands. These are lexical combinations that can also occur in legitimate administration, export code, and security documentation. See [delivery-rule sources, exact boundaries, and verification](docs/research/modern-delivery-rules.md). They do not execute or decode the referenced payload; `agent-ingest` applies its existing hold policy to their advisories.
+The four delivery-pattern additions report these rule IDs:
+
+| Rule ID | Required indicators | Finding severity |
+| --- | --- | --- |
+| [`web_clickfix_lure`](rules/local/web_clickfix_lure.yar) | Verification language, clipboard-copy API, shell-opening instructions, and paste instructions near each other | Advisory |
+| [`web_html_smuggling`](rules/local/web_html_smuggling.yar) | Base64 decoding, Blob/URL APIs, and a nearby literal script, executable, disk-image, or archive download filename | Advisory |
+| [`script_encoded_powershell`](rules/local/script_encoded_powershell.yar) | An encoded command plus hidden-window or execution-policy-bypass flags in a bounded PowerShell command fragment | Advisory |
+| [`script_mshta_remote`](rules/local/script_mshta_remote.yar) | A direct HTTP(S) target passed to `mshta` | Advisory |
+
+These lexical combinations can also occur in legitimate administration, export code, and security documentation. See [delivery-rule sources, exact boundaries, and verification](docs/research/modern-delivery-rules.md). They do not execute or decode the referenced payload; `agent-ingest` applies its existing hold policy to their advisories. A match identifies a pattern requiring review, not confirmed malicious intent.
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
 
@@ -184,9 +193,9 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 
 `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
-For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The initial [research](docs/research/universal-rule-research.md) and [verification record](docs/verification/intake-coverage.md) describe the scope and remaining work.
+For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The [delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) records the 16-rule pack's 70 library cases, 16 CLI operations, and three compilation/deadline checks. The initial [research](docs/research/universal-rule-research.md) and [intake verification](docs/verification/intake-coverage.md) preserve earlier evidence and remaining work.
 
-`origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. Secret scanning on a user-owned private repository requires GitHub Secret Protection. The CodeQL job still runs the Python queries and does not upload results, because code scanning is not enabled on this user-owned private repository. `.github/dependabot.yml` schedules version updates. Dependabot alerts are a separate repository setting.
+`origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 
 ## Project files
 

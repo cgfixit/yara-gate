@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works with the local agent rules before this step. The curated packs are what catch common malicious documents.
+Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. `rules update` downloads vendor packs; it does not update `rules/local/`. The curated packs add known-malware signatures.
 
 ```bash
 uv run yara-gate rules update
@@ -122,6 +122,8 @@ A home-directory path is shown as `~/...`. The path is where the file was while 
 
 Reports include policy, engine version, ruleset fingerprint, and skipped vendor-file count. Finding `member_path` entries identify archive members by ordinal, without disclosing their names; `view` identifies raw bytes or derived text. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
+For a delivery-pattern finding, compare its `rule_id` with the [README rule table](README.md#what-this-catches-and-what-it-does-not) and the [documented match boundaries](docs/research/modern-delivery-rules.md#rule-boundaries-and-benign-collisions). All four new rules have advisory severity. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
+
 If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
 ## 6. After you confirm a file is bad
@@ -177,5 +179,7 @@ uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
 Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
 
 ## Verification already done on this machine
+
+The [October 8 delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) covers the 16-rule pack with 70 direct library cases, 16 CLI intake/rescan operations, and three compilation/deadline checks. Those runs used inert inputs and disposable gate homes. The [earlier intake record](docs/verification/intake-coverage.md) includes browser evidence and the observed macOS watcher shutdown limitation; it predates the four delivery rules.
 
 A run on 2026-10-04 created `~/YaraGate` and left the local fixtures there. EICAR and the synthetic macro, PDF, and Unicode samples are under `blocked/` or `clean/` as their verdicts required. `big.bin` is a sparse file over the 100 MB cap and it stayed in `quarantine/`. Those are test files, not documents you dropped. Delete `~/YaraGate` if you want the folders empty before you start using them. Deleting it does not remove the rules in `~/Projects/yara-gate`.
