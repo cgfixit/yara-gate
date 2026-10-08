@@ -112,13 +112,15 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The on-disk rule-set hash is `47c2df1280a7fabf1d0110d7177b1ab215b8e2109d378f954886a44b336330c2` (`rules/.cache/<hash>.yarc`, not committed). Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 12 local rules in `rules/local/` ship with the tool and need no download. A fresh checkout has these rules only; `rules.lock` is a record of previous downloads, not an installed pack. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 16 local rules in `rules/local/` ship with the tool and need no download. A fresh checkout has these rules only; `rules.lock` is a record of previous downloads, not an installed pack. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 ## What this catches, and what it does not
 
 Installed curated packs add known malware signatures. Local heuristics check Office auto-exec macros (`olevba`), risky PDF tokens (`/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/EmbeddedFile`, `/RichMedia`), and embedded executable headers. These checks also run on archive members. PDF token checks remain conservative feature restrictions; an ordinary navigation `/OpenAction` still blocks.
 
 Explicit left/right bidi overrides still block. Ordinary joiners used by emoji and language shaping no longer match the invisible-Unicode rule. Directional embeddings/isolates, zero-width spaces, internal BOMs, and Unicode tags are advisory. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
+
+Additional advisory rules identify ClickFix-like verification/clipboard/shell-instruction combinations, HTML payload assembly through base64/Blob/download APIs, encoded PowerShell launches with hidden-window or execution-policy-bypass flags, and remote HTTP(S) `mshta` commands. These are lexical combinations that can also occur in legitimate administration, export code, and security documentation. See [delivery-rule sources, exact boundaries, and verification](docs/research/modern-delivery-rules.md). They do not execute or decode the referenced payload; `agent-ingest` applies its existing hold policy to their advisories.
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
 

