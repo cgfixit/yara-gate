@@ -5,6 +5,7 @@ import hashlib
 import os
 import secrets
 import shutil
+import signal
 import stat
 import threading
 import time
@@ -147,8 +148,16 @@ def watch(
     observer = Observer()
     observer.schedule(Handler(), str(home.inbox), recursive=False)
     observer.start()
+    stop = False
+
+    def _request_stop(_signum: int, _frame: object) -> None:
+        nonlocal stop
+        stop = True
+
+    signal.signal(signal.SIGINT, _request_stop)
+    signal.signal(signal.SIGTERM, _request_stop)
     try:
-        while True:
+        while not stop:
             _drain(handler, home)
             time.sleep(0.5)
     finally:
