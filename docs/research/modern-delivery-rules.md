@@ -2,6 +2,8 @@
 
 Research and direct verification: October 8, 2026, America/New_York. Starting revision: `6031f74fcec65b9e3aa3f676f386e2c86a165bd1` on the resynced `main` branch. These four original local rules expand the shipped pack from 12 to 16; no vendor rules, incident payloads, hashes, or live infrastructure indicators were imported.
 
+The verified rule and probe changes are committed in [`1855828`](https://github.com/cgfixit/yara-gate/commit/18558283e291bad9542458ab3391182789ea1784) and proposed in [draft PR #7](https://github.com/cgfixit/yara-gate/pull/7). This extends the [initial intake implementation](../verification/intake-coverage.md); its earlier browser captures remain tied to that implementation.
+
 ## Sources and selection
 
 Microsoft's [August 2025 ClickFix analysis](https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/) describes fake verification pages, browser clipboard writes, and instructions to open a shell and paste commands. Its hunting guidance also identifies encoded/hidden PowerShell launches and `mshta` usage. The [February 2026 CrashFix report](https://www.microsoft.com/en-us/security/blog/2026/02/05/clickfix-variant-crashfix-deploying-python-rat-trojan/) documents continued evolution of browser lures and encoded PowerShell in later stages. Those observations motivate generic advisory combinations; these rules do not identify a campaign or claim complete CrashFix detection.
@@ -40,3 +42,9 @@ Extended the existing [direct runtime probe](probe_rule_coverage.py), already ru
 A separate 2,125,000-byte inert JavaScript file repeated ordinary decode/Blob APIs without a download or clipboard/shell combination. Both the 12-rule baseline and 16-rule candidate returned clean. Single scans with compiled caches took approximately 0.143 s and 0.152 s respectively on this host. This is a bounded volume sanity check, not a throughput benchmark or performance guarantee.
 
 The probe emits source revision, Python-source hashes, engine version, rule hashes, sample hashes, rule IDs, and expected/observed results. Synthetic acceptance is not real-corpus precision/recall, complete phishing detection, native Windows execution, or a new browser-rendering check. The previously documented vendor-update defect is outside this change; verification never invoked the updater.
+
+## Hosted verification
+
+At implementation commit `18558283e291bad9542458ab3391182789ea1784`, all nine registered checks passed. [Pull-request CI](https://github.com/cgfixit/yara-gate/actions/runs/37780123551) and [push CI](https://github.com/cgfixit/yara-gate/actions/runs/37780117327) passed on Ubuntu 24.04 and macOS 15, including Ruff, formatting, strict Mypy, the direct probe, selftest, and pytest. The broad suites ran on GitHub Actions, not locally.
+
+Both the [checked-in CodeQL workflow](https://github.com/cgfixit/yara-gate/actions/runs/37780123596) and [GitHub's separate CodeQL workflow](https://github.com/cgfixit/yara-gate/actions/runs/37780126377) passed. The checked-in workflow has upload disabled; its successful query execution alone is not evidence that results reached the security dashboard. These links record checks for that exact commit; later draft heads have their own checks.

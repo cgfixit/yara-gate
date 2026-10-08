@@ -2,6 +2,8 @@
 
 Verified locally on October 7, 2026, America/New_York, using macOS 27.0.1 ARM64, Python 3.12.12, yara-gate 0.2.0, and locked YARA-X 1.21.0. The starting revision was `3667747ee4394a4453d16a6d9e6ecf8eb1660ef2`. The runtime probe records the checked-out revision and hashes of the Python source and rule files it exercises.
 
+This record preserves the first 12-rule implementation and its browser evidence. The [October 8 delivery-rule expansion](../research/modern-delivery-rules.md) records the later 16-rule pack, 70 library cases, 16 CLI operations, and three compilation/deadline checks. The screenshots and counts below describe the earlier implementation; they do not establish browser acceptance for the added delivery patterns.
+
 ## Delivered behavior
 
 - Twelve shipped local rules: six existing rules plus directional-formatting, role/action spoofing, secret-transfer requests, selected base64 instruction variants, external OOXML/RTF templates, and download/execute chains. New families are advisory.
