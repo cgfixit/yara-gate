@@ -2,6 +2,7 @@
 
 import io
 import re
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -20,12 +21,49 @@ PDF_TOKENS = (
 OFFICE_KEYWORDS = ("Shell", "CreateObject", "URLDownloadToFile")
 
 
+_LETTER_PREFIXES = (
+    "ARABIC LETTER",
+    "DEVANAGARI LETTER",
+    "BENGALI LETTER",
+    "GURMUKHI LETTER",
+    "GUJARATI LETTER",
+    "ORIYA LETTER",
+    "TAMIL LETTER",
+    "TELUGU LETTER",
+    "KANNADA LETTER",
+    "MALAYALAM LETTER",
+    "SINHALA LETTER",
+)
+_VARIATION = frozenset({0xFE0E, 0xFE0F})
+
+
 def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
     findings = pdf_findings(data)
     findings.extend(embedded_findings(data))
     office, error = office_findings(path, data)
     findings.extend(office)
     return findings, error
+
+
+def joiner_findings(text: str) -> list[Finding]:
+    """Block a ZWNJ or ZWJ that is not holding an emoji or a joining script together."""
+    findings: list[Finding] = []
+    offset = 0
+    chars = list(text)
+    for index, char in enumerate(chars):
+        size = len(char.encode("utf-8"))
+        if char in {"\u200c", "\u200d"} and not _joiner_allowed(chars, index):
+            findings.append(
+                Finding(
+                    rule_id="heuristic_invisible_joiner",
+                    offset=offset,
+                    length=size,
+                    severity=Severity.block,
+                    source=FindingSource.heuristic,
+                )
+            )
+        offset += size
+    return findings
 
 
 def pdf_findings(data: bytes) -> list[Finding]:
@@ -155,6 +193,41 @@ def _project_bytes(data: bytes) -> bytes:
     except zipfile.BadZipFile:
         return b""
     return b"\n".join(chunks)
+
+
+def _joiner_allowed(chars: list[str], index: int) -> bool:
+    left = _joiner_neighbor(chars, index, -1)
+    right = _joiner_neighbor(chars, index, 1)
+    if not left or not right:
+        return False
+    if chars[index] == "\u200d" and _emoji(left) and _emoji(right):
+        return True
+    return _script_letter(left) and _script_letter(right)
+
+
+def _joiner_neighbor(chars: list[str], index: int, step: int) -> str:
+    cursor = index + step
+    while 0 <= cursor < len(chars) and ord(chars[cursor]) in _VARIATION:
+        cursor += step
+    if cursor < 0 or cursor >= len(chars):
+        return ""
+    return chars[cursor]
+
+
+def _emoji(char: str) -> bool:
+    code = ord(char)
+    if 0x1F3FB <= code <= 0x1F3FF or 0x1F1E6 <= code <= 0x1F1FF:
+        return True
+    if 0x1F000 <= code <= 0x1FAFF or 0x2600 <= code <= 0x27BF:
+        return True
+    return "EMOJI" in unicodedata.name(char, "")
+
+
+def _script_letter(char: str) -> bool:
+    if unicodedata.category(char) not in {"Lo", "Lm"}:
+        return False
+    name = unicodedata.name(char, "")
+    return any(name.startswith(prefix) for prefix in _LETTER_PREFIXES)
 
 
 def _token_at(data: bytes, token: bytes) -> int:

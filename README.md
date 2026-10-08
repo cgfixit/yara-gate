@@ -101,7 +101,7 @@ uv run yara-gate scan path/to/file --policy agent-ingest
 uv run yara-gate watch --policy agent-ingest
 ```
 
-Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `blocked/` for inbox files. Reports preserve each finding's original severity and include `policy` and `policy_reason`. Incomplete scans remain exit 2 in quarantine. This policy also holds benign advisory cases, such as directional isolates or security documentation quoting an instruction. Use a separate gate home for each consumer policy; changing policies does not rescan files already on disk until they are submitted again.
+Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `blocked/` for inbox files. Reports preserve each finding's original severity and include `policy` and `policy_reason`. Incomplete scans remain exit 2 in quarantine. This policy also holds benign advisory cases, such as security documentation quoting an instruction. CyClaw and other agent consumers should pass `policy="agent-ingest"`. The scan default stays `default`. Use a separate gate home for each consumer policy; changing policies does not rescan files already on disk until they are submitted again.
 
 ## Reports
 
@@ -136,7 +136,7 @@ The 16 local rules in `rules/local/` ship with the tool and need no download. Lo
 
 Installed curated packs add known malware signatures. Local heuristics check Office auto-exec macros (`olevba`), risky PDF tokens (`/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/EmbeddedFile`, `/RichMedia`), and embedded executable headers. These checks also run on archive members. PDF token checks remain conservative feature restrictions; an ordinary navigation `/OpenAction` still blocks.
 
-Explicit left/right bidi overrides still block. Ordinary joiners used by emoji and language shaping no longer match the invisible-Unicode rule. Directional embeddings/isolates, zero-width spaces, internal BOMs, and Unicode tags are advisory. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
+Bidi overrides, embeddings, and isolates block under both policies. A zero-width space, left-to-right or right-to-left mark, word joiner, internal BOM, or Unicode tag also blocks under both policies. A ZWJ inside an emoji sequence and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters stay clean. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
 
 The four delivery-pattern additions report these rule IDs:
 
@@ -178,7 +178,7 @@ result = scan_file("attachment.bin", timeout_s=30)
 result.verdict  # "clean", "advisory", "block", or "incomplete"
 ```
 
-Pass `policy="agent-ingest"` to hold all advisory findings as a block. The default remains `policy="default"`.
+Pass `policy="agent-ingest"` to hold all advisory findings as a block. CyClaw and other agent consumers should pass that policy. The default remains `policy="default"`.
 
 `scan_file` does not move files and does not open a socket. Pass `rules_dir` to point at a different rules tree. The default is this project's `rules/` directory. A later caller, including CyClaw before chunking, can use this function without taking the drop folder.
 

@@ -254,6 +254,8 @@ def main() -> None:
         "pdf_tgz.tgz",
         "macro_zip.zip",
         "override_utf16.txt",
+        "bidi_isolate.txt",
+        "split_instruction.txt",
     ):
         expected[name] = "block"
     for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):

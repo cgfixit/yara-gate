@@ -1,8 +1,9 @@
 rule agent_bidi_formatting {
     meta:
         author = "yara-gate"
-        description = "Directional embeddings and isolates can be legitimate multilingual formatting"
-        verdict_on_match = "advisory"
+        description = "Directional embeddings and isolates"
+        severity = "block"
+        verdict_on_match = "block"
         reference = "https://www.unicode.org/reports/tr9/"
     strings:
         $embedding = { E2 80 ( AA | AB | AC ) }
