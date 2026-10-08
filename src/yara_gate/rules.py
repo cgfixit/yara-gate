@@ -69,6 +69,55 @@ def shipped_local_dir() -> Path:
     return project_root() / "rules" / "local"
 
 
+def _same_path(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve() == right.expanduser().resolve()
+
+
+def _readable_shipped_local() -> Path | None:
+    path = shipped_local_dir()
+    try:
+        files = [
+            item for item in path.iterdir() if item.is_file() and item.suffix in {".yar", ".yara"}
+        ]
+        if not files:
+            return None
+        files[0].read_bytes()
+    except OSError:
+        return None
+    return path
+
+
+def _is_shipped_tree(rules_dir: Path) -> bool:
+    """True when local/ already contains every packaged rule name."""
+    shipped = _readable_shipped_local()
+    local = rules_dir / "local"
+    if shipped is None or not local.is_dir():
+        return False
+    names = {
+        item.name
+        for item in shipped.iterdir()
+        if item.is_file() and item.suffix in {".yar", ".yara"}
+    }
+    present = {item.name for item in local.iterdir() if item.is_file()}
+    return bool(names) and names <= present
+
+
+def _installed_overlay(rules_dir: Path) -> bool:
+    """Packaged rules stay underneath a writable install root.
+
+    The platform data directory always overlays, even when a user copied the
+    shipped filenames into it. ``YARA_GATE_RULES`` overlays only when that
+    directory is not already a copy of the shipped rules. An explicit
+    ``--rules`` tree that contains those names is loaded once.
+    """
+    if _same_path(rules_dir, installed_rules_root()):
+        return True
+    env = os.environ.get("YARA_GATE_RULES")
+    if not env or not _same_path(rules_dir, Path(env)):
+        return False
+    return not _is_shipped_tree(rules_dir)
+
+
 def installed_rules_root() -> Path:
     return Path(platformdirs.user_data_dir("yara-gate"))
 
@@ -102,15 +151,22 @@ def save_lock(lock: RulesLock, rules_dir: Path | None = None) -> None:
     os.replace(temporary, path)
 
 
-def rule_files(rules_dir: Path) -> list[Path]:
+def rule_files(rules_dir: Path, *, overlay: bool | None = None) -> list[Path]:
+    use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
+    if use_overlay:
+        return _overlay_rule_files(rules_dir)
+    return _checkout_rule_files(rules_dir)
+
+
+def _checkout_rule_files(rules_dir: Path) -> list[Path]:
     found: list[Path] = []
     local = rules_dir / "local"
     if local.is_dir():
         _collect_rules(local, found)
-    elif rules_dir == installed_rules_root():
-        bundled = bundled_local_dir()
-        if bundled is not None:
-            _collect_rules(bundled, found)
+    elif _same_path(rules_dir, installed_rules_root()):
+        shipped = _readable_shipped_local()
+        if shipped is not None:
+            _collect_rules(shipped, found)
     vendor = rules_dir / "vendor"
     if vendor.is_dir():
         _collect_rules(vendor, found)
@@ -118,6 +174,50 @@ def rule_files(rules_dir: Path) -> list[Path]:
         return found
     _collect_rules(rules_dir, found, nested=False)
     return found
+
+
+def _overlay_rule_files(rules_dir: Path) -> list[Path]:
+    shipped = _readable_shipped_local()
+    if shipped is None:
+        return []
+    found: list[Path] = []
+    _collect_rules(shipped, found)
+    names = {path.name for path in found}
+    local = rules_dir / "local"
+    if local.is_dir():
+        extra: list[Path] = []
+        _collect_rules(local, extra)
+        for path in extra:
+            if path.name in names:
+                continue
+            found.append(path)
+    vendor = rules_dir / "vendor"
+    if vendor.is_dir():
+        _collect_rules(vendor, found)
+    return found
+
+
+def shadowed_rule_lines(rules_dir: Path, *, overlay: bool | None = None) -> list[str]:
+    use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
+    if not use_overlay:
+        return []
+    shipped = _readable_shipped_local()
+    local = rules_dir / "local"
+    if shipped is None or not local.is_dir():
+        return []
+    names = {
+        item.name
+        for item in shipped.iterdir()
+        if item.is_file() and item.suffix in {".yar", ".yara"}
+    }
+    extra: list[Path] = []
+    _collect_rules(local, extra)
+    lines: list[str] = []
+    for path in extra:
+        if path.name not in names:
+            continue
+        lines.append(f"local/{path.relative_to(local).as_posix()}: shadowed by bundled")
+    return lines
 
 
 def _collect_rules(folder: Path, found: list[Path], *, nested: bool = True) -> None:
@@ -133,13 +233,21 @@ def _rule_key(path: Path, rules_dir: Path) -> str:
     try:
         return path.relative_to(rules_dir).as_posix()
     except ValueError:
-        bundled = bundled_local_dir()
-        if bundled is not None:
+        shipped = _readable_shipped_local()
+        if shipped is not None:
             try:
-                return f"local/{path.relative_to(bundled).as_posix()}"
+                return f"local/{path.relative_to(shipped).as_posix()}"
             except ValueError:
                 pass
         return path.name
+
+
+def _under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def is_candidate(text: str) -> bool:
@@ -147,17 +255,25 @@ def is_candidate(text: str) -> bool:
     return match is not None and match.group(1) == "candidate"
 
 
-def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | None, int, int]:
+def compile_sources(
+    rules_dir: Path, *, overlay: bool | None = None
+) -> tuple[object | None, list[str], str | None, int, int]:
     """Return compiled rules, skip lines, fatal error, compiled rule count, skipped rule count."""
+    use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
+    if use_overlay and _readable_shipped_local() is None:
+        return None, [], "bundled rules missing", 0, 0
     try:
         import yara_x
     except ImportError:
         return None, [], "yara-x missing", 0, 0
 
-    files = rule_files(rules_dir)
+    files = rule_files(rules_dir, overlay=use_overlay)
+    shadows = shadowed_rule_lines(rules_dir, overlay=use_overlay)
     if not files:
+        if use_overlay:
+            return None, shadows, "bundled rules missing", 0, _count_skipped(shadows)
         return None, [], "no rules compiled", 0, 0
-    digest = ruleset_digest(rules_dir)
+    digest = ruleset_digest(rules_dir, overlay=use_overlay)
     good: list[tuple[Path, str]] = []
     skipped: list[str] = []
     cached = _read_cache(digest)
@@ -166,8 +282,15 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
         good = _files_except(files, rules_dir, skipped)
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped)
 
+    shipped_root = _readable_shipped_local() if use_overlay else None
     for path in files:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            if shipped_root is not None and _under(path, shipped_root):
+                return None, [], "bundled rules missing", 0, 0
+            skipped.append(f"{_rule_key(path, rules_dir)}: OSError")
+            continue
         if is_candidate(text):
             continue
         try:
@@ -176,15 +299,17 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
             skipped.append(f"{_rule_key(path, rules_dir)}: {exc.__class__.__name__}")
             continue
         good.append((path, text))
+    skipped.extend(shadows)
     if not good:
-        return None, skipped, "no rules compiled", 0, _count_skipped(skipped)
+        reason = "bundled rules missing" if use_overlay else "no rules compiled"
+        return None, skipped, reason, 0, _count_skipped(skipped)
 
-    if any(not line.startswith("vendor/") for line in skipped):
+    if _local_compile_failed(skipped):
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped)
 
     compiler = yara_x.Compiler(relaxed_re_syntax=True)
     compiler.define_global("yara_gate_ext", "bin")
-    _add_include_dirs(compiler, rules_dir)
+    _add_include_dirs(compiler, rules_dir, overlay=use_overlay)
     for index, (path, text) in enumerate(good):
         compiler.new_namespace(f"gate_{index}")
         compiler.add_source(text, origin=path.name)
@@ -441,7 +566,9 @@ def _validate_staged(root: Path, staging: Path) -> None:
         if local.is_dir():
             os.symlink(local, check / "local", target_is_directory=True)
         os.symlink(staging, check / "vendor", target_is_directory=True)
-        _compiled, skipped, error, _count, _skip = compile_sources(check)
+        _compiled, skipped, error, _count, _skip = compile_sources(
+            check, overlay=_installed_overlay(root)
+        )
         if error:
             raise ValueError(error)
         _write_skipped(staging, skipped)
@@ -489,20 +616,30 @@ def _validate_one(yara_x: Any, path: Path, text: str) -> None:
     compiler.build()
 
 
-def _add_include_dirs(compiler: object, rules_dir: Path) -> None:
+def _add_include_dirs(compiler: object, rules_dir: Path, *, overlay: bool | None = None) -> None:
     add = getattr(compiler, "add_include_dir", None)
     if not callable(add):
         return
     seen: set[Path] = set()
-    for path in rule_files(rules_dir):
+    for path in rule_files(rules_dir, overlay=overlay):
         if path.parent in seen:
             continue
         seen.add(path.parent)
         add(str(path.parent))
 
 
+def _local_compile_failed(skipped: list[str]) -> bool:
+    for line in skipped:
+        if line.startswith("vendor/") or line.endswith(": shadowed by bundled"):
+            continue
+        return True
+    return False
+
+
 def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> list[tuple[Path, str]]:
-    names = {line.split(":", 1)[0] for line in skipped}
+    names = {
+        line.split(":", 1)[0] for line in skipped if not line.endswith(": shadowed by bundled")
+    }
     good: list[tuple[Path, str]] = []
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -512,13 +649,18 @@ def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> lis
     return good
 
 
-def ruleset_digest(rules_dir: Path) -> str:
+def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
+    use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
     hasher = hashlib.sha256(_CACHE_SALT)
     hasher.update(importlib.metadata.version("yara-x").encode())
-    for path in rule_files(rules_dir):
+    hasher.update(b"overlay\x00" if use_overlay else b"checkout\x00")
+    for path in rule_files(rules_dir, overlay=use_overlay):
         hasher.update(_rule_key(path, rules_dir).encode())
         hasher.update(b"\x00")
         hasher.update(path.read_bytes())
+        hasher.update(b"\x00")
+    for line in shadowed_rule_lines(rules_dir, overlay=use_overlay):
+        hasher.update(line.encode())
         hasher.update(b"\x00")
     return hasher.hexdigest()
 

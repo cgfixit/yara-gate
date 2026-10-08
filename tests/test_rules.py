@@ -6,7 +6,10 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from yara_gate.cli import app
+from yara_gate.models import Verdict
 from yara_gate.rules import (
     PackPin,
     RulesLock,
@@ -15,11 +18,25 @@ from yara_gate.rules import (
     _vendor_member,
     compile_sources,
     install_packs,
+    rule_files,
     save_lock,
     shipped_local_dir,
     update_packs,
 )
 from yara_gate.samples import clean_text, eicar_bytes
+from yara_gate.scanner import scan_file
+
+_CANDIDATE = """\
+rule hunt_0123456789ab {
+    meta:
+        status = "candidate"
+        verdict_on_match = "block"
+    strings:
+        $s = "CANDIDATE_SHOULD_NOT_FIRE" ascii
+    condition:
+        $s
+}
+"""
 
 
 def test_rule_download_url_allowlist() -> None:
@@ -202,3 +219,138 @@ def test_wheel_install_smoke(tmp_path: Path) -> None:
     )
     assert scanned.returncode == 0
     assert blocked.returncode == 1
+
+
+def _use_installed_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("yara_gate.rules.installed_rules_root", lambda: root)
+    return root
+
+
+def test_installed_root_always_loads_bundled_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rules_copy: Path
+) -> None:
+    checkout_names = [path.name for path in rule_files(rules_copy)]
+    assert checkout_names.count("agent_invisible_unicode.yar") == 1
+
+    root = _use_installed_root(monkeypatch, tmp_path / "user-data")
+    local = root / "local"
+    local.mkdir()
+    (local / "hunt_0123456789ab.yar").write_text(_CANDIDATE, encoding="utf-8")
+    bait = tmp_path / "bait.txt"
+    bait.write_text("CANDIDATE_SHOULD_NOT_FIRE\n", encoding="utf-8")
+    bait_result = scan_file(bait, rules_dir=root)
+    assert bait_result.verdict is Verdict.clean
+    assert all(not item.rule_id.startswith("hunt_") for item in bait_result.findings)
+    zero_width = tmp_path / "zero.md"
+    zero_width.write_text("\u200b", encoding="utf-8")
+    blocked = scan_file(zero_width, rules_dir=root)
+    assert blocked.verdict is Verdict.block
+    assert any(item.rule_id == "agent_invisible_unicode" for item in blocked.findings)
+
+    relocated = tmp_path / "relocated"
+    (relocated / "local").mkdir(parents=True)
+    (relocated / "local" / "hunt_0123456789ab.yar").write_text(_CANDIDATE, encoding="utf-8")
+    monkeypatch.setenv("YARA_GATE_RULES", str(relocated))
+    moved = tmp_path / "moved.md"
+    moved.write_text("\u200b", encoding="utf-8")
+    via_env = scan_file(moved)
+    assert via_env.verdict is Verdict.block
+    assert any(item.rule_id == "agent_invisible_unicode" for item in via_env.findings)
+
+
+def test_user_local_rule_layers_on_top(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _use_installed_root(monkeypatch, tmp_path / "user-data")
+    local = root / "local"
+    vendor = root / "vendor"
+    local.mkdir()
+    vendor.mkdir()
+    (local / "operator_layer.yar").write_text(
+        'rule operator_layer { strings: $s = "OPERATOR_LAYER_TOKEN" ascii condition: $s }\n',
+        encoding="utf-8",
+    )
+    (vendor / "vendor_layer.yar").write_text(
+        'rule vendor_layer { strings: $s = "VENDOR_LAYER_TOKEN" ascii condition: $s }\n',
+        encoding="utf-8",
+    )
+    operator = tmp_path / "operator.txt"
+    operator.write_text("OPERATOR_LAYER_TOKEN\n", encoding="utf-8")
+    vendor_hit = tmp_path / "vendor.txt"
+    vendor_hit.write_text("VENDOR_LAYER_TOKEN\n", encoding="utf-8")
+    zero_width = tmp_path / "zero.md"
+    zero_width.write_text("\u200b", encoding="utf-8")
+    operator_result = scan_file(operator, rules_dir=root)
+    vendor_result = scan_file(vendor_hit, rules_dir=root)
+    bundled_result = scan_file(zero_width, rules_dir=root)
+    assert any(item.rule_id == "operator_layer" for item in operator_result.findings)
+    assert any(item.rule_id == "vendor_layer" for item in vendor_result.findings)
+    assert bundled_result.verdict is Verdict.block
+
+
+def test_user_file_cannot_shadow_bundled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _use_installed_root(monkeypatch, tmp_path / "user-data")
+    local = root / "local"
+    local.mkdir()
+    (local / "agent_invisible_unicode.yar").write_text(
+        "rule agent_invisible_unicode { condition: false }\n",
+        encoding="utf-8",
+    )
+    _rules, skipped, error, _count, skip_count = compile_sources(root)
+    assert error is None
+    assert "local/agent_invisible_unicode.yar: shadowed by bundled" in skipped
+    assert skip_count == 1
+    zero_width = tmp_path / "zero.md"
+    zero_width.write_text("\u200b", encoding="utf-8")
+    blocked = scan_file(zero_width, rules_dir=root)
+    assert blocked.verdict is Verdict.block
+    assert blocked.skipped_rule_files == 1
+
+    def _no_download(rules_dir: Path, transport: object = None) -> RulesLock:
+        return RulesLock(packs=[])
+
+    monkeypatch.setattr("yara_gate.cli.install_packs", _no_download)
+    monkeypatch.setattr("yara_gate.cli.update_packs", _no_download)
+    runner = CliRunner()
+    installed = runner.invoke(app, ["rules", "install", "--allow-network", "--rules", str(root)])
+    updated = runner.invoke(app, ["rules", "update", "--allow-network", "--rules", str(root)])
+    assert installed.exit_code == 0
+    assert updated.exit_code == 0
+    assert "local/agent_invisible_unicode.yar: shadowed by bundled" in installed.stdout
+    assert "local/agent_invisible_unicode.yar: shadowed by bundled" in updated.stdout
+
+
+def test_missing_bundled_rules_exit_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _use_installed_root(monkeypatch, tmp_path / "user-data")
+    local = root / "local"
+    local.mkdir()
+    (local / "only_user.yar").write_text(
+        'rule only_user { strings: $s = "ONLY_USER_TOKEN" ascii condition: $s }\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("yara_gate.rules.shipped_local_dir", lambda: tmp_path / "missing-shipped")
+    sample = tmp_path / "user-only.txt"
+    sample.write_text("ONLY_USER_TOKEN\n", encoding="utf-8")
+    missing = scan_file(sample, rules_dir=root)
+    assert missing.verdict is Verdict.incomplete
+    assert missing.incomplete_reason == "bundled rules missing"
+    assert missing.findings == []
+    home = tmp_path / "gate"
+    cli_result = CliRunner().invoke(
+        app, ["scan", str(sample), "--home", str(home), "--rules", str(root)]
+    )
+    assert cli_result.exit_code == 2
+    assert "bundled rules missing" in cli_result.stdout
+
+    locked = tmp_path / "unreadable"
+    locked.mkdir()
+    yar = locked / "agent_eicar.yar"
+    yar.write_text("rule agent_eicar { condition: false }\n", encoding="utf-8")
+    yar.chmod(0)
+    try:
+        monkeypatch.setattr("yara_gate.rules.shipped_local_dir", lambda: locked)
+        unreadable = scan_file(sample, rules_dir=root)
+    finally:
+        yar.chmod(0o644)
+    assert unreadable.verdict is Verdict.incomplete
+    assert unreadable.incomplete_reason == "bundled rules missing"
+    assert unreadable.findings == []

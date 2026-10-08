@@ -168,12 +168,13 @@ def rules_install(
     root = rules or default_rules_dir()
     try:
         lock = install_packs(root)
-        _rules, _skipped, error, compiled, skip_count = compile_sources(root)
+        _rules, skipped, error, compiled, skip_count = compile_sources(root)
     except Exception as exc:
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
+    _echo_shadows(skipped)
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -198,6 +199,7 @@ def rules_update(
         raise typer.Exit(code=2) from exc
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
+    _echo_shadows(skipped)
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -216,6 +218,12 @@ def rules_promote(
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"promoted {path.name}")
+
+
+def _echo_shadows(skipped: list[str]) -> None:
+    for line in skipped:
+        if line.endswith(": shadowed by bundled"):
+            typer.echo(line)
 
 
 def _scan_path(

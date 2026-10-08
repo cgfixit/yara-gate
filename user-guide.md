@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree you already had stays in place. The curated packs add known-malware signatures.
+Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree you already had stays in place. The curated packs add known-malware signatures.
 
 ```bash
 uv run yara-gate rules update
@@ -137,7 +137,7 @@ uv run yara-gate hunt \
   --scope ~/Documents
 ```
 
-`--reason` is required. The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `rules/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block.
+`--reason` is required. The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
 
 When you want that rule to block later scans:
 
