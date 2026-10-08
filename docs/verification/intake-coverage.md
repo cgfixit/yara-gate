@@ -37,7 +37,7 @@ The live loopback demo was exercised through Codex Computer Use in the in-app br
 - PE disguised as PDF: block, exit 1.
 - Empty submission: `empty text`, with the previous verdict cleared.
 
-After the final scanner changes, a fresh demo process confirmed the benign Unicode and strict HTML-decoding cases again. The rendered strict-policy result was inspected and saved as a local screenshot. Chrome automation was unavailable; the in-app browser supplied the browser evidence. This does not establish native Windows or a separate product's WKWebView behavior.
+After the final scanner changes, a fresh demo process confirmed the benign Unicode and strict HTML-decoding cases again. The rendered strict-policy result was inspected and saved in [screenshots/yara-gate-agent-ingest.jpg](../../screenshots/yara-gate-agent-ingest.jpg), with [capture provenance and its original image hash](../../screenshots/README.md). Chrome automation was unavailable; the in-app browser supplied the browser evidence. This does not establish native Windows or a separate product's WKWebView behavior.
 
 The standalone illustration's JavaScript passed `node --check`. Rendering its local `file:` URL was blocked by the browser URL policy; that optional preview was not attempted through another route. Browser acceptance above applies to the live HTTP demo.
 
