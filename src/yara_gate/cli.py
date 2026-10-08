@@ -11,7 +11,7 @@ from yara_gate import __version__
 from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
 from yara_gate.report import write_reports
-from yara_gate.rules import compile_sources, default_rules_dir, promote, update_packs
+from yara_gate.rules import compile_sources, default_rules_dir, install_packs, promote, update_packs
 from yara_gate.selftest import run_selftest
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -145,6 +145,30 @@ def hunt(
     typer.echo(f"candidate {rule_path.name} hits={len(hits)}")
     for hit in hits:
         typer.echo(hit)
+
+
+@rules_app.command("install")
+def rules_install(
+    allow_network: bool = typer.Option(False, "--allow-network", help="Permit this download."),
+    rules: Path | None = typer.Option(None, "--rules"),
+) -> None:
+    """Install the packs named in rules.lock. Refuses to run without --allow-network."""
+    if not allow_network:
+        typer.echo("refusing: pass --allow-network", err=True)
+        raise typer.Exit(code=2)
+    root = rules or default_rules_dir()
+    try:
+        lock = install_packs(root)
+        _rules, _skipped, error, compiled, skip_count = compile_sources(root)
+    except Exception as exc:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
+    for pack in lock.packs:
+        typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
+    typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
+    if error:
+        typer.echo(error, err=True)
+        raise typer.Exit(code=2)
 
 
 @rules_app.command("update")

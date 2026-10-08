@@ -31,6 +31,6 @@ uv run python docs/research/probe_rule_coverage.py --verify
 
 Extend its inert cases only when they exercise a meaningful new boundary. Use narrower direct scans for a single isolated detector. Run changed Python through Ruff and type checking as appropriate; leave broad pytest/selftest to hosted CI by default.
 
-Do not run `rules update` to validate a local rule. Vendor bodies are absent from a fresh checkout, and `rules.lock` is only a download record. Before an authorized vendor update, inspect its failure handling and URL policy on the current revision in a disposable tree.
+Do not run `rules update` to validate a local rule. Vendor bodies are absent from a fresh checkout. `rules install --allow-network` downloads the locked URLs and checks sha256. `rules update --allow-network` resolves new pins. Both keep the previous vendor tree when anything fails. Before an authorized vendor update, inspect its failure handling and URL policy on the current revision in a disposable tree.
 
 Report coverage gained, benign collisions, unsupported transformations, source/engine identity, and compile skips. Preserve upstream rule attribution/licenses. Never include real matched secrets, malware payloads, or private sample contents in a PR. Synthetic matches are not a production accuracy estimate.

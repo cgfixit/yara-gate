@@ -4,21 +4,34 @@ import hashlib
 import importlib.metadata
 import io
 import json
+import os
 import re
+import secrets
 import shutil
 import tarfile
 import urllib.parse
 import urllib.request
 import zipfile
+from collections.abc import Callable
+from http.client import HTTPMessage
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from pydantic import BaseModel, ConfigDict
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
 _RULE_NAME = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)")
 _CACHE_SALT = b"yara-gate-rules-v2"
-_ALLOWED_DOWNLOAD_HOSTS = frozenset({"github.com", "codeload.github.com"})
+_ALLOWED_DOWNLOAD_HOSTS = frozenset(
+    {
+        "github.com",
+        "codeload.github.com",
+        "api.github.com",
+        "release-assets.githubusercontent.com",
+    }
+)
+_DOWNLOAD_CAP = 300 * 1024 * 1024
+Transport = Callable[[str], bytes]
 
 
 class PackPin(BaseModel):
@@ -57,7 +70,10 @@ def load_lock(rules_dir: Path | None = None) -> RulesLock:
 
 def save_lock(lock: RulesLock, rules_dir: Path | None = None) -> None:
     path = lock_path(rules_dir)
-    path.write_text(lock.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    temporary.write_text(lock.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def rule_files(rules_dir: Path) -> list[Path]:
@@ -147,38 +163,104 @@ def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
     return target
 
 
-def update_packs(rules_dir: Path | None = None) -> RulesLock:
-    """Download pinned packs. Caller must have passed ``--allow-network``."""
+def update_packs(rules_dir: Path | None = None, *, transport: Transport | None = None) -> RulesLock:
+    """Resolve current pins, then swap vendor only after the new tree compiles."""
     root = rules_dir or default_rules_dir()
-    vendor = root / "vendor"
-    if vendor.exists():
-        for child in vendor.iterdir():
-            if child.name == ".gitkeep":
-                continue
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
-    vendor.mkdir(parents=True, exist_ok=True)
-    packs = [
-        _fetch_forge(vendor),
-        _fetch_git("signature-base", "Neo23x0/signature-base", "yara", vendor),
-        _fetch_git("elastic", "elastic/protections-artifacts", "yara", vendor),
-    ]
-    lock = RulesLock(packs=packs)
-    save_lock(lock, root)
+    staging = _staging_dir(root)
+    try:
+        packs = [
+            _fetch_forge(staging, transport=transport),
+            _fetch_git(
+                "signature-base",
+                "Neo23x0/signature-base",
+                "yara",
+                staging,
+                transport=transport,
+            ),
+            _fetch_git(
+                "elastic",
+                "elastic/protections-artifacts",
+                "yara",
+                staging,
+                transport=transport,
+            ),
+        ]
+        _validate_staged(root, staging)
+        lock = RulesLock(packs=packs)
+        _swap_vendor(root, staging, lock)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     _clear_cache(root)
     return lock
 
 
-def _fetch_forge(vendor: Path) -> PackPin:
-    meta = _json("https://api.github.com/repos/YARAHQ/yara-forge/releases/latest")
+def install_packs(
+    rules_dir: Path | None = None, *, transport: Transport | None = None
+) -> RulesLock:
+    """Download the locked URLs and keep the old vendor tree if any check fails."""
+    root = rules_dir or default_rules_dir()
+    lock = load_lock(root)
+    if not lock.packs:
+        raise ValueError("rules.lock has no packs")
+    staging = _staging_dir(root)
+    try:
+        for pack in lock.packs:
+            blob = _bytes(pack.url, transport=transport)
+            digest = hashlib.sha256(blob).hexdigest()
+            if digest != pack.sha256:
+                raise ValueError("sha256 mismatch")
+            _extract_locked(pack, blob, staging)
+        _validate_staged(root, staging)
+        _swap_vendor(root, staging, lock)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    _clear_cache(root)
+    return lock
+
+
+def _fetch_forge(vendor: Path, *, transport: Transport | None = None) -> PackPin:
+    meta = _json(
+        "https://api.github.com/repos/YARAHQ/yara-forge/releases/latest",
+        transport=transport,
+    )
     tag = str(meta["tag_name"])
     asset = next(item for item in meta["assets"] if item["name"] == "yara-forge-rules-core.zip")
     url = str(asset["browser_download_url"])
-    blob = _bytes(url)
+    blob = _bytes(url, transport=transport)
     digest = hashlib.sha256(blob).hexdigest()
-    dest = vendor / "yara-forge"
+    _extract_zip(blob, vendor / "yara-forge")
+    return PackPin(name="yara-forge-core", url=url, pin=tag, sha256=digest)
+
+
+def _fetch_git(
+    name: str,
+    repo: str,
+    subpath: str,
+    vendor: Path,
+    *,
+    transport: Transport | None = None,
+) -> PackPin:
+    description = _json(f"https://api.github.com/repos/{repo}", transport=transport)
+    branch = str(description["default_branch"])
+    commit = _json(f"https://api.github.com/repos/{repo}/commits/{branch}", transport=transport)
+    sha = str(commit["sha"])
+    url = f"https://codeload.github.com/{repo}/tar.gz/{sha}"
+    blob = _bytes(url, transport=transport)
+    digest = hashlib.sha256(blob).hexdigest()
+    _extract_tar(blob, vendor / name, subpath)
+    return PackPin(name=name, url=url, pin=sha, sha256=digest)
+
+
+def _extract_locked(pack: PackPin, blob: bytes, vendor: Path) -> None:
+    if pack.name == "yara-forge-core" or blob.startswith(b"PK"):
+        _extract_zip(blob, vendor / "yara-forge")
+        return
+    _extract_tar(blob, vendor / pack.name, "yara")
+
+
+def _extract_zip(blob: bytes, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         for info in archive.infolist():
@@ -186,18 +268,9 @@ def _fetch_forge(vendor: Path) -> PackPin:
                 continue
             target = dest / Path(info.filename).name
             target.write_bytes(archive.read(info))
-    return PackPin(name="yara-forge-core", url=url, pin=tag, sha256=digest)
 
 
-def _fetch_git(name: str, repo: str, subpath: str, vendor: Path) -> PackPin:
-    description = _json(f"https://api.github.com/repos/{repo}")
-    branch = str(description["default_branch"])
-    commit = _json(f"https://api.github.com/repos/{repo}/commits/{branch}")
-    sha = str(commit["sha"])
-    url = f"https://codeload.github.com/{repo}/tar.gz/{sha}"
-    blob = _bytes(url)
-    digest = hashlib.sha256(blob).hexdigest()
-    dest = vendor / name
+def _extract_tar(blob: bytes, dest: Path, subpath: str) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
         for member in archive.getmembers():
@@ -211,7 +284,6 @@ def _fetch_git(name: str, repo: str, subpath: str, vendor: Path) -> PackPin:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(extracted.read())
-    return PackPin(name=name, url=url, pin=sha, sha256=digest)
 
 
 def _vendor_member(dest: Path, member_name: str, subpath: str) -> Path | None:
@@ -229,8 +301,8 @@ def _vendor_member(dest: Path, member_name: str, subpath: str) -> Path | None:
     return dest / relative
 
 
-def _json(url: str) -> dict[str, Any]:
-    payload = _bytes(url)
+def _json(url: str, *, transport: Transport | None = None) -> dict[str, Any]:
+    payload = _bytes(url, transport=transport)
     parsed = json.loads(payload.decode("utf-8"))
     if not isinstance(parsed, dict):
         raise ValueError(f"unexpected payload from {url}")
@@ -238,7 +310,7 @@ def _json(url: str) -> dict[str, Any]:
 
 
 def _allowed_url(url: str) -> str:
-    """Allow only https URLs on the two GitHub hosts used by the lock file."""
+    """Allow only https URLs on the GitHub hosts used for metadata and pack bytes."""
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname
     if parsed.scheme != "https" or host not in _ALLOWED_DOWNLOAD_HOSTS:
@@ -248,18 +320,110 @@ def _allowed_url(url: str) -> str:
     return url
 
 
-def _bytes(url: str) -> bytes:
-    # Host allowlist already ran. An empty proxy map stops HTTP_PROXY from redirecting this call.
-    request = urllib.request.Request(  # noqa: S310
-        _allowed_url(url),
-        headers={"User-Agent": "yara-gate", "Accept": "application/vnd.github+json"},
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=180) as response:
-        body = response.read()
+class _PinnedRedirect(urllib.request.HTTPRedirectHandler):
+    """Re-check every redirect hop against the host allowlist."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        _allowed_url(urllib.parse.urljoin(req.full_url, newurl))
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _bytes(url: str, *, transport: Transport | None = None) -> bytes:
+    clean = _allowed_url(url)
+    if transport is not None:
+        body = transport(clean)
+    else:
+        # An empty proxy map stops HTTP_PROXY from sending this call elsewhere.
+        request = urllib.request.Request(  # noqa: S310
+            clean,
+            headers={"User-Agent": "yara-gate", "Accept": "application/vnd.github+json"},
+        )
+        opener = urllib.request.build_opener(_PinnedRedirect, urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=180) as response:
+            body = _read_capped(response)
     if not isinstance(body, bytes):
         raise TypeError("rule download was not bytes")
+    if len(body) > _DOWNLOAD_CAP:
+        raise ValueError("download exceeds cap")
     return body
+
+
+def _read_capped(response: object) -> bytes:
+    read = getattr(response, "read", None)
+    if not callable(read):
+        raise TypeError("rule download was not bytes")
+    chunks: list[bytes] = []
+    total = 0
+    while total <= _DOWNLOAD_CAP:
+        block = read(1024 * 1024)
+        if not isinstance(block, bytes):
+            raise TypeError("rule download was not bytes")
+        if not block:
+            return b"".join(chunks)
+        total += len(block)
+        if total > _DOWNLOAD_CAP:
+            raise ValueError("download exceeds cap")
+        chunks.append(block)
+    raise ValueError("download exceeds cap")
+
+
+def _staging_dir(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    staging = root / f".staging-{secrets.token_hex(4)}"
+    staging.mkdir()
+    return staging
+
+
+def _validate_staged(root: Path, staging: Path) -> None:
+    check = root / f".check-{secrets.token_hex(4)}"
+    check.mkdir()
+    try:
+        local = root / "local"
+        if local.is_dir():
+            os.symlink(local, check / "local", target_is_directory=True)
+        os.symlink(staging, check / "vendor", target_is_directory=True)
+        _compiled, _skipped, error, _count, _skip = compile_sources(check)
+        if error:
+            raise ValueError(error)
+    finally:
+        if check.exists():
+            # The vendor entry is a symlink. Remove it before deleting the check dir.
+            vendor_link = check / "vendor"
+            if vendor_link.is_symlink():
+                vendor_link.unlink()
+            local_link = check / "local"
+            if local_link.is_symlink():
+                local_link.unlink()
+            shutil.rmtree(check)
+
+
+def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
+    vendor = root / "vendor"
+    old = root / f".vendor-old-{secrets.token_hex(4)}"
+    moved = False
+    try:
+        if vendor.exists():
+            os.rename(vendor, old)
+            moved = True
+        os.rename(staging, vendor)
+        save_lock(lock, root)
+        if moved and old.exists():
+            shutil.rmtree(old)
+    except Exception:
+        if moved and old.exists():
+            if vendor.exists():
+                shutil.rmtree(vendor, ignore_errors=True)
+            if not vendor.exists():
+                os.rename(old, vendor)
+        raise
 
 
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
