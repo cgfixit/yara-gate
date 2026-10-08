@@ -254,6 +254,8 @@ def main() -> None:
         "pdf_tgz.tgz",
         "macro_zip.zip",
         "override_utf16.txt",
+        "bidi_isolate.txt",
+        "split_instruction.txt",
     ):
         expected[name] = "block"
     for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
@@ -428,7 +430,9 @@ def main() -> None:
         )
         if broken.incomplete_reason != "local rule compile failed":
             failures.append("broken required local rule did not fail closed")
-        (rules / "vendor/bad.yar").write_text("rule broken { condition: missing_identifier }")
+        vendor_bad = rules / "vendor" / "bad.yar"
+        vendor_bad.parent.mkdir(parents=True, exist_ok=True)
+        vendor_bad.write_text("rule broken { condition: missing_identifier }")
         partial = scan_file(plain, rules_dir=rules)
         report["failure_paths"].append(
             {"case": "vendor-skip", "skipped": partial.skipped_rule_files}

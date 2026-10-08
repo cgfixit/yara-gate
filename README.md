@@ -8,7 +8,7 @@ Use it to make the handoff from an incoming file to a reader explicit:
 - **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
 - **Keep evidence for review and automation.** JSON/SARIF reports record rule IDs, severity, policy, content views, and scan completeness without copying matched bytes into the report. Stable exit codes let a caller distinguish allowed, blocked, and incomplete results.
 
-The scan does not use the network. Curated rule packs are downloaded only when you run `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
+The scan does not use the network. Curated rule packs are downloaded only when you run `rules install --allow-network` or `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
 
 The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate).
 
@@ -101,7 +101,7 @@ uv run yara-gate scan path/to/file --policy agent-ingest
 uv run yara-gate watch --policy agent-ingest
 ```
 
-Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `blocked/` for inbox files. Reports preserve each finding's original severity and include `policy` and `policy_reason`. Incomplete scans remain exit 2 in quarantine. This policy also holds benign advisory cases, such as directional isolates or security documentation quoting an instruction. Use a separate gate home for each consumer policy; changing policies does not rescan files already on disk until they are submitted again.
+Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `blocked/` for inbox files. Reports preserve each finding's original severity and include `policy` and `policy_reason`. Incomplete scans remain exit 2 in quarantine. This policy also holds benign advisory cases, such as security documentation quoting an instruction. CyClaw and other agent consumers should pass `policy="agent-ingest"`. The scan default stays `default`. Use a separate gate home for each consumer policy; changing policies does not rescan files already on disk until they are submitted again.
 
 ## Reports
 
@@ -111,9 +111,10 @@ Findings also identify their YARA namespace, content `view`, and archive `member
 
 ## Rule packs
 
-`rules update` refuses to run unless you pass `--allow-network`. That is the only command that opens a network connection. The download allows only `https` URLs on `github.com` and `codeload.github.com`, and it ignores `HTTP_PROXY`.
+`rules install` and `rules update` refuse to run unless you pass `--allow-network`. Those are the only commands that open a network connection. `rules install` downloads the URLs already in `rules.lock` and checks each sha256. `rules update` resolves current pins and writes a new lock only after the new vendor tree compiles. If either command fails, the previous vendor tree and lock stay as they were. The download allows only `https` URLs on `github.com`, `api.github.com`, `codeload.github.com`, and `release-assets.githubusercontent.com`, re-checks every redirect, and ignores `HTTP_PROXY`.
 
 ```bash
+uv run yara-gate rules install --allow-network
 uv run yara-gate rules update --allow-network
 ```
 
@@ -127,15 +128,15 @@ The update run on 2026-10-04 pinned:
 | signature-base | `94a1c48d7ab499879287ff611dfe7f9c56376030` | `13895e9219e844beeba1f5d7d3e3261a81e4e8f69cf18cc823d3abcc16e601a3` |
 | elastic | `83e227669df8a13a2a2fee52c14b742c0d5f17cc` | `ed1d0e2a11f5deab2de5c8978cf6667d1a53202b5bdb5c11b96c30cdb153ef8a` |
 
-That compile produced 13535 rules and skipped 13. The on-disk rule-set hash is `47c2df1280a7fabf1d0110d7177b1ab215b8e2109d378f954886a44b336330c2` (`rules/.cache/<hash>.yarc`, not committed). Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
+That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 16 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules update` refreshes vendor packs only. A fresh checkout has these rules only; `rules.lock` is a record of previous downloads, not an installed pack. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 16 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 ## What this catches, and what it does not
 
 Installed curated packs add known malware signatures. Local heuristics check Office auto-exec macros (`olevba`), risky PDF tokens (`/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/EmbeddedFile`, `/RichMedia`), and embedded executable headers. These checks also run on archive members. PDF token checks remain conservative feature restrictions; an ordinary navigation `/OpenAction` still blocks.
 
-Explicit left/right bidi overrides still block. Ordinary joiners used by emoji and language shaping no longer match the invisible-Unicode rule. Directional embeddings/isolates, zero-width spaces, internal BOMs, and Unicode tags are advisory. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
+Bidi overrides, embeddings, and isolates block under both policies. A zero-width space, left-to-right or right-to-left mark, word joiner, internal BOM, or Unicode tag also blocks under both policies. A ZWJ inside an emoji sequence and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters stay clean. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
 
 The four delivery-pattern additions report these rule IDs:
 
@@ -177,7 +178,7 @@ result = scan_file("attachment.bin", timeout_s=30)
 result.verdict  # "clean", "advisory", "block", or "incomplete"
 ```
 
-Pass `policy="agent-ingest"` to hold all advisory findings as a block. The default remains `policy="default"`.
+Pass `policy="agent-ingest"` to hold all advisory findings as a block. CyClaw and other agent consumers should pass that policy. The default remains `policy="default"`.
 
 `scan_file` does not move files and does not open a socket. Pass `rules_dir` to point at a different rules tree. The default is this project's `rules/` directory. A later caller, including CyClaw before chunking, can use this function without taking the drop folder.
 

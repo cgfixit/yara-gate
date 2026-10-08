@@ -18,7 +18,7 @@ The loader skips `status = "candidate"` entirely. To evaluate such a proposal, a
 ## Exercise the actual loader and scanner
 
 - Use the locked environment (`uv sync --frozen --group dev` if needed). YARA-X semantics and available modules come from that environment, not a global classic YARA binary.
-- Copy `rules/local/` into a temporary rules root with `local/` beneath it. Pass that root explicitly as `rules_dir` or `--rules`. Compilation writes `.cache/` and `vendor/SKIPPED.md`; leave the active checkout's generated state alone.
+- Copy `rules/local/` into a temporary rules root with `local/` beneath it. Pass that root explicitly as `rules_dir` or `--rules`. A scan writes its cache outside that tree and does not rewrite `vendor/SKIPPED.md`. `rules install` and `rules update` are what write the skip list.
 - Run `compile_sources` from `src/yara_gate/rules.py` and check the returned error and skip counts. Files are validated individually and compiled into separate namespaces; keep necessary private helpers together and do not assume cross-file references work.
 - Pass inert positive and benign near-miss files through `scan_file` and inspect the expected rule IDs, severity, namespace, member path, and view. Test relevant alternate suffixes, UTF-16/HTML forms, and supported archive members. `yara_gate_ext` is the actual scanned unit's suffix; it is not a normalized content-type marker.
 - Compare both default and `agent-ingest` policy when disposition matters. An advisory normally exits 0; agent-ingest holds it as overall block/exit 1 without changing its finding severity. A required local compile failure must be incomplete/exit 2.
@@ -31,6 +31,6 @@ uv run python docs/research/probe_rule_coverage.py --verify
 
 Extend its inert cases only when they exercise a meaningful new boundary. Use narrower direct scans for a single isolated detector. Run changed Python through Ruff and type checking as appropriate; leave broad pytest/selftest to hosted CI by default.
 
-Do not run `rules update` to validate a local rule. Vendor bodies are absent from a fresh checkout, and `rules.lock` is only a download record. Before an authorized vendor update, inspect its failure handling and URL policy on the current revision in a disposable tree.
+Do not run `rules update` to validate a local rule. Vendor bodies are absent from a fresh checkout. `rules install --allow-network` downloads the locked URLs and checks sha256. `rules update --allow-network` resolves new pins. Both keep the previous vendor tree when anything fails. Before an authorized vendor update, inspect its failure handling and URL policy on the current revision in a disposable tree.
 
 Report coverage gained, benign collisions, unsupported transformations, source/engine identity, and compile skips. Preserve upstream rule attribution/licenses. Never include real matched secrets, malware payloads, or private sample contents in a PR. Synthetic matches are not a production accuracy estimate.

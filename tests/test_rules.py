@@ -1,8 +1,25 @@
+import hashlib
+import io
+import subprocess
+import urllib.request
+import zipfile
 from pathlib import Path
 
 import pytest
 
-from yara_gate.rules import _allowed_url, _vendor_member, compile_sources
+from yara_gate.rules import (
+    PackPin,
+    RulesLock,
+    _allowed_url,
+    _PinnedRedirect,
+    _vendor_member,
+    compile_sources,
+    install_packs,
+    save_lock,
+    shipped_local_dir,
+    update_packs,
+)
+from yara_gate.samples import clean_text, eicar_bytes
 
 
 def test_rule_download_url_allowlist() -> None:
@@ -31,6 +48,107 @@ def test_vendor_member_rejects_parent_segments(tmp_path: Path) -> None:
     assert _vendor_member(dest, "repo-sha/yara/notes.md", "yara") is None
 
 
+def _kept_zip() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("kept.yar", "rule kept { condition: false }\n")
+    return buffer.getvalue()
+
+
+def _rules_tree(tmp_path: Path) -> Path:
+    root = tmp_path / "rules"
+    vendor = root / "vendor"
+    vendor.mkdir(parents=True)
+    (vendor / "retained.yar").write_text("rule retained { condition: false }\n", encoding="utf-8")
+    (vendor / "SKIPPED.md").write_text("keep\n", encoding="utf-8")
+    (root / "local").mkdir()
+    (root / "local" / "local.yar").write_text(
+        "rule local_ok { condition: false }\n", encoding="utf-8"
+    )
+    return root
+
+
+def test_update_failure_keeps_existing_vendor(tmp_path: Path) -> None:
+    root = _rules_tree(tmp_path)
+    retained = (root / "vendor" / "retained.yar").read_bytes()
+    skipped = (root / "vendor" / "SKIPPED.md").read_bytes()
+
+    def transport(_url: str) -> bytes:
+        raise ValueError("refusing rule URL")
+
+    with pytest.raises(ValueError, match="refusing rule URL"):
+        update_packs(root, transport=transport)
+    assert (root / "vendor" / "retained.yar").read_bytes() == retained
+    assert (root / "vendor" / "SKIPPED.md").read_bytes() == skipped
+    assert list(root.glob(".staging-*")) == []
+
+
+def test_install_verifies_lock_sha256_and_keeps_old_on_mismatch(tmp_path: Path) -> None:
+    root = _rules_tree(tmp_path)
+    blob = _kept_zip()
+    save_lock(
+        RulesLock(
+            packs=[
+                PackPin(
+                    name="yara-forge-core",
+                    url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+                    pin="x",
+                    sha256="0" * 64,
+                )
+            ]
+        ),
+        root,
+    )
+    retained = (root / "vendor" / "retained.yar").read_bytes()
+    with pytest.raises(ValueError, match="sha256 mismatch"):
+        install_packs(root, transport=lambda _url: blob)
+    assert (root / "vendor" / "retained.yar").read_bytes() == retained
+
+
+def test_redirect_to_disallowed_host_is_refused() -> None:
+    handler = _PinnedRedirect()
+    request = urllib.request.Request(
+        "https://github.com/YARAHQ/yara-forge/releases/download/x/y.zip"
+    )
+    with pytest.raises(ValueError, match="refusing rule URL"):
+        handler.redirect_request(request, None, 302, "Found", {}, "https://evil.example/stolen.zip")
+
+
+def test_api_github_metadata_host_allowed() -> None:
+    api = _allowed_url("https://api.github.com/repos/YARAHQ/yara-forge/releases/latest")
+    asset = _allowed_url(
+        "https://release-assets.githubusercontent.com/github-production-release-asset/1"
+    )
+    assert api.startswith("https://api.github.com/")
+    assert asset.startswith("https://release-assets.githubusercontent.com/")
+
+
+def test_successful_install_swaps_atomically_and_writes_lock(tmp_path: Path) -> None:
+    root = _rules_tree(tmp_path)
+    blob = _kept_zip()
+    digest = hashlib.sha256(blob).hexdigest()
+    save_lock(
+        RulesLock(
+            packs=[
+                PackPin(
+                    name="yara-forge-core",
+                    url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+                    pin="x",
+                    sha256=digest,
+                )
+            ]
+        ),
+        root,
+    )
+    lock = install_packs(root, transport=lambda _url: blob)
+    assert lock.packs[0].sha256 == digest
+    assert (root / "vendor" / "yara-forge" / "kept.yar").is_file()
+    assert not (root / "vendor" / "retained.yar").exists()
+    assert digest in (root / "rules.lock").read_text(encoding="utf-8")
+    assert list(root.glob(".staging-*")) == []
+    assert list(root.glob(".vendor-old-*")) == []
+
+
 def test_whole_set_failure(tmp_path: Path) -> None:
     rules = tmp_path / "rules"
     rules.mkdir()
@@ -44,4 +162,43 @@ def test_whole_set_failure(tmp_path: Path) -> None:
     assert count == 0
     assert skip_count == 1
     assert skipped
-    assert (rules / "vendor" / "SKIPPED.md").is_file()
+    assert not (rules / "vendor" / "SKIPPED.md").exists()
+
+
+def test_default_rules_resolve_from_package_data() -> None:
+    text = (shipped_local_dir() / "agent_eicar.yar").read_text(encoding="utf-8")
+    assert "rule agent_eicar" in text
+
+
+def test_wheel_install_smoke(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    dist = tmp_path / "dist"
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(dist)], cwd=root, check=True)
+    wheel = next(dist.glob("*.whl"))
+    names = subprocess.run(["unzip", "-l", str(wheel)], check=True, capture_output=True, text=True)
+    assert "yara_gate/bundled_rules/local/agent_eicar.yar" in names.stdout
+    assert "elastic/" not in names.stdout
+    venv = tmp_path / "venv"
+    subprocess.run(["uv", "venv", str(venv), "--python", "3.12"], check=True)
+    python = venv / "bin" / "python"
+    subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
+    cli = venv / "bin" / "yara-gate"
+    home = tmp_path / "gate"
+    clean = tmp_path / "clean.txt"
+    clean.write_bytes(clean_text())
+    eicar = tmp_path / "eicar.com"
+    eicar.write_bytes(eicar_bytes())
+    scanned = subprocess.run(
+        [str(cli), "scan", str(clean), "--home", str(home)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    blocked = subprocess.run(
+        [str(cli), "scan", str(eicar), "--home", str(home)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert scanned.returncode == 0
+    assert blocked.returncode == 1

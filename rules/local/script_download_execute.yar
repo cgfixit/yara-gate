@@ -2,6 +2,7 @@ rule script_download_execute {
     meta:
         author = "yara-gate"
         description = "Download and interpreter execution in the same bounded command region"
+        severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://attack.mitre.org/techniques/T1059/001/"
     strings:

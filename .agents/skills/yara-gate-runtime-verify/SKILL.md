@@ -9,7 +9,7 @@ Inspect `src/yara_gate/cli.py`, `scanner.py`, `content.py`, `models.py`, `quaran
 
 ## Use real, isolated paths
 
-Install with `uv sync --frozen --group dev` when needed. Use the resulting `uv run yara-gate` or `.venv/bin/yara-gate`, not another installed checkout. Copy local rules to a disposable rules root and create a disposable gate home. Always pass `--rules` and `--home`; never use the operator's default gate for probes.
+Install with `uv sync --frozen --group dev` when needed. Use the resulting `uv run yara-gate` or `.venv/bin/yara-gate`, not another installed checkout. Copy local rules to a disposable rules root and create a disposable gate home. Always pass `--rules` and `--home`; never use the operator's default gate for probes. A scan must leave that rules root unchanged.
 
 For broad changes to the supported scan/intake paths, use the maintained direct probe instead of creating a parallel harness:
 

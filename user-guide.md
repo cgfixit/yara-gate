@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. `rules update` downloads vendor packs; it does not update `rules/local/`. The curated packs add known-malware signatures.
+Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree you already had stays in place. The curated packs add known-malware signatures.
 
 ```bash
 uv run yara-gate rules update

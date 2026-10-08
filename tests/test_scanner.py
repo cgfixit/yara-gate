@@ -1,4 +1,6 @@
+import hashlib
 import io
+import stat
 import zipfile
 from pathlib import Path
 
@@ -25,6 +27,79 @@ def _scan(tmp_path: Path, rules_copy: Path, name: str, payload: bytes):
     path = tmp_path / name
     path.write_bytes(payload)
     return scan_file(path, rules_dir=rules_copy)
+
+
+def _assert_block(tmp_path: Path, rules_copy: Path, name: str, payload: bytes) -> None:
+    result = _scan(tmp_path, rules_copy, name, payload)
+    assert result.verdict is Verdict.block
+    assert exit_code(result) == 1
+
+
+def test_zero_width_only_blocks_default_policy(tmp_path: Path, rules_copy: Path) -> None:
+    _assert_block(tmp_path, rules_copy, "zwsp.md", "\u200b".encode())
+
+
+def test_zwnj_word_joiner_only_blocks(tmp_path: Path, rules_copy: Path) -> None:
+    _assert_block(tmp_path, rules_copy, "joiners.md", "\u200c\u2060".encode())
+
+
+def test_lrm_rlm_invisible_times_block(tmp_path: Path, rules_copy: Path) -> None:
+    _assert_block(tmp_path, rules_copy, "marks.md", "\u200e\u200f\u2062".encode())
+
+
+def test_bidi_embeddings_and_isolates_block(tmp_path: Path, rules_copy: Path) -> None:
+    _assert_block(tmp_path, rules_copy, "bidi.md", "\u202a\u202c\u2066\u2069".encode())
+
+
+def test_emoji_zwj_sequence_is_clean(tmp_path: Path, rules_copy: Path) -> None:
+    result = _scan(
+        tmp_path, rules_copy, "emoji.md", "\U0001f468\u200d\U0001f469\u200d\U0001f467".encode()
+    )
+    assert result.verdict is Verdict.clean
+    assert exit_code(result) == 0
+
+
+def test_persian_zwnj_is_clean(tmp_path: Path, rules_copy: Path) -> None:
+    result = _scan(
+        tmp_path, rules_copy, "persian.md", "\u0645\u06cc\u200c\u0631\u0648\u0645".encode()
+    )
+    assert result.verdict is Verdict.clean
+    assert exit_code(result) == 0
+
+
+def test_utf16_zero_width_blocks(tmp_path: Path, rules_copy: Path) -> None:
+    _assert_block(tmp_path, rules_copy, "utf16.md", "\u200b".encode("utf-16"))
+
+
+def _rules_snapshot(root: Path) -> list[tuple[str, int, str]]:
+    rows: list[tuple[str, int, str]] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows.append((path.relative_to(root).as_posix(), path.stat().st_mtime_ns, digest))
+    return rows
+
+
+def test_scan_leaves_rules_dir_unmodified(tmp_path: Path, rules_copy: Path) -> None:
+    before = _rules_snapshot(rules_copy)
+    result = _scan(tmp_path, rules_copy, "notes.txt", clean_text())
+    assert result.verdict is Verdict.clean
+    assert _rules_snapshot(rules_copy) == before
+
+
+def test_scan_with_readonly_rules_dir(tmp_path: Path, rules_copy: Path) -> None:
+    for path in rules_copy.rglob("*"):
+        mode = 0o555 if path.is_dir() else 0o444
+        path.chmod(mode)
+    rules_copy.chmod(0o555)
+    try:
+        result = _scan(tmp_path, rules_copy, "notes.txt", clean_text())
+        assert result.verdict is Verdict.clean
+        assert exit_code(result) == 0
+    finally:
+        for path in [rules_copy, *rules_copy.rglob("*")]:
+            path.chmod(path.stat().st_mode | stat.S_IWUSR)
 
 
 def test_eicar_blocks(tmp_path: Path, rules_copy: Path) -> None:

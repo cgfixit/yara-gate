@@ -1,0 +1,3 @@
+service: notes
+enabled: true
+owner: docs

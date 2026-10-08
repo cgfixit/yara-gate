@@ -23,8 +23,8 @@ from yara_gate.content import (
     content_units,
     text_views,
 )
-from yara_gate.filetype import mismatch, sniff
-from yara_gate.heuristics import heuristic_findings
+from yara_gate.filetype import mismatch, sniff, utf16_encoding
+from yara_gate.heuristics import heuristic_findings, joiner_findings
 from yara_gate.models import (
     Finding,
     FindingSource,
@@ -142,6 +142,12 @@ def _scan_file(
             extra.extend(_yara_findings(rules, unit.data, ext, seconds))
             heuristic, office_error = heuristic_findings(path, unit.data)
             extra.extend(heuristic)
+            decoded = _decoded_text(unit.data)
+            if decoded is not None:
+                text, view = decoded
+                for finding in joiner_findings(text):
+                    finding.view = view
+                    extra.append(finding)
             for finding in extra:
                 finding.member_path = list(unit.member_path)
             findings.extend(extra)
@@ -162,6 +168,18 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+def _decoded_text(data: bytes) -> tuple[str, str] | None:
+    if sniff(data) != "text":
+        return None
+    encoding = utf16_encoding(data)
+    try:
+        if encoding is not None:
+            return data.decode(encoding), "decoded-utf16"
+        return data.decode("utf-8"), "raw"
+    except UnicodeError:
+        return None
 
 
 def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = None) -> str | None:

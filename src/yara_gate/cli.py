@@ -1,13 +1,17 @@
 """Command line for yara-gate. Unhandled errors exit 2."""
 
+import hashlib
+import os
+import stat
 from pathlib import Path
 
 import typer
 
 from yara_gate import __version__
-from yara_gate.models import ScanPolicy, exit_code
+from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
-from yara_gate.rules import compile_sources, default_rules_dir, promote, update_packs
+from yara_gate.report import write_reports
+from yara_gate.rules import compile_sources, default_rules_dir, install_packs, promote, update_packs
 from yara_gate.selftest import run_selftest
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -43,10 +47,15 @@ def scan(
     policy: ScanPolicy = typer.Option(
         ScanPolicy.default, "--policy", help="agent-ingest blocks advisory findings."
     ),
+    follow_symlinks: bool = typer.Option(
+        False,
+        "--follow-symlinks",
+        help="Scan a symlink target outside the inbox. Inbox links are never followed.",
+    ),
 ) -> None:
     """Scan a file or folder. Inbox paths are quarantined. Other paths stay put."""
     try:
-        code = _scan_path(path, GatePaths(home), timeout_s, rules, policy)
+        code = _scan_path(path, GatePaths(home), timeout_s, rules, policy, follow_symlinks)
     except typer.Exit:
         raise
     except Exception as exc:
@@ -118,6 +127,11 @@ def hunt(
     scope: Path = typer.Option(..., "--scope", help="Directory to search for variants."),
     home: Path = typer.Option(Path.home() / "YaraGate", "--home"),
     rules: Path | None = typer.Option(None, "--rules"),
+    confirmed_by: str = typer.Option(
+        "operator",
+        "--confirmed-by",
+        help="Label stored on the candidate. Defaults to operator.",
+    ),
 ) -> None:
     """Write a candidate rule from a confirmed file. Candidates do not block."""
     from yara_gate.hunt import hunt as build_hunt
@@ -129,13 +143,41 @@ def hunt(
             reason,
             scope,
             rules_dir=rules,
+            confirmed_by=confirmed_by,
         )
+    except ValueError as exc:
+        typer.echo(f"incomplete: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     except Exception as exc:
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"candidate {rule_path.name} hits={len(hits)}")
     for hit in hits:
         typer.echo(hit)
+
+
+@rules_app.command("install")
+def rules_install(
+    allow_network: bool = typer.Option(False, "--allow-network", help="Permit this download."),
+    rules: Path | None = typer.Option(None, "--rules"),
+) -> None:
+    """Install the packs named in rules.lock. Refuses to run without --allow-network."""
+    if not allow_network:
+        typer.echo("refusing: pass --allow-network", err=True)
+        raise typer.Exit(code=2)
+    root = rules or default_rules_dir()
+    try:
+        lock = install_packs(root)
+        _rules, _skipped, error, compiled, skip_count = compile_sources(root)
+    except Exception as exc:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
+    for pack in lock.packs:
+        typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
+    typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
+    if error:
+        typer.echo(error, err=True)
+        raise typer.Exit(code=2)
 
 
 @rules_app.command("update")
@@ -182,34 +224,62 @@ def _scan_path(
     timeout_s: int,
     rules: Path | None,
     policy: ScanPolicy = ScanPolicy.default,
+    follow_symlinks: bool = False,
 ) -> int:
     home.ensure()
-    if not path.exists():
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
         typer.echo("incomplete: missing path", err=True)
         return 2
-    files = (
-        [path] if path.is_file() else [item for item in sorted(path.rglob("*")) if item.is_file()]
-    )
+    files = _list_files(path) if stat.S_ISDIR(info.st_mode) else [path]
     worst = 0
     for item in files:
         if _is_under(item, home.inbox):
             result = process_inbox_file(
                 home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
             )
+        elif item.is_symlink() and not follow_symlinks:
+            result = _refuse_symlink(home, item)
         else:
             result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
+        reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
         typer.echo(
             f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
-            f"exit={exit_code(result)}"
+            f"exit={exit_code(result)}{reason}"
         )
         worst = max(worst, exit_code(result))
     return worst
 
 
+def _list_files(root: Path) -> list[Path]:
+    """Walk a directory without following a symlinked file or directory."""
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        base = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not (base / name).is_symlink()]
+        found.extend(base / name for name in filenames)
+    return sorted(found)
+
+
+def _refuse_symlink(home: GatePaths, path: Path) -> ScanResult:
+    """Report an outside symlink without reading its target."""
+    token = hashlib.sha256(str(path).encode()).hexdigest()
+    result = ScanResult(
+        sha256=token,
+        verdict=Verdict.incomplete,
+        incomplete_reason="symlink not followed",
+        path=str(path),
+    )
+    write_reports(home.reports, result)
+    return result
+
+
 def _is_under(path: Path, root: Path) -> bool:
+    """True when path is inside root. The final component is never resolved."""
     try:
-        path.resolve().relative_to(root.resolve())
-    except ValueError:
+        (path.parent.resolve() / path.name).relative_to(root.resolve())
+    except (OSError, ValueError):
         return False
     return True
 
