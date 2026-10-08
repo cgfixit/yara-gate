@@ -7,9 +7,11 @@ from yara_gate import __version__
 from yara_gate.models import Finding, ScanResult, exit_code
 
 
-def write_reports(report_dir: Path, result: ScanResult) -> tuple[Path, Path]:
+def write_reports(
+    report_dir: Path, result: ScanResult, *, stem: str | None = None
+) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
-    digest = result.sha256 or "0" * 64
+    digest = stem or result.sha256 or "0" * 64
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
     sarif_path.write_text(json.dumps(_sarif(result), indent=2) + "\n", encoding="utf-8")

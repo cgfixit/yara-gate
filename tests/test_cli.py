@@ -28,6 +28,50 @@ def test_version() -> None:
     assert proc.stdout.strip() == "yara-gate 0.2.0"
 
 
+def test_cli_scan_of_inbox_symlink_exits_2(tmp_path: Path) -> None:
+    home = tmp_path / "gate"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret-target", encoding="utf-8")
+    link = inbox / "link.txt"
+    link.symlink_to(outside)
+    rules = tmp_path / "rules"
+    local = rules / "local"
+    local.mkdir(parents=True)
+    (local / "ok.yar").write_text(
+        "rule ok { condition: false }\n",
+        encoding="utf-8",
+    )
+    proc = _run(home, "scan", str(link), "--rules", str(rules))
+    assert proc.returncode == 2
+    assert "symlink rejected" in proc.stdout
+    assert "secret-target" not in proc.stdout
+    assert "secret-target" not in proc.stderr
+    assert outside.read_text(encoding="utf-8") == "secret-target"
+    assert not any((home / "clean").glob("*"))
+
+
+def test_dir_scan_does_not_follow_symlinks(tmp_path: Path) -> None:
+    home = tmp_path / "gate"
+    home.mkdir()
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret-target", encoding="utf-8")
+    (folder / "link.txt").symlink_to(outside)
+    (folder / "plain.txt").write_text("hello\n", encoding="utf-8")
+    rules = tmp_path / "rules"
+    local = rules / "local"
+    local.mkdir(parents=True)
+    (local / "ok.yar").write_text("rule ok { condition: false }\n", encoding="utf-8")
+    proc = _run(home, "scan", str(folder), "--rules", str(rules))
+    assert proc.returncode == 2
+    assert "symlink not followed" in proc.stdout
+    assert "secret-target" not in proc.stdout
+    assert outside.read_text(encoding="utf-8") == "secret-target"
+
+
 def test_rules_update_refuses_without_the_flag() -> None:
     proc = subprocess.run(
         ["yara-gate", "rules", "update"],

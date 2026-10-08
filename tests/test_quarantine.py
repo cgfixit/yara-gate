@@ -1,4 +1,5 @@
 import hashlib
+import os
 import stat
 from pathlib import Path
 
@@ -107,3 +108,84 @@ def test_handler_ignores_dotfiles(tmp_path: Path, rules_copy: Path) -> None:
     _InboxHandler(home, rules_copy, 30).handle(hidden)
     assert hidden.is_file()
     assert list(home.clean.iterdir()) == []
+
+
+def _rejected_report(home: GatePaths, result_sha: str) -> str:
+    return (home.reports / f"rejected-{result_sha}.json").read_text(encoding="utf-8")
+
+
+def test_symlink_in_inbox_is_rejected_not_copied(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    outside = tmp_path / "outside.txt"
+    marker = "OUTSIDE-TARGET-do-not-copy"
+    outside.write_text(marker, encoding="utf-8")
+    link = home.inbox / "link.txt"
+    link.symlink_to(outside)
+    drain_inbox(home, rules_dir=rules_copy)
+    assert outside.read_text(encoding="utf-8") == marker
+    assert list(home.clean.iterdir()) == []
+    assert list(home.blocked.iterdir()) == []
+    assert not link.exists()
+    rejected = list((home.quarantine / "_rejected").iterdir())
+    assert len(rejected) == 1
+    assert rejected[0].is_symlink()
+    reports = list(home.reports.glob("rejected-*.json"))
+    assert len(reports) == 1
+    body = reports[0].read_text(encoding="utf-8")
+    assert "symlink rejected" in body
+    assert marker not in body
+    assert str(outside) not in body
+
+
+def test_dangling_symlink_is_rejected_with_report(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    link = home.inbox / "missing.txt"
+    link.symlink_to(tmp_path / "no-such-file")
+    result = process_inbox_file(home, link, rules_dir=rules_copy)
+    assert result.verdict is Verdict.incomplete
+    assert exit_code(result) == 2
+    assert result.incomplete_reason == "symlink rejected"
+    assert not link.exists()
+    body = _rejected_report(home, result.sha256)
+    assert "symlink rejected" in body
+    assert "no-such-file" not in body
+
+
+def test_hardlink_in_inbox_is_rejected(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    outside = tmp_path / "outside.txt"
+    marker = "HARDLINK-TARGET-do-not-copy"
+    outside.write_text(marker, encoding="utf-8")
+    link = home.inbox / "hard.txt"
+    os.link(outside, link)
+    result = process_inbox_file(home, link, rules_dir=rules_copy)
+    assert result.verdict is Verdict.incomplete
+    assert result.incomplete_reason == "hardlink rejected"
+    assert exit_code(result) == 2
+    assert outside.read_text(encoding="utf-8") == marker
+    assert list(home.clean.iterdir()) == []
+    assert marker not in _rejected_report(home, result.sha256)
+
+
+def test_fifo_in_inbox_is_rejected(tmp_path: Path, rules_copy: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        return
+    home = _home(tmp_path)
+    fifo = home.inbox / "pipe.fifo"
+    os.mkfifo(fifo)
+    result = process_inbox_file(home, fifo, rules_dir=rules_copy)
+    assert result.incomplete_reason == "not a regular file"
+    assert exit_code(result) == 2
+    assert list(home.clean.iterdir()) == []
+    assert not fifo.exists()
+
+
+def test_regular_file_intake_unchanged(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    src = home.inbox / "notes.txt"
+    src.write_bytes(clean_text())
+    result = process_inbox_file(home, src, rules_dir=rules_copy)
+    assert result.verdict is Verdict.clean
+    assert exit_code(result) == 0
+    assert (home.clean / result.sha256 / "notes.txt").read_bytes() == clean_text()
+    assert not src.exists()

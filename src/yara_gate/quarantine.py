@@ -1,16 +1,20 @@
 """Drop-folder intake. Downstream readers only see clean/."""
 
+import errno
+import hashlib
 import os
+import secrets
 import shutil
 import stat
 import threading
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from yara_gate.models import ScanPolicy, ScanResult, Verdict
 from yara_gate.report import write_reports
-from yara_gate.scanner import hash_file, scan_file
+from yara_gate.scanner import scan_file
 
 
 @dataclass(frozen=True)
@@ -50,30 +54,40 @@ def default_home() -> GatePaths:
     return GatePaths(Path.home() / "YaraGate")
 
 
+class IntakeRejected(Exception):
+    """The inbox entry was not a single regular file. Its target was not read."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 def intake(home: GatePaths, src: Path) -> Path:
-    """Copy a file into quarantine/<sha256>/ and strip the executable bit."""
+    """Copy one regular file into quarantine/<sha256>/ and strip the executable bit."""
     home.ensure()
-    digest = hash_file(src)
-    existing = _existing_slot(home, digest)
-    if existing is not None:
-        quarantine = home.quarantine / digest
-        if existing.parent != quarantine:
-            # Every rescan must pass through quarantine, including a stricter policy.
-            os.replace(existing.parent, quarantine)
-            existing = quarantine / existing.name
-        if src.resolve() != existing.resolve():
-            src.unlink()
-        return existing
-    slot = home.quarantine / digest
-    slot.mkdir(parents=True, exist_ok=True)
-    dest = slot / src.name
-    partial = slot / f".{src.name}.partial"
-    shutil.copyfile(src, partial)
-    os.chmod(partial, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-    os.replace(partial, dest)
-    if src.resolve() != dest.resolve():
-        src.unlink()
-    return dest
+    fd = _open_regular(src)
+    try:
+        digest = _hash_fd(fd)
+        existing = _existing_slot(home, digest)
+        if existing is not None:
+            quarantine = home.quarantine / digest
+            if existing.parent != quarantine:
+                # Every rescan must pass through quarantine, including a stricter policy.
+                os.replace(existing.parent, quarantine)
+                existing = quarantine / existing.name
+            if _same_file(fd, existing):
+                return existing
+            _unlink_entry(src)
+            return existing
+        slot = home.quarantine / digest
+        slot.mkdir(parents=True, exist_ok=True)
+        dest = slot / src.name
+        _copy_fd(fd, dest)
+        if not _same_file(fd, dest):
+            _unlink_entry(src)
+        return dest
+    finally:
+        os.close(fd)
 
 
 def process_inbox_file(
@@ -84,7 +98,10 @@ def process_inbox_file(
     timeout_s: int = 30,
     policy: ScanPolicy = ScanPolicy.default,
 ) -> ScanResult:
-    placed = intake(home, src)
+    try:
+        placed = intake(home, src)
+    except IntakeRejected as exc:
+        return _reject_entry(home, src, exc.reason)
     result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
     write_reports(home.reports, result)
     _relocate(home, result)
@@ -181,10 +198,17 @@ class _InboxHandler:
 
     def handle(self, path: Path) -> None:
         with self._lock:
-            if path.name.startswith(".") or not path.is_file():
+            if path.name.startswith("."):
                 return
-            if not _size_settled(path):
+            try:
+                info = path.lstat()
+            except OSError:
                 return
+            if stat.S_ISDIR(info.st_mode):
+                return
+            if stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_nlink == 1:
+                if not _size_settled(path):
+                    return
             try:
                 result = process_inbox_file(
                     self.home,
@@ -208,9 +232,11 @@ def _size_settled(path: Path) -> bool:
 
 
 def _existing_slot(home: GatePaths, digest: str) -> Path | None:
+    if digest == "_rejected":
+        return None
     for root in (home.clean, home.blocked, home.quarantine):
         slot = root / digest
-        if not slot.is_dir():
+        if slot.name == "_rejected" or not slot.is_dir():
             continue
         files = [
             item for item in slot.iterdir() if item.is_file() and not item.name.startswith(".")
@@ -252,3 +278,103 @@ def _alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def _open_regular(src: Path) -> int:
+    """Open a regular file with one link. Symlinks raise IntakeRejected and are not read."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    nonblock = getattr(os, "O_NONBLOCK", 0)
+    if isinstance(nonblock, int):
+        flags |= nonblock
+    try:
+        fd = os.open(src, flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise IntakeRejected("symlink rejected") from exc
+        info = _lstat_or_raise(src)
+        reason = _reject_reason(info)
+        if reason is None:
+            raise
+        raise IntakeRejected(reason) from exc
+    info = os.fstat(fd)
+    reason = _reject_reason(info)
+    if reason is None:
+        return fd
+    os.close(fd)
+    raise IntakeRejected(reason)
+
+
+def _lstat_or_raise(src: Path) -> os.stat_result:
+    try:
+        return src.lstat()
+    except OSError as exc:
+        raise IntakeRejected("not a regular file") from exc
+
+
+def _reject_reason(info: os.stat_result) -> str | None:
+    if stat.S_ISLNK(info.st_mode):
+        return "symlink rejected"
+    if not stat.S_ISREG(info.st_mode):
+        return "not a regular file"
+    if info.st_nlink != 1:
+        return "hardlink rejected"
+    return None
+
+
+def _hash_fd(fd: int) -> str:
+    os.lseek(fd, 0, os.SEEK_SET)
+    hasher = hashlib.sha256()
+    while True:
+        chunk = os.read(fd, 1024 * 1024)
+        if not chunk:
+            return hasher.hexdigest()
+        hasher.update(chunk)
+
+
+def _copy_fd(fd: int, dest: Path) -> None:
+    os.lseek(fd, 0, os.SEEK_SET)
+    partial = dest.with_name(f".{dest.name}.partial")
+    with partial.open("wb") as handle:
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            handle.write(chunk)
+    os.chmod(partial, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    os.replace(partial, dest)
+
+
+def _same_file(fd: int, other: Path) -> bool:
+    try:
+        return os.path.samestat(os.fstat(fd), other.stat())
+    except OSError:
+        return False
+
+
+def _unlink_entry(src: Path) -> None:
+    try:
+        src.unlink()
+    except OSError:
+        return
+
+
+def _reject_entry(home: GatePaths, src: Path, reason: str) -> ScanResult:
+    """Move the inbox entry aside. Never readlink and never open the target."""
+    home.ensure()
+    rejected = home.quarantine / "_rejected"
+    rejected.mkdir(parents=True, exist_ok=True)
+    os.chmod(rejected, stat.S_IRWXU)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    dest = rejected / f"{stamp}-{src.name}"
+    if dest.exists():
+        dest = rejected / f"{stamp}-{secrets.token_hex(2)}-{src.name}"
+    os.rename(src, dest)
+    token = hashlib.sha256(f"{src.name}{stamp}".encode()).hexdigest()
+    result = ScanResult(
+        sha256=token,
+        verdict=Verdict.incomplete,
+        incomplete_reason=reason,
+        path=str(dest),
+    )
+    write_reports(home.reports, result, stem=f"rejected-{token}")
+    return result
