@@ -35,7 +35,7 @@ uv run yara-gate --version
 
 `yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.21.0). It does not call the Homebrew `yara` binary.
 
-`uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
+`uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. An installed copy copies the packaged local rules, not a checkout path that is not on disk. An unexpected selftest error prints `incomplete: <Type>` and exits 2. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
 
 ## Drop folder
 
@@ -111,7 +111,7 @@ Findings also identify their YARA namespace, content `view`, and archive `member
 
 ## Rule packs
 
-`rules install` and `rules update` refuse to run unless you pass `--allow-network`. Those are the only commands that open a network connection. `rules install` downloads the URLs already in `rules.lock` and checks each sha256. `rules update` resolves current pins and writes a new lock only after the new vendor tree compiles. If either command fails, the previous vendor tree and lock stay as they were. The download allows only `https` URLs on `github.com`, `api.github.com`, `codeload.github.com`, and `release-assets.githubusercontent.com`, re-checks every redirect, and ignores `HTTP_PROXY`.
+`rules install` and `rules update` refuse to run unless you pass `--allow-network`. Those are the only commands that open a network connection. `rules install` downloads the URLs already in `rules.lock` and checks each sha256. `rules update` resolves current pins and writes a new lock only after the new vendor tree compiles. If either command fails, the previous vendor tree and lock stay as they were. The download allows only `https` URLs on `github.com`, `api.github.com`, `codeload.github.com`, and `release-assets.githubusercontent.com`, re-checks every redirect, and ignores `HTTP_PROXY`. If `GITHUB_TOKEN` is set, or else `GH_TOKEN`, it is sent only to `api.github.com` and removed when a redirect changes host. The token is not printed. A rate limit says `rate limited by api.github.com until <local time>; set GITHUB_TOKEN`. A missing URL says `not found: <url>`. Any other HTTP status says `HTTP <code> from <host>`. A network failure says `network unreachable`. Those failures still exit 2 and leave the vendor tree and lock unchanged. An installed copy includes `rules.lock`. `rules install` uses the root's lock when it exists, otherwise that packaged lock, and writes a copy into the rules root on success. Vendor rule bodies are still not packaged.
 
 ```bash
 uv run yara-gate rules install --allow-network
@@ -131,6 +131,8 @@ The update run on 2026-10-04 pinned:
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
 The 16 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+
+An installed copy (wheel, `uv tool`, or pipx) reads those same rules from package data. The platform user-data directory, and a `YARA_GATE_RULES` directory that does not already contain every shipped rule name, loads the packaged rules first, then `<root>/local/*.yar`, then `<root>/vendor/`. A user file with the same name as a packaged file is not compiled. `rules install` and `rules update` print `local/<name>: shadowed by bundled` and count it in `skipped_rule_files`. Candidates are never loaded. If the packaged rules are missing or unreadable, the scan exits 2 with `bundled rules missing` and does not run on user or vendor rules alone. A checkout, or an explicit `--rules` directory whose `local/` contains every shipped name, is loaded once so those files are not compiled twice.
 
 ## What this catches, and what it does not
 
@@ -167,7 +169,7 @@ uv run yara-gate hunt --confirmed <sha256> --reason "why this file is bad" --sco
 uv run yara-gate rules promote <id>
 ```
 
-`--confirmed` must name a file already in `blocked/`, and `--reason` is required. The candidate keeps distinctive strings longer than 8 bytes that do not appear in `tests/fixtures/benign/`. It must hit the confirmed file and zero benign files. It is written to `rules/local/hunt_<first 12 hex of the sha>.yar` with `status = "candidate"`. Candidates are not loaded as block rules. `rules promote` rewrites the status to `promoted` and `verdict_on_match` to `block` only after the new text compiles.
+`--confirmed` must name a file already in `blocked/`, and `--reason` is required. The reason is collapsed to one line, cut at 300 characters, then escaped. Control characters are removed. Non-ASCII text is stored as itself. The candidate keeps distinctive strings longer than 8 bytes that do not appear in `tests/fixtures/benign/`. It must hit the confirmed file and zero benign files. It is written to `<rules-root>/local/hunt_<first 12 hex of the sha>.yar` with `status = "candidate"`. In a checkout that root is `rules/`. In an installed copy it is the user-data directory. Creating `local/` there does not hide the packaged rules. Candidates are not loaded as block rules. `rules promote` rewrites the status to `promoted` and `verdict_on_match` to `block` only after the new text compiles.
 
 ## Library
 

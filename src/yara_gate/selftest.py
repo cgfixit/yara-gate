@@ -7,7 +7,7 @@ from pathlib import Path
 from yara_gate import scanner
 from yara_gate.models import Verdict, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file
-from yara_gate.rules import default_rules_dir
+from yara_gate.rules import shipped_local_dir
 from yara_gate.samples import (
     EICAR,
     bidi_markdown,
@@ -28,7 +28,7 @@ def run_selftest() -> int:
         home = GatePaths(root / "home")
         home.ensure()
         rules = root / "rules"
-        shutil.copytree(default_rules_dir() / "local", rules / "local")
+        shutil.copytree(shipped_local_dir(), rules / "local")
         (rules / "vendor").mkdir()
         cases: list[tuple[str, str, bytes, Verdict]] = [
             ("eicar", "eicar.com", eicar_bytes(), Verdict.block),

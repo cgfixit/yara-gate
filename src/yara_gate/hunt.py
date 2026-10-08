@@ -1,13 +1,14 @@
 """Build a candidate rule only after a file in blocked/ is confirmed."""
 
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from yara_gate.quarantine import GatePaths
 from yara_gate.report import redact
-from yara_gate.rules import bundled_local_dir, default_rules_dir, project_root
+from yara_gate.rules import default_rules_dir, shipped_benign_dir
 from yara_gate.scanner import MAX_FILE_BYTES
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -83,18 +84,7 @@ def _confirmed_slot(home: GatePaths, sha256: str) -> Path:
 
 
 def _default_benign() -> Path:
-    checkout = project_root() / "tests" / "fixtures" / "benign"
-    if checkout.is_dir():
-        return checkout
-    bundled = Path(__file__).resolve().parent / "bundled_rules" / "benign"
-    if bundled.is_dir():
-        return bundled
-    anchor = bundled_local_dir()
-    if anchor is not None:
-        sibling = anchor.parent / "benign"
-        if sibling.is_dir():
-            return sibling
-    return checkout
+    return shipped_benign_dir()
 
 
 def _distinctive(data: bytes, benign_dir: Path) -> list[str]:
@@ -153,7 +143,8 @@ def _escape(text: str) -> str:
 
 def _meta(text: str) -> str:
     one_line = " ".join(text.split())
-    return _escape(one_line)[:300]
+    visible = "".join(ch for ch in one_line if unicodedata.category(ch)[0] != "C")
+    return _escape(visible[:300])
 
 
 def _hit(rules: Any, path: Path) -> bool:
