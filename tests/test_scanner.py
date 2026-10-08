@@ -72,7 +72,8 @@ def test_base64_and_hidden_html_are_advisory(tmp_path: Path, rules_copy: Path) -
     renamed = _scan(tmp_path, rules_copy, "blob.bin", base64_text())
     assert blob.verdict is Verdict.advisory
     assert any(item.rule_id == "agent_hidden_html" for item in html.findings)
-    assert renamed.verdict is Verdict.clean
+    assert renamed.verdict is Verdict.advisory
+    assert any(item.rule_id == "agent_base64_blob" for item in renamed.findings)
 
 
 def test_clean_text(tmp_path: Path, rules_copy: Path) -> None:

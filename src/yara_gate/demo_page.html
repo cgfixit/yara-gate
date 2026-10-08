@@ -51,6 +51,7 @@
       border: 0;
     }
     button:focus-visible,
+    select:focus-visible,
     textarea:focus-visible {
       outline: 3px solid #1c1915;
       outline-offset: 2px;
@@ -77,6 +78,15 @@
   <main id="content">
     <h1>yara-gate demo</h1>
     <p>This page scans a built-in sample or a short paste. It does not move files into the drop folder, and it does not download rules.</p>
+    <fieldset>
+      <legend>Scan policy</legend>
+      <label for="policy">Handling advisory findings</label>
+      <select id="policy">
+        <option value="default">Default — report advisories</option>
+        <option value="agent-ingest">Agent ingest — block advisories</option>
+      </select>
+      <p>Exit 0 can include advisories under the default policy. Agent ingest holds them for review.</p>
+    </fieldset>
     <fieldset>
       <legend>Built-in samples</legend>
       <div class="samples">
@@ -112,21 +122,26 @@
       const lines = [
         "verdict " + data.verdict,
         "exit " + String(data.exit_code),
+        "policy " + data.policy,
         "sha256 " + data.sha256
       ];
       if (data.incomplete_reason) {
         lines.push("incomplete " + data.incomplete_reason);
       }
+      if (data.policy_reason) {
+        lines.push(data.policy_reason);
+      }
       const findings = Array.isArray(data.findings) ? data.findings : [];
       for (const item of findings) {
         lines.push(
-          item.rule_id + " " + item.severity + " offset " + String(item.offset) + " length " + String(item.length)
+          item.rule_id + " " + item.severity + " view " + item.view + " offset " + String(item.offset) + " length " + String(item.length)
         );
       }
       result.textContent = lines.join("\n");
     }
 
     async function postScan(body) {
+      body.policy = document.getElementById("policy").value;
       const response = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

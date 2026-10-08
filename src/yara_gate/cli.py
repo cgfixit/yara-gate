@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 
 from yara_gate import __version__
-from yara_gate.models import exit_code
+from yara_gate.models import ScanPolicy, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
 from yara_gate.rules import compile_sources, default_rules_dir, promote, update_packs
 from yara_gate.selftest import run_selftest
@@ -40,10 +40,13 @@ def scan(
     home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+    policy: ScanPolicy = typer.Option(
+        ScanPolicy.default, "--policy", help="agent-ingest blocks advisory findings."
+    ),
 ) -> None:
     """Scan a file or folder. Inbox paths are quarantined. Other paths stay put."""
     try:
-        code = _scan_path(path, GatePaths(home), timeout_s, rules)
+        code = _scan_path(path, GatePaths(home), timeout_s, rules, policy)
     except typer.Exit:
         raise
     except Exception as exc:
@@ -57,10 +60,11 @@ def watch_inbox(
     home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
     timeout_s: int = typer.Option(30, "--timeout"),
     rules: Path | None = typer.Option(None, "--rules"),
+    policy: ScanPolicy = typer.Option(ScanPolicy.default, "--policy"),
 ) -> None:
     """Watch inbox/ and move each file to clean/ or blocked/."""
     try:
-        watch(GatePaths(home), rules_dir=rules, timeout_s=timeout_s)
+        watch(GatePaths(home), rules_dir=rules, timeout_s=timeout_s, policy=policy)
     except KeyboardInterrupt:
         raise typer.Exit(code=0) from None
     except Exception as exc:
@@ -172,7 +176,13 @@ def rules_promote(
     typer.echo(f"promoted {path.name}")
 
 
-def _scan_path(path: Path, home: GatePaths, timeout_s: int, rules: Path | None) -> int:
+def _scan_path(
+    path: Path,
+    home: GatePaths,
+    timeout_s: int,
+    rules: Path | None,
+    policy: ScanPolicy = ScanPolicy.default,
+) -> int:
     home.ensure()
     if not path.exists():
         typer.echo("incomplete: missing path", err=True)
@@ -183,9 +193,11 @@ def _scan_path(path: Path, home: GatePaths, timeout_s: int, rules: Path | None) 
     worst = 0
     for item in files:
         if _is_under(item, home.inbox):
-            result = process_inbox_file(home, item, rules_dir=rules, timeout_s=timeout_s)
+            result = process_inbox_file(
+                home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
+            )
         else:
-            result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s)
+            result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
         typer.echo(
             f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
             f"exit={exit_code(result)}"

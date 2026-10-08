@@ -17,6 +17,11 @@ class Severity(StrEnum):
     block = "block"
 
 
+class ScanPolicy(StrEnum):
+    default = "default"
+    agent_ingest = "agent-ingest"
+
+
 class FindingSource(StrEnum):
     yara = "yara"
     heuristic = "heuristic"
@@ -31,6 +36,9 @@ class Finding(BaseModel):
     length: int | None = None
     severity: Severity
     source: FindingSource
+    member_path: list[str] = Field(default_factory=list)
+    view: str = "raw"
+    namespace: str | None = None
 
 
 class ScanResult(BaseModel):
@@ -42,6 +50,11 @@ class ScanResult(BaseModel):
     advisory: bool = False
     incomplete_reason: str | None = None
     path: str = ""
+    ruleset_sha256: str | None = None
+    engine_version: str | None = None
+    skipped_rule_files: int = 0
+    policy: ScanPolicy = ScanPolicy.default
+    policy_reason: str | None = None
 
 
 def exit_code(result: ScanResult) -> int:

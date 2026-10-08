@@ -1,0 +1,227 @@
+{
+  "recorded_at_utc": "2026-10-08T02:37:35.631151+00:00",
+  "source_revision": "3667747ee4394a4453d16a6d9e6ecf8eb1660ef2",
+  "python": "3.12.12",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "yara_x": "1.21.0",
+  "scope": "Shipped local rules only; synthetic inputs; no target execution or network",
+  "rules": {
+    "agent_base64_blob.yar": "3fe08af1711061bd8910096f60753baa1e5c1eb9afc2b369854abe1c2805be97",
+    "agent_bidi_override.yar": "d4a5a5666e25a385d2a6b3f3f769649a434dd3f2c839fb0b95fcfa3ef4058781",
+    "agent_eicar.yar": "29b4777050186df92d1b1eb3399fa53ae1d2ebb58459faba6ed4e063949336a8",
+    "agent_hidden_html.yar": "3ff1ed1691d198d370f4a396b9a9020e6cdcc6072ec74b3eea0959f2089782a5",
+    "agent_invisible_unicode.yar": "322858e2f6237698e0568ab466fb94023add601d82f153807655d6522e4b4fb2",
+    "agent_prompt_injection_phrases.yar": "cf8dfdee60932e47aff6561d27892517a214c99b7f21c1f4c940d69157ffb7ba"
+  },
+  "observations": [
+    {
+      "case": "ordinary.txt",
+      "sha256": "6112ec7a274cbeacab983c121dca6e1d640f9f187592d1645b84aabaf9bbff75",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "emoji.txt",
+      "sha256": "8be56db4f68784ae75f5d7f2598cab766116a345e04023ad8c77db058ad3c460",
+      "verdict": "block",
+      "exit_code": 1,
+      "findings": [
+        "agent_invisible_unicode"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "persian.txt",
+      "sha256": "ffed784c6ffe796132824372803cddc1dfc8e1c4395bb4a310033aaf31156c8a",
+      "verdict": "block",
+      "exit_code": 1,
+      "findings": [
+        "agent_invisible_unicode"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "bidi_isolate.txt",
+      "sha256": "7d85890fb48db99a63b46d51ad4164549b35d52f3fe0d202f47a281d6ee80b5d",
+      "verdict": "block",
+      "exit_code": 1,
+      "findings": [
+        "agent_bidi_override"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "phrase.txt",
+      "sha256": "978df99c59dc44746818698a5c1cea1243afc23045b7c15f6dc38acb1a3431fb",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "findings": [
+        "agent_prompt_injection_phrases"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "quoted_security_guidance.md",
+      "sha256": "34e22770d007fc3c2f5957768174427d0bbf50e1827263b12a53701f9d03bcfb",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "findings": [
+        "agent_prompt_injection_phrases"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "phrase_utf16.bin",
+      "sha256": "4ef968c8b8175f4754d460ed76212967522017c2ad92f869b2ca1ec38b9dd872",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "phrase_base64.txt",
+      "sha256": "913ddd8b40ed50df09d23749e67084bfcd9a22b2e1b7113d6ba433e67554591c",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "phrase_gzip.gz",
+      "sha256": "e2e3ca52ead0e34dc870bf9e292427a0967bf34c4b4312cb024562b835ac3faa",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "phrase_zip.zip",
+      "sha256": "f941e792cc216f5ce1e097768a86bb7fae76633554f0cd972b6dfcba3e12006b",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "findings": [
+        "agent_prompt_injection_phrases"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "html_entities.html",
+      "sha256": "72daf131276c154e22a0143ad88d00bc0f4a3340db8f28e59260781e0ca58253",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "hidden_request.html",
+      "sha256": "a1e54ab22e0eb50f9f49a90014da86f6d0e82d81bab0a932e90757905a0a2ed9",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "role_spoof.md",
+      "sha256": "50ad1a217ee99602ab7edd21388c4603d8f714a86669355ac35180d89029378a",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "base64.txt",
+      "sha256": "1d17fdcda935529c45d6c93a01f380d2266d63a6c1e85f69e583338996fc2d77",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "findings": [
+        "agent_base64_blob"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "base64.bin",
+      "sha256": "1d17fdcda935529c45d6c93a01f380d2266d63a6c1e85f69e583338996fc2d77",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "base64_zip.zip",
+      "sha256": "87d04bfa0ae300907b38926e9eb7a1a2b0349d9659655fabd57b687b048a6030",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "navigation.pdf",
+      "sha256": "24d678ee42fd97d77f97b821fe5c97d725c2bff857b26f7fae01ccb9398f3b83",
+      "verdict": "block",
+      "exit_code": 1,
+      "findings": [
+        "heuristic_pdf_OpenAction"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "script.pdf",
+      "sha256": "8ab1774dfb5ae80a7ede790a65ffc86fc0a5e554c2bf50ff6cf83d69fd902254",
+      "verdict": "block",
+      "exit_code": 1,
+      "findings": [
+        "heuristic_pdf_JavaScript",
+        "heuristic_pdf_JS",
+        "heuristic_pdf_OpenAction"
+      ],
+      "incomplete_reason": null
+    },
+    {
+      "case": "script_zip.zip",
+      "sha256": "2c107dfa01669c847308038a5dbccd1aefc3ad0c2e45d681a33d5acc84470c1f",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "postinstall.json",
+      "sha256": "a1abe6e767778c91079e15323a9195d74a99b0f4f2de4c626cca8bad14a4b510",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    },
+    {
+      "case": "remote_template.rels",
+      "sha256": "ff4e35b5a32db86a14e2b7dc254bb1400c28482c693343bca221b5d4ae9291aa",
+      "verdict": "clean",
+      "exit_code": 0,
+      "findings": [],
+      "incomplete_reason": null
+    }
+  ],
+  "cli_observations": [
+    {
+      "case": "advisory",
+      "process_exit_code": 0,
+      "reported_verdict": "advisory",
+      "destination": "clean",
+      "inbox_removed": true
+    },
+    {
+      "case": "block",
+      "process_exit_code": 1,
+      "reported_verdict": "block",
+      "destination": "blocked",
+      "inbox_removed": true
+    }
+  ],
+  "compilation": {
+    "compiled": 6,
+    "skipped": [],
+    "error": null
+  }
+}

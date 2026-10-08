@@ -78,7 +78,7 @@
   <main id="content">
     <h1>yara-gate demo</h1>
     <p>Open this file in a browser, or host this one file on any static site. It does not need a server.</p>
-    <p>The buttons and the paste box run the local text patterns in the page. They do not run yara-x, they do not load the vendor rule packs, and they do not move a file.</p>
+    <p>This is a limited JavaScript illustration, not the current scanner. For current rules, decoded content, archive handling, and scan policy, run <code>yara-gate demo</code>. This page does not run yara-x, load vendor packs, or move files.</p>
     <fieldset>
       <legend>Built-in samples</legend>
       <div class="samples">
@@ -276,14 +276,12 @@
       return pe + 4 <= bytes.length && bytes[pe] === 0x50 && bytes[pe + 1] === 0x45 && bytes[pe + 2] === 0 && bytes[pe + 3] === 0;
     }
 
-    const BIDI = new Set([
-      0xe280aa, 0xe280ab, 0xe280ac, 0xe280ad, 0xe280ae,
+    const BIDI = new Set([0xe280ad, 0xe280ae]);
+    const BIDI_FORMATTING = new Set([
+      0xe280aa, 0xe280ab, 0xe280ac,
       0xe281a6, 0xe281a7, 0xe281a8, 0xe281a9
     ]);
-    const INVISIBLE = new Set([
-      0xe2808b, 0xe2808c, 0xe2808d, 0xe2808e, 0xe2808f,
-      0xe281a0, 0xe281a1, 0xe281a2, 0xe281a3, 0xe281a4
-    ]);
+    const INVISIBLE = new Set([0xe2808b]);
 
     function textFindings(bytes) {
       const findings = [];
@@ -291,13 +289,17 @@
       if (bidi >= 0) {
         findings.push({ rule_id: "agent_bidi_override", severity: "block", offset: bidi, length: 3 });
       }
+      const formatting = findTriple(bytes, BIDI_FORMATTING);
+      if (formatting >= 0) {
+        findings.push({ rule_id: "agent_bidi_formatting", severity: "advisory", offset: formatting, length: 3 });
+      }
       const invisible = findTriple(bytes, INVISIBLE);
       const bom = findBom(bytes);
       const tag = findTag(bytes);
       const hiddenAt = [invisible, bom, tag].filter(function (n) { return n >= 0; }).sort(function (a, b) { return a - b; })[0];
       if (hiddenAt !== undefined) {
         const length = hiddenAt === tag ? 4 : 3;
-        findings.push({ rule_id: "agent_invisible_unicode", severity: "block", offset: hiddenAt, length: length });
+        findings.push({ rule_id: "agent_invisible_unicode", severity: "advisory", offset: hiddenAt, length: length });
       }
       const phrase = firstPhrase(bytes);
       const hide = firstHide(bytes);

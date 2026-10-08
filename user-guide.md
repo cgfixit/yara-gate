@@ -76,6 +76,8 @@ Then look up that hash:
 
 Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` means a rule fired and the report explains which one, and the file was still allowed through. Read that report before you treat the file as ordinary.
 
+For an agent or indexer that must hold every advisory, use `yara-gate scan <path> --policy agent-ingest` or `yara-gate watch --policy agent-ingest`. Advisory findings then produce `block`, exit 1, and `blocked/` for inbox files; their original finding severity remains advisory in the report. Use a dedicated `--home` for that consumer. Existing files are not automatically rescanned when a policy changes. A repeated inbox submission returns the existing slot to quarantine before it is scanned and relocated again.
+
 Stop watch with Control-C. If a previous watch crashed, the next start takes over a dead pid in `~/YaraGate/.watch.pid`.
 
 The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
@@ -110,11 +112,15 @@ print(result.verdict, result.incomplete_reason)
 
 `result.verdict` is `clean`, `advisory`, `block`, or `incomplete`.
 
+`scan_file(path, policy="agent-ingest")` applies the same conservative advisory policy as the CLI. Without that argument, the default policy retains advisory/exit 0 behavior.
+
 ## 5. Read a report
 
 Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. Open the JSON. You will see the verdict, the exit code, and a list of findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It does not include the bytes that matched.
 
 A home-directory path is shown as `~/...`. The path is where the file was while it was scanned, which is the quarantine slot, even if the file was then moved to `clean/` or `blocked/`.
+
+Reports include policy, engine version, ruleset fingerprint, and skipped vendor-file count. Finding `member_path` entries identify archive members by ordinal, without disclosing their names; `view` identifies raw bytes or derived text. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
 If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
@@ -141,9 +147,11 @@ Promote compiles the edited rule before it writes the file. If the compile fails
 
 ## 7. What a normal file will and will not trip
 
-Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, and on invisible or bidirectional Unicode in text.
+Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, and on explicit left/right bidi overrides. Common emoji/language joiners are allowed. Other invisible indicators and directional isolates are advisory.
 
 Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases such as "ignore previous instructions", and on hidden HTML that contains those phrases. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch.
+
+The default policy also reports authority/action spoofing, secret-transfer requests, selected encoded instructions, external templates, and download/execute chains as advisory. Agent-ingest turns every advisory into a block, including benign security examples. ZIP/tar/gzip members receive the same rules and document heuristics; recognized unsupported or encrypted archives remain incomplete. See the README for exact resource and decoding limits.
 
 Do not expect a block on a brand-new payload that no rule mentions. Updating the packs helps for signatures that have been published. It does not make YARA understand a file.
 
@@ -156,7 +164,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 ## 9. Try a verdict in the browser
 
-Open `demo.html` from this project in a browser. You can also copy that one file to any static host. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**. Or paste text and choose **Scan paste**. The page prints the verdict and the exit code. It does not print the paste, and it does not move a file into `~/YaraGate`. This file checks the local patterns only.
+Open `demo.html` for a limited JavaScript illustration, or run `yara-gate demo` to exercise the actual scanner and policy selector. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**, or paste text and choose **Scan paste**. The result shows the verdict and exit code without echoing matched bytes. Neither demo moves files into `~/YaraGate`. The standalone file does not implement the full current scanner.
 
 The full yara-x scan is still the loopback command.
 
