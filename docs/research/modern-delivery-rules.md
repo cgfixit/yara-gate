@@ -2,7 +2,7 @@
 
 Research and direct verification: October 8, 2026, America/New_York. Starting revision: `6031f74fcec65b9e3aa3f676f386e2c86a165bd1` on the resynced `main` branch. These four original local rules expand the shipped pack from 12 to 16; no vendor rules, incident payloads, hashes, or live infrastructure indicators were imported.
 
-The verified rule and probe changes are committed in [`1855828`](https://github.com/cgfixit/yara-gate/commit/18558283e291bad9542458ab3391182789ea1784) and proposed in [draft PR #7](https://github.com/cgfixit/yara-gate/pull/7). This extends the [initial intake implementation](../verification/intake-coverage.md); its earlier browser captures remain tied to that implementation.
+The verified rule and probe changes are committed in [`1855828`](https://github.com/cgfixit/yara-gate/commit/18558283e291bad9542458ab3391182789ea1784) and proposed in [draft PR #7](https://github.com/cgfixit/yara-gate/pull/7). This extends the [initial intake implementation](../verification/intake-coverage.md); its earlier browser captures remain tied to that implementation. The focused ClickFix browser captures below exercise the expanded rule pack.
 
 ## Sources and selection
 
@@ -41,7 +41,13 @@ Extended the existing [direct runtime probe](probe_rule_coverage.py), already ru
 
 A separate 2,125,000-byte inert JavaScript file repeated ordinary decode/Blob APIs without a download or clipboard/shell combination. Both the 12-rule baseline and 16-rule candidate returned clean. Single scans with compiled caches took approximately 0.143 s and 0.152 s respectively on this host. This is a bounded volume sanity check, not a throughput benchmark or performance guarantee.
 
-The probe emits source revision, Python-source hashes, engine version, rule hashes, sample hashes, rule IDs, and expected/observed results. Synthetic acceptance is not real-corpus precision/recall, complete phishing detection, native Windows execution, or a new browser-rendering check. The previously documented vendor-update defect is outside this change; verification never invoked the updater.
+The probe emits source revision, Python-source hashes, engine version, rule hashes, sample hashes, rule IDs, and expected/observed results. Synthetic acceptance is not real-corpus precision/recall, complete phishing detection, or native Windows execution. Direct probes alone do not verify browser rendering; the separate check below covers one delivery pattern under both policies. The previously documented vendor-update defect is outside this change; verification never invoked the updater.
+
+## Browser evidence
+
+On October 8, Codex Computer Use exercised the real loopback demo at `055500594b46432daea9a48e8a9efefb0005e6ae`, whose scanner and rules match the implementation commit. A two-line inert ClickFix example produced `web_clickfix_lure` with advisory severity under both policies: default returned advisory/exit 0, while agent-ingest returned block/exit 1 and displayed its hold reason. Both responses identified the same input hash and raw-view match. No sample script executed and the demo did not move files into a gate home.
+
+The [two full-page screenshots and capture provenance](../../screenshots/README.md#clickfix-detection-and-consumer-policy) show the rendered results and are embedded in README. This browser check covers that example and policy switch; CLI intake, other rule families, and native application behavior have separate evidence boundaries.
 
 ## Hosted verification
 

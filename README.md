@@ -1,10 +1,27 @@
 # yara-gate
 
-yara-gate holds untrusted files until a local scan finishes. Drop a document in the inbox. The file moves to `clean/` only after the scan completes with a clean or advisory verdict. A block match moves it to `blocked/`. An unfinished scan leaves it in `quarantine/`. Readers such as an indexer or an agent should open files only from `clean/`.
+yara-gate is a local intake gate for untrusted files before document processing, search indexing, or AI-agent ingestion. Its CLI and Python library combine YARA-X rules with bounded archive and document checks, then return a verdict that a downstream reader can act on.
+
+Use it to make the handoff from an incoming file to a reader explicit:
+
+- **Hold files until inspection finishes.** Inbox files stay in `quarantine/` while scanning. Blocked files go to `blocked/`; unfinished scans stay quarantined. Readers should consume files only from `clean/`.
+- **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
+- **Keep evidence for review and automation.** JSON/SARIF reports record rule IDs, severity, policy, content views, and scan completeness without copying matched bytes into the report. Stable exit codes let a caller distinguish allowed, blocked, and incomplete results.
 
 The scan does not use the network. Curated rule packs are downloaded only when you run `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
 
 The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate).
+
+## See the policy decision
+
+The live loopback demo below calls the real scanner. Both captures scan the same inert ClickFix example with the 16-rule local pack. The rule detects a verification lure combined with clipboard-copy and shell/paste instructions; the selected policy determines whether that advisory is allowed or held.
+
+| Default policy: report the advisory | Agent ingest: hold it for review |
+| --- | --- |
+| ![Default policy reports web_clickfix_lure as advisory with exit 0](screenshots/yara-gate-clickfix-advisory.jpg) | ![Agent-ingest policy returns block with exit 1 while preserving advisory finding severity](screenshots/yara-gate-clickfix-agent-ingest.jpg) |
+| `advisory`, exit **0**: a complete inbox scan with no blocking finding can enter `clean/`; the report still identifies the pattern. | `block`, exit **1**: the same advisory is held in `blocked/` during inbox intake. Its finding severity remains advisory. |
+
+This makes the value concrete: a consumer can review a suspicious pattern or require it to be held, using the same detection evidence. Legitimate security examples can match, so an advisory is a review signal. These October 8 captures show verdicts and policy behavior; the demo itself does not move files. See [capture provenance and full-size images](screenshots/README.md#clickfix-detection-and-consumer-policy), or [run the live demo](#demo).
 
 ## Install
 
