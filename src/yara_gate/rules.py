@@ -17,6 +17,7 @@ from http.client import HTTPMessage
 from pathlib import Path
 from typing import IO, Any
 
+import platformdirs
 from pydantic import BaseModel, ConfigDict
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
@@ -53,8 +54,33 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def bundled_local_dir() -> Path | None:
+    path = Path(__file__).resolve().parent / "bundled_rules" / "local"
+    if path.is_dir() and any(path.glob("*.yar")):
+        return path
+    return None
+
+
+def shipped_local_dir() -> Path:
+    """Local rules shipped in the wheel, or the checkout copy in an editable install."""
+    bundled = bundled_local_dir()
+    if bundled is not None:
+        return bundled
+    return project_root() / "rules" / "local"
+
+
+def installed_rules_root() -> Path:
+    return Path(platformdirs.user_data_dir("yara-gate"))
+
+
 def default_rules_dir() -> Path:
-    return project_root() / "rules"
+    env = os.environ.get("YARA_GATE_RULES")
+    if env:
+        return Path(env)
+    checkout = project_root() / "rules"
+    if (checkout / "local").is_dir():
+        return checkout
+    return installed_rules_root()
 
 
 def lock_path(rules_dir: Path | None = None) -> Path:
@@ -78,15 +104,42 @@ def save_lock(lock: RulesLock, rules_dir: Path | None = None) -> None:
 
 def rule_files(rules_dir: Path) -> list[Path]:
     found: list[Path] = []
-    for folder in (rules_dir / "local", rules_dir / "vendor"):
-        if folder.is_dir():
-            found.extend(sorted(folder.rglob("*.yar")))
-            found.extend(sorted(folder.rglob("*.yara")))
+    local = rules_dir / "local"
+    if local.is_dir():
+        _collect_rules(local, found)
+    elif rules_dir == installed_rules_root():
+        bundled = bundled_local_dir()
+        if bundled is not None:
+            _collect_rules(bundled, found)
+    vendor = rules_dir / "vendor"
+    if vendor.is_dir():
+        _collect_rules(vendor, found)
     if found:
         return found
-    found.extend(sorted(rules_dir.glob("*.yar")))
-    found.extend(sorted(rules_dir.glob("*.yara")))
+    _collect_rules(rules_dir, found, nested=False)
     return found
+
+
+def _collect_rules(folder: Path, found: list[Path], *, nested: bool = True) -> None:
+    if nested:
+        found.extend(sorted(folder.rglob("*.yar")))
+        found.extend(sorted(folder.rglob("*.yara")))
+        return
+    found.extend(sorted(folder.glob("*.yar")))
+    found.extend(sorted(folder.glob("*.yara")))
+
+
+def _rule_key(path: Path, rules_dir: Path) -> str:
+    try:
+        return path.relative_to(rules_dir).as_posix()
+    except ValueError:
+        bundled = bundled_local_dir()
+        if bundled is not None:
+            try:
+                return f"local/{path.relative_to(bundled).as_posix()}"
+            except ValueError:
+                pass
+        return path.name
 
 
 def is_candidate(text: str) -> bool:
@@ -105,13 +158,14 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
     if not files:
         return None, [], "no rules compiled", 0, 0
     digest = ruleset_digest(rules_dir)
-    cached = _read_cache(rules_dir, digest)
-    if cached is not None:
-        compiled, skipped = _split_good(files, rules_dir)
-        return cached, skipped, None, _count_rules(compiled), _count_skipped(skipped)
-
     good: list[tuple[Path, str]] = []
-    skipped = []
+    skipped: list[str] = []
+    cached = _read_cache(digest)
+    if cached is not None:
+        rules, skipped = cached
+        good = _files_except(files, rules_dir, skipped)
+        return rules, skipped, None, _count_rules(good), _count_skipped(skipped)
+
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
         if is_candidate(text):
@@ -119,15 +173,13 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
         try:
             _validate_one(yara_x, path, text)
         except yara_x.CompileError as exc:
-            skipped.append(f"{path.relative_to(rules_dir).as_posix()}: {exc.__class__.__name__}")
+            skipped.append(f"{_rule_key(path, rules_dir)}: {exc.__class__.__name__}")
             continue
         good.append((path, text))
     if not good:
-        _write_skipped(rules_dir, skipped)
         return None, skipped, "no rules compiled", 0, _count_skipped(skipped)
 
     if any(not line.startswith("vendor/") for line in skipped):
-        _write_skipped(rules_dir, skipped)
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped)
 
     compiler = yara_x.Compiler(relaxed_re_syntax=True)
@@ -137,8 +189,7 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
         compiler.new_namespace(f"gate_{index}")
         compiler.add_source(text, origin=path.name)
     rules = compiler.build()
-    _write_cache(rules_dir, digest, rules)
-    _write_skipped(rules_dir, skipped)
+    _write_cache(digest, rules, skipped)
     return rules, skipped, None, _count_rules(good), _count_skipped(skipped)
 
 
@@ -390,9 +441,10 @@ def _validate_staged(root: Path, staging: Path) -> None:
         if local.is_dir():
             os.symlink(local, check / "local", target_is_directory=True)
         os.symlink(staging, check / "vendor", target_is_directory=True)
-        _compiled, _skipped, error, _count, _skip = compile_sources(check)
+        _compiled, skipped, error, _count, _skip = compile_sources(check)
         if error:
             raise ValueError(error)
+        _write_skipped(staging, skipped)
     finally:
         if check.exists():
             # The vendor entry is a symlink. Remove it before deleting the check dir.
@@ -449,65 +501,74 @@ def _add_include_dirs(compiler: object, rules_dir: Path) -> None:
         add(str(path.parent))
 
 
-def _split_good(files: list[Path], rules_dir: Path) -> tuple[list[tuple[Path, str]], list[str]]:
+def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> list[tuple[Path, str]]:
+    names = {line.split(":", 1)[0] for line in skipped}
     good: list[tuple[Path, str]] = []
-    skipped: list[str] = []
-    skipped_names: set[str] = set()
-    skipped_path = rules_dir / "vendor" / "SKIPPED.md"
-    if skipped_path.is_file():
-        for line in skipped_path.read_text(encoding="utf-8").splitlines():
-            if line and not line.startswith("#"):
-                skipped.append(line)
-                skipped_names.add(line.split(":", 1)[0])
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
-        if is_candidate(text) or path.relative_to(rules_dir).as_posix() in skipped_names:
+        if is_candidate(text) or _rule_key(path, rules_dir) in names:
             continue
         good.append((path, text))
-    return good, skipped
+    return good
 
 
 def ruleset_digest(rules_dir: Path) -> str:
     hasher = hashlib.sha256(_CACHE_SALT)
     hasher.update(importlib.metadata.version("yara-x").encode())
     for path in rule_files(rules_dir):
-        hasher.update(path.relative_to(rules_dir).as_posix().encode())
+        hasher.update(_rule_key(path, rules_dir).encode())
         hasher.update(b"\x00")
         hasher.update(path.read_bytes())
         hasher.update(b"\x00")
     return hasher.hexdigest()
 
 
-def _cache_file(rules_dir: Path, digest: str) -> Path:
-    return rules_dir / ".cache" / f"{digest}.yarc"
+def _user_cache_dir() -> Path:
+    return Path(platformdirs.user_cache_dir("yara-gate"))
 
 
-def _read_cache(rules_dir: Path, digest: str) -> object | None:
-    path = _cache_file(rules_dir, digest)
+def _read_cache(digest: str) -> tuple[object, list[str]] | None:
+    path = _user_cache_dir() / f"{digest}.yarc"
     if not path.is_file():
         return None
     import yara_x
 
-    with path.open("rb") as handle:
-        return yara_x.Rules.deserialize_from(handle)
+    try:
+        with path.open("rb") as handle:
+            rules = yara_x.Rules.deserialize_from(handle)
+    except OSError:
+        return None
+    skip_path = _user_cache_dir() / f"{digest}.skipped"
+    skipped: list[str] = []
+    if skip_path.is_file():
+        skipped = [line for line in skip_path.read_text(encoding="utf-8").splitlines() if line]
+    return rules, skipped
 
 
-def _write_cache(rules_dir: Path, digest: str, rules: Any) -> None:
-    path = _cache_file(rules_dir, digest)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as handle:
-        serialize = rules.serialize_into
-        serialize(handle)
+def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
+    try:
+        cache = _user_cache_dir()
+        cache.mkdir(parents=True, exist_ok=True)
+        path = cache / f"{digest}.yarc"
+        with path.open("wb") as handle:
+            serialize = rules.serialize_into
+            serialize(handle)
+        (cache / f"{digest}.skipped").write_text("\n".join(skipped) + "\n", encoding="utf-8")
+    except OSError:
+        return
 
 
 def _clear_cache(rules_dir: Path) -> None:
-    cache = rules_dir / ".cache"
+    cache = _user_cache_dir()
     if cache.exists():
-        shutil.rmtree(cache)
+        shutil.rmtree(cache, ignore_errors=True)
+    legacy = rules_dir / ".cache"
+    if legacy.exists():
+        shutil.rmtree(legacy, ignore_errors=True)
 
 
-def _write_skipped(rules_dir: Path, skipped: list[str]) -> None:
-    vendor = rules_dir / "vendor"
+def _write_skipped(vendor: Path, skipped: list[str]) -> None:
+    """Write the skip list. Only rules install and rules update call this."""
     vendor.mkdir(parents=True, exist_ok=True)
     lines = ["# Rules skipped because yara-x could not compile them", ""]
     lines.extend(skipped)

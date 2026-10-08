@@ -18,7 +18,7 @@ The loader skips `status = "candidate"` entirely. To evaluate such a proposal, a
 ## Exercise the actual loader and scanner
 
 - Use the locked environment (`uv sync --frozen --group dev` if needed). YARA-X semantics and available modules come from that environment, not a global classic YARA binary.
-- Copy `rules/local/` into a temporary rules root with `local/` beneath it. Pass that root explicitly as `rules_dir` or `--rules`. Compilation writes `.cache/` and `vendor/SKIPPED.md`; leave the active checkout's generated state alone.
+- Copy `rules/local/` into a temporary rules root with `local/` beneath it. Pass that root explicitly as `rules_dir` or `--rules`. A scan writes its cache outside that tree and does not rewrite `vendor/SKIPPED.md`. `rules install` and `rules update` are what write the skip list.
 - Run `compile_sources` from `src/yara_gate/rules.py` and check the returned error and skip counts. Files are validated individually and compiled into separate namespaces; keep necessary private helpers together and do not assume cross-file references work.
 - Pass inert positive and benign near-miss files through `scan_file` and inspect the expected rule IDs, severity, namespace, member path, and view. Test relevant alternate suffixes, UTF-16/HTML forms, and supported archive members. `yara_gate_ext` is the actual scanned unit's suffix; it is not a normalized content-type marker.
 - Compare both default and `agent-ingest` policy when disposition matters. An advisory normally exits 0; agent-ingest holds it as overall block/exit 1 without changing its finding severity. A required local compile failure must be incomplete/exit 2.

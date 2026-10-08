@@ -1,5 +1,6 @@
 import hashlib
 import io
+import subprocess
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -15,8 +16,10 @@ from yara_gate.rules import (
     compile_sources,
     install_packs,
     save_lock,
+    shipped_local_dir,
     update_packs,
 )
+from yara_gate.samples import clean_text, eicar_bytes
 
 
 def test_rule_download_url_allowlist() -> None:
@@ -159,4 +162,43 @@ def test_whole_set_failure(tmp_path: Path) -> None:
     assert count == 0
     assert skip_count == 1
     assert skipped
-    assert (rules / "vendor" / "SKIPPED.md").is_file()
+    assert not (rules / "vendor" / "SKIPPED.md").exists()
+
+
+def test_default_rules_resolve_from_package_data() -> None:
+    text = (shipped_local_dir() / "agent_eicar.yar").read_text(encoding="utf-8")
+    assert "rule agent_eicar" in text
+
+
+def test_wheel_install_smoke(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    dist = tmp_path / "dist"
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(dist)], cwd=root, check=True)
+    wheel = next(dist.glob("*.whl"))
+    names = subprocess.run(["unzip", "-l", str(wheel)], check=True, capture_output=True, text=True)
+    assert "yara_gate/bundled_rules/local/agent_eicar.yar" in names.stdout
+    assert "elastic/" not in names.stdout
+    venv = tmp_path / "venv"
+    subprocess.run(["uv", "venv", str(venv), "--python", "3.12"], check=True)
+    python = venv / "bin" / "python"
+    subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
+    cli = venv / "bin" / "yara-gate"
+    home = tmp_path / "gate"
+    clean = tmp_path / "clean.txt"
+    clean.write_bytes(clean_text())
+    eicar = tmp_path / "eicar.com"
+    eicar.write_bytes(eicar_bytes())
+    scanned = subprocess.run(
+        [str(cli), "scan", str(clean), "--home", str(home)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    blocked = subprocess.run(
+        [str(cli), "scan", str(eicar), "--home", str(home)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert scanned.returncode == 0
+    assert blocked.returncode == 1

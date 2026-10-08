@@ -1,4 +1,6 @@
+import hashlib
 import io
+import stat
 import zipfile
 from pathlib import Path
 
@@ -67,6 +69,37 @@ def test_persian_zwnj_is_clean(tmp_path: Path, rules_copy: Path) -> None:
 
 def test_utf16_zero_width_blocks(tmp_path: Path, rules_copy: Path) -> None:
     _assert_block(tmp_path, rules_copy, "utf16.md", "\u200b".encode("utf-16"))
+
+
+def _rules_snapshot(root: Path) -> list[tuple[str, int, str]]:
+    rows: list[tuple[str, int, str]] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows.append((path.relative_to(root).as_posix(), path.stat().st_mtime_ns, digest))
+    return rows
+
+
+def test_scan_leaves_rules_dir_unmodified(tmp_path: Path, rules_copy: Path) -> None:
+    before = _rules_snapshot(rules_copy)
+    result = _scan(tmp_path, rules_copy, "notes.txt", clean_text())
+    assert result.verdict is Verdict.clean
+    assert _rules_snapshot(rules_copy) == before
+
+
+def test_scan_with_readonly_rules_dir(tmp_path: Path, rules_copy: Path) -> None:
+    for path in rules_copy.rglob("*"):
+        mode = 0o555 if path.is_dir() else 0o444
+        path.chmod(mode)
+    rules_copy.chmod(0o555)
+    try:
+        result = _scan(tmp_path, rules_copy, "notes.txt", clean_text())
+        assert result.verdict is Verdict.clean
+        assert exit_code(result) == 0
+    finally:
+        for path in [rules_copy, *rules_copy.rglob("*")]:
+            path.chmod(path.stat().st_mode | stat.S_IWUSR)
 
 
 def test_eicar_blocks(tmp_path: Path, rules_copy: Path) -> None:
