@@ -3,8 +3,11 @@ import io
 import json
 import os
 import subprocess
+import urllib.error
 import urllib.request
 import zipfile
+from datetime import datetime
+from http.client import HTTPMessage
 from pathlib import Path
 
 import pytest
@@ -14,8 +17,10 @@ from yara_gate.cli import app
 from yara_gate.models import Verdict
 from yara_gate.rules import (
     PackPin,
+    RuleDownloadError,
     RulesLock,
     _allowed_url,
+    _bytes,
     _PinnedRedirect,
     _vendor_member,
     compile_sources,
@@ -196,6 +201,7 @@ def test_wheel_install_smoke(tmp_path: Path) -> None:
     wheel = next(dist.glob("*.whl"))
     names = subprocess.run(["unzip", "-l", str(wheel)], check=True, capture_output=True, text=True)
     assert "yara_gate/bundled_rules/local/agent_eicar.yar" in names.stdout
+    assert "yara_gate/bundled_rules/rules.lock" in names.stdout
     assert "elastic/" not in names.stdout
     venv = tmp_path / "venv"
     subprocess.run(["uv", "venv", str(venv), "--python", "3.12"], check=True)
@@ -462,3 +468,246 @@ def test_missing_bundled_rules_exit_2(tmp_path: Path, monkeypatch: pytest.Monkey
     assert unreadable.verdict is Verdict.incomplete
     assert unreadable.incomplete_reason == "bundled rules missing"
     assert unreadable.findings == []
+
+
+class _Body(io.BytesIO):
+    def __enter__(self) -> "_Body":
+        return self
+
+    def __exit__(self, *_args: object) -> bool:
+        return False
+
+
+class _Opener:
+    def __init__(self, action: object) -> None:
+        self.action = action
+        self.requests: list[urllib.request.Request] = []
+
+    def open(self, request: urllib.request.Request, timeout: int = 180) -> _Body:
+        self.requests.append(request)
+        result = self.action(request)  # type: ignore[operator]
+        if isinstance(result, _Body):
+            return result
+        raise result
+
+
+def _patch_opener(monkeypatch: pytest.MonkeyPatch, action: object) -> _Opener:
+    opener = _Opener(action)
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_args, **_kwargs: opener)
+    return opener
+
+
+def _http_error(
+    url: str,
+    code: int,
+    headers: HTTPMessage | None = None,
+    body: bytes = b"",
+) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(url, code, "status", headers or HTTPMessage(), io.BytesIO(body))
+
+
+def _rate_headers(reset: str) -> HTTPMessage:
+    headers = HTTPMessage()
+    headers["X-RateLimit-Remaining"] = "0"
+    headers["X-RateLimit-Reset"] = reset
+    return headers
+
+
+def test_rate_limit_403_message_includes_reset(monkeypatch: pytest.MonkeyPatch) -> None:
+    reset = "1800000000"
+    when = datetime.fromtimestamp(int(reset)).astimezone()
+    zone = when.tzname() or when.strftime("%z")
+    stamp = f"{when.strftime('%Y-%m-%d %H:%M:%S')} {zone}"
+    expected = f"rate limited by api.github.com until {stamp}; set GITHUB_TOKEN"
+    url = "https://api.github.com/repos/YARAHQ/yara-forge/releases/latest"
+
+    def denied(request: urllib.request.Request) -> urllib.error.HTTPError:
+        return _http_error(request.full_url, 403, _rate_headers(reset), b"nope")
+
+    _patch_opener(monkeypatch, denied)
+    with pytest.raises(RuleDownloadError, match="rate limited by api.github.com until") as first:
+        _bytes(url)
+    assert str(first.value) == expected
+
+    def limited(request: urllib.request.Request) -> urllib.error.HTTPError:
+        return _http_error(request.full_url, 429, _rate_headers(reset))
+
+    _patch_opener(monkeypatch, limited)
+    with pytest.raises(RuleDownloadError) as second:
+        _bytes(url)
+    assert str(second.value) == expected
+
+
+def test_404_and_network_off_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    url = "https://api.github.com/repos/missing/missing"
+    _patch_opener(
+        monkeypatch,
+        lambda request: _http_error(request.full_url, 404, body=b"missing"),
+    )
+    with pytest.raises(RuleDownloadError) as missing:
+        _bytes(url)
+    assert str(missing.value) == f"not found: {url}"
+
+    _patch_opener(monkeypatch, lambda _request: urllib.error.URLError("offline"))
+    with pytest.raises(RuleDownloadError, match="^network unreachable$"):
+        _bytes("https://codeload.github.com/org/repo/tar.gz/abc")
+
+    _patch_opener(monkeypatch, lambda _request: TimeoutError("timed out"))
+    with pytest.raises(RuleDownloadError, match="^network unreachable$"):
+        _bytes("https://github.com/org/repo/file.zip")
+
+    _patch_opener(monkeypatch, lambda request: _http_error(request.full_url, 500))
+    with pytest.raises(RuleDownloadError, match="^HTTP 500 from api.github.com$"):
+        _bytes(url)
+
+
+def test_token_sent_only_to_api_github(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token-value")
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    opener = _patch_opener(monkeypatch, lambda _request: _Body(b"{}"))
+    _bytes("https://api.github.com/repos/org/repo")
+    _bytes("https://github.com/org/repo/file.zip")
+    _bytes("https://codeload.github.com/org/repo/tar.gz/abc")
+    assert opener.requests[0].get_header("Authorization") == "Bearer github-token-value"
+    assert opener.requests[1].get_header("Authorization") is None
+    assert opener.requests[2].get_header("Authorization") is None
+    monkeypatch.delenv("GITHUB_TOKEN")
+    monkeypatch.setenv("GH_TOKEN", "gh-token-value")
+    _bytes("https://api.github.com/repos/org/other")
+    assert opener.requests[3].get_header("Authorization") == "Bearer gh-token-value"
+
+
+def test_token_not_forwarded_on_redirect_to_other_host() -> None:
+    request = urllib.request.Request("https://api.github.com/repos/org/repo")
+    request.add_header("Authorization", "Bearer sent-token-value")
+    request.add_unredirected_header("Authorization", "Bearer sent-token-value")
+    handler = _PinnedRedirect()
+    moved = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        HTTPMessage(),
+        "https://github.com/org/repo/file.zip",
+    )
+    assert moved is not None
+    assert moved.headers.get("Authorization") is None
+    assert moved.unredirected_hdrs.get("Authorization") is None
+    stayed = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        HTTPMessage(),
+        "https://api.github.com/repos/org/repo/releases/latest",
+    )
+    assert stayed is not None
+    assert stayed.get_header("Authorization") == "Bearer sent-token-value"
+
+
+def test_token_never_in_output_or_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rules_copy: Path
+) -> None:
+    secret = "yg-test-token-not-for-logs"  # noqa: S105
+    monkeypatch.setenv("GITHUB_TOKEN", secret)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    url = "https://api.github.com/repos/missing/missing"
+
+    def denied(request: urllib.request.Request) -> urllib.error.HTTPError:
+        headers = HTTPMessage()
+        headers["Authorization"] = f"Bearer {secret}"
+        headers["X-RateLimit-Remaining"] = "0"
+        headers["X-RateLimit-Reset"] = "1800000000"
+        return _http_error(request.full_url, 403, headers, secret.encode())
+
+    _patch_opener(monkeypatch, denied)
+    with pytest.raises(RuleDownloadError) as exc:
+        _bytes(url)
+    assert secret not in str(exc.value)
+    assert "Authorization" not in str(exc.value)
+    root = tmp_path / "download-root"
+    (root / "local").mkdir(parents=True)
+    (root / "vendor").mkdir()
+    result = CliRunner().invoke(app, ["rules", "update", "--allow-network", "--rules", str(root)])
+    text = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert secret not in text
+    assert "Authorization" not in text
+    assert "incomplete: rate limited by api.github.com until " in text
+    assert "HTTPError" not in text
+    assert "RuleDownloadError" not in text
+    sample = tmp_path / "notes.txt"
+    sample.write_bytes(clean_text())
+    scanned = scan_file(sample, rules_dir=rules_copy)
+    blob = json.dumps(
+        {
+            "verdict": scanned.verdict.value,
+            "findings": [item.rule_id for item in scanned.findings],
+            "reason": scanned.incomplete_reason,
+        }
+    )
+    assert secret not in blob
+
+
+def test_install_uses_bundled_lock_when_root_has_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "installed"
+    root.mkdir()
+    blob = _kept_zip()
+    digest = hashlib.sha256(blob).hexdigest()
+    lock_file = tmp_path / "bundled.lock"
+    lock_file.write_text(
+        RulesLock(
+            packs=[
+                PackPin(
+                    name="yara-forge-core",
+                    url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+                    pin="x",
+                    sha256=digest,
+                )
+            ]
+        ).model_dump_json(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("yara_gate.rules.bundled_lock_path", lambda: lock_file)
+    seen: list[str] = []
+
+    def transport(url: str) -> bytes:
+        seen.append(url)
+        return blob
+
+    lock = install_packs(root, transport=transport)
+    assert seen == ["https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip"]
+    assert lock.packs[0].sha256 == digest
+    assert (root / "vendor" / "yara-forge" / "kept.yar").is_file()
+    written = (root / "rules.lock").read_text(encoding="utf-8")
+    assert digest in written
+    assert not (root / "rules.lock").samefile(lock_file)
+
+
+def test_failed_update_keeps_vendor_and_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _rules_tree(tmp_path)
+    save_lock(
+        RulesLock(
+            packs=[
+                PackPin(
+                    name="yara-forge-core",
+                    url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+                    pin="old",
+                    sha256="ab" * 32,
+                )
+            ]
+        ),
+        root,
+    )
+    retained = (root / "vendor" / "retained.yar").read_bytes()
+    lock_bytes = (root / "rules.lock").read_bytes()
+    _patch_opener(monkeypatch, lambda _request: TimeoutError("timed out"))
+    with pytest.raises(RuleDownloadError, match="^network unreachable$"):
+        update_packs(root)
+    assert (root / "vendor" / "retained.yar").read_bytes() == retained
+    assert (root / "rules.lock").read_bytes() == lock_bytes
+    assert list(root.glob(".staging-*")) == []

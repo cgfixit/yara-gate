@@ -4,6 +4,7 @@ import hashlib
 import os
 import stat
 from pathlib import Path
+from typing import NoReturn
 
 import typer
 
@@ -11,7 +12,14 @@ from yara_gate import __version__
 from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
 from yara_gate.report import write_reports
-from yara_gate.rules import compile_sources, default_rules_dir, install_packs, promote, update_packs
+from yara_gate.rules import (
+    RuleDownloadError,
+    compile_sources,
+    default_rules_dir,
+    install_packs,
+    promote,
+    update_packs,
+)
 from yara_gate.selftest import run_selftest
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -175,8 +183,7 @@ def rules_install(
         lock = install_packs(root)
         _rules, skipped, error, compiled, skip_count = compile_sources(root)
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
-        raise typer.Exit(code=2) from exc
+        _echo_incomplete(exc)
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
@@ -200,8 +207,7 @@ def rules_update(
         lock = update_packs(root)
         _rules, skipped, error, compiled, skip_count = compile_sources(root)
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
-        raise typer.Exit(code=2) from exc
+        _echo_incomplete(exc)
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
@@ -223,6 +229,14 @@ def rules_promote(
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"promoted {path.name}")
+
+
+def _echo_incomplete(exc: Exception) -> NoReturn:
+    if isinstance(exc, RuleDownloadError):
+        typer.echo(f"incomplete: {exc}", err=True)
+    else:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+    raise typer.Exit(code=2) from exc
 
 
 def _echo_shadows(skipped: list[str]) -> None:

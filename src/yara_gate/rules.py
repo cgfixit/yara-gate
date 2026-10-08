@@ -9,10 +9,12 @@ import re
 import secrets
 import shutil
 import tarfile
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
 from collections.abc import Callable
+from datetime import datetime
 from http.client import HTTPMessage
 from pathlib import Path
 from typing import IO, Any
@@ -33,6 +35,10 @@ _ALLOWED_DOWNLOAD_HOSTS = frozenset(
 )
 _DOWNLOAD_CAP = 300 * 1024 * 1024
 Transport = Callable[[str], bytes]
+
+
+class RuleDownloadError(Exception):
+    """A rule download failed. The message is safe to print."""
 
 
 class PackPin(BaseModel):
@@ -384,7 +390,7 @@ def install_packs(
 ) -> RulesLock:
     """Download the locked URLs and keep the old vendor tree if any check fails."""
     root = rules_dir or default_rules_dir()
-    lock = load_lock(root)
+    lock = _lock_for_install(root)
     if not lock.packs:
         raise ValueError("rules.lock has no packs")
     staging = _staging_dir(root)
@@ -516,8 +522,72 @@ class _PinnedRedirect(urllib.request.HTTPRedirectHandler):
         headers: HTTPMessage,
         newurl: str,
     ) -> urllib.request.Request | None:
-        _allowed_url(urllib.parse.urljoin(req.full_url, newurl))
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        joined = urllib.parse.urljoin(req.full_url, newurl)
+        _allowed_url(joined)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+        old_host = urllib.parse.urlparse(req.full_url).hostname
+        new_host = urllib.parse.urlparse(new.full_url).hostname
+        if new_host != old_host:
+            new.headers.pop("Authorization", None)
+            new.unredirected_hdrs.pop("Authorization", None)
+        elif new_host == "api.github.com":
+            token = req.get_header("Authorization")
+            if token and not new.has_header("Authorization"):
+                new.add_unredirected_header("Authorization", token)
+        return new
+
+
+def _github_token(url: str) -> str | None:
+    if urllib.parse.urlparse(url).hostname != "api.github.com":
+        return None
+    for name in ("GITHUB_TOKEN", "GH_TOKEN"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
+
+
+def _format_reset(value: str | None) -> str:
+    if value is None or not str(value).isdigit():
+        return "unknown"
+    when = datetime.fromtimestamp(int(value)).astimezone()
+    zone = when.tzname() or when.strftime("%z")
+    return f"{when.strftime('%Y-%m-%d %H:%M:%S')} {zone}"
+
+
+def _download_http_error(url: str, exc: urllib.error.HTTPError) -> RuleDownloadError:
+    code = int(exc.code)
+    host = urllib.parse.urlparse(url).hostname or ""
+    headers = exc.headers
+    remaining = headers.get("X-RateLimit-Remaining") if headers is not None else None
+    if code in {403, 429} and str(remaining) == "0":
+        reset = headers.get("X-RateLimit-Reset") if headers is not None else None
+        when = _format_reset(None if reset is None else str(reset))
+        return RuleDownloadError(f"rate limited by api.github.com until {when}; set GITHUB_TOKEN")
+    if code == 404:
+        return RuleDownloadError(f"not found: {url}")
+    return RuleDownloadError(f"HTTP {code} from {host}")
+
+
+def bundled_lock_path() -> Path | None:
+    packaged = Path(__file__).resolve().parent / "bundled_rules" / "rules.lock"
+    if packaged.is_file():
+        return packaged
+    checkout = project_root() / "rules" / "rules.lock"
+    if checkout.is_file():
+        return checkout
+    return None
+
+
+def _lock_for_install(root: Path) -> RulesLock:
+    if (root / "rules.lock").is_file():
+        return load_lock(root)
+    bundled = bundled_lock_path()
+    if bundled is None:
+        return RulesLock(packs=[])
+    return RulesLock.model_validate(json.loads(bundled.read_text(encoding="utf-8")))
 
 
 def _bytes(url: str, *, transport: Transport | None = None) -> bytes:
@@ -526,13 +596,20 @@ def _bytes(url: str, *, transport: Transport | None = None) -> bytes:
         body = transport(clean)
     else:
         # An empty proxy map stops HTTP_PROXY from sending this call elsewhere.
-        request = urllib.request.Request(  # noqa: S310
-            clean,
-            headers={"User-Agent": "yara-gate", "Accept": "application/vnd.github+json"},
-        )
+        request = urllib.request.Request(clean)  # noqa: S310
+        request.add_unredirected_header("User-Agent", "yara-gate")
+        request.add_unredirected_header("Accept", "application/vnd.github+json")
+        token = _github_token(clean)
+        if token:
+            request.add_unredirected_header("Authorization", f"Bearer {token}")
         opener = urllib.request.build_opener(_PinnedRedirect, urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=180) as response:
-            body = _read_capped(response)
+        try:
+            with opener.open(request, timeout=180) as response:
+                body = _read_capped(response)
+        except urllib.error.HTTPError as exc:
+            raise _download_http_error(clean, exc) from None
+        except (urllib.error.URLError, TimeoutError):
+            raise RuleDownloadError("network unreachable") from None
     if not isinstance(body, bytes):
         raise TypeError("rule download was not bytes")
     if len(body) > _DOWNLOAD_CAP:
