@@ -1,5 +1,6 @@
 """Sniff a file from its bytes. The extension is never the type."""
 
+import unicodedata
 from pathlib import Path
 
 OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
@@ -59,9 +60,34 @@ def sniff(data: bytes) -> str:
         return "macho"
     if data.startswith(b"\x1f\x8b"):
         return "gzip"
-    if _mostly_text(data):
+    if _mostly_text(data) or utf16_encoding(data) is not None:
         return "text"
     return "unknown"
+
+
+def utf16_encoding(data: bytes) -> str | None:
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return "utf-16"
+    sample = data[:4096]
+    if len(sample) < 4 or len(sample) % 2:
+        return None
+    encoding: str | None = None
+    if sample[1::2].count(0) > len(sample) // 4:
+        encoding = "utf-16le"
+    elif sample[0::2].count(0) > len(sample) // 4:
+        encoding = "utf-16be"
+    if encoding is None:
+        return None
+    try:
+        text = sample.decode(encoding)
+    except UnicodeError:
+        return None
+    if all(
+        char.isprintable() or char in "\r\n\t" or unicodedata.category(char) == "Cf"
+        for char in text
+    ):
+        return encoding
+    return None
 
 
 def extension_kind(path: Path) -> str | None:

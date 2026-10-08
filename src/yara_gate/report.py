@@ -32,6 +32,11 @@ def _compact(result: ScanResult) -> dict[str, object]:
         "exit_code": exit_code(result),
         "incomplete_reason": result.incomplete_reason,
         "path": redact(result.path),
+        "ruleset_sha256": result.ruleset_sha256,
+        "engine_version": result.engine_version,
+        "skipped_rule_files": result.skipped_rule_files,
+        "policy": result.policy.value,
+        "policy_reason": result.policy_reason,
         "findings": [_finding(item) for item in result.findings],
     }
 
@@ -43,6 +48,9 @@ def _finding(item: Finding) -> dict[str, object]:
         "length": item.length,
         "severity": item.severity.value,
         "source": item.source.value,
+        "member_path": item.member_path,
+        "view": item.view,
+        "namespace": item.namespace,
     }
 
 
@@ -60,15 +68,16 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                 }
             )
         region: dict[str, int] = {}
-        if item.offset is not None:
+        if item.offset is not None and not item.member_path and item.view == "raw":
             region["byteOffset"] = item.offset
-        if item.length is not None:
+        if item.length is not None and not item.member_path and item.view == "raw":
             region["byteLength"] = item.length
         results.append(
             {
                 "ruleId": item.rule_id,
                 "level": "error" if item.severity.value == "block" else "warning",
                 "message": {"text": item.rule_id},
+                "properties": _finding(item),
                 "locations": [
                     {
                         "physicalLocation": {
@@ -92,6 +101,15 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                     }
                 },
                 "results": results,
+                "properties": {
+                    "ruleset_sha256": result.ruleset_sha256,
+                    "engine_version": result.engine_version,
+                    "skipped_rule_files": result.skipped_rule_files,
+                    "verdict": result.verdict.value,
+                    "policy": result.policy.value,
+                    "policy_reason": result.policy_reason,
+                    "incomplete_reason": result.incomplete_reason,
+                },
             }
         ],
     }

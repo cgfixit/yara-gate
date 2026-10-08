@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from yara_gate.models import ScanResult, Verdict
+from yara_gate.models import ScanPolicy, ScanResult, Verdict
 from yara_gate.report import write_reports
 from yara_gate.scanner import hash_file, scan_file
 
@@ -56,6 +56,11 @@ def intake(home: GatePaths, src: Path) -> Path:
     digest = hash_file(src)
     existing = _existing_slot(home, digest)
     if existing is not None:
+        quarantine = home.quarantine / digest
+        if existing.parent != quarantine:
+            # Every rescan must pass through quarantine, including a stricter policy.
+            os.replace(existing.parent, quarantine)
+            existing = quarantine / existing.name
         if src.resolve() != existing.resolve():
             src.unlink()
         return existing
@@ -77,9 +82,10 @@ def process_inbox_file(
     *,
     rules_dir: Path | None = None,
     timeout_s: int = 30,
+    policy: ScanPolicy = ScanPolicy.default,
 ) -> ScanResult:
     placed = intake(home, src)
-    result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir)
+    result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
     write_reports(home.reports, result)
     _relocate(home, result)
     return result
@@ -91,21 +97,28 @@ def scan_in_place(
     *,
     rules_dir: Path | None = None,
     timeout_s: int = 30,
+    policy: ScanPolicy = ScanPolicy.default,
 ) -> ScanResult:
     """Scan a path that did not come from the inbox. The file stays where it is."""
     home.ensure()
-    result = scan_file(src, timeout_s=timeout_s, rules_dir=rules_dir)
+    result = scan_file(src, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
     write_reports(home.reports, result)
     return result
 
 
-def watch(home: GatePaths, *, rules_dir: Path | None = None, timeout_s: int = 30) -> None:
+def watch(
+    home: GatePaths,
+    *,
+    rules_dir: Path | None = None,
+    timeout_s: int = 30,
+    policy: ScanPolicy = ScanPolicy.default,
+) -> None:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
 
     home.ensure()
     _acquire_lock(home)
-    handler = _InboxHandler(home, rules_dir, timeout_s)
+    handler = _InboxHandler(home, rules_dir, timeout_s, policy)
 
     class Handler(FileSystemEventHandler):
         def on_created(self, event: object) -> None:
@@ -129,9 +142,15 @@ def watch(home: GatePaths, *, rules_dir: Path | None = None, timeout_s: int = 30
             lock.unlink()
 
 
-def drain_inbox(home: GatePaths, *, rules_dir: Path | None = None, timeout_s: int = 30) -> None:
+def drain_inbox(
+    home: GatePaths,
+    *,
+    rules_dir: Path | None = None,
+    timeout_s: int = 30,
+    policy: ScanPolicy = ScanPolicy.default,
+) -> None:
     """Scan files already sitting in inbox/."""
-    _drain(_InboxHandler(home, rules_dir, timeout_s), home)
+    _drain(_InboxHandler(home, rules_dir, timeout_s, policy), home)
 
 
 def _drain(handler: "_InboxHandler", home: GatePaths) -> None:
@@ -147,10 +166,17 @@ def _dispatch(event: object, handler: "_InboxHandler") -> None:
 
 
 class _InboxHandler:
-    def __init__(self, home: GatePaths, rules_dir: Path | None, timeout_s: int) -> None:
+    def __init__(
+        self,
+        home: GatePaths,
+        rules_dir: Path | None,
+        timeout_s: int,
+        policy: ScanPolicy = ScanPolicy.default,
+    ) -> None:
         self.home = home
         self.rules_dir = rules_dir
         self.timeout_s = timeout_s
+        self.policy = policy
         self._lock = threading.Lock()
 
     def handle(self, path: Path) -> None:
@@ -165,6 +191,7 @@ class _InboxHandler:
                     path,
                     rules_dir=self.rules_dir,
                     timeout_s=self.timeout_s,
+                    policy=self.policy,
                 )
             except OSError:
                 return

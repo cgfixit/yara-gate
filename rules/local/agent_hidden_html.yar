@@ -1,22 +1,12 @@
 rule agent_hidden_html {
     meta:
         author = "yara-gate"
-        description = "Hidden HTML that also contains an instruction-like phrase"
+        description = "Hidden HTML with an instruction-like phrase within 256 bytes"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
-        $css1 = "display:none" nocase
-        $css2 = "display: none" nocase
-        $fs1 = "font-size:0" nocase
-        $fs2 = "font-size: 0" nocase
-        $p1 = "ignore previous instructions" nocase
-        $p2 = "ignore all previous instructions" nocase
-        $p3 = "disregard the above" nocase
-        $p4 = "you are now" nocase
-        $p5 = "system prompt:" nocase
-        $p6 = "exfiltrate" nocase
-        $p7 = "do not tell the user" nocase
+        $hidden = /(display\s*:\s*none|font-size\s*:\s*0|visibility\s*:\s*hidden|<!--)[\s\S]{0,256}(ignore previous instructions|ignore all previous instructions|disregard the above|you are now|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
     condition:
-        (any of ($css*) or any of ($fs*)) and any of ($p*)
+        $hidden
 }

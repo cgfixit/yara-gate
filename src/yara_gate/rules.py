@@ -1,6 +1,7 @@
 """Load, pin, and promote YARA rules. Network runs only in ``update``."""
 
 import hashlib
+import importlib.metadata
 import io
 import json
 import re
@@ -16,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
 _RULE_NAME = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)")
-_CACHE_SALT = b"yara-gate-rules-v1"
+_CACHE_SALT = b"yara-gate-rules-v2"
 _ALLOWED_DOWNLOAD_HOSTS = frozenset({"github.com", "codeload.github.com"})
 
 
@@ -87,7 +88,7 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
     files = rule_files(rules_dir)
     if not files:
         return None, [], "no rules compiled", 0, 0
-    digest = _source_digest(files)
+    digest = ruleset_digest(rules_dir)
     cached = _read_cache(rules_dir, digest)
     if cached is not None:
         compiled, skipped = _split_good(files, rules_dir)
@@ -102,12 +103,16 @@ def compile_sources(rules_dir: Path) -> tuple[object | None, list[str], str | No
         try:
             _validate_one(yara_x, path, text)
         except yara_x.CompileError as exc:
-            skipped.append(f"{path.name}: {exc.__class__.__name__}")
+            skipped.append(f"{path.relative_to(rules_dir).as_posix()}: {exc.__class__.__name__}")
             continue
         good.append((path, text))
     if not good:
         _write_skipped(rules_dir, skipped)
         return None, skipped, "no rules compiled", 0, _count_skipped(skipped)
+
+    if any(not line.startswith("vendor/") for line in skipped):
+        _write_skipped(rules_dir, skipped)
+        return None, skipped, "local rule compile failed", 0, _count_skipped(skipped)
 
     compiler = yara_x.Compiler(relaxed_re_syntax=True)
     compiler.define_global("yara_gate_ext", "bin")
@@ -292,17 +297,20 @@ def _split_good(files: list[Path], rules_dir: Path) -> tuple[list[tuple[Path, st
                 skipped_names.add(line.split(":", 1)[0])
     for path in files:
         text = path.read_text(encoding="utf-8", errors="replace")
-        if is_candidate(text) or path.name in skipped_names:
+        if is_candidate(text) or path.relative_to(rules_dir).as_posix() in skipped_names:
             continue
         good.append((path, text))
     return good, skipped
 
 
-def _source_digest(files: list[Path]) -> str:
+def ruleset_digest(rules_dir: Path) -> str:
     hasher = hashlib.sha256(_CACHE_SALT)
-    for path in files:
-        hasher.update(path.name.encode())
+    hasher.update(importlib.metadata.version("yara-x").encode())
+    for path in rule_files(rules_dir):
+        hasher.update(path.relative_to(rules_dir).as_posix().encode())
+        hasher.update(b"\x00")
         hasher.update(path.read_bytes())
+        hasher.update(b"\x00")
     return hasher.hexdigest()
 
 

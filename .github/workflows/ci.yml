@@ -39,6 +39,9 @@ jobs:
       - name: Mypy
         run: uv run mypy --strict src
 
+      - name: Exercise intake and rule coverage
+        run: uv run python docs/research/probe_rule_coverage.py --verify
+
       - name: Selftest
         run: uv run yara-gate selftest
 

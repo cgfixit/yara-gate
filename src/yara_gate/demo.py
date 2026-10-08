@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from yara_gate.models import ScanResult, exit_code
+from yara_gate.models import ScanPolicy, ScanResult, exit_code
 from yara_gate.samples import base64_text, clean_text, mini_pe
 from yara_gate.scanner import scan_file
 
@@ -37,6 +37,7 @@ class DemoRequest(BaseModel):
 
     sample: DemoSample | None = None
     text: str | None = None
+    policy: ScanPolicy = ScanPolicy.default
 
     @model_validator(mode="after")
     def _one_input(self) -> DemoRequest:
@@ -59,6 +60,8 @@ class DemoFinding(BaseModel):
     length: int | None
     severity: str
     source: str
+    view: str
+    member_path: list[str]
 
 
 class DemoResponse(BaseModel):
@@ -70,6 +73,8 @@ class DemoResponse(BaseModel):
     advisory: bool
     incomplete_reason: str | None
     findings: list[DemoFinding]
+    policy: str
+    policy_reason: str | None
 
 
 def view_result(result: ScanResult) -> DemoResponse:
@@ -80,6 +85,8 @@ def view_result(result: ScanResult) -> DemoResponse:
         sha256=result.sha256,
         advisory=result.advisory,
         incomplete_reason=result.incomplete_reason,
+        policy=result.policy.value,
+        policy_reason=result.policy_reason,
         findings=[
             DemoFinding(
                 rule_id=item.rule_id,
@@ -87,6 +94,8 @@ def view_result(result: ScanResult) -> DemoResponse:
                 length=item.length,
                 severity=item.severity.value,
                 source=item.source.value,
+                view=item.view,
+                member_path=item.member_path,
             )
             for item in result.findings
         ],
@@ -111,7 +120,7 @@ def scan_request(request: DemoRequest, *, rules_dir: Path | None) -> DemoRespons
     try:
         path = root / name
         path.write_bytes(payload)
-        result = scan_file(path, rules_dir=rules_dir)
+        result = scan_file(path, rules_dir=rules_dir, policy=request.policy)
     finally:
         shutil.rmtree(root, ignore_errors=True)
     return view_result(result)
