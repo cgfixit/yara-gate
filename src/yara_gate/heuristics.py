@@ -71,15 +71,16 @@ def pdf_findings(data: bytes) -> list[Finding]:
         return []
     findings: list[Finding] = []
     for token in PDF_TOKENS:
-        offset = _token_at(data, token)
-        if offset < 0:
+        found = _pdf_name_span(data, token)
+        if found is None:
             continue
+        offset, length = found
         name = token.decode("ascii").removeprefix("/")
         findings.append(
             Finding(
                 rule_id=f"heuristic_pdf_{name}",
                 offset=offset,
-                length=len(token),
+                length=length,
                 severity=Severity.block,
                 source=FindingSource.heuristic,
             )
@@ -230,13 +231,27 @@ def _script_letter(char: str) -> bool:
     return any(name.startswith(prefix) for prefix in _LETTER_PREFIXES)
 
 
-def _token_at(data: bytes, token: bytes) -> int:
-    start = 0
-    while True:
-        offset = data.find(token, start)
-        if offset < 0:
-            return -1
-        after = offset + len(token)
-        if after >= len(data) or not chr(data[after]).isalpha():
-            return offset
-        start = offset + 1
+_PDF_NAME = re.compile(rb"/(?:[^\s/<>\[\]()#]|#[0-9A-Fa-f]{2})+")
+
+
+def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
+    for match in _PDF_NAME.finditer(data):
+        decoded = _decode_pdf_name(match.group())
+        if decoded == token or (
+            decoded.startswith(token) and not decoded[len(token) : len(token) + 1].isalpha()
+        ):
+            return match.start(), len(match.group())
+    return None
+
+
+def _decode_pdf_name(token: bytes) -> bytes:
+    decoded = bytearray()
+    index = 0
+    while index < len(token):
+        if token[index] == ord("#") and index + 2 < len(token):
+            decoded.append(int(token[index + 1 : index + 3], 16))
+            index += 3
+            continue
+        decoded.append(token[index])
+        index += 1
+    return bytes(decoded)

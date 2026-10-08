@@ -1,5 +1,6 @@
 """The demo page and the launchd plist, called the way a browser and plutil call them."""
 
+import http.client
 import json
 import plistlib
 import subprocess
@@ -81,6 +82,95 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert "__NONCE__" not in html
         assert "nonce-" in policy
         assert page.headers["X-Content-Type-Options"] == "nosniff"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _raw_post(port: int, payload: dict[str, str], headers: dict[str, str]) -> int:
+    body = json.dumps(payload).encode("utf-8")
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+    try:
+        connection.request("POST", "/api/scan", body=body, headers=headers)
+        return connection.getresponse().status
+    finally:
+        connection.close()
+
+
+def test_demo_rejects_cross_origin(rules_copy: Path) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    port = int(server.server_address[1])
+    try:
+        status = _raw_post(
+            port,
+            {"text": "hello"},
+            {
+                "Host": f"127.0.0.1:{port}",
+                "Origin": "https://evil.example",
+                "Content-Type": "application/json",
+            },
+        )
+        assert status == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_demo_rejects_text_plain(rules_copy: Path) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    port = int(server.server_address[1])
+    try:
+        status = _raw_post(
+            port,
+            {"text": "hello"},
+            {"Host": f"127.0.0.1:{port}", "Content-Type": "text/plain"},
+        )
+        assert status == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_demo_rejects_foreign_host_header(rules_copy: Path) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    port = int(server.server_address[1])
+    try:
+        status = _raw_post(
+            port,
+            {"text": "hello"},
+            {"Host": "evil.example", "Content-Type": "application/json"},
+        )
+        assert status == 403
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_demo_same_origin_ok(rules_copy: Path) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    port = int(server.server_address[1])
+    try:
+        body = json.dumps({"text": "hello from the paste box"}).encode("utf-8")
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+        connection.request(
+            "POST",
+            "/api/scan",
+            body=body,
+            headers={
+                "Host": f"127.0.0.1:{port}",
+                "Origin": f"http://127.0.0.1:{port}",
+                "Content-Type": "application/json",
+            },
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        connection.close()
+        assert response.status == 200
+        assert payload["verdict"] == "clean"
     finally:
         server.shutdown()
         server.server_close()

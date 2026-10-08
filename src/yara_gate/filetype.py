@@ -2,6 +2,7 @@
 
 import unicodedata
 from pathlib import Path
+from typing import Literal
 
 OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ZIP = b"PK\x03\x04"
@@ -54,9 +55,9 @@ def sniff(data: bytes) -> str:
         return "pdf"
     if _pe_at(data, 0):
         return "pe"
-    if data.startswith(ELF):
+    if _elf_header(data, 0):
         return "elf"
-    if data.startswith(MACHO):
+    if _macho_header(data, 0):
         return "macho"
     if data.startswith(b"\x1f\x8b"):
         return "gzip"
@@ -131,11 +132,50 @@ def embedded_exec_offset(data: bytes) -> tuple[str, int] | None:
         if _pe_at(data, found):
             return ("pe", found)
         start = found + 1
-    elf_at = data.find(ELF, 1)
-    if elf_at >= 0:
-        return ("elf", elf_at)
+    start = 1
+    while True:
+        elf_at = data.find(ELF, start)
+        if elf_at < 0:
+            break
+        if _elf_header(data, elf_at):
+            return ("elf", elf_at)
+        start = elf_at + 1
     for magic in MACHO:
-        at = data.find(magic, 1)
-        if at >= 0:
-            return ("macho", at)
+        start = 1
+        while True:
+            at = data.find(magic, start)
+            if at < 0:
+                break
+            if _macho_header(data, at):
+                return ("macho", at)
+            start = at + 1
     return None
+
+
+def _elf_header(data: bytes, offset: int) -> bool:
+    if offset < 0 or offset + 16 > len(data) or data[offset : offset + 4] != ELF:
+        return False
+    return data[offset + 4] in (1, 2) and data[offset + 5] in (1, 2) and data[offset + 6] == 1
+
+
+def _macho_header(data: bytes, offset: int) -> bool:
+    if offset < 0 or offset + 28 > len(data):
+        return False
+    magic = data[offset : offset + 4]
+    if magic not in MACHO:
+        return False
+    little = magic in (b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe")
+    wide = magic in (b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe")
+    endian: Literal["little", "big"] = "little" if little else "big"
+    header = 32 if wide else 28
+    if offset + header > len(data):
+        return False
+    cputype = int.from_bytes(data[offset + 4 : offset + 8], endian, signed=True)
+    if (cputype & 0xFF) not in (7, 12):
+        return False
+    filetype = int.from_bytes(data[offset + 12 : offset + 16], endian)
+    ncmds = int.from_bytes(data[offset + 16 : offset + 20], endian)
+    sizeofcmds = int.from_bytes(data[offset + 20 : offset + 24], endian)
+    if not 1 <= filetype <= 12 or not 0 < ncmds <= 512:
+        return False
+    return sizeofcmds <= len(data) - (offset + header)

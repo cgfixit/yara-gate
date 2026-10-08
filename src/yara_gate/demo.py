@@ -170,6 +170,9 @@ class DemoHandler(BaseHTTPRequestHandler):
         if self.path.split("?", 1)[0] != "/api/scan":
             self._send(404, b'{"error":"not found"}', "application/json")
             return
+        if not self._same_origin():
+            self._error(403, "rejected")
+            return
         try:
             raw = self._read_body()
             payload = json.loads(raw)
@@ -189,6 +192,16 @@ class DemoHandler(BaseHTTPRequestHandler):
             self._error(500, "scan failed")
             return
         self._send(200, view.model_dump_json().encode("utf-8"), "application/json")
+
+    def _same_origin(self) -> bool:
+        port = int(self.server.server_address[1])
+        if self.headers.get("Host", "") != f"127.0.0.1:{port}":
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None and origin != f"http://127.0.0.1:{port}":
+            return False
+        content_type = self.headers.get("Content-Type", "")
+        return content_type.split(";", 1)[0].strip().lower() == "application/json"
 
     def _read_body(self) -> bytes:
         header = self.headers.get("Content-Length")
