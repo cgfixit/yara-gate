@@ -7,7 +7,7 @@ from typing import Any
 
 from yara_gate.quarantine import GatePaths
 from yara_gate.report import redact
-from yara_gate.rules import bundled_local_dir, default_rules_dir, project_root
+from yara_gate.rules import default_rules_dir, shipped_benign_dir
 from yara_gate.scanner import MAX_FILE_BYTES
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -83,18 +83,7 @@ def _confirmed_slot(home: GatePaths, sha256: str) -> Path:
 
 
 def _default_benign() -> Path:
-    checkout = project_root() / "tests" / "fixtures" / "benign"
-    if checkout.is_dir():
-        return checkout
-    bundled = Path(__file__).resolve().parent / "bundled_rules" / "benign"
-    if bundled.is_dir():
-        return bundled
-    anchor = bundled_local_dir()
-    if anchor is not None:
-        sibling = anchor.parent / "benign"
-        if sibling.is_dir():
-            return sibling
-    return checkout
+    return shipped_benign_dir()
 
 
 def _distinctive(data: bytes, benign_dir: Path) -> list[str]:

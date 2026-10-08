@@ -117,7 +117,12 @@ def install_agent(
 @app.command()
 def selftest() -> None:
     """Run the fixture matrix. Exit 0 only when every verdict matches."""
-    raise typer.Exit(code=run_selftest())
+    try:
+        code = run_selftest()
+    except Exception as exc:
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
+    raise typer.Exit(code=code)
 
 
 @app.command()

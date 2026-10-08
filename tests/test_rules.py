@@ -1,5 +1,7 @@
 import hashlib
 import io
+import json
+import os
 import subprocess
 import urllib.request
 import zipfile
@@ -219,6 +221,112 @@ def test_wheel_install_smoke(tmp_path: Path) -> None:
     )
     assert scanned.returncode == 0
     assert blocked.returncode == 1
+
+
+def test_selftest_unexpected_error_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> int:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("yara_gate.cli.run_selftest", boom)
+    result = CliRunner().invoke(app, ["selftest"])
+    text = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "incomplete: RuntimeError" in text
+    assert "Traceback" not in text
+
+
+@pytest.mark.slow
+def test_wheel_install_end_to_end(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    dist = tmp_path / "dist"
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(dist)], cwd=root, check=True)
+    wheel = next(dist.glob("*.whl"))
+    venv = tmp_path / "venv"
+    subprocess.run(["uv", "venv", str(venv), "--python", "3.12"], check=True)
+    python = venv / "bin" / "python"
+    subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
+    cli = venv / "bin" / "yara-gate"
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "home")
+    env["XDG_DATA_HOME"] = str(tmp_path / "xdg")
+    env["XDG_CACHE_HOME"] = str(tmp_path / "cache")
+    env.pop("YARA_GATE_RULES", None)
+    env.pop("GITHUB_TOKEN", None)
+    env.pop("GH_TOKEN", None)
+    gate = tmp_path / "home" / "YaraGate"
+
+    def run(args: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(cli), *args],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    selftest = run(["selftest"])
+    assert selftest.returncode == 0, selftest.stderr[-2000:]
+    assert "SELFTEST PASS" in selftest.stdout
+
+    eicar_path = tmp_path / "eicar.bin"
+    subprocess.run(
+        [
+            str(python),
+            "-c",
+            "from yara_gate.samples import eicar_bytes\n"
+            f"open({str(eicar_path)!r}, 'wb').write(eicar_bytes())\n",
+        ],
+        check=True,
+        env=env,
+    )
+    payload = eicar_path.read_bytes()
+    inbox = gate / "inbox"
+    inbox.mkdir(parents=True)
+    (inbox / "eicar.com").write_bytes(payload)
+    blocked = run(["scan", str(inbox / "eicar.com"), "--home", str(gate)])
+    assert blocked.returncode == 1, blocked.stdout + blocked.stderr
+    sha = next(
+        line.split("sha256=", 1)[1].split()[0]
+        for line in blocked.stdout.splitlines()
+        if "sha256=" in line
+    )
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    (scope / "copy.com").write_bytes(payload)
+    hunted = run(
+        [
+            "hunt",
+            "--confirmed",
+            sha,
+            "--reason",
+            "wheel confirmed eicar",
+            "--scope",
+            str(scope),
+            "--home",
+            str(gate),
+        ]
+    )
+    assert hunted.returncode == 0, hunted.stderr
+
+    def scan_bytes(name: str, body: bytes) -> int:
+        path = tmp_path / "drops" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+        result = run(["scan", str(path), "--home", str(gate)])
+        return result.returncode
+
+    assert scan_bytes("zero.md", "\u200b".encode()) == 1
+    assert scan_bytes("bidi.md", "\u202e".encode()) == 1
+    assert scan_bytes("eicar.com", payload) == 1
+    assert scan_bytes("clean.txt", b"ordinary notes\n") == 0
+    promoted = run(["rules", "promote", sha[:12]])
+    assert promoted.returncode == 0, promoted.stderr
+    assert scan_bytes("zero-again.md", "\u200b".encode()) == 1
+    copy_scan = run(["scan", str(scope / "copy.com"), "--home", str(gate)])
+    assert copy_scan.returncode == 1, copy_scan.stdout
+    report = json.loads((gate / "reports" / f"{sha}.json").read_text(encoding="utf-8"))
+    assert any(str(item["rule_id"]).startswith("hunt_") for item in report["findings"])
 
 
 def _use_installed_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> Path:

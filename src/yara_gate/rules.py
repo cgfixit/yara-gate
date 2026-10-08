@@ -69,6 +69,14 @@ def shipped_local_dir() -> Path:
     return project_root() / "rules" / "local"
 
 
+def shipped_benign_dir() -> Path:
+    """Benign corpus shipped beside the packaged rules, else the checkout fixtures."""
+    bundled = Path(__file__).resolve().parent / "bundled_rules" / "benign"
+    if bundled.is_dir() and any(bundled.iterdir()):
+        return bundled
+    return project_root() / "tests" / "fixtures" / "benign"
+
+
 def _same_path(left: Path, right: Path) -> bool:
     return left.expanduser().resolve() == right.expanduser().resolve()
 

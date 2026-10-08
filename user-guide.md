@@ -24,7 +24,7 @@ Check the install with the built-in fixture run:
 uv run yara-gate selftest
 ```
 
-The last line is `SELFTEST PASS` and the exit code is 0. That command uses a temporary folder. It does not change `~/YaraGate`.
+The last line is `SELFTEST PASS` and the exit code is 0. That command uses a temporary folder. It does not change `~/YaraGate`. An installed copy takes its rules from the packaged set. An unexpected error prints `incomplete: <Type>` and exits 2.
 
 ## 2. Download the curated rules once
 
