@@ -4,6 +4,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+import yara_x
+
 from yara_gate.hunt import hunt
 from yara_gate.models import Verdict
 from yara_gate.quarantine import GatePaths, process_inbox_file
@@ -97,6 +99,33 @@ def test_hunt_persists_reason_and_scope_in_meta(tmp_path: Path, rules_copy: Path
     assert 'confirmed_by = "reviewer"' in text
     assert 'created = "' in text
     assert "\nsecond line" not in text
+
+
+def test_hunt_meta_truncates_before_escaping(tmp_path: Path, rules_copy: Path) -> None:
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    src = home.inbox / "eicar.com"
+    src.write_bytes(eicar_bytes())
+    blocked = process_inbox_file(home, src, rules_dir=rules_copy)
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    cases = (
+        (("a" * 299) + "\\", ("a" * 299) + "\\\\"),
+        ('say "hello"\nnext line\x01', 'say \\"hello\\" next line'),
+        ("déjà vu — 東京", "déjà vu — 東京"),
+    )
+    for reason, expected in cases:
+        rule_path, _hits = hunt(
+            home,
+            blocked.sha256,
+            reason=reason,
+            scope=scope,
+            rules_dir=rules_copy,
+        )
+        text = rule_path.read_text(encoding="utf-8")
+        yara_x.compile(text)
+        assert f'reason = "{expected}"' in text
+        assert "\x01" not in text
 
 
 def test_all_local_rules_have_required_meta() -> None:

@@ -169,7 +169,7 @@ uv run yara-gate hunt --confirmed <sha256> --reason "why this file is bad" --sco
 uv run yara-gate rules promote <id>
 ```
 
-`--confirmed` must name a file already in `blocked/`, and `--reason` is required. The candidate keeps distinctive strings longer than 8 bytes that do not appear in `tests/fixtures/benign/`. It must hit the confirmed file and zero benign files. It is written to `<rules-root>/local/hunt_<first 12 hex of the sha>.yar` with `status = "candidate"`. In a checkout that root is `rules/`. In an installed copy it is the user-data directory. Creating `local/` there does not hide the packaged rules. Candidates are not loaded as block rules. `rules promote` rewrites the status to `promoted` and `verdict_on_match` to `block` only after the new text compiles.
+`--confirmed` must name a file already in `blocked/`, and `--reason` is required. The reason is collapsed to one line, cut at 300 characters, then escaped. Control characters are removed. Non-ASCII text is stored as itself. The candidate keeps distinctive strings longer than 8 bytes that do not appear in `tests/fixtures/benign/`. It must hit the confirmed file and zero benign files. It is written to `<rules-root>/local/hunt_<first 12 hex of the sha>.yar` with `status = "candidate"`. In a checkout that root is `rules/`. In an installed copy it is the user-data directory. Creating `local/` there does not hide the packaged rules. Candidates are not loaded as block rules. `rules promote` rewrites the status to `promoted` and `verdict_on_match` to `block` only after the new text compiles.
 
 ## Library
 

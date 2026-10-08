@@ -137,7 +137,7 @@ uv run yara-gate hunt \
   --scope ~/Documents
 ```
 
-`--reason` is required. The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
+`--reason` is required. It is collapsed to one line, cut at 300 characters, then escaped, so a trailing backslash still compiles. Control characters are removed and non-ASCII text is kept. The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
 
 When you want that rule to block later scans:
 

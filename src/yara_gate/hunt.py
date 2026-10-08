@@ -1,6 +1,7 @@
 """Build a candidate rule only after a file in blocked/ is confirmed."""
 
 import re
+import unicodedata
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -142,7 +143,8 @@ def _escape(text: str) -> str:
 
 def _meta(text: str) -> str:
     one_line = " ".join(text.split())
-    return _escape(one_line)[:300]
+    visible = "".join(ch for ch in one_line if unicodedata.category(ch)[0] != "C")
+    return _escape(visible[:300])
 
 
 def _hit(rules: Any, path: Path) -> bool:
