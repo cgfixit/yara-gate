@@ -153,6 +153,8 @@ Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases suc
 
 The default policy also reports authority/action spoofing, secret-transfer requests, selected encoded instructions, external templates, and download/execute chains as advisory. Agent-ingest turns every advisory into a block, including benign security examples. ZIP/tar/gzip members receive the same rules and document heuristics; recognized unsupported or encrypted archives remain incomplete. See the README for exact resource and decoding limits.
 
+The local pack also reports combined ClickFix verification/clipboard/shell instructions, HTML payload assembly with a script/archive download name, encoded PowerShell with concealment or policy-bypass flags, and HTTP(S) `mshta` launches. An ordinary CAPTCHA, copy widget, or encoded command alone is insufficient for these new rules. Legitimate code using the full combination can still be advisory. The [delivery-rule notes](docs/research/modern-delivery-rules.md) list the supported spellings, benign collisions, and source references.
+
 Do not expect a block on a brand-new payload that no rule mentions. Updating the packs helps for signatures that have been published. It does not make YARA understand a file.
 
 ## 8. When something looks wrong
