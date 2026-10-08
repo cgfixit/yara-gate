@@ -2,6 +2,7 @@ rule script_encoded_powershell {
     meta:
         author = "yara-gate"
         description = "Encoded PowerShell launch with hidden-window or execution-policy-bypass flags on the same command line"
+        severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe"
         reference_campaign = "https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/"

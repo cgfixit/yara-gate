@@ -1,11 +1,16 @@
 """Build a candidate rule only after a file in blocked/ is confirmed."""
 
+import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from yara_gate.quarantine import GatePaths
-from yara_gate.rules import default_rules_dir, project_root
+from yara_gate.report import redact
+from yara_gate.rules import bundled_local_dir, default_rules_dir, project_root
 from yara_gate.scanner import MAX_FILE_BYTES
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def hunt(
@@ -16,17 +21,23 @@ def hunt(
     *,
     rules_dir: Path | None = None,
     benign_dir: Path | None = None,
+    confirmed_by: str = "operator",
 ) -> tuple[Path, list[Path]]:
     if not reason.strip():
         raise ValueError("reason is required")
-    slot = home.blocked / sha256
-    if not slot.is_dir():
-        raise FileNotFoundError(sha256)
+    slot = _confirmed_slot(home, sha256)
     sample = _one_file(slot)
     strings = _distinctive(sample.read_bytes(), benign_dir or _default_benign())
     if not strings:
         raise RuntimeError("no distinctive strings")
-    rule_text = _rule(sha256[:12], strings)
+    rule_text = _rule(
+        sha256[:12],
+        strings,
+        reason=reason,
+        confirmed_sha256=sha256,
+        scope=redact(str(scope)),
+        confirmed_by=confirmed_by,
+    )
     import yara_x
 
     rules = yara_x.compile(rule_text)
@@ -59,8 +70,31 @@ def _files(root: Path) -> list[Path]:
     ]
 
 
+def _confirmed_slot(home: GatePaths, sha256: str) -> Path:
+    if _SHA256.fullmatch(sha256) is None:
+        raise ValueError("invalid sha256")
+    blocked = home.blocked.resolve()
+    slot = (home.blocked / sha256).resolve()
+    if not slot.is_relative_to(blocked):
+        raise ValueError("invalid sha256")
+    if not slot.is_dir():
+        raise FileNotFoundError(sha256)
+    return slot
+
+
 def _default_benign() -> Path:
-    return project_root() / "tests" / "fixtures" / "benign"
+    checkout = project_root() / "tests" / "fixtures" / "benign"
+    if checkout.is_dir():
+        return checkout
+    bundled = Path(__file__).resolve().parent / "bundled_rules" / "benign"
+    if bundled.is_dir():
+        return bundled
+    anchor = bundled_local_dir()
+    if anchor is not None:
+        sibling = anchor.parent / "benign"
+        if sibling.is_dir():
+            return sibling
+    return checkout
 
 
 def _distinctive(data: bytes, benign_dir: Path) -> list[str]:
@@ -81,7 +115,16 @@ def _distinctive(data: bytes, benign_dir: Path) -> list[str]:
     return kept[:8]
 
 
-def _rule(sha12: str, strings: list[str]) -> str:
+def _rule(
+    sha12: str,
+    strings: list[str],
+    *,
+    reason: str,
+    confirmed_sha256: str,
+    scope: str,
+    confirmed_by: str,
+) -> str:
+    created = date.today().isoformat()
     body = [
         f"rule hunt_{sha12} {{",
         "    meta:",
@@ -90,6 +133,11 @@ def _rule(sha12: str, strings: list[str]) -> str:
         '        severity = "advisory"',
         '        verdict_on_match = "advisory"',
         '        status = "candidate"',
+        f'        reason = "{_meta(reason)}"',
+        f'        confirmed_sha256 = "{_meta(confirmed_sha256)}"',
+        f'        scope = "{_meta(scope)}"',
+        f'        created = "{created}"',
+        f'        confirmed_by = "{_meta(confirmed_by)}"',
         '        reference = "operator-confirmed"',
         "    strings:",
     ]
@@ -101,6 +149,11 @@ def _rule(sha12: str, strings: list[str]) -> str:
 
 def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _meta(text: str) -> str:
+    one_line = " ".join(text.split())
+    return _escape(one_line)[:300]
 
 
 def _hit(rules: Any, path: Path) -> bool:

@@ -127,6 +127,11 @@ def hunt(
     scope: Path = typer.Option(..., "--scope", help="Directory to search for variants."),
     home: Path = typer.Option(Path.home() / "YaraGate", "--home"),
     rules: Path | None = typer.Option(None, "--rules"),
+    confirmed_by: str = typer.Option(
+        "operator",
+        "--confirmed-by",
+        help="Label stored on the candidate. Defaults to operator.",
+    ),
 ) -> None:
     """Write a candidate rule from a confirmed file. Candidates do not block."""
     from yara_gate.hunt import hunt as build_hunt
@@ -138,7 +143,11 @@ def hunt(
             reason,
             scope,
             rules_dir=rules,
+            confirmed_by=confirmed_by,
         )
+    except ValueError as exc:
+        typer.echo(f"incomplete: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     except Exception as exc:
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc

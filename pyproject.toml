@@ -31,6 +31,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel.force-include]
 "rules/local" = "yara_gate/bundled_rules/local"
+"tests/fixtures/benign" = "yara_gate/bundled_rules/benign"
 
 [dependency-groups]
 dev = ["mypy>=1.11", "pytest>=8.2", "ruff>=0.6"]

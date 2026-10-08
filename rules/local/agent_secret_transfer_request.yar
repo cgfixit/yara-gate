@@ -2,6 +2,7 @@ rule agent_secret_transfer_request {
     meta:
         author = "yara-gate"
         description = "Request to read sensitive material and transfer it to an outbound destination"
+        severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:

@@ -2,6 +2,7 @@ rule web_html_smuggling {
     meta:
         author = "yara-gate"
         description = "Base64 decoding and Blob URL creation near a script, executable, disk image or archive download"
+        severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://www.microsoft.com/en-us/security/blog/2021/11/11/html-smuggling-surges-highly-evasive-loader-technique-increasingly-used-in-banking-malware-targeted-attacks/"
     strings:

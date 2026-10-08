@@ -2,6 +2,7 @@ rule agent_role_spoof_action {
     meta:
         author = "yara-gate"
         description = "Claimed system authority followed by an override or disclosure request"
+        severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
