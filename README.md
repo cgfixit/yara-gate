@@ -107,6 +107,12 @@ Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `
 
 Every scan writes both report files, including a clean scan. A finding stores the rule id, byte offset, and byte length. It does not store the matched bytes. Paths under your home directory are written as `~/...`. The path in the report is the quarantine path at scan time. The file is moved to `clean/` or `blocked/` after the report is written.
 
+For automation, `yara-gate scan path/to/file --json` emits the same report schema
+as one JSON object per file on stdout. Directory scans use JSON Lines and keep
+the aggregate exit code. Diagnostics go to stderr. See the [integration contract
+and ingestion example](docs/integrations.md); consumers must check both the
+process exit and the returned records.
+
 Findings also identify their YARA namespace, content `view`, and archive `member_path` as container ordinals such as `zip:0` (including directory entries in the numbering). Member names and decoded text are not copied into reports. Offsets refer to that member/view, not to the enclosing archive. SARIF keeps derived/member offsets in result properties instead of attaching them to the outer file's physical region. Scan records include the engine version, ruleset fingerprint, and skipped vendor-file count.
 
 ## Rule packs
