@@ -1,6 +1,7 @@
 """Command line for yara-gate. Unhandled errors exit 2."""
 
 import hashlib
+import json
 import os
 import stat
 from pathlib import Path
@@ -11,7 +12,7 @@ import typer
 from yara_gate import __version__
 from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
-from yara_gate.report import write_reports
+from yara_gate.report import compact_report, write_reports
 from yara_gate.rules import (
     RuleDownloadError,
     compile_sources,
@@ -60,10 +61,15 @@ def scan(
         "--follow-symlinks",
         help="Scan a symlink target outside the inbox. Inbox links are never followed.",
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit one JSON report per file to stdout (JSON Lines)."
+    ),
 ) -> None:
     """Scan a file or folder. Inbox paths are quarantined. Other paths stay put."""
     try:
-        code = _scan_path(path, GatePaths(home), timeout_s, rules, policy, follow_symlinks)
+        code = _scan_path(
+            path, GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
+        )
     except typer.Exit:
         raise
     except Exception as exc:
@@ -252,6 +258,7 @@ def _scan_path(
     rules: Path | None,
     policy: ScanPolicy = ScanPolicy.default,
     follow_symlinks: bool = False,
+    json_output: bool = False,
 ) -> int:
     home.ensure()
     try:
@@ -270,11 +277,14 @@ def _scan_path(
             result = _refuse_symlink(home, item)
         else:
             result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
-        reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
-        typer.echo(
-            f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
-            f"exit={exit_code(result)}{reason}"
-        )
+        if json_output:
+            typer.echo(json.dumps(compact_report(result), separators=(",", ":")))
+        else:
+            reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
+            typer.echo(
+                f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
+                f"exit={exit_code(result)}{reason}"
+            )
         worst = max(worst, exit_code(result))
     return worst
 

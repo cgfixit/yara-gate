@@ -15,7 +15,7 @@ def write_reports(
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
     sarif_path.write_text(json.dumps(_sarif(result), indent=2) + "\n", encoding="utf-8")
-    json_path.write_text(json.dumps(_compact(result), indent=2) + "\n", encoding="utf-8")
+    json_path.write_text(json.dumps(compact_report(result), indent=2) + "\n", encoding="utf-8")
     return sarif_path, json_path
 
 
@@ -26,7 +26,8 @@ def redact(path: str) -> str:
     return path
 
 
-def _compact(result: ScanResult) -> dict[str, object]:
+def compact_report(result: ScanResult) -> dict[str, object]:
+    """Return the shared JSON report schema, without matched bytes or home prefixes."""
     return {
         "sha256": result.sha256,
         "verdict": result.verdict.value,

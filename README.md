@@ -8,7 +8,7 @@ Use it to make the handoff from an incoming file to a reader explicit:
 - **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
 - **Keep evidence for review and automation.** JSON/SARIF reports record rule IDs, severity, policy, content views, and scan completeness without copying matched bytes into the report. Stable exit codes let a caller distinguish allowed, blocked, and incomplete results.
 
-The scan does not use the network. Curated rule packs are downloaded only when you run `rules install --allow-network` or `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
+The scan doesn't use the network. Curated rule packs are downloaded only when you run `rules install --allow-network` or `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
 
 The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate).
 
@@ -106,6 +106,12 @@ Under `agent-ingest`, advisory findings produce a `block` verdict, exit 1, and `
 ## Reports
 
 Every scan writes both report files, including a clean scan. A finding stores the rule id, byte offset, and byte length. It does not store the matched bytes. Paths under your home directory are written as `~/...`. The path in the report is the quarantine path at scan time. The file is moved to `clean/` or `blocked/` after the report is written.
+
+For automation, `yara-gate scan path/to/file --json` emits the same report schema
+as one JSON object per file on stdout. Directory scans use JSON Lines and keep
+the aggregate exit code. Diagnostics go to stderr. See the [integration contract
+and ingestion example](docs/integrations.md); consumers must check both the
+process exit and the returned records.
 
 Findings also identify their YARA namespace, content `view`, and archive `member_path` as container ordinals such as `zip:0` (including directory entries in the numbering). Member names and decoded text are not copied into reports. Offsets refer to that member/view, not to the enclosing archive. SARIF keeps derived/member offsets in result properties instead of attaching them to the outer file's physical region. Scan records include the engine version, ruleset fingerprint, and skipped vendor-file count.
 
