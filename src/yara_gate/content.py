@@ -149,6 +149,10 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     unescaped = html.unescape(text)
     if unescaped != text:
         yield "html-unescaped", _derived(unescaped, budget)
+    # ASCII cannot contain Cf characters or Unicode variation selectors.
+    # Check after unescaping: an ASCII entity can introduce either one.
+    if unescaped.isascii():
+        return
     # Inspect hidden formatting without modifying the original or interpreting it as authority.
     normalized = "".join(
         char

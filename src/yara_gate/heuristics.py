@@ -47,6 +47,8 @@ def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | No
 
 def joiner_findings(text: str) -> list[Finding]:
     """Block a ZWNJ or ZWJ that is not holding an emoji or a joining script together."""
+    if "\u200c" not in text and "\u200d" not in text:
+        return []
     findings: list[Finding] = []
     offset = 0
     chars = list(text)
