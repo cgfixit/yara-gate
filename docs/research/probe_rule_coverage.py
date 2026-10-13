@@ -9,8 +9,10 @@ import io
 import json
 import platform
 import shutil
+import struct
 import subprocess
 import sys
+import sysconfig
 import tarfile
 import tempfile
 import zipfile
@@ -153,10 +155,86 @@ def delivery_cases() -> dict[str, tuple[bytes, str | None]]:
     }
 
 
+def shell_link(
+    target: str,
+    arguments: str,
+    *,
+    unicode: bool = True,
+    location: str = "relative",
+    description: str = "",
+) -> bytes:
+    """Build inert MS-SHLLINK StringData/LinkInfo fixtures; never resolve a target."""
+    flags = 0x20 | (0x80 if unicode else 0) | (0x04 if description else 0)
+    fields = [description] if description else []
+    link_info = b""
+    if location == "relative":
+        flags |= 0x08
+        fields.append(target)
+    elif location == "local":
+        flags |= 0x02
+        volume = struct.pack("<4I", 17, 3, 0, 16) + b"\0"
+        path = target.encode("ascii") + b"\0"
+        link_info = struct.pack("<7I", 46 + len(path), 28, 1, 28, 45, 0, 45 + len(path))
+        link_info += volume + path + b"\0"
+    elif location == "suffix":
+        flags |= 0x02
+        share = b"\\\\example.invalid\\share\0"
+        network = struct.pack("<5I", 20 + len(share), 0, 20, 0, 0) + share
+        suffix = target.encode("ascii") + b"\0"
+        link_info = (
+            struct.pack("<7I", 28 + len(network) + len(suffix), 28, 2, 0, 0, 28, 28 + len(network))
+            + network
+            + suffix
+        )
+    else:
+        raise ValueError(f"unsupported fixture location: {location}")
+    fields.append(arguments)
+    header = bytearray(
+        struct.pack("<I", 76)
+        + bytes.fromhex("0114020000000000c000000000000046")
+        + struct.pack("<I", flags)
+        + bytes(52)
+    )
+    struct.pack_into("<I", header, 60, 1)  # SW_SHOWNORMAL
+    strings = b"".join(
+        struct.pack("<H", len(field.encode("utf-16le")) // 2 if unicode else len(field))
+        + field.encode("utf-16le" if unicode else "ascii")
+        for field in fields
+    )
+    return bytes(header) + link_info + strings + bytes(4)
+
+
+def attachment_cases() -> dict[str, tuple[bytes, str | None]]:
+    rows = json.loads((REPO / "docs/research/delivery-signatures.json").read_text())
+    cases = {}
+    for row in rows:
+        if "target" in row:
+            data = shell_link(
+                row["target"],
+                row["args"],
+                unicode=row.get("unicode", True),
+                location=row.get("location", "relative"),
+                description=row.get("description", ""),
+            )
+        else:
+            data = row["text"].encode(row.get("encoding", "utf-8"))
+        if row.get("container") == "zip":
+            data = zipped("inert.lnk" if "target" in row else "inert.cmd", data)
+        elif row.get("container") == "gzip":
+            data = gzip.compress(data, mtime=0)
+        cases[row["name"]] = data, row["expected"]
+    return cases
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--verify", action="store_true", help="Fail if the current contract regresses"
+    )
+    parser.add_argument(
+        "--benign-stdlib",
+        action="store_true",
+        help="Also check the new signatures against 100 local Python standard-library files",
     )
     args = parser.parse_args()
     failures = []
@@ -261,11 +339,14 @@ def main() -> None:
     for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
         expected[name] = "incomplete"
     delivery = delivery_cases()
+    delivery.update(attachment_cases())
     delivery_rules = {rule_id for _, rule_id in delivery.values() if rule_id}
     for name, (data, rule_id) in delivery.items():
         cases[name] = data
         expected[name] = "advisory" if rule_id else "clean"
-    source_files = sorted((REPO / "rules/local").glob("*.yar"))
+    source_files = sorted(
+        p for p in (REPO / "rules/local").iterdir() if p.suffix in {".yar", ".yara"}
+    )
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git is required to record the scanned source revision")
@@ -285,6 +366,7 @@ def main() -> None:
         "rules": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files},
         "observations": [],
         "cli_observations": [],
+        "benign_observations": [],
     }
     with tempfile.TemporaryDirectory(prefix="yara-gate-rule-research-") as directory:
         root = Path(directory)
@@ -322,6 +404,15 @@ def main() -> None:
                 ("delivery_encoded_utf16.bin", "script_encoded_powershell", "decoded-utf16", []),
                 ("delivery_clickfix.gz", "web_clickfix_lure", "raw", ["gzip:0"]),
                 ("delivery_smuggling.zip", "web_html_smuggling", "raw", ["zip:0"]),
+                (
+                    "regsvr32_entities.html",
+                    "script_regsvr32_remote_scriptlet",
+                    "html-unescaped",
+                    [],
+                ),
+                ("regsvr32_utf16be.bin", "script_regsvr32_remote_scriptlet", "decoded-utf16", []),
+                ("powershell_zip.zip", "shortcut_powershell_encoded", "raw", ["zip:0"]),
+                ("mshta_zip.zip", "shortcut_mshta_remote", "raw", ["zip:0"]),
             ):
                 if name == fixture and not any(
                     f.rule_id == rule_id and f.view == view and f.member_path == members
@@ -330,8 +421,48 @@ def main() -> None:
                     failures.append(f"{name}: missing expected member/view provenance")
             if not result.engine_version or not result.ruleset_sha256:
                 failures.append(f"{name}: missing scan provenance")
-        if compiled != 16 or skipped or error:
+        if compiled != 20 or skipped or error:
             failures.append("local rules did not all compile")
+        new_rule_ids = {rule_id for _, rule_id in attachment_cases().values() if rule_id}
+        corpus = [
+            ("shipped/" + p.name, p)
+            for p in sorted((REPO / "tests/fixtures/benign").iterdir())
+            if p.is_file()
+        ]
+        if args.benign_stdlib:
+            stdlib = Path(sysconfig.get_path("stdlib"))
+            paths = sorted(
+                path
+                for group in (
+                    "asyncio",
+                    "collections",
+                    "concurrent",
+                    "email",
+                    "http",
+                    "json",
+                    "logging",
+                    "urllib",
+                    "xml",
+                )
+                for path in (stdlib / group).rglob("*.py")
+            )[:100]
+            if len(paths) != 100:
+                failures.append("requested standard-library corpus is unavailable")
+            corpus.extend(("stdlib/" + str(p.relative_to(stdlib)), p) for p in paths)
+        for label, path in corpus:
+            result = scan_file(path, rules_dir=rules)
+            matches = sorted({f.rule_id for f in result.findings} & new_rule_ids)
+            report["benign_observations"].append(
+                {
+                    "case": label,
+                    "sha256": result.sha256,
+                    "new_signatures": matches,
+                    "verdict": result.verdict.value,
+                    "incomplete_reason": result.incomplete_reason,
+                }
+            )
+            if matches or result.incomplete_reason:
+                failures.append(f"benign corpus {label}: new signature or incomplete scan")
         cli_cases = (
             ("advisory", phrase, "default", "advisory", "clean"),
             ("block", "override\u202e".encode(), "default", "block", "blocked"),
@@ -347,6 +478,10 @@ def main() -> None:
             "delivery_smuggling.html",
             "delivery_encoded.ps1",
             "delivery_mshta.cmd",
+            "regsvr32.cmd",
+            "rundll32.cmd",
+            "powershell.lnk",
+            "mshta.lnk",
         )
         cli_cases += tuple(
             (name, cases[name], policy, verdict, destination)
@@ -400,7 +535,9 @@ def main() -> None:
             sarif_text = next((home / "reports").glob("*.sarif")).read_text()
             if phrase.decode() in sarif_text or phrase.decode() in json.dumps(compact):
                 failures.append(f"CLI {label}: report contains matched bytes")
-            if label in delivery_cli and content.decode() in sarif_text + json.dumps(compact):
+            if label in delivery_cli and content.decode(
+                errors="replace"
+            ) in sarif_text + json.dumps(compact):
                 failures.append(f"CLI {label}: report contains input content")
             for item in json.loads(sarif_text)["runs"][0]["results"]:
                 context = item["properties"]
