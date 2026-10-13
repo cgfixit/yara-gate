@@ -22,9 +22,16 @@ import subprocess
 
 completed = subprocess.run(
     [
-        "yara-gate", "scan", input_path,
-        "--json", "--policy", "agent-ingest",
-        "--home", gate_home, "--rules", rules_root,
+        "yara-gate",
+        "scan",
+        input_path,
+        "--json",
+        "--policy",
+        "agent-ingest",
+        "--home",
+        gate_home,
+        "--rules",
+        rules_root,
     ],
     capture_output=True,
     text=True,
