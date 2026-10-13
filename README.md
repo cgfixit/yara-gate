@@ -8,7 +8,7 @@ Use it to make the handoff from an incoming file to a reader explicit:
 - **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
 - **Keep evidence for review and automation.** JSON/SARIF reports record rule IDs, severity, policy, content views, and scan completeness without copying matched bytes into the report. Stable exit codes let a caller distinguish allowed, blocked, and incomplete results.
 
-The scan does not use the network. Curated rule packs are downloaded only when you run `rules install --allow-network` or `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
+The scan doesn't use the network. Curated rule packs are downloaded only when you run `rules install --allow-network` or `rules update --allow-network`. A rule is generated only after you confirm a file that is already in `blocked/`, and that candidate does not block anything until you promote it.
 
 The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate).
 
