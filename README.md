@@ -130,9 +130,9 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 16 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 20 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
-An installed copy (wheel, `uv tool`, or pipx) reads those same rules from package data. The platform user-data directory, and a `YARA_GATE_RULES` directory that does not already contain every shipped rule name, loads the packaged rules first, then `<root>/local/*.yar`, then `<root>/vendor/`. A user file with the same name as a packaged file is not compiled. `rules install` and `rules update` print `local/<name>: shadowed by bundled` and count it in `skipped_rule_files`. Candidates are never loaded. If the packaged rules are missing or unreadable, the scan exits 2 with `bundled rules missing` and does not run on user or vendor rules alone. A checkout, or an explicit `--rules` directory whose `local/` contains every shipped name, is loaded once so those files are not compiled twice.
+An installed copy (wheel, `uv tool`, or pipx) reads those same rules from package data. The platform user-data directory, and a `YARA_GATE_RULES` directory that does not already contain every shipped rule name, loads the packaged rules first, then `<root>/local/` rules (`.yar` and `.yara`), then `<root>/vendor/`. A user file with the same name as a packaged file is not compiled. `rules install` and `rules update` print `local/<name>: shadowed by bundled` and count it in `skipped_rule_files`. Candidates are never loaded. If the packaged rules are missing or unreadable, the scan exits 2 with `bundled rules missing` and does not run on user or vendor rules alone. A checkout, or an explicit `--rules` directory whose `local/` contains every shipped name, is loaded once so those files are not compiled twice.
 
 ## What this catches, and what it does not
 
@@ -140,7 +140,7 @@ Installed curated packs add known malware signatures. Local heuristics check Off
 
 Bidi overrides, embeddings, and isolates block under both policies. A zero-width space, left-to-right or right-to-left mark, word joiner, internal BOM, or Unicode tag also blocks under both policies. A ZWJ inside an emoji sequence and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters stay clean. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
 
-The four delivery-pattern additions report these rule IDs:
+The delivery-pattern rules report these IDs:
 
 | Rule ID | Required indicators | Finding severity |
 | --- | --- | --- |
@@ -148,6 +148,14 @@ The four delivery-pattern additions report these rule IDs:
 | [`web_html_smuggling`](rules/local/web_html_smuggling.yar) | Base64 decoding, Blob/URL APIs, and a nearby literal script, executable, disk-image, or archive download filename | Advisory |
 | [`script_encoded_powershell`](rules/local/script_encoded_powershell.yar) | An encoded command plus hidden-window or execution-policy-bypass flags in a bounded PowerShell command fragment | Advisory |
 | [`script_mshta_remote`](rules/local/script_mshta_remote.yar) | A direct HTTP(S) target passed to `mshta` | Advisory |
+| [`script_regsvr32_remote_scriptlet`](rules/local/script_regsvr32_remote_scriptlet.yara) | Regsvr32 with remote `/i:` and `scrobj.dll` in one bounded command | Advisory |
+| [`script_rundll32_mshtml`](rules/local/script_rundll32_mshtml.yara) | Rundll32 JavaScript protocol invoking MSHTML `RunHTMLApplication` | Advisory |
+| [`shortcut_powershell_encoded`](rules/local/shortcut_interpreter.yara) | Parsed PowerShell target plus encoded and hidden/bypass arguments | Advisory |
+| [`shortcut_mshta_remote`](rules/local/shortcut_interpreter.yara) | Parsed MSHTA target with an HTTP(S) argument | Advisory |
+
+The [October 13 attachment-signature research](docs/research/attachment-signatures.md)
+records the four newest rules, their benign boundaries, packaging checks, and
+remaining shortcut/parser limitations. They add no network or target execution.
 
 These lexical combinations can also occur in legitimate administration, export code, and security documentation. See [delivery-rule sources, exact boundaries, and verification](docs/research/modern-delivery-rules.md). They do not execute or decode the referenced payload; `agent-ingest` applies its existing hold policy to their advisories. A match identifies a pattern requiring review, not confirmed malicious intent.
 

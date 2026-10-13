@@ -1,0 +1,851 @@
+{
+  "baseline_revision": "2e8c85ad2fa22e456345efa6071e778326bf29cc",
+  "python": "3.12.12",
+  "yara_x": "1.21.0",
+  "rules": {
+    "agent_base64_blob.yar": "82ff23a8bf5bde95181f8628d99b683cd291c35d70c7bbc6695c2aaacafbf844",
+    "agent_bidi_formatting.yar": "e9dcab9ac7e78a0484063b150ec84b4988efc1b833c83419dd6d5b44ae25944e",
+    "agent_bidi_override.yar": "4bc0ed3b078670a09ab4bef0233b18f2a9f8b39207ce812670f3a9b6008d6894",
+    "agent_eicar.yar": "29b4777050186df92d1b1eb3399fa53ae1d2ebb58459faba6ed4e063949336a8",
+    "agent_encoded_instruction.yar": "6302dc817319e59ef168f29c33156a43be8142602be7fb6f55f37f96158f9ec4",
+    "agent_hidden_html.yar": "70dfd67e4af96c2267279a618b504c5b9c46cc86f0eed1b6930538794d36f9f5",
+    "agent_invisible_unicode.yar": "9e96779d3d5664118ddbeab7d670bb6b77ad147b8e0778c90e90791e963683aa",
+    "agent_prompt_injection_phrases.yar": "cf8dfdee60932e47aff6561d27892517a214c99b7f21c1f4c940d69157ffb7ba",
+    "agent_role_spoof_action.yar": "63340ac9934f0efbd0b1cb656129a47e01701dc1602d2cc1b7949f5e3629a0c0",
+    "agent_secret_transfer_request.yar": "e1b09ff551e4faefc567cbc664748ff1c60379a9d28d748e7a36b9726f647974",
+    "doc_external_template.yar": "6ba4f2a1f6e06de34633b0cf279eb3519a542f344ed0e7de88bef095bc973222",
+    "script_download_execute.yar": "692e029cc7443d5df32f1a50a8a1956a609ef99459d98209b6158fc26cf3b4ef",
+    "script_encoded_powershell.yar": "e98fd5365e7cb556c5c11613bc4f517128c6db95fc06dbc2b7256b1e616c820d",
+    "script_mshta_remote.yar": "073803065b6accf99e452e59a8422b5c8f234fdf4b82eafa03ef5fe5154636a4",
+    "script_regsvr32_remote_scriptlet.yara": "5a16e22e71fc2c9ba92589d3b66f7f9c332818a4cf77689967617bf49edaccab",
+    "script_rundll32_mshtml.yara": "dbec381918c38d1b2e3e19979068da8974d380b44b469a9de19e223544381822",
+    "shortcut_interpreter.yara": "4651912476047bac6df0777abfcb56c6490a2b94ca2a03cbbb30e024927b7c7a",
+    "web_clickfix_lure.yar": "7d82273f389348f9285a02fbaea45dc3111bdb74d2406f7f4ca46a30e14d3953",
+    "web_html_smuggling.yar": "c44358b39cb4c6e71f07257ed9bed421877f431a9d23353529e9f6d4d141b824"
+  },
+  "fixtures_sha256": "65b51c9fd96791ffe93de7a6d520cabbd661ab2b795f8cc48ba2a537b7aba479",
+  "probe_sha256": "c406c3109366fc0f0374f959b8834bd077490c218febdc3406f1a540e2c8797f",
+  "compilation": {
+    "compiled": 20,
+    "skipped": [],
+    "error": null
+  },
+  "baseline_new_cases": {
+    "clean": 50,
+    "missed_positive_indicators": 22
+  },
+  "candidate_new_cases": {
+    "positive_advisory": 22,
+    "benign_clean": 28
+  },
+  "library_cases": 120,
+  "cli_cases": 24,
+  "benign_corpus": [
+    {
+      "case": "shipped/admin.ps1",
+      "sha256": "5ae31bff8b736982b7ab9e8a533417ef769e7fee170dc89926bc69208873c6d9",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/config.yaml",
+      "sha256": "1ff3e39568a5c8ee9f9133603e88169ee8164c01b6a507193e1625987d69e2ff",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/data.json",
+      "sha256": "8f242b4c7403c6b6784fbbbbf5d9f5b86b14d1a546e67155d5aad689ada5c1b8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/emoji-persian.md",
+      "sha256": "b0cc16573fcf7aadba292fb1d4233d10c0c9e68eb56b5d6a1e9ef58d9d2ef275",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/long.md",
+      "sha256": "0494ce15320f152cd4b7c86f3a03ee0596eff673ab360632216ad4e60538675b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/notes.txt",
+      "sha256": "9fa08c9e028a6846cfdcb919c2191277089d40a38596465281a9072c46454967",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/page.html",
+      "sha256": "d91bae5db0ddf601ce8219a868d682f4603c178c673c18c36289d7e66ac833e3",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/readme.md",
+      "sha256": "d5e235ecbbecd3204c4139b39df314bf88fd359deef27cb6087597c2f6c63220",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "shipped/rows.csv",
+      "sha256": "e7f170b450aef94564dca8d507283bb177261ce3e3f29eb06b00f841675f3b20",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/__init__.py",
+      "sha256": "61102f2b5f8fb832f0558cb66391f227970b3dd34ea2a621455587b4295e89a1",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/__main__.py",
+      "sha256": "c1e67c3b5f5d964029b407e71397d9d93d8b545abde482ffb0eab02dd16ad820",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/base_events.py",
+      "sha256": "53b71bbbd79e7fb2251460119afc379ebd71bbc599d9018313cc62ef218ae795",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/base_futures.py",
+      "sha256": "2f3798c4b82f5ac77647908b157c924f734f36871d98970e72849ea9a9a07856",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/base_subprocess.py",
+      "sha256": "d69ba8f97bf8c89564cadce49427574ddb98103a5db6f04b98798240332e7adf",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/base_tasks.py",
+      "sha256": "56efac65b63db927af336fa55eb5bda93c97a2defa4734ea8d695ed20fd6712a",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/constants.py",
+      "sha256": "873fc2f9e66313c3c19c337269e704f204b59f9e91d6ecbec59f68335484d338",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/coroutines.py",
+      "sha256": "2feec17557c230a80cc2a6391bbb1c44b9f3341820b05667e36a4eb12b749436",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/events.py",
+      "sha256": "6a18b7eee5926622c146e61a7eb39726b4656e07ca41d36b06936ffb2354f0ed",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/exceptions.py",
+      "sha256": "a5971f88be14cd1417d59adf539ae48c5d818f95362a4e0eb00017e3690ab37b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/format_helpers.py",
+      "sha256": "6377b672b3f4ba8b6f0f7a5f0ea00cde24c8cddc0ca764e3329f302763477f59",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/futures.py",
+      "sha256": "f6daaf2a051fc61ea146811d7d4b4db1cac31d7f4777aa4d10617812d78bd943",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/locks.py",
+      "sha256": "5234295a0456e9a6ba2e80446848b602cd9195bca4fca2c711c6e3f41989cd86",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/log.py",
+      "sha256": "80e4cc3ded4b138baba486519e7444801a23d6ac35f229d336a407a96af7e8d2",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/mixins.py",
+      "sha256": "8f4a3e16eca845ebfba422550cbcee7340ec8166d2bff6b750a8ed0de6b9ae3c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/proactor_events.py",
+      "sha256": "62d15e99315cae52e8548f487391ae6c46827bf8e5b4bcf3382c777a494a759b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/protocols.py",
+      "sha256": "1d1b49988c338b4ef06e30f9e92d9db2e00080c341f0a3f573bb8312deb8aff6",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/queues.py",
+      "sha256": "8f020744ebd1f557dcb051a1530b504447660df906c2127a94bbcc8450ea7ef9",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/runners.py",
+      "sha256": "739e0ecbb335cfec821a39f9e225583b5911bb6e3894ef93782005f852c54263",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/selector_events.py",
+      "sha256": "b77c4b8a85f1e1e2882a2bf3bd85a4b1c1fcfd7cb37ed0d8d8eb5f9a2ea44231",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/sslproto.py",
+      "sha256": "6c7fa1b81dc41850281cbf284c99ca18e824939fa5778860327040f3a80f6218",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/staggered.py",
+      "sha256": "3998d04fcff2c8052af03f3f34dbd3bd510b2dadddd5f2629a2c1cccbecd136d",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/streams.py",
+      "sha256": "6ec5c70fd95b0d51cc1e81cd21e8abe8c1b69650148d6bb75ab4aa4797319bd4",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/subprocess.py",
+      "sha256": "7b70605716334f63cc482123b2aaa3b7c5bb7138eeab63a037bd8068d43307c1",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/taskgroups.py",
+      "sha256": "1d2bcd2da66524b45024841b94100cd6e7a7825a1b8f8ee125bf16b4ad0ca9bc",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/tasks.py",
+      "sha256": "6f6aad82d597fea1800004075b9a2481604da0035f1143af1eb267823ec460e3",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/threads.py",
+      "sha256": "39d37295383641565f0c08bd992e2f661dc8051eb17e890b834fce96bde0910e",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/timeouts.py",
+      "sha256": "3e40ca0dca3e54776579797837cd4936d73d04aae09fe0cf83ce1e5449d00163",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/transports.py",
+      "sha256": "940108bc133de399f38928cad3274f463096168d8a3ee5148f2478d3cb636f1c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/trsock.py",
+      "sha256": "c0eac37debcc51b702b808f6b7ed3e417343f5ff5f57125dad600a27eb082328",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/unix_events.py",
+      "sha256": "1fff06cce78763800f05f4d2bebfcdbc07ebf9564ca7e7222e0d91e39dee08c9",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/windows_events.py",
+      "sha256": "163927e5834c10c6c106d81cf3cfd568fd1ced7fa34d857836447d3c4cc7a9d3",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/asyncio/windows_utils.py",
+      "sha256": "e6fcffefa2521666bc2aed0f5caf8e862c1c1014ad12d2ab5fbce09c2df9c6f0",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/collections/__init__.py",
+      "sha256": "7fdb04dd248ab37909f46d2085bfee56b32d7e91e49ad3a2fad99c453295659b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/collections/abc.py",
+      "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/concurrent/__init__.py",
+      "sha256": "87ad5c8954dd56fbbca04517bf87477ff4dce575170c7dd1281d7ef1f4214ac8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/concurrent/futures/__init__.py",
+      "sha256": "9b597f6de7da771109ca7bf96a1af5ea4d5fda69b27b39312d34966d987f73cd",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/concurrent/futures/_base.py",
+      "sha256": "8c6d5f09f7c535d40fa1c30ebfcb35e0601c2abf32286a82cf151af7ddf72473",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/concurrent/futures/process.py",
+      "sha256": "66b4fe880563a604ac4a094b72c6535b56b3bb8b14f4b6025705d53d28816fba",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/concurrent/futures/thread.py",
+      "sha256": "fe940a20adc4d3e66a8ea42a4c7e6c16957b011e8ada50c4e7a7bddbcbbffa0d",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/__init__.py",
+      "sha256": "e4f46e3414c4602c9abb8b404a45e84412fc49dbe38a3d163f9575132dc7c93e",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/_encoded_words.py",
+      "sha256": "4178321600c0a19ca04cfe8542ce44487f339d15d89a473b58cea63c0b230217",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/_header_value_parser.py",
+      "sha256": "f63e90ce5f1d418cce74cd036e224f226f0ccd1ec94e2b771899a4199581e2d4",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/_parseaddr.py",
+      "sha256": "4308932872acbf4a674312a45a49b870e48026e3dfedc878ee2f512ddf2f30ba",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/_policybase.py",
+      "sha256": "284be073d7fe99d1021958e6dbeefe4c98a6c00021ea465d01aac71338d1579f",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/base64mime.py",
+      "sha256": "e2b4b87a5f42a8c5780e343f675513bbcc6abdd23fa14f8f1a7d4f7d72304770",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/charset.py",
+      "sha256": "a90653f13a4dc5eb3205079dda1d62561a8bf9a7b45585f5dbf90aa31a966680",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/contentmanager.py",
+      "sha256": "2d81026aef17e4786b15d9ec0629304987e3f275a0fd0a421a81b4ed87234b2c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/encoders.py",
+      "sha256": "690b275529788cc48e8f541a2aef321dc31e92f75764ac7924896db72d8a9555",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/errors.py",
+      "sha256": "dbfb4bbfc85e9d556d3385dc6356518846d8a122bc643b171ea61b6e8dc42c8b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/feedparser.py",
+      "sha256": "6046239fcdd6977d1c25841581cabedaeec8046cc5fedcb8ff2d6450a36442bd",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/generator.py",
+      "sha256": "e5b7a15b4ae8208991d3ed8358c0a4482f727d393285dafeb2a0d77df9ee627e",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/header.py",
+      "sha256": "4d9baa908ad5288dd8fad8cf20b3802ffac77ba1642727804a633b201c56e5ca",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/headerregistry.py",
+      "sha256": "fada56c25b6a457c6a62af43f9f929bbc29424103ce65f40f114adb4fdf3d39f",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/iterators.py",
+      "sha256": "1080a2d03779176d6d45f6ecd976dbe69f5579f7e4e83b75224c3f92fd258102",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/message.py",
+      "sha256": "57fc451e7bc431389706dc00c0ff2456aee2c41f4786a5bce8475b9870f70684",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/application.py",
+      "sha256": "b82a944ccba03e7e7eec46232e50ffe4ce2c32f4b0e26662e6bde30d533584ae",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/audio.py",
+      "sha256": "856263b25a3384a7450a1a0b9869fb897b84f893b2e7147c7e045ae50d132cd3",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/base.py",
+      "sha256": "9a7b36653b5657525a0aeeaa72d4a0b09f598e6edc29c139c2dc2612b7d29fb8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/image.py",
+      "sha256": "460be5b50cfcaab8e72a73f24f14ab062cedf1a40a775b8b0d80c13aed44bb5e",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/message.py",
+      "sha256": "30fccea73b874b5ddaccbd3c64936833749ff039f08d40524c1b0b25b8e8e2b8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/multipart.py",
+      "sha256": "8bf2beca6de95d66f12968380a428d3bb0a28a8a6ea2078da521511e1ed80a38",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/nonmultipart.py",
+      "sha256": "4eb9ad32603d66fc9d55aebcc4d3cf759edd9e95a591d38690659afb2e57b050",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/mime/text.py",
+      "sha256": "71c56a41675a36801259c9946f7b7bf838e6c29c453ba8c34d89401f2b972d6c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/parser.py",
+      "sha256": "88890ea9994c55ff7d6c1fd570fece2785f51ed407ee95df4aff946e250bcd66",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/policy.py",
+      "sha256": "35fcbece24fac56fdefe15c93351eefda47c3440204746b8519e71d4633b0f3e",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/quoprimime.py",
+      "sha256": "77b454bd3ba3b5e3776be28ae3a0fd8de5d1e50d5b8ee10dd539c37c2bd68082",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/email/utils.py",
+      "sha256": "65d259aded3b7d29609d320decdb59cb0a0f7f0e5c453e1d3c380e8a4a5d61c9",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/http/__init__.py",
+      "sha256": "17f4f6832cfc84b5b9600414bab80b77e67ccb611bdfed10a3f2beca9d0d568b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/http/client.py",
+      "sha256": "a34fb28ab2cf55ed3a6a4ee4d78fc235d69f004afba7a6d3308d5bcb30f17dcc",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/http/cookiejar.py",
+      "sha256": "2a64dbc46edd0173600f32d195531741de562522da28bc76c2f97dccceb37ddb",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/http/cookies.py",
+      "sha256": "e39ad65347ed123057fe200d06cbed270d026c88ce2ee249b67b8c3847270547",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/http/server.py",
+      "sha256": "dd84edf960a32b501e768da99d4a1f5ae2bcada3d741cd21c525f4791374d081",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/json/__init__.py",
+      "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/json/decoder.py",
+      "sha256": "382cd02af6f7efede5a6d4abbcda1015e5c7a75794b0016022878f9cf32a24f6",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/json/encoder.py",
+      "sha256": "52bfb1b66029cc70fa3bd7fe11df9f2e03922d413407a341b387a22c987f24f8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/json/scanner.py",
+      "sha256": "572958017eae8842eeddd0e3d18d3c56cc0a197348224915e1d87ce937841764",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/json/tool.py",
+      "sha256": "d5174b728b376a12cff3f17472d6b9b609c1d3926f7ee02d74d60c80afd60c77",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/logging/__init__.py",
+      "sha256": "43f86bbc08fdd5c7b6e697abffe1381f534a92bb32e1f1aee8360d6a142592a1",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/logging/config.py",
+      "sha256": "6b4bdac4318ee794f667a5d5df30040abf70b9786ec5ed8bf597bd8ad0b71d27",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/logging/handlers.py",
+      "sha256": "e0d31066e1d11142dc795af60351ea3610c2a08ff1cedf705743ce4522517495",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/error.py",
+      "sha256": "d12b3cc66af3f42a8ebe63e1c91d24f92c6237b6a93a3702938dffabd812d77b",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/parse.py",
+      "sha256": "e6af7f475262f1de335bb2e41e26adb94d6103977cf5fe1ddc430dc6a3b1623f",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/request.py",
+      "sha256": "b9e541ae5703eb881128a4f76ebc0f00ef7ea56e8724883df413d6447ea59729",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/response.py",
+      "sha256": "7e6c3b6d7a95f0d74f5968f51a87adae8a51bf42390cdfec98c7a99203e7bb76",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/urllib/robotparser.py",
+      "sha256": "644cc6d2b09948e8782cb1e7dea3bb39a2d83932c67e7a8eae65a711318c002c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/__init__.py",
+      "sha256": "34296f728e7fe68cccb97a9f6edbf3bf3a686f44044c744fe85f207a92ed4811",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/NodeFilter.py",
+      "sha256": "9bfacbbb64e239a75591a7260b3ed86748eeb4366e6c40f3542753e79bace9a7",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/__init__.py",
+      "sha256": "b415a6f3d3663c3ac332ee4a0f4213eadad9281508dc97410e258a03633b063a",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/domreg.py",
+      "sha256": "826b02a803930834b96b1086cbee7db1d21c684f65dd3073706dc7bb5ba1a3e8",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/expatbuilder.py",
+      "sha256": "80598dbc5970feaa36ea2b7549e3e76dd018fb80cf79e4a5e27e9e71af60c82c",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/minicompat.py",
+      "sha256": "42974c4c67803dfe80b016ff8aeea0d1e5c751703ab3aec5be765f4e534367be",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/minidom.py",
+      "sha256": "af4ee09b06efc54e7fe58032d8338c4bc8578094946d03a200740deab25d97cb",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/pulldom.py",
+      "sha256": "614b88673d496a360e6b10efe8d733c7c0826fb214470ff12f24a1e597699870",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/dom/xmlbuilder.py",
+      "sha256": "26883dc30a461cb6a3583bd79d363858059569c04e94e3787d4d028f5fab7354",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/etree/ElementInclude.py",
+      "sha256": "8e10c99668216701224831c82f13b36d29cd408554c19e34d290c351595df4ce",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/etree/ElementPath.py",
+      "sha256": "ae8a80a8b51567b4f0965481682705e70c73dd6bfa145283f630d6833f1b4975",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    },
+    {
+      "case": "stdlib/xml/etree/ElementTree.py",
+      "sha256": "897618a09d05dadfa9d1707b39533526be69bf01d133747395d27fdc23db3f9f",
+      "new_signatures": [],
+      "verdict": "clean",
+      "incomplete_reason": null
+    }
+  ],
+  "failure_paths": [
+    {
+      "case": "required-rule",
+      "reason": "local rule compile failed"
+    },
+    {
+      "case": "vendor-skip",
+      "skipped": 1
+    },
+    {
+      "case": "deadline",
+      "reason": "timeout"
+    }
+  ],
+  "verification": {
+    "passed": true,
+    "failures": []
+  },
+  "large_text_median_seconds": {
+    "ascii.txt": 0.47728920900044614,
+    "utf16.txt": 0.49436749999949825,
+    "entities.html": 0.589202416000262
+  },
+  "repeated_commands": [
+    {
+      "case": "regsvr32",
+      "bytes": 1048576,
+      "seconds": 0.13922966599966458,
+      "verdict": "clean"
+    },
+    {
+      "case": "rundll32",
+      "bytes": 1048576,
+      "seconds": 0.13354591699862794,
+      "verdict": "clean"
+    }
+  ],
+  "wheel": {
+    "sha256": "145dc44c9202a98f3fc20774b93b998a7150a99873f31b58534673aea9c1ef00",
+    "compiled": 20,
+    "library_cases": 4,
+    "cli_cases": 4
+  }
+}
