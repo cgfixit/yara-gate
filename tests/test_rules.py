@@ -401,6 +401,26 @@ def test_user_local_rule_layers_on_top(tmp_path: Path, monkeypatch: pytest.Monke
     assert bundled_result.verdict is Verdict.block
 
 
+def test_cache_without_skip_list_recompiles(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    monkeypatch.setattr("yara_gate.rules._user_cache_dir", lambda: cache)
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    (rules_copy / "vendor" / "bad.yar").write_text(
+        "rule broken { condition: nope }\n", encoding="utf-8"
+    )
+    assert compile_sources(rules_copy)[4] == 1
+    for path in cache.glob("*.skipped"):
+        path.unlink()
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    _rules, skipped, error, _count, skip_count = compile_sources(rules_copy)
+    assert error is None
+    assert skip_count == 1
+    assert skipped == ["vendor/bad.yar: CompileError"]
+    assert sorted(path.suffix for path in cache.iterdir()) == [".skipped", ".yarc"]
+
+
 def test_user_file_cannot_shadow_bundled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _use_installed_root(monkeypatch, tmp_path / "user-data")
     local = root / "local"
