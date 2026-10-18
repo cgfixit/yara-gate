@@ -1,5 +1,9 @@
+import os
+import stat
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from yara_gate.samples import clean_text, eicar_bytes, injection_markdown
 
@@ -106,3 +110,49 @@ def test_scan_exit_codes(tmp_path: Path) -> None:
     assert missing_proc.returncode == 2
     assert clean.is_file()
     assert blocked.is_file()
+
+
+def _false_rules(tmp_path: Path) -> Path:
+    rules = tmp_path / "rules"
+    (rules / "local").mkdir(parents=True)
+    (rules / "local" / "ok.yar").write_text("rule ok { condition: false }\n", encoding="utf-8")
+    return rules
+
+
+def test_dir_scan_reports_a_symlinked_directory(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "eicar.com").write_bytes(eicar_bytes())
+    rules = _false_rules(tmp_path)
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    (folder / "linkdir").symlink_to(outside, target_is_directory=True)
+    proc = _run(tmp_path / "gate", "scan", str(folder), "--rules", str(rules))
+    assert proc.returncode == 2
+    assert "symlink not followed" in proc.stdout
+
+    home = tmp_path / "gate2"
+    (home / "inbox").mkdir(parents=True)
+    link = home / "inbox" / "linkdir"
+    link.symlink_to(outside, target_is_directory=True)
+    proc = _run(home, "scan", str(home / "inbox"), "--rules", str(rules))
+    assert proc.returncode == 2
+    assert "symlink rejected" in proc.stdout
+    assert not link.is_symlink()
+    assert (outside / "eicar.com").read_bytes() == eicar_bytes()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode 000 directory")
+def test_dir_scan_reports_an_unreadable_directory(tmp_path: Path) -> None:
+    folder = tmp_path / "folder"
+    hidden = folder / "sub"
+    hidden.mkdir(parents=True)
+    (hidden / "eicar.com").write_bytes(eicar_bytes())
+    (folder / "plain.txt").write_bytes(clean_text())
+    hidden.chmod(0)
+    try:
+        proc = _run(tmp_path / "gate", "scan", str(folder), "--rules", str(_false_rules(tmp_path)))
+    finally:
+        hidden.chmod(stat.S_IRWXU)
+    assert proc.returncode == 2
+    assert "directory not readable" in proc.stdout

@@ -178,12 +178,16 @@ def _decoded_text(data: bytes) -> tuple[str, str] | None:
     if sniff(data) != "text":
         return None
     encoding = utf16_encoding(data)
-    try:
-        if encoding is not None:
+    if encoding is not None:
+        try:
             return data.decode(encoding), "decoded-utf16"
+        except UnicodeError:
+            return None
+    try:
         return data.decode("utf-8"), "raw"
     except UnicodeError:
-        return None
+        # U+FFFD is three bytes, so offsets no longer match the file: not a raw view.
+        return data.decode("utf-8", errors="replace"), "utf8-replaced"
 
 
 def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = None) -> str | None:

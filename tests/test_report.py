@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from yara_gate.models import Verdict
 from yara_gate.quarantine import GatePaths, process_inbox_file
 from yara_gate.report import redact, write_reports
@@ -50,3 +52,10 @@ def test_clean_still_writes_both_reports(tmp_path: Path, rules_copy: Path) -> No
     body = js.read_text(encoding="utf-8")
     assert '"verdict": "clean"' in body
     assert result.findings == []
+
+
+def test_redact_needs_a_path_separator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", "/x/u")
+    assert redact("/x/u") == "~"
+    assert redact("/x/u/notes.txt") == "~/notes.txt"
+    assert redact("/x/u2/secret-project.txt") == "/x/u2/secret-project.txt"

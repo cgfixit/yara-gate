@@ -3,7 +3,7 @@ import os
 import stat
 from pathlib import Path
 
-from yara_gate.models import Verdict, exit_code
+from yara_gate.models import ScanPolicy, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, _InboxHandler, drain_inbox, process_inbox_file
 from yara_gate.samples import EICAR, bidi_markdown, clean_text, eicar_bytes, injection_markdown
 
@@ -214,3 +214,18 @@ def test_regular_file_intake_unchanged(tmp_path: Path, rules_copy: Path) -> None
     assert exit_code(result) == 0
     assert (home.clean / result.sha256 / "notes.txt").read_bytes() == clean_text()
     assert not src.exists()
+
+
+def test_dotfile_rescan_under_a_stricter_policy_leaves_clean(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    home = _home(tmp_path)
+    first = home.inbox / ".note.md"
+    first.write_bytes(injection_markdown())
+    assert process_inbox_file(home, first, rules_dir=rules_copy).verdict is Verdict.advisory
+    again = home.inbox / ".note.md"
+    again.write_bytes(injection_markdown())
+    result = process_inbox_file(home, again, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+    assert result.verdict is Verdict.block
+    assert not any(home.clean.rglob(".note.md"))
+    assert len(list(home.blocked.rglob(".note.md"))) == 1

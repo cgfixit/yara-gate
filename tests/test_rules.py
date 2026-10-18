@@ -731,3 +731,17 @@ def test_failed_update_keeps_vendor_and_lock(
     assert (root / "vendor" / "retained.yar").read_bytes() == retained
     assert (root / "rules.lock").read_bytes() == lock_bytes
     assert list(root.glob(".staging-*")) == []
+
+
+def test_vendor_entry_that_is_not_a_file_stays_a_visible_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rules_copy: Path
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    (rules_copy / "vendor" / "pack" / "odd.yar").mkdir(parents=True)
+    (rules_copy / "vendor" / "gone.yar").symlink_to(tmp_path / "missing.yar")
+    target = tmp_path / "plain.txt"
+    target.write_text("hello\n", encoding="utf-8")
+    for _attempt in ("cold cache", "warm cache"):
+        result = scan_file(target, rules_dir=rules_copy)
+        assert result.verdict is Verdict.clean
+        assert result.skipped_rule_files == 2

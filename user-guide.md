@@ -124,7 +124,7 @@ Reports include policy, engine version, ruleset fingerprint, and skipped vendor-
 
 For a delivery-pattern finding, compare its `rule_id` with the [README rule table](README.md#what-this-catches-and-what-it-does-not) and the [documented match boundaries](docs/research/modern-delivery-rules.md#rule-boundaries-and-benign-collisions). All four new rules have advisory severity. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 
-If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. Leave that file in quarantine. Do not copy it to `clean/` yourself.
+If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
 ## 6. After you confirm a file is bad
 

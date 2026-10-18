@@ -1,5 +1,6 @@
 """Sniff a file from its bytes. The extension is never the type."""
 
+import codecs
 import unicodedata
 from pathlib import Path
 from typing import Literal
@@ -69,8 +70,9 @@ def sniff(data: bytes) -> str:
 def utf16_encoding(data: bytes) -> str | None:
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return "utf-16"
-    sample = data[:4096]
-    if len(sample) < 4 or len(sample) % 2:
+    # Trim to whole code units: one trailing byte must not hide UTF-16 text.
+    sample = data[: min(len(data), 4096) & ~1]
+    if len(sample) < 4:
         return None
     encoding: str | None = None
     if sample[1::2].count(0) > len(sample) // 4:
@@ -80,11 +82,13 @@ def utf16_encoding(data: bytes) -> str | None:
     if encoding is None:
         return None
     try:
-        text = sample.decode(encoding)
+        # The sample can end inside a surrogate pair; final=False keeps that half for later.
+        text = codecs.getincrementaldecoder(encoding)().decode(sample, final=False)
     except UnicodeError:
         return None
+    # isprintable() rejects every space separator but U+0020, including NBSP.
     if all(
-        char.isprintable() or char in "\r\n\t" or unicodedata.category(char) == "Cf"
+        char.isprintable() or char in "\r\n\t" or unicodedata.category(char) in {"Cf", "Zs"}
         for char in text
     ):
         return encoding
