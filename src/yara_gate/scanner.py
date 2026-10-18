@@ -34,7 +34,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
-from yara_gate.rules import compile_sources, default_rules_dir, ruleset_digest
+from yara_gate.rules import compile_ruleset, default_rules_dir
 
 
 class ScanTimeout(Exception):
@@ -116,10 +116,10 @@ def _scan_file(
     if len(data) > MAX_FILE_BYTES:
         return finish("file exceeds 100MB")
     root = rules_dir or default_rules_dir()
-    rules, _skipped, error, _compiled, skip_count = compile_sources(root)
+    rules, _skipped, error, _compiled, skip_count, ruleset = compile_ruleset(root)
     if error or rules is None:
         return finish(error or "yara-x missing")
-    fingerprint = ruleset_digest(root)
+    fingerprint = ruleset
     engine_version = importlib.metadata.version("yara-x")
     try:
         for unit in content_units(ContentUnit(file_path.name, data), budget):
@@ -156,7 +156,11 @@ def _scan_file(
             for view, derived in text_views(unit.data, budget):
                 budget.check()
                 seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
-                for finding in _yara_findings(rules, derived, ext, seconds):
+                view_findings = _yara_findings(rules, derived, ext, seconds)
+                if view == "html-unescaped":
+                    # An entity such as &zwnj; hides a joiner that the raw check cannot see.
+                    view_findings.extend(joiner_findings(derived.decode("utf-8")))
+                for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
