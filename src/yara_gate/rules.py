@@ -35,6 +35,8 @@ _ALLOWED_DOWNLOAD_HOSTS = frozenset(
 )
 _DOWNLOAD_CAP = 300 * 1024 * 1024
 Transport = Callable[[str], bytes]
+# The last compiled set, keyed by its digest, so each file in a run skips deserializing.
+_MEMO: dict[str, tuple[object, list[str], int, int]] = {}
 
 
 class RuleDownloadError(Exception):
@@ -273,28 +275,43 @@ def compile_sources(
     rules_dir: Path, *, overlay: bool | None = None
 ) -> tuple[object | None, list[str], str | None, int, int]:
     """Return compiled rules, skip lines, fatal error, compiled rule count, skipped rule count."""
+    rules, skipped, error, compiled, skip_count, _digest = compile_ruleset(
+        rules_dir, overlay=overlay
+    )
+    return rules, skipped, error, compiled, skip_count
+
+
+def compile_ruleset(
+    rules_dir: Path, *, overlay: bool | None = None
+) -> tuple[object | None, list[str], str | None, int, int, str | None]:
+    """Like ``compile_sources``, plus the ruleset digest when rules were found."""
     use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
     if use_overlay and _readable_shipped_local() is None:
-        return None, [], "bundled rules missing", 0, 0
+        return None, [], "bundled rules missing", 0, 0, None
     try:
         import yara_x
     except ImportError:
-        return None, [], "yara-x missing", 0, 0
+        return None, [], "yara-x missing", 0, 0, None
 
     files = rule_files(rules_dir, overlay=use_overlay)
     shadows = shadowed_rule_lines(rules_dir, overlay=use_overlay)
     if not files:
         if use_overlay:
-            return None, shadows, "bundled rules missing", 0, _count_skipped(shadows)
-        return None, [], "no rules compiled", 0, 0
+            return None, shadows, "bundled rules missing", 0, _count_skipped(shadows), None
+        return None, [], "no rules compiled", 0, 0, None
     digest = ruleset_digest(rules_dir, overlay=use_overlay)
+    memo = _MEMO.get(digest)
+    if memo is not None:
+        rules, remembered, compiled, skip_count = memo
+        return rules, list(remembered), None, compiled, skip_count, digest
     good: list[tuple[Path, str]] = []
     skipped: list[str] = []
     cached = _read_cache(digest)
     if cached is not None:
         rules, skipped = cached
         good = _files_except(files, rules_dir, skipped)
-        return rules, skipped, None, _count_rules(good), _count_skipped(skipped)
+        _remember(digest, rules, skipped, _count_rules(good))
+        return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
     shipped_root = _readable_shipped_local() if use_overlay else None
     for path in files:
@@ -302,7 +319,7 @@ def compile_sources(
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             if shipped_root is not None and _under(path, shipped_root):
-                return None, [], "bundled rules missing", 0, 0
+                return None, [], "bundled rules missing", 0, 0, digest
             skipped.append(f"{_rule_key(path, rules_dir)}: OSError")
             continue
         if is_candidate(text):
@@ -316,10 +333,10 @@ def compile_sources(
     skipped.extend(shadows)
     if not good:
         reason = "bundled rules missing" if use_overlay else "no rules compiled"
-        return None, skipped, reason, 0, _count_skipped(skipped)
+        return None, skipped, reason, 0, _count_skipped(skipped), digest
 
     if _local_compile_failed(skipped):
-        return None, skipped, "local rule compile failed", 0, _count_skipped(skipped)
+        return None, skipped, "local rule compile failed", 0, _count_skipped(skipped), digest
 
     compiler = yara_x.Compiler(relaxed_re_syntax=True)
     compiler.define_global("yara_gate_ext", "bin")
@@ -329,7 +346,13 @@ def compile_sources(
         compiler.add_source(text, origin=path.name)
     rules = compiler.build()
     _write_cache(digest, rules, skipped)
-    return rules, skipped, None, _count_rules(good), _count_skipped(skipped)
+    _remember(digest, rules, skipped, _count_rules(good))
+    return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
+
+
+def _remember(digest: str, rules: object, skipped: list[str], compiled: int) -> None:
+    _MEMO.clear()
+    _MEMO[digest] = (rules, list(skipped), compiled, _count_skipped(skipped))
 
 
 def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
@@ -766,9 +789,12 @@ def _read_cache(digest: str) -> tuple[object, list[str]] | None:
     except OSError:
         return None
     skip_path = _user_cache_dir() / f"{digest}.skipped"
-    skipped: list[str] = []
-    if skip_path.is_file():
-        skipped = [line for line in skip_path.read_text(encoding="utf-8").splitlines() if line]
+    try:
+        text = skip_path.read_text(encoding="utf-8")
+    except OSError:
+        # Without the skip list a vendor skip would vanish from reports. Recompile instead.
+        return None
+    skipped = [line for line in text.splitlines() if line]
     return rules, skipped
 
 
@@ -776,16 +802,23 @@ def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
     try:
         cache = _user_cache_dir()
         cache.mkdir(parents=True, exist_ok=True)
-        path = cache / f"{digest}.yarc"
-        with path.open("wb") as handle:
+        # The skip list lands first and each file is renamed into place whole, so a
+        # reader never pairs compiled rules with a missing or partial skip list.
+        token = secrets.token_hex(4)
+        skip_tmp = cache / f".{digest}.{token}.skipped.tmp"
+        skip_tmp.write_text("\n".join(skipped) + "\n", encoding="utf-8")
+        os.replace(skip_tmp, cache / f"{digest}.skipped")
+        rules_tmp = cache / f".{digest}.{token}.yarc.tmp"
+        with rules_tmp.open("wb") as handle:
             serialize = rules.serialize_into
             serialize(handle)
-        (cache / f"{digest}.skipped").write_text("\n".join(skipped) + "\n", encoding="utf-8")
+        os.replace(rules_tmp, cache / f"{digest}.yarc")
     except OSError:
         return
 
 
 def _clear_cache(rules_dir: Path) -> None:
+    _MEMO.clear()
     cache = _user_cache_dir()
     if cache.exists():
         shutil.rmtree(cache, ignore_errors=True)

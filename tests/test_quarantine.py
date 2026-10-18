@@ -137,6 +137,31 @@ def test_symlink_in_inbox_is_rejected_not_copied(tmp_path: Path, rules_copy: Pat
     assert str(outside) not in body
 
 
+def test_long_inbox_name_is_quarantined_and_scanned(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    src = home.inbox / ("a" * 251 + ".txt")
+    src.write_bytes(clean_text())
+    result = process_inbox_file(home, src, rules_dir=rules_copy)
+    assert result.verdict is Verdict.clean
+    assert not src.exists()
+    assert [item.name for item in (home.clean / result.sha256).iterdir()] == [src.name]
+
+
+def test_long_symlink_name_is_rejected(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    link = home.inbox / ("\u00e9" * 120 + ".txt")
+    link.symlink_to(outside)
+    result = process_inbox_file(home, link, rules_dir=rules_copy)
+    assert result.incomplete_reason == "symlink rejected"
+    assert not link.exists()
+    rejected = list((home.quarantine / "_rejected").iterdir())
+    assert len(rejected) == 1
+    assert rejected[0].is_symlink()
+    assert len(os.fsencode(rejected[0].name)) <= 255
+
+
 def test_dangling_symlink_is_rejected_with_report(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     link = home.inbox / "missing.txt"

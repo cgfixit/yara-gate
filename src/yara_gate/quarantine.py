@@ -17,6 +17,9 @@ from yara_gate.models import ScanPolicy, ScanResult, Verdict
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_file
 
+# The common per-component limit on Linux and macOS, in encoded bytes.
+_NAME_MAX = 255
+
 
 @dataclass(frozen=True)
 class GatePaths:
@@ -342,7 +345,8 @@ def _hash_fd(fd: int) -> str:
 
 def _copy_fd(fd: int, dest: Path) -> None:
     os.lseek(fd, 0, os.SEEK_SET)
-    partial = dest.with_name(f".{dest.name}.partial")
+    # A name derived from dest could exceed NAME_MAX for a long but valid inbox name.
+    partial = dest.with_name(f".partial-{secrets.token_hex(4)}")
     with partial.open("wb") as handle:
         while True:
             chunk = os.read(fd, 1024 * 1024)
@@ -367,6 +371,13 @@ def _unlink_entry(src: Path) -> None:
         return
 
 
+def _fit_name(prefix: str, name: str) -> str:
+    """Join prefix and name, shortening the name so the entry stays within NAME_MAX."""
+    while name and len(os.fsencode(prefix + name)) > _NAME_MAX:
+        name = name[:-1]
+    return prefix + name
+
+
 def _reject_entry(home: GatePaths, src: Path, reason: str) -> ScanResult:
     """Move the inbox entry aside. Never readlink and never open the target."""
     home.ensure()
@@ -374,9 +385,9 @@ def _reject_entry(home: GatePaths, src: Path, reason: str) -> ScanResult:
     rejected.mkdir(parents=True, exist_ok=True)
     os.chmod(rejected, stat.S_IRWXU)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    dest = rejected / f"{stamp}-{src.name}"
+    dest = rejected / _fit_name(f"{stamp}-", src.name)
     if dest.exists():
-        dest = rejected / f"{stamp}-{secrets.token_hex(2)}-{src.name}"
+        dest = rejected / _fit_name(f"{stamp}-{secrets.token_hex(2)}-", src.name)
     os.rename(src, dest)
     token = hashlib.sha256(f"{src.name}{stamp}".encode()).hexdigest()
     result = ScanResult(
