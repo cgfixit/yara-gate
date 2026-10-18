@@ -143,7 +143,8 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     except UnicodeError:
         if encoding != "utf-8":
             raise ContentLimit("invalid UTF-16 text") from None
-        return
+        # One stray byte must not switch off every derived view.
+        text = data.decode("utf-8", errors="replace")
     if encoding != "utf-8":
         yield "decoded-utf16", _derived(text, budget)
     unescaped = html.unescape(text)

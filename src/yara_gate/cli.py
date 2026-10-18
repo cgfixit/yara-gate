@@ -266,15 +266,18 @@ def _scan_path(
     except FileNotFoundError:
         typer.echo("incomplete: missing path", err=True)
         return 2
-    files = _list_files(path) if stat.S_ISDIR(info.st_mode) else [path]
+    files, unreadable = _list_files(path) if stat.S_ISDIR(info.st_mode) else ([path], [])
     worst = 0
-    for item in files:
-        if _is_under(item, home.inbox):
+    pending = [(item, False) for item in files] + [(item, True) for item in unreadable]
+    for item, failed in pending:
+        if failed:
+            result = _refuse_path(home, item, "directory not readable", policy)
+        elif _is_under(item, home.inbox):
             result = process_inbox_file(
                 home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
             )
-        elif item.is_symlink() and not follow_symlinks:
-            result = _refuse_symlink(home, item)
+        elif item.is_symlink() and (not follow_symlinks or item.is_dir()):
+            result = _refuse_path(home, item, "symlink not followed", policy)
         else:
             result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
         if json_output:
@@ -289,24 +292,37 @@ def _scan_path(
     return worst
 
 
-def _list_files(root: Path) -> list[Path]:
-    """Walk a directory without following a symlinked file or directory."""
+def _list_files(root: Path) -> tuple[list[Path], list[Path]]:
+    """Walk a directory without following a symlinked file or directory.
+
+    A symlinked directory is listed as an entry so the caller reports it. A directory
+    that cannot be listed goes in the second list; skipping it would read as clean.
+    """
     found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+    unreadable: list[Path] = []
+
+    def record(exc: OSError) -> None:
+        unreadable.append(Path(exc.filename) if exc.filename else root)
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=record):
         base = Path(dirpath)
-        dirnames[:] = [name for name in dirnames if not (base / name).is_symlink()]
-        found.extend(base / name for name in filenames)
-    return sorted(found)
+        links = [name for name in dirnames if (base / name).is_symlink()]
+        dirnames[:] = [name for name in dirnames if name not in links]
+        found.extend(base / name for name in [*filenames, *links])
+    return sorted(found), sorted(unreadable)
 
 
-def _refuse_symlink(home: GatePaths, path: Path) -> ScanResult:
-    """Report an outside symlink without reading its target."""
+def _refuse_path(
+    home: GatePaths, path: Path, reason: str, policy: ScanPolicy = ScanPolicy.default
+) -> ScanResult:
+    """Report an outside path as incomplete without reading it."""
     token = hashlib.sha256(str(path).encode()).hexdigest()
     result = ScanResult(
         sha256=token,
         verdict=Verdict.incomplete,
-        incomplete_reason="symlink not followed",
+        incomplete_reason=reason,
         path=str(path),
+        policy=policy,
     )
     write_reports(home.reports, result)
     return result

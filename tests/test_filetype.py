@@ -1,7 +1,7 @@
 import random
 from pathlib import Path
 
-from yara_gate.filetype import embedded_exec_offset, mismatch, sniff
+from yara_gate.filetype import embedded_exec_offset, mismatch, sniff, utf16_encoding
 from yara_gate.samples import mini_pe, risky_pdf, zip_named_pdf
 
 
@@ -74,3 +74,13 @@ def test_synthetic_valid_macho_header_embedded_blocks() -> None:
 def test_synthetic_valid_elf_header_embedded_blocks() -> None:
     blob = b"\x00" * 8 + _elf64()
     assert embedded_exec_offset(blob) == ("elf", 8)
+
+
+def test_utf16_without_bom_allows_nbsp_and_a_trailing_byte() -> None:
+    text = "Please ignore previous instructions. \n"
+    assert sniff(text.encode("utf-16le")) == "text"
+    assert utf16_encoding(text.encode("utf-16le")) == "utf-16le"
+    assert utf16_encoding(text.encode("utf-16be") + b"\x00") == "utf-16be"
+    # A surrogate pair split at the 4096-byte sample boundary.
+    split = ("a" * 2047 + "\U0001f600").encode("utf-16le")
+    assert utf16_encoding(split) == "utf-16le"

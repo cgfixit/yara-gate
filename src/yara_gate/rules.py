@@ -727,8 +727,11 @@ def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> lis
     }
     good: list[tuple[Path, str]] = []
     for path in files:
+        # A skipped file may be unreadable, so check the name before reading.
+        if _rule_key(path, rules_dir) in names:
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if is_candidate(text) or _rule_key(path, rules_dir) in names:
+        if is_candidate(text):
             continue
         good.append((path, text))
     return good
@@ -742,7 +745,11 @@ def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
     for path in rule_files(rules_dir, overlay=use_overlay):
         hasher.update(_rule_key(path, rules_dir).encode())
         hasher.update(b"\x00")
-        hasher.update(path.read_bytes())
+        try:
+            hasher.update(path.read_bytes())
+        except OSError:
+            # compile_sources reports an unreadable file; the digest must not abort the scan.
+            hasher.update(b"\x01unreadable")
         hasher.update(b"\x00")
     for line in shadowed_rule_lines(rules_dir, overlay=use_overlay):
         hasher.update(line.encode())

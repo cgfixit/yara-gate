@@ -1,6 +1,7 @@
 """SARIF 2.1.0 and a compact JSON verdict. Matched bytes are never stored."""
 
 import json
+import os
 from pathlib import Path
 
 from yara_gate import __version__
@@ -20,8 +21,10 @@ def write_reports(
 
 
 def redact(path: str) -> str:
-    home = str(Path.home())
-    if path.startswith(home):
+    home = str(Path.home()).rstrip(os.sep) or os.sep
+    if path == home:
+        return "~"
+    if home != os.sep and path.startswith(home + os.sep):
         return "~" + path[len(home) :]
     return path
 

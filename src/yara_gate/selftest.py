@@ -50,7 +50,7 @@ def run_selftest() -> int:
             failures += 1
         if not _hunt(home, rules, root):
             failures += 1
-        if not _forced_timeout(root):
+        if not _forced_timeout(root, rules):
             failures += 1
     if failures:
         print(f"SELFTEST FAIL {failures}")
@@ -165,7 +165,7 @@ def hash_file_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _forced_timeout(root: Path) -> bool:
+def _forced_timeout(root: Path, rules: Path) -> bool:
     target = root / "timeout.txt"
     target.write_text("hello\n", encoding="utf-8")
     original = scanner._invoke_scan
@@ -175,7 +175,7 @@ def _forced_timeout(root: Path) -> bool:
 
     scanner._invoke_scan = boom
     try:
-        result = scan_file(target)
+        result = scan_file(target, rules_dir=rules)
     finally:
         scanner._invoke_scan = original
     ok = (

@@ -247,12 +247,15 @@ def _existing_slot(home: GatePaths, digest: str) -> Path | None:
         slot = root / digest
         if slot.name == "_rejected" or not slot.is_dir():
             continue
-        files = [
-            item for item in slot.iterdir() if item.is_file() and not item.name.startswith(".")
-        ]
+        files = [item for item in slot.iterdir() if item.is_file() and not _is_partial(item.name)]
         if files:
             return files[0]
     return None
+
+
+def _is_partial(name: str) -> bool:
+    """A copy in progress. A dotfile from the inbox is a real submission."""
+    return name.startswith(".partial-") or (name.startswith(".") and name.endswith(".partial"))
 
 
 def _relocate(home: GatePaths, result: ScanResult) -> None:
