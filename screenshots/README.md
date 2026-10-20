@@ -4,6 +4,25 @@ This directory preserves Computer Use captures and the user-supplied demo image
 without editing or re-encoding. The README features the October 19 strict-policy
 result below. Earlier captures retain their original implementation provenance.
 
+## Final combined acceptance
+
+Fresh Computer Use captures were taken after the four draft implementations were
+finished. See the [final acceptance record](../docs/verification/final-acceptance.md)
+for exact draft heads, combined tree, runtime results and original image hashes.
+
+| Default advisory | Agent-ingest block |
+| --- | --- |
+| ![Final default advisory](yara-gate-final-default.jpg) | ![Final agent-ingest block](yara-gate-final-agent-ingest.jpg) |
+
+| PDF offsets | Cleared verdict after rejection |
+| --- | --- |
+| ![Final PDF findings](yara-gate-final-pdf.jpg) | ![Final rejected input](yara-gate-final-rejection.jpg) |
+
+These four unedited 1265 × 712 JPEG captures were saved on October 19, 2026,
+approximately 21:13–21:18 EDT, from the macOS in-app browser and the live combined
+candidate. The gallery now preserves eleven original images, including the
+user-supplied overview below.
+
 ## October 19 demo gallery
 
 | Demo controls and PDF input | Strict policy and decoded finding |

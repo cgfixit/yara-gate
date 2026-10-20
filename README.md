@@ -26,6 +26,8 @@ consumer can instead require advisories to be held for review. Legitimate securi
 examples can match; the verdict records the selected policy, not proof of malice.
 The demo does not move files. See the [screenshot gallery and capture provenance](screenshots/README.md),
 including the earlier ClickFix policy comparison, or [run the live demo](#demo).
+The [final combined acceptance record](docs/verification/final-acceptance.md)
+includes fresh Computer Use screenshots and separate malformed-request checks.
 
 ## Install
 
