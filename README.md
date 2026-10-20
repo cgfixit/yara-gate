@@ -29,7 +29,7 @@ From the project directory, on macOS or Linux, with [uv](https://docs.astral.sh/
 
 ```bash
 cd ~/Projects/yara-gate
-uv sync
+uv sync --frozen
 uv run yara-gate --version
 ```
 
@@ -228,6 +228,11 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
 For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The [delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) records the 16-rule pack's 70 library cases, 16 CLI operations, and three compilation/deadline checks. The initial [research](docs/research/universal-rule-research.md) and [intake verification](docs/verification/intake-coverage.md) preserve earlier evidence and remaining work.
+
+The [October 19 dependency refresh](docs/verification/dependency-refresh.md)
+records the current 20-rule pack, 120 library cases, 24 CLI operations and live
+browser checks against the refreshed lock. Historical screenshots above retain
+their original 16-rule provenance.
 
 `origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 
