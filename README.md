@@ -14,14 +14,18 @@ The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-ga
 
 ## See the policy decision
 
-The live loopback demo below calls the real scanner. Both captures scan the same inert ClickFix example with the 16-rule local pack. The rule detects a verification lure combined with clipboard-copy and shell/paste instructions; the selected policy determines whether that advisory is allowed or held.
+The live loopback demo calls the real scanner with the 20-rule local pack. In this
+October 19 capture, an inert HTML-encoded instruction is detected in the
+`html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
+exit 1**, while retaining its advisory finding severity.
 
-| Default policy: report the advisory | Agent ingest: hold it for review |
-| --- | --- |
-| ![Default policy reports web_clickfix_lure as advisory with exit 0](screenshots/yara-gate-clickfix-advisory.jpg) | ![Agent-ingest policy returns block with exit 1 while preserving advisory finding severity](screenshots/yara-gate-clickfix-agent-ingest.jpg) |
-| `advisory`, exit **0**: a complete inbox scan with no blocking finding can enter `clean/`; the report still identifies the pattern. | `block`, exit **1**: the same advisory is held in `blocked/` during inbox intake. Its finding severity remains advisory. |
+![Live demo blocks an HTML-decoded instruction under agent-ingest policy and shows its finding metadata](screenshots/yara-gate-dependency-refresh.jpg)
 
-This makes the value concrete: a consumer can review a suspicious pattern or require it to be held, using the same detection evidence. Legitimate security examples can match, so an advisory is a review signal. These October 8 captures show verdicts and policy behavior; the demo itself does not move files. See [capture provenance and full-size images](screenshots/README.md#clickfix-detection-and-consumer-policy), or [run the live demo](#demo).
+Under the default policy, that advisory is reported with exit 0. A downstream
+consumer can instead require advisories to be held for review. Legitimate security
+examples can match; the verdict records the selected policy, not proof of malice.
+The demo does not move files. See the [screenshot gallery and capture provenance](screenshots/README.md),
+including the earlier ClickFix policy comparison, or [run the live demo](#demo).
 
 ## Install
 
@@ -231,8 +235,8 @@ For focused runtime verification, run `uv run python docs/research/probe_rule_co
 
 The [October 19 dependency refresh](docs/verification/dependency-refresh.md)
 records the current 20-rule pack, 120 library cases, 24 CLI operations and live
-browser checks against the refreshed lock. Historical screenshots above retain
-their original 16-rule provenance.
+browser checks against the refreshed lock. Historical screenshots in the gallery
+retain their original 16-rule provenance.
 
 `origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 
