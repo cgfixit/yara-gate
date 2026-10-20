@@ -23,7 +23,7 @@ returned clean/exit 0; an empty paste displayed `empty text` and cleared the pri
 verdict. The browser form produces valid UTF-8, so malformed transport-byte
 acceptance is established by the HTTP calls, not by this screenshot.
 
-![Browser clears the previous result after rejection](../../screenshots/yara-gate-demo-rejection.png)
+![Browser clears the previous result after rejection](../../screenshots/yara-gate-demo-rejection.jpg)
 
 Original viewport capture, October 19, 2026 EDT, macOS in-app browser, no editing
 or re-encoding. Source was the baseline plus the one-line exception handler and
