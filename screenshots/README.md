@@ -2,6 +2,9 @@
 
 This directory preserves original Computer Use captures from the live loopback demo. The current README uses the two ClickFix policy captures below. The earlier HTML-decoding capture remains tied to its original implementation.
 
+The [October 19 PDF fast-path capture](../docs/verification/pdf-name-fast-path.md#computer-use)
+records the candidate source hash, inert input, observed offsets and original image hash.
+
 ## ClickFix detection and consumer policy
 
 | Default policy | Agent-ingest policy |
