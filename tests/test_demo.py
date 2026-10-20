@@ -8,6 +8,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 from yara_gate.demo import bind_demo, serve_in_thread
 from yara_gate.launchd import write_launch_agent
 
@@ -113,6 +115,31 @@ def test_demo_rejects_cross_origin(rules_copy: Path) -> None:
         )
         assert status == 403
     finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b'{"text":"\xff"}', b"\xff\xfe\x00"],
+    ids=["utf8", "utf16"],
+)
+def test_demo_rejects_invalid_json_encoding(rules_copy: Path, body: bytes) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=10)
+    try:
+        connection.request(
+            "POST", "/api/scan", body=body, headers={"Content-Type": "application/json"}
+        )
+        response = connection.getresponse()
+        assert response.status == 400
+        assert json.loads(response.read()) == {"error": "bad json"}
+        status, plain = _post(server.server_port, {"sample": "plain"})
+        assert status == 200
+        assert plain["verdict"] == "clean"
+    finally:
+        connection.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
