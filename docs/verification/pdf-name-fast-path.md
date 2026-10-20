@@ -41,7 +41,7 @@ its regression; `heuristics.py` SHA-256 was
 - `%PDF-1.4\n/J#61vaScript /OpenAction\n%%EOF` blocked, exit 1. JavaScript
   retained physical offset 9/length 13; OpenAction retained offset 23/length 11.
 
-![Live PDF scanner result](../../screenshots/yara-gate-pdf-fast-path.png)
+![Live PDF scanner result](../../screenshots/yara-gate-pdf-fast-path.jpg)
 
 Original viewport capture, October 19, 2026 EDT, macOS in-app browser, no edits
 or re-encoding. Image SHA-256:
