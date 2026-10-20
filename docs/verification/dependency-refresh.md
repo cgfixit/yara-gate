@@ -49,7 +49,7 @@ exercised through the macOS in-app browser:
 - PE saved as PDF: block, exit 1.
 - Empty paste after a successful scan: error displayed and previous verdict cleared.
 
-![Refreshed stack preserves decoded-view policy](../../screenshots/yara-gate-dependency-refresh.png)
+![Refreshed stack preserves decoded-view policy](../../screenshots/yara-gate-dependency-refresh.jpg)
 
 Original viewport capture on October 19, 2026 EDT, no edits or re-encoding.
 Source was the baseline above; only dependency versions changed during this
