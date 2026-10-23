@@ -1,6 +1,65 @@
 # Verification screenshots
 
-This directory preserves original Computer Use captures from the live loopback demo. The current README uses the two ClickFix policy captures below. The earlier HTML-decoding capture remains tied to its original implementation.
+This directory preserves Computer Use captures and the user-supplied demo image
+without editing or re-encoding. The README features the October 19 strict-policy
+result below. Earlier captures retain their original implementation provenance.
+
+## Final combined acceptance
+
+Fresh Computer Use captures were taken after the four draft implementations were
+finished. See the [final acceptance record](../docs/verification/final-acceptance.md)
+for exact draft heads, combined tree, runtime results and original image hashes.
+
+| Default advisory | Agent-ingest block |
+| --- | --- |
+| ![Final default advisory](yara-gate-final-default.jpg) | ![Final agent-ingest block](yara-gate-final-agent-ingest.jpg) |
+
+| PDF offsets | Cleared verdict after rejection |
+| --- | --- |
+| ![Final PDF findings](yara-gate-final-pdf.jpg) | ![Final rejected input](yara-gate-final-rejection.jpg) |
+
+These four unedited 1265 × 712 JPEG captures were saved on October 19, 2026,
+approximately 21:13–21:18 EDT, from the macOS in-app browser and the live combined
+candidate. The gallery now preserves eleven original images, including the
+user-supplied overview below.
+
+## October 19 demo gallery
+
+| Demo controls and PDF input | Strict policy and decoded finding |
+| --- | --- |
+| ![User-supplied demo overview](yara-gate-demo-overview.png) | ![Live scanner holds an HTML-decoded advisory](yara-gate-dependency-refresh.jpg) |
+
+| PDF findings and physical offsets | Rejected input clears the prior verdict |
+| --- | --- |
+| ![Escaped JavaScript and ordinary OpenAction both block](yara-gate-pdf-fast-path.jpg) | ![Empty input error with a cleared verdict](yara-gate-demo-rejection.jpg) |
+
+- **Overview:** supplied by the user in this chat on October 19, 2026 EDT as
+  `codex-clipboard-cffbd172-7c56-4b2f-ba6d-7c4044b286c7.png`. It shows the live
+  demo controls and inert PDF input. The attachment has no independently recorded
+  capture timestamp or source revision; its viewport does not show the verdict.
+- **Strict-policy result:** macOS in-app browser, Python 3.12.12 and YARA-X 1.21.0;
+  source `d72efc1` with the refreshed dependency lock. See the
+  [dependency verification](../docs/verification/dependency-refresh.md#computer-use).
+  The later combined-draft capture is byte-identical, so this file represents both
+  images without storing a duplicate.
+- **PDF result:** copied byte-for-byte from [PR #20 at `ab77098`](https://github.com/cgfixit/yara-gate/blob/ab77098f18e0622b7bd79063a819b50a9e8ced78/docs/verification/pdf-name-fast-path.md#computer-use).
+  The actual scanner blocked escaped JavaScript (offset 9, length 13) and
+  OpenAction (offset 23, length 11). Its recorded source hash and test scope remain
+  in that verification document.
+- **Rejection result:** copied byte-for-byte from [PR #21 at `6b70538`](https://github.com/cgfixit/yara-gate/blob/6b705382a3aac0b6328ae226cd3c66e580da3b0b/docs/verification/demo-json-encoding.md#verification).
+  An empty paste cleared a previous clean result. Malformed transport-byte
+  handling was verified separately through HTTP; this image does not demonstrate it.
+
+All three agent captures used owned loopback processes, inert input and copied
+rules on macOS, with no vendor downloads. Including these images does not add
+the PDF optimization or demo fix to the dependency branch; those remain separate drafts.
+
+| Original image | Dimensions | SHA-256 |
+| --- | --- | --- |
+| [User-supplied overview](yara-gate-demo-overview.png) | 665 × 699 | `002c823c381806683eab4f318e5be02122fe515e944f4e7748b9b3175a84e83a` |
+| [Strict-policy result](yara-gate-dependency-refresh.jpg) | 664 × 698 | `3b76a74e74581683bce277df874f3476cd68712dce6932700f2406a4f2953d28` |
+| [PDF result](yara-gate-pdf-fast-path.jpg) | 665 × 699 | `4df9843434fe595d8003f588b898304032fe7445765a691d786ce65c68311e2a` |
+| [Rejection result](yara-gate-demo-rejection.jpg) | 664 × 698 | `956127e174b8bf939d1f2f19f20a0ca3335f947a95f3487f17869229c0251771` |
 
 The [October 19 PDF fast-path capture](../docs/verification/pdf-name-fast-path.md#computer-use)
 records the candidate source hash, inert input, observed offsets and original image hash.

@@ -8,7 +8,7 @@ The project lives at `~/Projects/yara-gate`. The holding folders live at `~/Yara
 
 ```bash
 cd ~/Projects/yara-gate
-uv sync
+uv sync --frozen
 uv run yara-gate --version
 ```
 
@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works offline with the 16 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
+Scanning works offline with the 20 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
 
 ```bash
 uv run yara-gate rules update
@@ -179,6 +179,11 @@ uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
 Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
 
 ## Verification already done on this machine
+
+The [October 19 dependency refresh](docs/verification/dependency-refresh.md) passed
+120 library cases, 24 CLI operations, nine benign-corpus observations and three
+failure-path checks with 20 compiled rules and no skips. It also records live
+browser acceptance and the current hosted CI billing blocker.
 
 The [October 8 delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) covers the 16-rule pack with 70 direct library cases, 16 CLI intake/rescan operations, and three compilation/deadline checks. Those runs used inert inputs and disposable gate homes. The [earlier intake record](docs/verification/intake-coverage.md) includes browser evidence and the observed macOS watcher shutdown limitation; it predates the four delivery rules.
 
