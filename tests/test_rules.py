@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 import zipfile
@@ -23,12 +24,15 @@ from yara_gate.rules import (
     _allowed_url,
     _bytes,
     _PinnedRedirect,
+    _rule_key,
     _swap_vendor,
     _vendor_member,
     compile_sources,
+    default_rules_dir,
     install_packs,
     load_lock,
     rule_files,
+    ruleset_digest,
     save_lock,
     shipped_local_dir,
     update_packs,
@@ -857,3 +861,96 @@ def test_installed_vendor_loss_holds_identical_resubmission(
     assert not sample.exists()
     install_packs(rules_copy, transport=lambda _url: blob)
     resubmit(0, "clean")
+
+
+def test_ruleset_digest_reuses_stamp_and_still_sees_edits(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repeat call stats the rule files but must not reread them; any edit must still show."""
+    reads: list[Path] = []
+    read_bytes = Path.read_bytes
+
+    def counting(self: Path) -> bytes:
+        reads.append(self)
+        return read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", counting)
+    first = ruleset_digest(rules_copy, overlay=False)
+    assert reads
+    reads.clear()
+    assert ruleset_digest(rules_copy, overlay=False) == first
+    assert reads == []
+    extra = rules_copy / "vendor" / "extra.yar"
+    extra.write_text("rule extra_rule { condition: false }\n", encoding="utf-8")
+    added = ruleset_digest(rules_copy, overlay=False)
+    assert added != first
+    extra.write_text("rule extra_rule { condition: true }\n", encoding="utf-8")
+    assert ruleset_digest(rules_copy, overlay=False) != added
+    extra.unlink()
+    assert ruleset_digest(rules_copy, overlay=False) == first
+
+
+@pytest.mark.parametrize(
+    ("path", "root"),
+    [
+        ("/r/local/a.yar", "/r"),
+        ("/r/vendor/x/é.yar", "/r"),
+        ("/r/../r/a.yar", "/r"),
+        ("/a.yar", "/"),
+        ("rel/a/b.yar", "rel"),
+        ("/r", "/r"),
+        ("/rr/a.yar", "/r"),
+        ("/elsewhere/q.yar", "/r"),
+    ],
+)
+def test_rule_key_matches_relative_to(path: str, root: str) -> None:
+    candidate, base = Path(path), Path(root)
+    try:
+        expected = candidate.relative_to(base).as_posix()
+    except ValueError:
+        # Outside the root, the key falls back to the bare name (or the shipped-local form).
+        assert _rule_key(candidate, base) in {candidate.name, f"local/{candidate.name}"}
+    else:
+        assert _rule_key(candidate, base) == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"packs": "x"},
+        {"packs": [], "unexpected": 1},
+        {"packs": [None]},
+        {"packs": [{"name": "n"}]},
+        {"packs": [{"name": 1, "url": "u", "pin": "p", "sha256": "s"}]},
+        {"packs": [{"name": "n", "url": "u", "pin": "p", "sha256": "s", "x": 1}]},
+        {"packs": [], "installed_vendor_files": "x"},
+        {"packs": [], "installed_vendor_files": [1]},
+    ],
+)
+def test_lock_with_unexpected_shape_is_rejected(tmp_path: Path, payload: object) -> None:
+    """The scan path maps ValueError to `invalid rules.lock`, so every bad shape must raise it."""
+    with pytest.raises(ValueError, match="invalid"):
+        RulesLock.model_validate(payload)
+    (tmp_path / "rules.lock").write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid"):
+        load_lock(tmp_path)
+
+
+def test_checked_in_lock_round_trips_byte_for_byte(tmp_path: Path) -> None:
+    source = default_rules_dir() / "rules.lock"
+    save_lock(load_lock(default_rules_dir()), tmp_path)
+    assert (tmp_path / "rules.lock").read_bytes() == source.read_bytes()
+    pin = PackPin(name="é", url="https://github.com/o/r.zip", pin="p", sha256="ab" * 32)
+    lock = RulesLock(packs=[pin], installed_vendor_files=["a/b.yar"])
+    save_lock(lock, tmp_path)
+    assert load_lock(tmp_path) == lock
+    assert '"é"' in (tmp_path / "rules.lock").read_text(encoding="utf-8")
+    assert json.loads(lock.model_dump_json())["installed_vendor_files"] == ["a/b.yar"]
+
+
+def test_scan_path_does_not_import_pydantic() -> None:
+    """Every `yara-gate scan` is a new process for callers that shell out per file."""
+    code = "import sys, yara_gate.cli; sys.exit('pydantic' in sys.modules)"
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0

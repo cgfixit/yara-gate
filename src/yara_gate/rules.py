@@ -1,5 +1,6 @@
 """Load, pin, and promote YARA rules. Network runs only in ``update``."""
 
+import functools
 import hashlib
 import importlib.metadata
 import io
@@ -14,13 +15,13 @@ import urllib.parse
 import urllib.request
 import zipfile
 from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from http.client import HTTPMessage
 from pathlib import Path
 from typing import IO, Any
 
 import platformdirs
-from pydantic import BaseModel, ConfigDict
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
 _RULE_NAME = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)")
@@ -46,20 +47,51 @@ class RuleDownloadError(Exception):
     """A rule download failed. The message is safe to print."""
 
 
-class PackPin(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+@dataclass(kw_only=True, slots=True)
+class PackPin:
     name: str
     url: str
     pin: str
     sha256: str
 
+    @classmethod
+    def model_validate(cls, data: object) -> "PackPin":
+        fields = ("name", "url", "pin", "sha256")
+        if not isinstance(data, dict) or set(data) != set(fields):
+            raise ValueError("invalid pack pin")
+        if not all(isinstance(data[key], str) for key in fields):
+            raise ValueError("invalid pack pin")
+        return cls(**{key: data[key] for key in fields})
 
-class RulesLock(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
+@dataclass(kw_only=True, slots=True)
+class RulesLock:
     packs: list[PackPin]
     installed_vendor_files: list[str] | None = None
+
+    @classmethod
+    def model_validate(cls, data: object) -> "RulesLock":
+        """Parse a decoded lock. Anything unexpected raises ValueError, as the loader expects."""
+        if not isinstance(data, dict) or not set(data) <= {"packs", "installed_vendor_files"}:
+            raise ValueError("invalid rules.lock")
+        packs = data.get("packs")
+        if not isinstance(packs, list):
+            raise ValueError("invalid rules.lock")
+        installed = data.get("installed_vendor_files")
+        if installed is not None and (
+            not isinstance(installed, list) or not all(isinstance(item, str) for item in installed)
+        ):
+            raise ValueError("invalid rules.lock")
+        return cls(
+            packs=[PackPin.model_validate(item) for item in packs], installed_vendor_files=installed
+        )
+
+    def model_dump_json(self, *, indent: int | None = None, exclude_none: bool = False) -> str:
+        data: dict[str, object] = {"packs": [asdict(pack) for pack in self.packs]}
+        if self.installed_vendor_files is not None or not exclude_none:
+            data["installed_vendor_files"] = self.installed_vendor_files
+        separators = (",", ": ") if indent else (",", ":")
+        return json.dumps(data, indent=indent, separators=separators, ensure_ascii=False)
 
 
 def project_root() -> Path:
@@ -249,7 +281,21 @@ def _collect_rules(folder: Path, found: list[Path], *, nested: bool = True) -> N
     found.extend(sorted(folder.glob("*.yara")))
 
 
+@functools.cache
+def yara_x_version() -> str:
+    """The installed engine version. Looked up once: the metadata scan costs milliseconds."""
+    return importlib.metadata.version("yara-x")
+
+
 def _rule_key(path: Path, rules_dir: Path) -> str:
+    # Slicing normalized strings gives relative_to's answer without building a Path per rule file,
+    # and this runs for every rule file on every scanned input. Anything else takes the slow path.
+    prefix = str(rules_dir)
+    if not prefix.endswith(os.sep):
+        prefix += os.sep
+    text = str(path)
+    if len(text) > len(prefix) and text.startswith(prefix):
+        return text[len(prefix) :].replace(os.sep, "/")
     try:
         return path.relative_to(rules_dir).as_posix()
     except ValueError:
@@ -304,11 +350,11 @@ def compile_ruleset(
     except (OSError, ValueError):
         return None, shadows, "invalid rules.lock", 0, _count_skipped(shadows), None
     if installed is not None:
-        vendor = rules_dir / "vendor"
+        vendor = str(rules_dir / "vendor") + os.sep
         present = {
-            path.relative_to(vendor).as_posix()
-            for path in files
-            if path.is_relative_to(vendor) and path.is_file()
+            text[len(vendor) :].replace(os.sep, "/")
+            for text in map(str, files)
+            if text.startswith(vendor) and os.path.isfile(text)
         }
         if not installed or not set(installed) <= present:
             return None, shadows, "installed vendor rules missing", 0, _count_skipped(shadows), None
@@ -316,7 +362,7 @@ def compile_ruleset(
         if use_overlay:
             return None, shadows, "bundled rules missing", 0, _count_skipped(shadows), None
         return None, [], "no rules compiled", 0, 0, None
-    digest = ruleset_digest(rules_dir, overlay=use_overlay)
+    digest = ruleset_digest(rules_dir, overlay=use_overlay, files=files, shadows=shadows)
     memo = _MEMO.get(digest)
     if memo is not None:
         rules, remembered, compiled, skip_count = memo
@@ -784,29 +830,41 @@ def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> lis
     return good
 
 
-def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
+def ruleset_digest(
+    rules_dir: Path,
+    *,
+    overlay: bool | None = None,
+    files: list[Path] | None = None,
+    shadows: list[str] | None = None,
+) -> str:
+    """Digest of the rule files in load order. ``files`` and ``shadows`` skip a second directory
+    walk for a caller that just listed them."""
     use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
-    files = rule_files(rules_dir, overlay=use_overlay)
+    if files is None:
+        files = rule_files(rules_dir, overlay=use_overlay)
+    shadow_lines = tuple(
+        shadowed_rule_lines(rules_dir, overlay=use_overlay) if shadows is None else shadows
+    )
+    keys = [_rule_key(path, rules_dir) for path in files]
     stamp_rows: list[tuple[str, int, int]] = []
-    for path in files:
+    for rule_key, path in zip(keys, files, strict=True):
         try:
-            stat = path.stat()
+            stat = os.stat(path)
         except OSError:
-            stamp_rows.append((_rule_key(path, rules_dir), -1, -1))
+            stamp_rows.append((rule_key, -1, -1))
             continue
-        stamp_rows.append((_rule_key(path, rules_dir), stat.st_mtime_ns, stat.st_size))
-    shadows = tuple(shadowed_rule_lines(rules_dir, overlay=use_overlay))
-    stamp = (use_overlay, tuple(stamp_rows), shadows)
+        stamp_rows.append((rule_key, stat.st_mtime_ns, stat.st_size))
+    stamp = (use_overlay, tuple(stamp_rows), shadow_lines)
     # A same-size same-mtime rewrite is caught on the next process. Inside one run the
     # directory is the operator's rules, and hashing every file per scanned input missed the budget.
     key = str(rules_dir)
     if _DIGEST_STAMP.get(key) == stamp:
         return _DIGEST_VALUE[key]
     hasher = hashlib.sha256(_CACHE_SALT)
-    hasher.update(importlib.metadata.version("yara-x").encode())
+    hasher.update(yara_x_version().encode())
     hasher.update(b"overlay\x00" if use_overlay else b"checkout\x00")
-    for path in files:
-        hasher.update(_rule_key(path, rules_dir).encode())
+    for rule_key, path in zip(keys, files, strict=True):
+        hasher.update(rule_key.encode())
         hasher.update(b"\x00")
         try:
             hasher.update(path.read_bytes())
@@ -814,7 +872,7 @@ def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
             # compile_sources reports an unreadable file; the digest must not abort the scan.
             hasher.update(b"\x01unreadable")
         hasher.update(b"\x00")
-    for line in shadows:
+    for line in shadow_lines:
         hasher.update(line.encode())
         hasher.update(b"\x00")
     digest = hasher.hexdigest()
