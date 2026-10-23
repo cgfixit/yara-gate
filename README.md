@@ -39,7 +39,7 @@ uv sync --frozen
 uv run yara-gate --version
 ```
 
-`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.0). It does not call the Homebrew `yara` binary.
+`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.21.0). It does not call the Homebrew `yara` binary.
 
 `uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. An installed copy copies the packaged local rules, not a checkout path that is not on disk. An unexpected selftest error prints `incomplete: <Type>` and exits 2. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
 
