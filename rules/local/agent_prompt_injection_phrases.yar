@@ -10,8 +10,8 @@ rule agent_prompt_injection_phrases {
         $a = "ignore previous instructions" nocase
         $b = "ignore all previous instructions" nocase
         $c = "disregard the above" nocase
-        // A writeup that names the phrase is not itself an instruction.
-        $doc_phrase = /the phrase[\s\S]{0,64}(ignore previous instructions|ignore all previous instructions|disregard the above)/ nocase
+        // Name the first phrase after the prefix, not a later separate directive.
+        $doc_phrase = /the phrase[\s\S]{0,64}?(ignore previous instructions|ignore all previous instructions|disregard the above)/ nocase
         $d = /\byou are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)?)|developer mode|do anything now|(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails))\b/ nocase ascii wide
         // DAN is case-sensitive so the name "Dan" stays clean; only the phrase is nocase.
         $d_dan = /\b(?i:you are now)\b[\s\S]{0,96}\bDAN\b/ ascii wide
@@ -20,5 +20,14 @@ rule agent_prompt_injection_phrases {
         $g = /do not tell the user[\s\S]{0,160}\b(tool_call|run_command|execute_command|function call)\b/ nocase
         $g_rev = /\b(tool_call|run_command|execute_command|function call)\b[\s\S]{0,160}do not tell the user/ nocase
     condition:
-        $d or $d_dan or $e or $f or $g or $g_rev or (($a or $b or $c) and not $doc_phrase)
+        $d or $d_dan or $e or $f or $g or $g_rev or
+        for any of ($a, $b, $c) : (
+            for any i in (1..#) : (
+                // Exempt only the occurrence ending at the nearest documentary match.
+                with quote_index = #doc_phrase in (0..@[i]) : (
+                    not defined @doc_phrase[quote_index] or
+                    @doc_phrase[quote_index] + !doc_phrase[quote_index] != @[i] + ![i]
+                )
+            )
+        )
 }

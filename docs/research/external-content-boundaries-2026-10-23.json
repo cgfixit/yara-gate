@@ -1,0 +1,510 @@
+{
+  "source_revision": "30d7126bc8ec60fed08094accbd3c0ffc8c9cb77",
+  "probe_sha256": "7e5b5ca09b513422161f11955f005a482d3c9b327d4679c1e58b93e16bcdbeec",
+  "python": "3.12.12",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "engine": "1.22.0",
+  "compiled_rules": 32,
+  "skipped_rule_files": 0,
+  "skips": [],
+  "ruleset_sha256": "e2949194c669ec919a49ee0c7dc3bd44c44412c9584745c03a2db5756844f9e3",
+  "rows": [
+    {
+      "case": "benign.txt",
+      "sha256": "ef73e7b449801ff778a7eb4e198083a90d9f072670b1468916ce3992cebcccf2",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "benign.txt",
+      "sha256": "ef73e7b449801ff778a7eb4e198083a90d9f072670b1468916ce3992cebcccf2",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "plain.txt",
+      "sha256": "978df99c59dc44746818698a5c1cea1243afc23045b7c15f6dc38acb1a3431fb",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "plain.txt",
+      "sha256": "978df99c59dc44746818698a5c1cea1243afc23045b7c15f6dc38acb1a3431fb",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "quote.txt",
+      "sha256": "4017fe61972595982c3f8be544ad1e9f3199b9c028033147c85dbe25df1776dc",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "quote.txt",
+      "sha256": "4017fe61972595982c3f8be544ad1e9f3199b9c028033147c85dbe25df1776dc",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "quote-plus-command.txt",
+      "sha256": "c02c851740fb6bf6c4c1bced39846309a25b66eb8ce8d2db6bcaa5e0849434a7",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "quote-plus-command.txt",
+      "sha256": "c02c851740fb6bf6c4c1bced39846309a25b66eb8ce8d2db6bcaa5e0849434a7",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "split.html",
+      "sha256": "f1c3f95003506577dbff4aa50649e8f31754ce0d79fa154ba807c03cf459594f",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "split.html",
+      "sha256": "f1c3f95003506577dbff4aa50649e8f31754ce0d79fa154ba807c03cf459594f",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "entities.html",
+      "sha256": "e2303de059108adb89713c202e0054054156aa35e5f8e713e165256ddee2b8b7",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "html-unescaped",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "entities.html",
+      "sha256": "e2303de059108adb89713c202e0054054156aa35e5f8e713e165256ddee2b8b7",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "html-unescaped",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "base64.txt",
+      "sha256": "913ddd8b40ed50df09d23749e67084bfcd9a22b2e1b7113d6ba433e67554591c",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_encoded_instruction",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "base64.txt",
+      "sha256": "913ddd8b40ed50df09d23749e67084bfcd9a22b2e1b7113d6ba433e67554591c",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_encoded_instruction",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "mixed-base64.txt",
+      "sha256": "fc80d211e2888f7c0a08ed3f2b3f2559f86e1b79baa379cebdb7a19627278e79",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "mixed-base64.txt",
+      "sha256": "fc80d211e2888f7c0a08ed3f2b3f2559f86e1b79baa379cebdb7a19627278e79",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "spanish.txt",
+      "sha256": "c4e5911f12201d40cfa4fa17f56775e1469338fd52be434676cfa21cc705363f",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "spanish.txt",
+      "sha256": "c4e5911f12201d40cfa4fa17f56775e1469338fd52be434676cfa21cc705363f",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "json-content.json",
+      "sha256": "869cd5d1afaf11fd48170f0014ddf4943e29e8b530810d73fd28b5c265baaa1f",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "json-content.json",
+      "sha256": "869cd5d1afaf11fd48170f0014ddf4943e29e8b530810d73fd28b5c265baaa1f",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "json-description.json",
+      "sha256": "99952d3944f6ffd2305c5c958a802ce644db58c64951d419eb0e26a2606b323b",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "heuristic_mcp_hidden_instruction",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "json-description.json",
+      "sha256": "99952d3944f6ffd2305c5c958a802ce644db58c64951d419eb0e26a2606b323b",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "heuristic_mcp_hidden_instruction",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "flat.pdf",
+      "sha256": "7544ba71ddfb94bea7905fb8e040d142e2b2144e0361364cc9a83e0983d3edb0",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "flat.pdf",
+      "sha256": "7544ba71ddfb94bea7905fb8e040d142e2b2144e0361364cc9a83e0983d3edb0",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "flate.pdf",
+      "sha256": "75d1f94c326073eb63f80cd96d821dc83fb3d30b6e52a835b7e87c1291113865",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "flate.pdf",
+      "sha256": "75d1f94c326073eb63f80cd96d821dc83fb3d30b6e52a835b7e87c1291113865",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "single-run.docx",
+      "sha256": "aa5d5e71036d3eb4f2d23fdb292a2ea0638f45b19985b27de2ef98f4d6ec02d1",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [
+            "zip:2"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "single-run.docx",
+      "sha256": "aa5d5e71036d3eb4f2d23fdb292a2ea0638f45b19985b27de2ef98f4d6ec02d1",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [
+            "zip:2"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "split-run.docx",
+      "sha256": "f13fdbbf9c638763843f1291bab3383106ed8f7152bf9dc63e0e416da47a79dc",
+      "policy": "default",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "split-run.docx",
+      "sha256": "f13fdbbf9c638763843f1291bab3383106ed8f7152bf9dc63e0e416da47a79dc",
+      "policy": "agent-ingest",
+      "verdict": "clean",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": []
+    },
+    {
+      "case": "gzip.txt.gz",
+      "sha256": "e2e3ca52ead0e34dc870bf9e292427a0967bf34c4b4312cb024562b835ac3faa",
+      "policy": "default",
+      "verdict": "advisory",
+      "exit_code": 0,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [
+            "gzip:0"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "gzip.txt.gz",
+      "sha256": "e2e3ca52ead0e34dc870bf9e292427a0967bf34c4b4312cb024562b835ac3faa",
+      "policy": "agent-ingest",
+      "verdict": "block",
+      "exit_code": 1,
+      "incomplete_reason": null,
+      "findings": [
+        {
+          "rule_id": "agent_prompt_injection_phrases",
+          "view": "raw",
+          "member_path": [
+            "gzip:0"
+          ],
+          "severity": "advisory"
+        }
+      ]
+    },
+    {
+      "case": "unsupported.7z",
+      "sha256": "0956e323ee7e0a0bc9e4f5bf287df38819d29240c51730d14c1864317857f70d",
+      "policy": "default",
+      "verdict": "incomplete",
+      "exit_code": 2,
+      "incomplete_reason": "unsupported archive",
+      "findings": []
+    },
+    {
+      "case": "unsupported.7z",
+      "sha256": "0956e323ee7e0a0bc9e4f5bf287df38819d29240c51730d14c1864317857f70d",
+      "policy": "agent-ingest",
+      "verdict": "incomplete",
+      "exit_code": 2,
+      "incomplete_reason": "unsupported archive",
+      "findings": []
+    }
+  ],
+  "cli": [
+    {
+      "case": "plain.txt",
+      "policy": "default",
+      "process_exit": 0,
+      "records": 1,
+      "verdicts": [
+        "advisory"
+      ],
+      "incomplete_reasons": [
+        null
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "plain.txt",
+      "policy": "agent-ingest",
+      "process_exit": 1,
+      "records": 1,
+      "verdicts": [
+        "block"
+      ],
+      "incomplete_reasons": [
+        null
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "flate.pdf",
+      "policy": "agent-ingest",
+      "process_exit": 0,
+      "records": 1,
+      "verdicts": [
+        "clean"
+      ],
+      "incomplete_reasons": [
+        null
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "unsupported.7z",
+      "policy": "agent-ingest",
+      "process_exit": 2,
+      "records": 1,
+      "verdicts": [
+        "incomplete"
+      ],
+      "incomplete_reasons": [
+        "unsupported archive"
+      ],
+      "stderr": ""
+    },
+    {
+      "case": "missing.txt",
+      "policy": "agent-ingest",
+      "process_exit": 2,
+      "records": 0,
+      "verdicts": [],
+      "incomplete_reasons": [],
+      "stderr": "incomplete: missing path"
+    }
+  ],
+  "native_parsers": [
+    {
+      "parser": "textutil",
+      "case": "single-run.docx",
+      "phrase_present": true
+    },
+    {
+      "parser": "textutil",
+      "case": "split-run.docx",
+      "phrase_present": true
+    },
+    {
+      "parser": "PDFKit",
+      "case": "flat.pdf",
+      "phrase_present": true
+    },
+    {
+      "parser": "PDFKit",
+      "case": "flate.pdf",
+      "phrase_present": true
+    }
+  ]
+}

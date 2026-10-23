@@ -429,6 +429,7 @@ def main() -> None:
                     ("memory", "agent_persistent_instruction"),
                     ("tool", "agent_tool_output_override"),
                     ("role", "agent_role_spoof_action"),
+                    ("quotation", "agent_prompt_injection_phrases"),
                 )
                 for suffix, view, members in (
                     ("entities.html", "html-unescaped", []),
@@ -502,6 +503,16 @@ def main() -> None:
             ("incomplete", cases["broken.zip"], "agent-ingest", "incomplete", "quarantine"),
             ("member", cases["script_zip.zip"], "default", "block", "blocked"),
             ("derived", cases["html_entities.html"], "agent-ingest", "block", "blocked"),
+            ("quotation-rescan", cases["agent_quotation.txt"], "default", "advisory", "clean"),
+            ("quotation-rescan", cases["agent_quotation.txt"], "agent-ingest", "block", "blocked"),
+            ("quotation-rescan", cases["agent_quotation.txt"], "default", "advisory", "clean"),
+            (
+                "quotation-only",
+                cases["agent_quotation_only_0.txt"],
+                "agent-ingest",
+                "clean",
+                "clean",
+            ),
         )
         delivery_cli = (
             "delivery_clickfix.html",
@@ -515,6 +526,7 @@ def main() -> None:
             "agent_memory.txt",
             "agent_tool.txt",
             "agent_role.txt",
+            "agent_quotation.txt",
             "agent_memory_entities.html",
             "agent_tool_utf16be.bin",
             "agent_role_zip.zip",
