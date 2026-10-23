@@ -56,6 +56,7 @@ class RulesLock(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     packs: list[PackPin]
+    installed_vendor_files: list[str] | None = None
 
 
 def project_root() -> Path:
@@ -163,7 +164,7 @@ def save_lock(lock: RulesLock, rules_dir: Path | None = None) -> None:
     path = lock_path(rules_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
-    temporary.write_text(lock.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(lock.model_dump_json(indent=2, exclude_none=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -295,6 +296,19 @@ def compile_ruleset(
 
     files = rule_files(rules_dir, overlay=use_overlay)
     shadows = shadowed_rule_lines(rules_dir, overlay=use_overlay)
+    try:
+        installed = load_lock(rules_dir).installed_vendor_files
+    except (OSError, ValueError):
+        return None, shadows, "invalid rules.lock", 0, _count_skipped(shadows), None
+    if installed is not None:
+        vendor = rules_dir / "vendor"
+        present = {
+            path.relative_to(vendor).as_posix()
+            for path in files
+            if path.is_relative_to(vendor) and path.is_file()
+        }
+        if not installed or not set(installed) <= present:
+            return None, shadows, "installed vendor rules missing", 0, _count_skipped(shadows), None
     if not files:
         if use_overlay:
             return None, shadows, "bundled rules missing", 0, _count_skipped(shadows), None
@@ -693,6 +707,11 @@ def _validate_staged(root: Path, staging: Path) -> None:
 
 
 def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
+    files: list[Path] = []
+    _collect_rules(staging, files)
+    if not files:
+        raise ValueError("no vendor rule files")
+    lock.installed_vendor_files = sorted(path.relative_to(staging).as_posix() for path in files)
     vendor = root / "vendor"
     old = root / f".vendor-old-{secrets.token_hex(4)}"
     moved = False

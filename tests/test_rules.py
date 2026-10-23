@@ -778,7 +778,8 @@ def test_failed_update_keeps_vendor_and_lock(
                     pin="old",
                     sha256="ab" * 32,
                 )
-            ]
+            ],
+            installed_vendor_files=["retained.yar"],
         ),
         root,
     )
@@ -804,3 +805,55 @@ def test_vendor_entry_that_is_not_a_file_stays_a_visible_skip(
         result = scan_file(target, rules_dir=rules_copy)
         assert result.verdict is Verdict.clean
         assert result.skipped_rule_files == 2
+
+
+@pytest.mark.parametrize("loss", ["file", "pack", "vendor"])
+def test_installed_vendor_loss_holds_identical_resubmission(
+    tmp_path: Path, rules_copy: Path, loss: str
+) -> None:
+    blob = _kept_zip()
+    save_lock(
+        RulesLock(
+            packs=[
+                PackPin(
+                    name="yara-forge-core",
+                    url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+                    pin="x",
+                    sha256=hashlib.sha256(blob).hexdigest(),
+                )
+            ]
+        ),
+        rules_copy,
+    )
+    home = tmp_path / "gate"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    sample = inbox / "plain.txt"
+
+    def resubmit(expected_code: int, verdict: str) -> dict[str, object]:
+        sample.write_bytes(clean_text())
+        result = CliRunner().invoke(
+            app,
+            ["scan", str(sample), "--home", str(home), "--rules", str(rules_copy), "--json"],
+        )
+        assert result.exit_code == expected_code, result.output
+        report = json.loads(result.stdout)
+        assert report["verdict"] == verdict
+        return report
+
+    # A lock alone is not proof of installation: bundled-only scans stay usable.
+    resubmit(0, "clean")
+    install_packs(rules_copy, transport=lambda _url: blob)
+    resubmit(0, "clean")
+    vendor = rules_copy / "vendor"
+    if loss == "file":
+        (vendor / "yara-forge" / "kept.yar").unlink()
+    else:
+        shutil.rmtree(vendor / "yara-forge" if loss == "pack" else vendor)
+    report = resubmit(2, "incomplete")
+    assert report["incomplete_reason"] == "installed vendor rules missing"
+    assert list((home / "clean").iterdir()) == []
+    assert list((home / "quarantine").glob("*/plain.txt"))
+    assert not sample.exists()
+    install_packs(rules_copy, transport=lambda _url: blob)
+    resubmit(0, "clean")

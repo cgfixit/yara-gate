@@ -28,6 +28,13 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
+After a successful install or update with the current version, `rules.lock`
+records the installed vendor filenames. Losing any recorded file makes scans
+incomplete (exit 2) and keeps inbox files in quarantine. Run `rules install` with
+`--allow-network` again to restore the locked packs. Local-only offline scans
+remain available before installation. Older installations need one successful
+install or update to establish this record; scans do not enroll them automatically.
+
 Scanning works offline with the 20 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
 
 ```bash
