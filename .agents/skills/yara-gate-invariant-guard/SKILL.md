@@ -1,6 +1,6 @@
 ---
 name: yara-gate-invariant-guard
-description: Check yara-gate security and disposition contracts against the current source and real scanner. Use when asked to check invariants or as the first gate of a yara-gate improvement pass.
+description: Check yara-gate code security and disposition contracts against the current source and real scanner. Use when asked to check invariants or as the first gate of a yara-gate improvement pass.
 ---
 
 # yara-gate invariant guard
