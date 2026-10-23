@@ -1,4 +1,4 @@
-# Demo JSON encoding — October 19, 2026
+# Demo: JSON encoding — October 19, 2026
 
 Baseline `d72efc1566513ff40fc407d79db0404416cba0bc` drops the HTTP connection
 when `json.loads` receives malformed UTF-8 or truncated UTF-16. Its handler catches
