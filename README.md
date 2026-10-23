@@ -144,6 +144,16 @@ That compile produced 13535 rules and skipped 13. The compiled cache now lives i
 
 The 20 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
+A successful install or update also records `installed_vendor_files` in the
+rules root's `rules.lock`. If a recorded file, pack directory, or the whole vendor
+tree disappears, scans return incomplete/exit 2 with `installed vendor rules missing`;
+inbox files stay quarantined. Reinstall the locked packs to restore coverage.
+Fresh and legacy locks without this inventory still permit bundled-only offline
+scans. Existing installations need one successful install or update with this
+version to establish the inventory. Scans never create or repair it, and it is not
+an integrity check against modified rule contents or deletion of the lock itself.
+Older releases that reject unknown lock fields cannot read an inventoried lock.
+
 An installed copy (wheel, `uv tool`, or pipx) reads those same rules from package data. The platform user-data directory, and a `YARA_GATE_RULES` directory that does not already contain every shipped rule name, loads the packaged rules first, then `<root>/local/` rules (`.yar` and `.yara`), then `<root>/vendor/`. A user file with the same name as a packaged file is not compiled. `rules install` and `rules update` print `local/<name>: shadowed by bundled` and count it in `skipped_rule_files`. Candidates are never loaded. If the packaged rules are missing or unreadable, the scan exits 2 with `bundled rules missing` and does not run on user or vendor rules alone. A checkout, or an explicit `--rules` directory whose `local/` contains every shipped name, is loaded once so those files are not compiled twice.
 
 ## What this catches, and what it does not
