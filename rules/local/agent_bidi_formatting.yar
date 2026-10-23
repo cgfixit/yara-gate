@@ -2,6 +2,7 @@ rule agent_bidi_formatting {
     meta:
         author = "yara-gate"
         description = "Directional embeddings and isolates"
+        intent = "Block directional embeddings and isolates"
         severity = "block"
         verdict_on_match = "block"
         reference = "https://www.unicode.org/reports/tr9/"

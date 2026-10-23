@@ -2,6 +2,7 @@ rule script_encoded_powershell {
     meta:
         author = "yara-gate"
         description = "Encoded PowerShell launch with hidden-window or execution-policy-bypass flags on the same command line"
+        intent = "Advisory on encoded PowerShell with a hidden window or a bypass"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe"

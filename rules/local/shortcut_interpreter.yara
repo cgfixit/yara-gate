@@ -4,6 +4,7 @@ rule shortcut_powershell_encoded {
     meta:
         author = "yara-gate"
         description = "Parsed PowerShell shortcut with encoded command and hidden or bypass arguments"
+        intent = "Advisory on a PowerShell shortcut that hides an encoded command"
         verdict_on_match = "advisory"
         severity = "advisory"
         reference = "https://virustotal.github.io/yara-x/docs/modules/lnk/"
@@ -22,6 +23,7 @@ rule shortcut_mshta_remote {
     meta:
         author = "yara-gate"
         description = "Parsed MSHTA shortcut with an HTTP(S) argument"
+        intent = "Advisory on an MSHTA shortcut that opens an HTTP argument"
         verdict_on_match = "advisory"
         severity = "advisory"
         reference = "https://attack.mitre.org/techniques/T1218/005/"

@@ -2,6 +2,7 @@ rule agent_persistent_instruction {
     meta:
         author = "yara-gate"
         description = "Request to persist approval or safety bypass instructions in agent guidance or future sessions"
+        intent = "Advisory on a request to persist a safety bypass"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html"

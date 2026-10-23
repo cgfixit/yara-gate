@@ -2,6 +2,7 @@ rule agent_hidden_html {
     meta:
         author = "yara-gate"
         description = "Hidden HTML with an instruction-like phrase within 256 bytes"
+        intent = "Advisory when an instruction is hidden in HTML"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"

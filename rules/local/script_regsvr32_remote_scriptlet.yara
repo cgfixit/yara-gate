@@ -2,6 +2,7 @@ rule script_regsvr32_remote_scriptlet {
     meta:
         author = "yara-gate"
         description = "Regsvr32 with a remote /i target and scrobj.dll in one bounded command"
+        intent = "Advisory when regsvr32 loads a remote scriptlet"
         verdict_on_match = "advisory"
         severity = "advisory"
         reference = "https://attack.mitre.org/techniques/T1218/010/"

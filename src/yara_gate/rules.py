@@ -37,6 +37,9 @@ _DOWNLOAD_CAP = 300 * 1024 * 1024
 Transport = Callable[[str], bytes]
 # The last compiled set, keyed by its digest, so each file in a run skips deserializing.
 _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
+# Content hash of one rules directory. Later files in the same run stat instead of rereading.
+_DIGEST_STAMP: dict[str, tuple[object, ...]] = {}
+_DIGEST_VALUE: dict[str, str] = {}
 
 
 class RuleDownloadError(Exception):
@@ -783,10 +786,26 @@ def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> lis
 
 def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
     use_overlay = _installed_overlay(rules_dir) if overlay is None else overlay
+    files = rule_files(rules_dir, overlay=use_overlay)
+    stamp_rows: list[tuple[str, int, int]] = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except OSError:
+            stamp_rows.append((_rule_key(path, rules_dir), -1, -1))
+            continue
+        stamp_rows.append((_rule_key(path, rules_dir), stat.st_mtime_ns, stat.st_size))
+    shadows = tuple(shadowed_rule_lines(rules_dir, overlay=use_overlay))
+    stamp = (use_overlay, tuple(stamp_rows), shadows)
+    # A same-size same-mtime rewrite is caught on the next process. Inside one run the
+    # directory is the operator's rules, and hashing every file per scanned input missed the budget.
+    key = str(rules_dir)
+    if _DIGEST_STAMP.get(key) == stamp:
+        return _DIGEST_VALUE[key]
     hasher = hashlib.sha256(_CACHE_SALT)
     hasher.update(importlib.metadata.version("yara-x").encode())
     hasher.update(b"overlay\x00" if use_overlay else b"checkout\x00")
-    for path in rule_files(rules_dir, overlay=use_overlay):
+    for path in files:
         hasher.update(_rule_key(path, rules_dir).encode())
         hasher.update(b"\x00")
         try:
@@ -795,10 +814,13 @@ def ruleset_digest(rules_dir: Path, *, overlay: bool | None = None) -> str:
             # compile_sources reports an unreadable file; the digest must not abort the scan.
             hasher.update(b"\x01unreadable")
         hasher.update(b"\x00")
-    for line in shadowed_rule_lines(rules_dir, overlay=use_overlay):
+    for line in shadows:
         hasher.update(line.encode())
         hasher.update(b"\x00")
-    return hasher.hexdigest()
+    digest = hasher.hexdigest()
+    _DIGEST_STAMP[key] = stamp
+    _DIGEST_VALUE[key] = digest
+    return digest
 
 
 def _user_cache_dir() -> Path:
@@ -847,6 +869,8 @@ def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
 
 def _clear_cache(rules_dir: Path) -> None:
     _MEMO.clear()
+    _DIGEST_STAMP.clear()
+    _DIGEST_VALUE.clear()
     cache = _user_cache_dir()
     if cache.exists():
         shutil.rmtree(cache, ignore_errors=True)

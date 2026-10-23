@@ -2,6 +2,7 @@ rule agent_invisible_unicode {
     meta:
         author = "yara-gate"
         description = "Zero-width space, marks, word joiners, internal BOM, or Unicode tags"
+        intent = "Block invisible Unicode and an internal BOM"
         severity = "block"
         verdict_on_match = "block"
         reference = "https://www.unicode.org/reports/tr36/"
