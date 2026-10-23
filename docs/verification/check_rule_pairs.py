@@ -84,6 +84,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
     probe = _probe()
     added = _added()
     dangerous_pickle = added._dangerous_pickle
+    bytes_argument_pickle = added._bytes_argument_pickle
+    binbytes_argument_pickle = added._binbytes_argument_pickle
     gguf = added._gguf
     iso = added._iso
     magic_tail = added._magic_tail
@@ -204,6 +206,16 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         (
             "heuristic_pickle_reduce",
             dangerous_pickle(),
+            pickle.dumps({"note": "hello"}, protocol=4),
+        ),
+        (
+            "heuristic_pickle_reduce",
+            bytes_argument_pickle(),
+            pickle.dumps({"note": "hello"}, protocol=4),
+        ),
+        (
+            "heuristic_pickle_reduce",
+            binbytes_argument_pickle(),
             pickle.dumps({"note": "hello"}, protocol=4),
         ),
         ("heuristic_safetensors_header", safetensors(False), safetensors(True)),

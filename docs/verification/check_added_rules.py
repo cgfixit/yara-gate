@@ -36,6 +36,41 @@ def _dangerous_pickle() -> bytes:
     return bytes((0x80, 0x04)) + text("os") + text("system") + bytes((0x93, 0x29, 0x52, 0x2E))
 
 
+def _bytes_argument_pickle() -> bytes:
+    def text(value: str) -> bytes:
+        raw = value.encode("ascii")
+        return bytes((0x8C, len(raw))) + raw
+
+    arg = b"inert"
+    # SHORT_BINBYTES sits between STACK_GLOBAL and REDUCE. It is not executed.
+    return (
+        bytes((0x80, 0x04))
+        + text("os")
+        + text("system")
+        + bytes((0x93, 0x43, len(arg)))
+        + arg
+        + bytes((0x85, 0x52, 0x2E))
+    )
+
+
+def _binbytes_argument_pickle() -> bytes:
+    def text(value: str) -> bytes:
+        raw = value.encode("ascii")
+        return bytes((0x8C, len(raw))) + raw
+
+    arg = b"inert"
+    size = len(arg).to_bytes(4, "little")
+    return (
+        bytes((0x80, 0x04))
+        + text("os")
+        + text("system")
+        + bytes((0x93, 0x42))
+        + size
+        + arg
+        + bytes((0x85, 0x52, 0x2E))
+    )
+
+
 def _safetensors(valid: bool) -> bytes:
     header = {"w": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}}
     raw = json.dumps(header, separators=(",", ":")).encode()
@@ -92,6 +127,8 @@ def cases() -> list[tuple[str, bytes, str | None]]:
     nested = _zip("inner.zip", _zip("payload.exe", mini_pe()))
     return [
         ("danger.pkl", _dangerous_pickle(), "heuristic_pickle_reduce"),
+        ("bytes-arg.pkl", _bytes_argument_pickle(), "heuristic_pickle_reduce"),
+        ("binbytes-arg.pkl", _binbytes_argument_pickle(), "heuristic_pickle_reduce"),
         ("model.pt", _zip("data.pkl", _dangerous_pickle()), "heuristic_pickle_reduce"),
         ("note.pkl", pickle.dumps({"note": "hello"}, protocol=4), None),
         ("ok.safetensors", _safetensors(True), None),
