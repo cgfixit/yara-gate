@@ -168,7 +168,8 @@ tool results asking a command tool to bypass controls (`agent_tool_output_overri
 Role/action detection includes Llama-style headers, `[start]`/`[message]` role
 markers, and XML-style system/developer tags. These remain advisory: default
 allows them with exit 0; `agent-ingest` holds them with exit 1. The phrase
-“you are now” needs a nearby override/action or unrestricted-role term, including
+“you are now” needs a nearby override/action, unrestricted-role, jailbreak-persona
+(`DAN` case-sensitive, `developer mode`, `jailbroken`, “without restrictions”) term, including
 inside hidden HTML, so ordinary connection-status text stays clean.
 See [exact boundaries and measured collisions](docs/verification/agent-rule-coverage.md).
 
@@ -259,7 +260,7 @@ The [October 19 dependency refresh](docs/verification/dependency-refresh.md)
 records the earlier 20-rule pack, 120 library cases, 24 CLI operations and live
 browser checks against the refreshed lock. Historical screenshots in the gallery
 retain their original 16-rule provenance. The [October 22 agent-rule pass](docs/verification/agent-rule-coverage.md)
-records 22 rules, 166 library cases, 36 CLI operations, and the current consumer-document comparison.
+records 22 rules, 198 library cases, 36 CLI operations, and the current consumer-document comparison.
 
 `origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 

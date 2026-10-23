@@ -204,7 +204,14 @@ def shell_link(
     return bytes(header) + link_info + strings + bytes(4)
 
 
-def signature_cases(filename: str) -> dict[str, tuple[bytes, str | None]]:
+def rule_set(expected: str | list[str] | None) -> set[str]:
+    """Normalize a fixture's `expected` (one rule, several co-firing rules, or None) to a set."""
+    if expected is None:
+        return set()
+    return {expected} if isinstance(expected, str) else set(expected)
+
+
+def signature_cases(filename: str) -> dict[str, tuple[bytes, str | list[str] | None]]:
     rows = json.loads((REPO / "docs/research" / filename).read_text())
     cases = {}
     for row in rows:
@@ -342,7 +349,7 @@ def main() -> None:
     delivery.update(signature_cases("delivery-signatures.json"))
     agent_cases = signature_cases("agent-signatures.json")
     delivery.update(agent_cases)
-    delivery_rules = {rule_id for _, rule_id in delivery.values() if rule_id}
+    delivery_rules = set().union(*(rule_set(rule_id) for _, rule_id in delivery.values()))
     for name, (data, rule_id) in delivery.items():
         cases[name] = data
         expected[name] = "advisory" if rule_id else "clean"
@@ -399,7 +406,7 @@ def main() -> None:
             if name in delivery:
                 required = delivery[name][1]
                 actual = {f.rule_id for f in result.findings} & delivery_rules
-                if actual != ({required} if required else set()):
+                if actual != rule_set(required):
                     failures.append(f"{name}: expected delivery rule {required}, got {actual}")
             for fixture, rule_id, view, members in (
                 ("delivery_clickfix_entities.html", "web_clickfix_lure", "html-unescaped", []),
@@ -438,11 +445,8 @@ def main() -> None:
                 failures.append(f"{name}: missing scan provenance")
         if compiled != 22 or skipped or error:
             failures.append("local rules did not all compile")
-        new_rule_ids = {
-            rule_id
-            for _, rule_id in (signature_cases("delivery-signatures.json") | agent_cases).values()
-            if rule_id
-        }
+        signature_rules = signature_cases("delivery-signatures.json") | agent_cases
+        new_rule_ids = set().union(*(rule_set(rule_id) for _, rule_id in signature_rules.values()))
         corpus = [
             ("shipped/" + p.name, p)
             for p in sorted((REPO / "tests/fixtures/benign").iterdir())
