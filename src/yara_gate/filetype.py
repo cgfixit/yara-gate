@@ -1,6 +1,7 @@
 """Sniff a file from its bytes. The extension is never the type."""
 
 import codecs
+import re
 import unicodedata
 from pathlib import Path
 from typing import Literal
@@ -45,6 +46,36 @@ EXT_EXPECT: dict[str, str] = {
 
 TEXT_EXTS = {".txt", ".md", ".html", ".htm", ".json", ".yaml", ".yml"}
 OFFICE_EXTS = {".doc", ".docm", ".dot", ".dotm", ".xls", ".xlsm", ".ppt", ".pptm", ".ppsm"}
+DOCUMENT_SUFFIXES = frozenset(
+    {
+        ".pdf",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".md",
+        ".rtf",
+        ".html",
+        ".htm",
+    }
+)
+_DOUBLE_EXT = re.compile(r"(?i).*\.(pdf|png|jpe?g|gif|docx|txt|html|rtf)\.(exe|dll|scr|app)$")
+_EXECUTABLE_KINDS = frozenset({"pe", "elf", "macho"})
+
+
+def double_extension(path: Path) -> bool:
+    return _DOUBLE_EXT.match(path.name) is not None
+
+
+def is_document_name(path: Path) -> bool:
+    return path.suffix.lower() in DOCUMENT_SUFFIXES
+
+
+def is_executable_kind(kind: str) -> bool:
+    return kind in _EXECUTABLE_KINDS
 
 
 def sniff(data: bytes) -> str:

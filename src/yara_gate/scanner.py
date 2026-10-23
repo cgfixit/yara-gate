@@ -23,7 +23,14 @@ from yara_gate.content import (
     content_units,
     text_views,
 )
-from yara_gate.filetype import mismatch, sniff, utf16_encoding
+from yara_gate.filetype import (
+    double_extension,
+    is_document_name,
+    is_executable_kind,
+    mismatch,
+    sniff,
+    utf16_encoding,
+)
 from yara_gate.heuristics import heuristic_findings, joiner_findings
 from yara_gate.models import (
     Finding,
@@ -121,12 +128,44 @@ def _scan_file(
         return finish(error or "yara-x missing")
     fingerprint = ruleset
     engine_version = importlib.metadata.version("yara-x")
+    if double_extension(file_path):
+        findings.append(
+            Finding(
+                rule_id="heuristic_double_extension",
+                severity=Severity.block,
+                source=FindingSource.heuristic,
+            )
+        )
     try:
         for unit in content_units(ContentUnit(file_path.name, data), budget):
             budget.check()
             path = Path(unit.name)
             kind = sniff(unit.data)
             extra: list[Finding] = []
+            if unit.member_path and double_extension(path):
+                extra.append(
+                    Finding(
+                        rule_id="heuristic_double_extension",
+                        severity=Severity.block,
+                        source=FindingSource.heuristic,
+                    )
+                )
+            if is_executable_kind(kind) and unit.member_path and is_document_name(file_path):
+                extra.append(
+                    Finding(
+                        rule_id="heuristic_document_executable",
+                        severity=Severity.block,
+                        source=FindingSource.heuristic,
+                    )
+                )
+            if is_executable_kind(kind) and len(unit.member_path) >= 2:
+                extra.append(
+                    Finding(
+                        rule_id="heuristic_nested_executable",
+                        severity=Severity.block,
+                        source=FindingSource.heuristic,
+                    )
+                )
             if mismatch(path, kind):
                 extra.append(
                     Finding(

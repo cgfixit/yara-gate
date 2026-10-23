@@ -14,7 +14,7 @@ The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-ga
 
 ## See the policy decision
 
-The live loopback demo calls the real scanner with the 22-rule local pack. In this
+The live loopback demo calls the real scanner with the 32-rule local pack. In this
 October 19 capture of the earlier 20-rule pack, an inert HTML-encoded instruction is detected in the
 `html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
 exit 1**, while retaining its advisory finding severity.
@@ -142,7 +142,7 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 22 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 32 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 A successful install or update also records `installed_vendor_files` in the
 rules root's `rules.lock`. If a recorded file, pack directory, or the whole vendor
