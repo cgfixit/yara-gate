@@ -45,13 +45,14 @@ uv sync --frozen --group dev
 uv run python docs/research/probe_rule_coverage.py --verify --benign-stdlib
 ```
 
-Observed on the final rules and YARA-X 1.22.0: **22 rules, zero skips; 166 library
+Revalidated for this independent rule draft on YARA-X 1.21.0: **22 rules, zero skips; 166 library
 cases, 36 CLI operations, 109 benign observations, three failure paths; all pass**.
 The 109-file set is the nine shipped benign fixtures plus 100 standard-library
 files selected by the probe. All 109 complete clean with no rule/heuristic findings.
-The initial 42 agent fixtures also passed with YARA-X 1.21.0 before the lock refresh.
+All 46 agent fixtures are included. The earlier combined local candidate also passed
+with YARA-X 1.22.0; that dependency update is delivered separately.
 
-The initial invariant gate passed all eight focused checks for rejected
+The earlier local invariant gate passed all eight focused checks for rejected
 symlink/hardlink/FIFO intake, missing bundled rules, failed update preservation,
 cross-host token stripping, loopback binding, and cross-origin requests. Those
 boundaries were not changed. Ruff lint/format and strict mypy are recorded with
@@ -63,7 +64,8 @@ published PR head, separately from this local evidence.
 All tracked root and `docs/` Markdown files were scanned from these pinned
 snapshots, before and after, through `scan_file` with the complete local pack.
 The [manifest](agent-ingest-corpus.jsonl) records each file hash and rule IDs;
-no document contents or matched snippets are published.
+no document contents or matched snippets are published. Every pinned file hash
+and both sets of findings were revalidated on YARA-X 1.21.0 before publication.
 
 | Snapshot | Files | Baseline advisory | Candidate advisory | Newly matching files |
 | --- | ---: | ---: | ---: | ---: |
@@ -85,15 +87,11 @@ The [integration guide](../integrations.md#cyclaw-and-cg-agent-harness) identifi
 where a separately reviewed gate can run. This work does not install a consumer
 integration or replace its existing controls.
 
-## Dependencies and live browser
+## Earlier combined candidate and live browser
 
-The PyPI version/advisory metadata review covered all 37 locked third-party
-packages. At review time it reported no advisories for those versions and three
-newer releases. The lock was refreshed to YARA-X 1.22.0, Ruff 0.17.2 and pycparser
-3.12; dependency bounds and Python 3.12 support are unchanged. This is a metadata
-check, not an independent vulnerability audit. [YARA-X release](https://github.com/VirusTotal/yara-x/releases/tag/v1.22.0),
-[Ruff release](https://github.com/astral-sh/ruff/releases/tag/0.17.2),
-[pycparser package metadata](https://pypi.org/project/pycparser/).
+This draft retains the main lock (YARA-X 1.21.0). The earlier local browser
+evidence below used the same final rule bytes with YARA-X 1.22.0. The lock refresh
+is a separate dependency draft; it is not required by these rule changes.
 
 Computer Use exercised an owned live loopback demo with the final 22-rule pack and
 YARA-X 1.22.0: persistent-bypass text was advisory/0 under default and block/1 under
