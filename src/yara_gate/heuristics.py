@@ -247,6 +247,8 @@ def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
 
 
 def _decode_pdf_name(token: bytes) -> bytes:
+    if b"#" not in token:
+        return token
     decoded = bytearray()
     index = 0
     while index < len(token):
