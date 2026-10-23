@@ -8,6 +8,7 @@ import importlib.metadata
 import io
 import json
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -443,8 +444,14 @@ def main() -> None:
                     failures.append(f"{name}: missing expected member/view provenance")
             if not result.engine_version or not result.ruleset_sha256:
                 failures.append(f"{name}: missing scan provenance")
-        if compiled != 22 or skipped or error:
-            failures.append("local rules did not all compile")
+        declared = sum(
+            len(re.findall(r"(?m)^rule\s+[A-Za-z0-9_]+", path.read_text(encoding="utf-8")))
+            for path in source_files
+        )
+        if compiled != declared or skipped or error:
+            failures.append(
+                f"local rules did not all compile ({compiled} of {declared}, skipped={skipped})"
+            )
         signature_rules = signature_cases("delivery-signatures.json") | agent_cases
         new_rule_ids = set().union(*(rule_set(rule_id) for _, rule_id in signature_rules.values()))
         corpus = [
