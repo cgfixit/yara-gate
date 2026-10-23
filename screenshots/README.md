@@ -101,3 +101,25 @@ This earlier capture comes from local verification of [PR #3](https://github.com
 - **SHA-256:** `d84d0158ecea598d90e0f5dac9268c952665bea2479ddde8f4fd6c0ad071b1a5`.
 
 This is the one retained screenshot from that verification session. It shows the live HTTP demo, not the standalone JavaScript illustration. The other exercised cases and verification limits are recorded in the [intake coverage verification](../docs/verification/intake-coverage.md).
+
+## Persistent-instruction rule
+
+![Agent-ingest holds a persistent approval-bypass instruction](yara-gate-persistent-instruction.jpg)
+
+- **Captured:** October 22, 2026 (America/New_York), using Codex Computer Use in
+  the in-app browser on macOS 27.0.1 ARM64. Original viewport screenshot, scrolled
+  to show the input and result together; no crop or re-encoding.
+- **Source:** dirty candidate on `d0c5a0f2af48288b8f13de3d757e97a338ae587a`, branch
+  `cx/agent-ingest-rule-coverage`, with the final rule bytes in this draft.
+  Python 3.12.12, YARA-X 1.22.0; copied 22-rule tree and owned loopback process.
+- **Input:** inert text requesting an approval bypass be persisted in `AGENTS.md`.
+  It was scanned as data only. Input SHA-256:
+  `7abb83b630ffc481a14680b41d6dad7a2517c42ce3a2473563eb720e88f42719`.
+- **Observed:** block/exit 1, policy agent-ingest; `agent_persistent_instruction`
+  retains advisory severity, raw view, offset 0, length 43. The same input was
+  also observed as advisory/exit 0 under default policy.
+- **Image:** JPEG, 1265 × 712; SHA-256
+  `a28c7c5e033c0c80a3058868eef9754f056bb91c25d007a2fd9c8a5ca05ecef8`.
+
+The [verification record](../docs/verification/agent-rule-coverage.md) separates
+this rendered result from CLI disposition and consumer-document scan evidence.

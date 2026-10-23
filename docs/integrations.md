@@ -61,3 +61,19 @@ and validate the SHA-256 when handing bytes to another process.
 
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
+
+## CyClaw and CG-agent-harness
+
+Use the strict gate before CyClaw reads/chunks an untrusted corpus file, or before
+Harness accepts an attachment, notes-corpus file, or child file-read result into
+model context. Keep the existing consumer's size limits, sanitization, untrusted
+content fences, approval checks, and memory review. A clean scan is not permission
+to execute instructions found in a file or to persist them as agent guidance.
+
+The [agent-rule coverage record](verification/agent-rule-coverage.md) ties this
+use case to inspected consumer revisions and scans of their current documents.
+Persistent-instruction and textual tool-result rules are advisory by design;
+`agent-ingest` is what holds those findings. Legitimate security documentation can
+match. Release held files through explicit review rather than a filename or
+repository-wide allowlist. These are integration requirements, not a claim that
+either consumer now calls yara-gate automatically.

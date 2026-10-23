@@ -8,6 +8,7 @@ rule agent_role_spoof_action {
     strings:
         $role = /(\[im_start\]|<\|im_start\|>)[ \t]*(system|developer)[\s\S]{0,256}(reveal|ignore|override|execute|credentials)/ nocase ascii wide
         $claim = /(system message|developer message|highest priority|system prompt:)[\s\S]{0,256}(reveal|ignore|override|execute|credentials)/ nocase ascii wide
+        $header = /(<\|start_header_id\|>(system|developer)<\|end_header_id\|>|\[start\](system|developer)\[message\]|<(system|developer)>)[\s\S]{0,256}\b(reveal|ignore|override|execute|credentials)\b/ nocase ascii wide
     condition:
         any of them
 }

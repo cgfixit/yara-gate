@@ -14,8 +14,8 @@ The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-ga
 
 ## See the policy decision
 
-The live loopback demo calls the real scanner with the 20-rule local pack. In this
-October 19 capture, an inert HTML-encoded instruction is detected in the
+The live loopback demo calls the real scanner with the 22-rule local pack. In this
+October 19 capture of the earlier 20-rule pack, an inert HTML-encoded instruction is detected in the
 `html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
 exit 1**, while retaining its advisory finding severity.
 
@@ -39,7 +39,7 @@ uv sync --frozen
 uv run yara-gate --version
 ```
 
-`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.21.0). It does not call the Homebrew `yara` binary.
+`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.0). It does not call the Homebrew `yara` binary.
 
 `uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. An installed copy copies the packaged local rules, not a checkout path that is not on disk. An unexpected selftest error prints `incomplete: <Type>` and exits 2. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
 
@@ -142,7 +142,7 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 20 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 22 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 An installed copy (wheel, `uv tool`, or pipx) reads those same rules from package data. The platform user-data directory, and a `YARA_GATE_RULES` directory that does not already contain every shipped rule name, loads the packaged rules first, then `<root>/local/` rules (`.yar` and `.yara`), then `<root>/vendor/`. A user file with the same name as a packaged file is not compiled. `rules install` and `rules update` print `local/<name>: shadowed by bundled` and count it in `skipped_rule_files`. Candidates are never loaded. If the packaged rules are missing or unreadable, the scan exits 2 with `bundled rules missing` and does not run on user or vendor rules alone. A checkout, or an explicit `--rules` directory whose `local/` contains every shipped name, is loaded once so those files are not compiled twice.
 
@@ -151,6 +151,16 @@ An installed copy (wheel, `uv tool`, or pipx) reads those same rules from packag
 Installed curated packs add known malware signatures. Local heuristics check Office auto-exec macros (`olevba`), risky PDF tokens (`/JavaScript`, `/JS`, `/OpenAction`, `/AA`, `/Launch`, `/EmbeddedFile`, `/RichMedia`), and embedded executable headers. These checks also run on archive members. PDF token checks remain conservative feature restrictions; an ordinary navigation `/OpenAction` still blocks.
 
 Bidi overrides, embeddings, and isolates block under both policies. A zero-width space, left-to-right or right-to-left mark, word joiner, internal BOM, or Unicode tag also blocks under both policies. A ZWJ inside an emoji sequence and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters stay clean. New advisory rules cover authority/action spoofing, secret-transfer requests, selected base64 instruction phrases, external OOXML/RTF templates, and download/execute command combinations. Hidden-HTML indicators require a nearby instruction phrase. A text file's long-base64 detection survives a filename change to `.bin`.
+
+Agent-ingestion heuristics also flag requests to persist approval/safety bypasses
+in agent guidance or future sessions (`agent_persistent_instruction`) and textual
+tool results asking a command tool to bypass controls (`agent_tool_output_override`).
+Role/action detection includes Llama-style headers, `[start]`/`[message]` role
+markers, and XML-style system/developer tags. These remain advisory: default
+allows them with exit 0; `agent-ingest` holds them with exit 1. The phrase
+“you are now” needs a nearby override/action or unrestricted-role term, including
+inside hidden HTML, so ordinary connection-status text stays clean.
+See [exact boundaries and measured collisions](docs/verification/agent-rule-coverage.md).
 
 The delivery-pattern rules report these IDs:
 
@@ -236,9 +246,10 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The [delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) records the 16-rule pack's 70 library cases, 16 CLI operations, and three compilation/deadline checks. The initial [research](docs/research/universal-rule-research.md) and [intake verification](docs/verification/intake-coverage.md) preserve earlier evidence and remaining work.
 
 The [October 19 dependency refresh](docs/verification/dependency-refresh.md)
-records the current 20-rule pack, 120 library cases, 24 CLI operations and live
+records the earlier 20-rule pack, 120 library cases, 24 CLI operations and live
 browser checks against the refreshed lock. Historical screenshots in the gallery
-retain their original 16-rule provenance.
+retain their original 16-rule provenance. The [October 22 agent-rule pass](docs/verification/agent-rule-coverage.md)
+records 22 rules, 166 library cases, 36 CLI operations, and the current consumer-document comparison.
 
 `origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 
