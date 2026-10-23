@@ -2,6 +2,7 @@ rule agent_tool_output_override {
     meta:
         author = "yara-gate"
         description = "Tool-result text requesting a command tool to bypass controls"
+        intent = "Advisory when tool-result text asks a command tool to skip a control"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html"

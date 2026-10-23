@@ -2,6 +2,7 @@ rule doc_external_template {
     meta:
         author = "yara-gate"
         description = "OOXML relationship with an external attached-template target, or RTF remote template"
+        intent = "Advisory on an external attached template"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://attack.mitre.org/techniques/T1221/"

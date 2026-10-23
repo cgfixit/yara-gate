@@ -2,6 +2,7 @@ rule web_clickfix_lure {
     meta:
         author = "yara-gate"
         description = "Verification lure with clipboard write, shell-opening and paste instructions nearby"
+        intent = "Advisory on a clipboard lure that tells the reader to run a command"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/"

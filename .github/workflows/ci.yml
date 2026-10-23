@@ -39,6 +39,15 @@ jobs:
       - name: Mypy
         run: uv run mypy --strict src
 
+      - name: Compile and lint local rules
+        run: uv run python docs/verification/lint_rules.py
+
+      - name: Check rules.lock hashes
+        run: uv run python docs/verification/check_rules_lock.py
+
+      - name: Rule fire and near-miss pairs
+        run: uv run python docs/verification/check_rule_pairs.py
+
       - name: Exercise intake and rule coverage
         run: uv run python docs/research/probe_rule_coverage.py --verify
 
