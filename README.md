@@ -2,7 +2,7 @@
 
 yara-gate is a local intake gate for untrusted files before document processing, search indexing, or AI-agent ingestion. Its CLI and Python library combine YARA-X rules with bounded archive and document checks, then return a verdict that a downstream reader can act on.
 
-Use it to make the handoff from an incoming file to a reader explicit:
+Use it (among many things to be determined) to make the handoff from an incoming file to a reader explicit:
 
 - **Hold files until inspection finishes.** Inbox files stay in `quarantine/` while scanning. Blocked files go to `blocked/`; unfinished scans stay quarantined. Readers should consume files only from `clean/`.
 - **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
