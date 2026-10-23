@@ -185,6 +185,10 @@ uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
 
 Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
 
+Malformed JSON syntax or byte encoding returns HTTP 400 with `bad json`. Rejected
+requests are not scanned. The browser clears its previous verdict when a new
+submission fails; see the [request-validation verification](docs/verification/demo-json-encoding.md).
+
 ## Verification already done on this machine
 
 The [October 19 dependency refresh](docs/verification/dependency-refresh.md) passed

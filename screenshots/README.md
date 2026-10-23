@@ -61,6 +61,9 @@ the PDF optimization or demo fix to the dependency branch; those remain separate
 | [PDF result](yara-gate-pdf-fast-path.jpg) | 665 × 699 | `4df9843434fe595d8003f588b898304032fe7445765a691d786ce65c68311e2a` |
 | [Rejection result](yara-gate-demo-rejection.jpg) | 664 × 698 | `956127e174b8bf939d1f2f19f20a0ca3335f947a95f3487f17869229c0251771` |
 
+The [October 19 PDF fast-path capture](../docs/verification/pdf-name-fast-path.md#computer-use)
+records the candidate source hash, inert input, observed offsets and original image hash.
+
 ## ClickFix detection and consumer policy
 
 | Default policy | Agent-ingest policy |

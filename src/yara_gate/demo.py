@@ -180,7 +180,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         except DemoHTTPError as exc:
             self._error(exc.status, exc.detail)
             return
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self._error(400, "bad json")
             return
         except ValidationError as exc:

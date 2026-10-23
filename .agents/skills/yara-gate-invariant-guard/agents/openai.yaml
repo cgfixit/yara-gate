@@ -1,0 +1,4 @@
+interface:
+  display_name: "yara-gate invariant guard"
+  short_description: "Verify scanner trust and disposition contracts"
+  default_prompt: "Use $yara-gate-invariant-guard to check the current yara-gate tree and report evidence and gaps."
