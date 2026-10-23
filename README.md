@@ -244,6 +244,12 @@ retain their original 16-rule provenance.
 
 ## Project files
 
+Codex workflows are maintained under `.agents/skills/`. Invoke
+`$yara-gate-invariant-guard` for the existing runtime probe, focused trust-boundary
+checks and source review, then `$yara-gate-optimizer` for a requested improvement
+pass. The optimizer is manual-only. Both are tailored to this repository; the
+runtime and demo evidence skills supply their specialized verification steps.
+
 `pyproject.toml` names the package, the `yara-gate` command, and the ruff and mypy settings. `uv.lock` is the only dependency pin. Do not add a `requirements.txt` beside it. `.python-version` contains `3.12`, which is the interpreter `uv sync` should use. `src/yara_gate/py.typed` marks the importable package as typed. `LICENSE` is the MIT license. `.editorconfig` sets UTF-8, LF, and four-space Python indents so an editor matches ruff.
 
 `.gitignore` drops the virtualenv, caches, `.env` files, `build/`, and coverage output. `rules/vendor/` stays untracked except `rules/vendor/SKIPPED.md` and `rules/vendor/.gitkeep`. `rules/.cache/` stays untracked. The vendor bodies include Elastic rules. This tree does not redistribute those rules.
