@@ -1,3 +1,7 @@
+# Pack decision 2026-10-23
+
+No vendor rule body is committed. yara-forge core contains at least one `NO LICENSE SET` rule. signature-base meta cites Detection Rule License 1.1, and that license text was not fetched. Elastic stays under Elastic License 2.0 and is not packaged for redistribution. The lock pins are unchanged. A per-rule false-positive census was not run. `rules install` rewrites this file from compile skips, so the durable copy of this decision is `docs/verification/vendor-pack-review.md`.
+
 # Rules skipped because yara-x could not compile them
 
 configured_vulns_ext_vars.yar: CompileError
