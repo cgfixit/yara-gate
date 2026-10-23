@@ -1,4 +1,4 @@
-# PDF name fast path — October 19, 2026
+# PDF name fast path — 10 19 2026
 
 Baseline: `d72efc1566513ff40fc407d79db0404416cba0bc`. Candidate changes only
 `_decode_pdf_name`: names without `#` are returned unchanged instead of copied
