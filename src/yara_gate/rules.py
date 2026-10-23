@@ -696,21 +696,23 @@ def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
     vendor = root / "vendor"
     old = root / f".vendor-old-{secrets.token_hex(4)}"
     moved = False
+    installed = False
     try:
         if vendor.exists():
             os.rename(vendor, old)
             moved = True
         os.rename(staging, vendor)
+        installed = True
         save_lock(lock, root)
-        if moved and old.exists():
-            shutil.rmtree(old)
     except Exception:
-        if moved and old.exists():
-            if vendor.exists():
-                shutil.rmtree(vendor, ignore_errors=True)
-            if not vendor.exists():
-                os.rename(old, vendor)
+        if installed:
+            shutil.rmtree(vendor, ignore_errors=True)
+        if moved and old.exists() and not vendor.exists():
+            os.rename(old, vendor)
         raise
+    if moved and old.exists():
+        # The tree and lock are committed; backup cleanup must not roll them back.
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
