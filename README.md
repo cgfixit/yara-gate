@@ -2,7 +2,7 @@
 
 yara-gate is a local intake gate for untrusted files before document processing, search indexing, or AI-agent ingestion. Its CLI and Python library combine YARA-X rules with bounded archive and document checks, then return a verdict that a downstream reader can act on.
 
-Use it to make the handoff from an incoming file to a reader explicit:
+Use it (among many things to be determined) to make the handoff from an incoming file to a reader explicit:
 
 - **Hold files until inspection finishes.** Inbox files stay in `quarantine/` while scanning. Blocked files go to `blocked/`; unfinished scans stay quarantined. Readers should consume files only from `clean/`.
 - **Choose how to handle suspicious patterns.** Default policy allows completed clean or advisory scans into `clean/`. The `agent-ingest` policy also blocks advisories for review, including the new delivery-pattern rules shown below.
@@ -14,14 +14,20 @@ The private repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-ga
 
 ## See the policy decision
 
-The live loopback demo below calls the real scanner. Both captures scan the same inert ClickFix example with the 16-rule local pack. The rule detects a verification lure combined with clipboard-copy and shell/paste instructions; the selected policy determines whether that advisory is allowed or held.
+The live loopback demo calls the real scanner with the 20-rule local pack. In this
+October 19 capture, an inert HTML-encoded instruction is detected in the
+`html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
+exit 1**, while retaining its advisory finding severity.
 
-| Default policy: report the advisory | Agent ingest: hold it for review |
-| --- | --- |
-| ![Default policy reports web_clickfix_lure as advisory with exit 0](screenshots/yara-gate-clickfix-advisory.jpg) | ![Agent-ingest policy returns block with exit 1 while preserving advisory finding severity](screenshots/yara-gate-clickfix-agent-ingest.jpg) |
-| `advisory`, exit **0**: a complete inbox scan with no blocking finding can enter `clean/`; the report still identifies the pattern. | `block`, exit **1**: the same advisory is held in `blocked/` during inbox intake. Its finding severity remains advisory. |
+![Live demo blocks an HTML-decoded instruction under agent-ingest policy and shows its finding metadata](screenshots/yara-gate-dependency-refresh.jpg)
 
-This makes the value concrete: a consumer can review a suspicious pattern or require it to be held, using the same detection evidence. Legitimate security examples can match, so an advisory is a review signal. These October 8 captures show verdicts and policy behavior; the demo itself does not move files. See [capture provenance and full-size images](screenshots/README.md#clickfix-detection-and-consumer-policy), or [run the live demo](#demo).
+Under the default policy, that advisory is reported with exit 0. A downstream
+consumer can instead require advisories to be held for review. Legitimate security
+examples can match; the verdict records the selected policy, not proof of malice.
+The demo does not move files. See the [screenshot gallery and capture provenance](screenshots/README.md),
+including the earlier ClickFix policy comparison, or [run the live demo](#demo).
+The [final combined acceptance record](docs/verification/final-acceptance.md)
+includes fresh Computer Use screenshots and separate malformed-request checks.
 
 ## Install
 
@@ -29,7 +35,7 @@ From the project directory, on macOS or Linux, with [uv](https://docs.astral.sh/
 
 ```bash
 cd ~/Projects/yara-gate
-uv sync
+uv sync --frozen
 uv run yara-gate --version
 ```
 
@@ -228,6 +234,11 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
 For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The [delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) records the 16-rule pack's 70 library cases, 16 CLI operations, and three compilation/deadline checks. The initial [research](docs/research/universal-rule-research.md) and [intake verification](docs/verification/intake-coverage.md) preserve earlier evidence and remaining work.
+
+The [October 19 dependency refresh](docs/verification/dependency-refresh.md)
+records the current 20-rule pack, 120 library cases, 24 CLI operations and live
+browser checks against the refreshed lock. Historical screenshots in the gallery
+retain their original 16-rule provenance.
 
 `origin` is `cgfixit/yara-gate`. The workflow files do not by themselves turn on secret scanning, push protection, Dependabot alerts, code scanning, or branch protection. The checked-in CodeQL workflow runs Python queries with `upload: never` and `upload-database: false`; its success alone does not prove a security-dashboard upload. A separate GitHub-managed CodeQL workflow can also appear in PR checks. Repository settings and the exact workflow determine which scanning features run. `.github/dependabot.yml` schedules version updates; Dependabot alerts are a separate repository setting.
 
