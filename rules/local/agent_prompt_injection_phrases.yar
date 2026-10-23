@@ -9,7 +9,7 @@ rule agent_prompt_injection_phrases {
         $a = "ignore previous instructions" nocase
         $b = "ignore all previous instructions" nocase
         $c = "disregard the above" nocase
-        $d = "you are now" nocase
+        $d = /\byou are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered)\b/ nocase ascii wide
         $e = "system prompt:" nocase
         $f = "exfiltrate" nocase
         $g = "do not tell the user" nocase

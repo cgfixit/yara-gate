@@ -204,8 +204,8 @@ def shell_link(
     return bytes(header) + link_info + strings + bytes(4)
 
 
-def attachment_cases() -> dict[str, tuple[bytes, str | None]]:
-    rows = json.loads((REPO / "docs/research/delivery-signatures.json").read_text())
+def signature_cases(filename: str) -> dict[str, tuple[bytes, str | None]]:
+    rows = json.loads((REPO / "docs/research" / filename).read_text())
     cases = {}
     for row in rows:
         if "target" in row:
@@ -339,7 +339,9 @@ def main() -> None:
     for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
         expected[name] = "incomplete"
     delivery = delivery_cases()
-    delivery.update(attachment_cases())
+    delivery.update(signature_cases("delivery-signatures.json"))
+    agent_cases = signature_cases("agent-signatures.json")
+    delivery.update(agent_cases)
     delivery_rules = {rule_id for _, rule_id in delivery.values() if rule_id}
     for name, (data, rule_id) in delivery.items():
         cases[name] = data
@@ -413,6 +415,19 @@ def main() -> None:
                 ("regsvr32_utf16be.bin", "script_regsvr32_remote_scriptlet", "decoded-utf16", []),
                 ("powershell_zip.zip", "shortcut_powershell_encoded", "raw", ["zip:0"]),
                 ("mshta_zip.zip", "shortcut_mshta_remote", "raw", ["zip:0"]),
+            ) + tuple(
+                (f"agent_{family}_{suffix}", rule_id, view, members)
+                for family, rule_id in (
+                    ("memory", "agent_persistent_instruction"),
+                    ("tool", "agent_tool_output_override"),
+                    ("role", "agent_role_spoof_action"),
+                )
+                for suffix, view, members in (
+                    ("entities.html", "html-unescaped", []),
+                    ("utf16be.bin", "decoded-utf16", []),
+                    ("zip.zip", "raw", ["zip:0"]),
+                    ("gzip.gz", "raw", ["gzip:0"]),
+                )
             ):
                 if name == fixture and not any(
                     f.rule_id == rule_id and f.view == view and f.member_path == members
@@ -421,9 +436,13 @@ def main() -> None:
                     failures.append(f"{name}: missing expected member/view provenance")
             if not result.engine_version or not result.ruleset_sha256:
                 failures.append(f"{name}: missing scan provenance")
-        if compiled != 20 or skipped or error:
+        if compiled != 22 or skipped or error:
             failures.append("local rules did not all compile")
-        new_rule_ids = {rule_id for _, rule_id in attachment_cases().values() if rule_id}
+        new_rule_ids = {
+            rule_id
+            for _, rule_id in (signature_cases("delivery-signatures.json") | agent_cases).values()
+            if rule_id
+        }
         corpus = [
             ("shipped/" + p.name, p)
             for p in sorted((REPO / "tests/fixtures/benign").iterdir())
@@ -482,6 +501,12 @@ def main() -> None:
             "rundll32.cmd",
             "powershell.lnk",
             "mshta.lnk",
+            "agent_memory.txt",
+            "agent_tool.txt",
+            "agent_role.txt",
+            "agent_memory_entities.html",
+            "agent_tool_utf16be.bin",
+            "agent_role_zip.zip",
         )
         cli_cases += tuple(
             (name, cases[name], policy, verdict, destination)
