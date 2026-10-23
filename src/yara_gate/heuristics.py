@@ -419,7 +419,21 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
             offset += 1
         elif opcode == 0x72:  # LONG_BINPUT
             offset += 4
+        elif opcode == 0x43:  # SHORT_BINBYTES
+            # The payload is an argument, not a callable. Skip it and keep walking.
+            nxt = _skip_counted(data, offset, 1)
+            if nxt is None:
+                return None
+            offset = nxt
+            stack.append(None)
+        elif opcode == 0x42:  # BINBYTES
+            nxt = _skip_counted(data, offset, 4)
+            if nxt is None:
+                return None
+            offset = nxt
+            stack.append(None)
         else:
+            # An opcode this walker does not know stops the walk with no finding.
             return None
         if offset > len(data):
             return None
@@ -428,6 +442,16 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
 
 def _dangerous(module: str, name: str) -> bool:
     return module in _PICKLE_MODULES or name in _PICKLE_NAMES
+
+
+def _skip_counted(data: bytes, offset: int, width: int) -> int | None:
+    if offset + width > len(data):
+        return None
+    size = int.from_bytes(data[offset : offset + width], "little")
+    start = offset + width
+    if size > len(data) - start:
+        return None
+    return start + size
 
 
 def _counted(data: bytes, offset: int, width: int) -> tuple[str | None, int]:
