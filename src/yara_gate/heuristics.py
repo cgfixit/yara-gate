@@ -233,15 +233,13 @@ def _script_letter(char: str) -> bool:
     return any(name.startswith(prefix) for prefix in _LETTER_PREFIXES)
 
 
-_PDF_NAME = re.compile(rb"/(?:[^\s/<>\[\]()#]|#[0-9A-Fa-f]{2})+")
+_PDF_NAME = re.compile(rb"/(?:[^\x00\t\n\f\r /<>\[\]()#%]|#[0-9A-Fa-f]{2})+")
 
 
 def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
     for match in _PDF_NAME.finditer(data):
         decoded = _decode_pdf_name(match.group())
-        if decoded == token or (
-            decoded.startswith(token) and not decoded[len(token) : len(token) + 1].isalpha()
-        ):
+        if decoded == token:
             return match.start(), len(match.group())
     return None
 
