@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from yara_gate.heuristics import heuristic_findings
+from yara_gate.heuristics import heuristic_findings, pdf_findings
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
 
 
@@ -43,6 +43,15 @@ def test_openaction_pdf_blocks(tmp_path: Path) -> None:
     ids = {item.rule_id for item in findings}
     assert "heuristic_pdf_OpenAction" in ids
     assert "heuristic_pdf_JavaScript" in ids
+
+
+def test_pdf_names_keep_first_physical_span_and_token_boundaries() -> None:
+    data = b"%PDF-1.4\n/JSuffix /OrdinaryName /J#53 /JS /OpenActionExtra /OpenAction\n"
+    findings = pdf_findings(data)
+    assert [(item.rule_id, item.offset, item.length) for item in findings] == [
+        ("heuristic_pdf_JS", data.index(b"/J#53"), len(b"/J#53")),
+        ("heuristic_pdf_OpenAction", data.rindex(b"/OpenAction"), len(b"/OpenAction")),
+    ]
 
 
 def test_harmless_autoopen_docm_blocks(tmp_path: Path) -> None:
