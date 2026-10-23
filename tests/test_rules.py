@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -22,9 +23,11 @@ from yara_gate.rules import (
     _allowed_url,
     _bytes,
     _PinnedRedirect,
+    _swap_vendor,
     _vendor_member,
     compile_sources,
     install_packs,
+    load_lock,
     rule_files,
     save_lock,
     shipped_local_dir,
@@ -171,6 +174,62 @@ def test_successful_install_swaps_atomically_and_writes_lock(tmp_path: Path) -> 
     assert digest in (root / "rules.lock").read_text(encoding="utf-8")
     assert list(root.glob(".staging-*")) == []
     assert list(root.glob(".vendor-old-*")) == []
+
+
+def test_old_vendor_cleanup_failure_keeps_committed_tree_and_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _rules_tree(tmp_path)
+    save_lock(RulesLock(packs=[]), root)
+    staging = root / ".staging-new"
+    staging.mkdir()
+    (staging / "new.yar").write_text("rule new_rule { condition: false }\n")
+    lock = RulesLock(
+        packs=[
+            PackPin(name="new", url="https://github.com/org/new.zip", pin="new", sha256="ab" * 32)
+        ]
+    )
+    unlink = os.unlink
+
+    def refuse_old_file(path: str, *, dir_fd: int | None = None) -> None:
+        if path == "retained.yar":
+            raise PermissionError("old vendor cleanup denied")
+        unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "unlink", refuse_old_file)
+    _swap_vendor(root, staging, lock)
+    assert (root / "vendor" / "new.yar").is_file()
+    assert not (root / "vendor" / "retained.yar").exists()
+    assert load_lock(root) == lock
+    backups = list(root.glob(".vendor-old-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "retained.yar").is_file()
+
+
+@pytest.mark.parametrize("existing_vendor", [True, False])
+def test_lock_write_failure_restores_previous_vendor_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_vendor: bool
+) -> None:
+    root = _rules_tree(tmp_path)
+    if not existing_vendor:
+        shutil.rmtree(root / "vendor")
+    save_lock(RulesLock(packs=[]), root)
+    previous = (root / "rules.lock").read_bytes()
+    staging = root / ".staging-new"
+    staging.mkdir()
+    (staging / "new.yar").write_text("rule new_rule { condition: false }\n")
+
+    def fail_lock(_lock: RulesLock, _root: Path) -> None:
+        raise PermissionError("lock write denied")
+
+    monkeypatch.setattr("yara_gate.rules.save_lock", fail_lock)
+    with pytest.raises(PermissionError, match="lock write denied"):
+        _swap_vendor(root, staging, RulesLock(packs=[]))
+    assert (root / "rules.lock").read_bytes() == previous
+    assert (root / "vendor").exists() == existing_vendor
+    assert not (root / "vendor" / "new.yar").exists()
+    if existing_vendor:
+        assert (root / "vendor" / "retained.yar").is_file()
 
 
 def test_whole_set_failure(tmp_path: Path) -> None:
