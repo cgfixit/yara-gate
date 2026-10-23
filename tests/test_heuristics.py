@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from yara_gate.heuristics import heuristic_findings, pdf_findings
+import pytest
+
+from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
 
 
@@ -51,6 +53,24 @@ def test_pdf_names_keep_first_physical_span_and_token_boundaries() -> None:
     assert [(item.rule_id, item.offset, item.length) for item in findings] == [
         ("heuristic_pdf_JS", data.index(b"/J#53"), len(b"/J#53")),
         ("heuristic_pdf_OpenAction", data.rindex(b"/OpenAction"), len(b"/OpenAction")),
+    ]
+
+
+@pytest.mark.parametrize("token", PDF_TOKENS)
+@pytest.mark.parametrize("suffix", [b"1", b"_Notes", b"-Report", b"#31", b"#5fNotes", b"\x0b"])
+def test_pdf_name_suffix_is_not_an_active_feature(token: bytes, suffix: bytes) -> None:
+    data = b"%PDF-1.4\n<< " + token + suffix + b" (ordinary metadata) >>\n%%EOF\n"
+    assert pdf_findings(data) == []
+
+
+@pytest.mark.parametrize(
+    "delimiter", [b"\x00", b"\t", b"\n", b"\f", b"\r", b" ", b"%comment\n", b"/"]
+)
+def test_pdf_exact_name_stops_at_pdf_whitespace_or_delimiter(delimiter: bytes) -> None:
+    data = b"%PDF-1.4\n/J#53" + delimiter + b"(ordinary)\n%%EOF\n"
+    findings = pdf_findings(data)
+    assert [(f.rule_id, f.offset, f.length) for f in findings] == [
+        ("heuristic_pdf_JS", data.index(b"/J#53"), 5)
     ]
 
 
