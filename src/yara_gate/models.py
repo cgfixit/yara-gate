@@ -1,8 +1,14 @@
-"""Verdicts for one scan. Exit codes are derived from the verdict."""
+"""Verdicts for one scan. Exit codes are derived from the verdict.
 
+Plain dataclasses, not pydantic models: every ``yara-gate scan`` that a caller starts per file
+is a fresh process, and building pydantic's schemas cost more than scanning a small file.
+``model_dump`` and ``model_dump_json`` keep the output shape library callers already use.
+"""
+
+import json
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
 
 
 class Verdict(StrEnum):
@@ -28,25 +34,41 @@ class FindingSource(StrEnum):
     filetype = "filetype"
 
 
-class Finding(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class _Dumpable:
+    __slots__ = ()
 
+    def model_dump(self, *, exclude: set[str] | None = None) -> dict[str, Any]:
+        data: dict[str, Any] = asdict(self)  # type: ignore[call-overload]
+        for name in exclude or ():
+            data.pop(name, None)
+        return data
+
+    def model_dump_json(self) -> str:
+        return json.dumps(self.model_dump(), separators=(",", ":"), ensure_ascii=False)
+
+
+@dataclass(kw_only=True, slots=True)
+class Finding(_Dumpable):
     rule_id: str
     offset: int | None = None
     length: int | None = None
     severity: Severity
     source: FindingSource
-    member_path: list[str] = Field(default_factory=list)
+    member_path: list[str] = field(default_factory=list)
     view: str = "raw"
     namespace: str | None = None
 
+    def __post_init__(self) -> None:
+        # A bad value must fail here, as it did when this was validated on construction.
+        self.severity = Severity(self.severity)
+        self.source = FindingSource(self.source)
 
-class ScanResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
+@dataclass(kw_only=True, slots=True)
+class ScanResult(_Dumpable):
     sha256: str
     verdict: Verdict
-    findings: list[Finding] = Field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)
     advisory: bool = False
     incomplete_reason: str | None = None
     path: str = ""
@@ -55,6 +77,10 @@ class ScanResult(BaseModel):
     skipped_rule_files: int = 0
     policy: ScanPolicy = ScanPolicy.default
     policy_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        self.verdict = Verdict(self.verdict)
+        self.policy = ScanPolicy(self.policy)
 
 
 def exit_code(result: ScanResult) -> int:

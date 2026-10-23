@@ -1,7 +1,6 @@
 """Scan raw bytes, archive members and derived text without moving files."""
 
 import hashlib
-import importlib.metadata
 import math
 import time
 from pathlib import Path
@@ -41,7 +40,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
-from yara_gate.rules import compile_ruleset, default_rules_dir
+from yara_gate.rules import compile_ruleset, default_rules_dir, yara_x_version
 
 
 class ScanTimeout(Exception):
@@ -127,7 +126,7 @@ def _scan_file(
     if error or rules is None:
         return finish(error or "yara-x missing")
     fingerprint = ruleset
-    engine_version = importlib.metadata.version("yara-x")
+    engine_version = yara_x_version()
     if double_extension(file_path):
         findings.append(
             Finding(
