@@ -1,7 +1,14 @@
 import random
 from pathlib import Path
 
-from yara_gate.filetype import embedded_exec_offset, mismatch, sniff, utf16_encoding
+from yara_gate.filetype import (
+    double_extension,
+    embedded_exec_offset,
+    mismatch,
+    name_has_controls,
+    sniff,
+    utf16_encoding,
+)
 from yara_gate.samples import mini_pe, risky_pdf, zip_named_pdf
 
 
@@ -84,3 +91,20 @@ def test_utf16_without_bom_allows_nbsp_and_a_trailing_byte() -> None:
     # A surrogate pair split at the 4096-byte sample boundary.
     split = ("a" * 2047 + "\U0001f600").encode("utf-16le")
     assert utf16_encoding(split) == "utf-16le"
+
+
+def test_double_extension_covers_launchers_and_padding() -> None:
+    for name in ("invoice.pdf.lnk", "scan.pdf.cmd", "report.docx.hta", "budget.xlsx.exe"):
+        assert double_extension(Path(name)), name
+    assert double_extension(Path("invoice.pdf          .exe"))
+    assert double_extension(Path("invoice.pdf\u3000.exe"))
+    for name in ("page.html.js", "notes.txt.js", "archive.tar.gz", "v1.2.exe", "report.pdf.zip"):
+        assert not double_extension(Path(name)), name
+
+
+def test_name_controls_skip_script_joiners() -> None:
+    assert name_has_controls("invoice_\u202efdp.exe")
+    assert name_has_controls("photo\u200b.png")
+    assert name_has_controls("tag\U000e0041.txt")
+    assert not name_has_controls("\u0645\u06cc\u200c\u062e.txt")
+    assert not name_has_controls("family\U0001f468\u200d\U0001f469.png")

