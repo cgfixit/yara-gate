@@ -1,0 +1,4 @@
+interface:
+  display_name: "cg-researcher optimize"
+  short_description: "Plan research-backed yara-gate rule and integration PRs"
+  default_prompt: "Use $cg-researcher-optimize to scan yara-gate read-only, reproduce leads, and plan 4-7 scoped PRs."

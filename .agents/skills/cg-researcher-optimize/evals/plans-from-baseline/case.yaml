@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: plans-from-baseline
+expected_outcome: |
+  plan.md follows the skill's output structure: a baseline with a revision and
+  gate results, a reproduced-leads table whose rows name an inert input and the
+  observed baseline result, dropped leads, 4 to 7 pull requests that each name
+  files, the AGENTS.md contract touched, verification, severity and overlap, and
+  dated sources. No tracked repository file is modified and nothing is pushed.
