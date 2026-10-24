@@ -24,7 +24,9 @@ from typing import IO, Any
 import platformdirs
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
-_RULE_NAME = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)")
+# private and global rules compile too, so they count.
+_RULE_NAME = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)")
+_COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
 _CACHE_SALT = b"yara-gate-rules-v2"
 _ALLOWED_DOWNLOAD_HOSTS = frozenset(
     {
@@ -501,9 +503,12 @@ def _fetch_forge(vendor: Path, *, transport: Transport | None = None) -> PackPin
         "https://api.github.com/repos/YARAHQ/yara-forge/releases/latest",
         transport=transport,
     )
-    tag = str(meta["tag_name"])
-    asset = next(item for item in meta["assets"] if item["name"] == "yara-forge-rules-core.zip")
-    url = str(asset["browser_download_url"])
+    try:
+        tag = str(meta["tag_name"])
+        asset = next(item for item in meta["assets"] if item["name"] == "yara-forge-rules-core.zip")
+        url = str(asset["browser_download_url"])
+    except (KeyError, StopIteration, TypeError):
+        raise RuleDownloadError("yara-forge release has no yara-forge-rules-core.zip") from None
     blob = _bytes(url, transport=transport)
     digest = hashlib.sha256(blob).hexdigest()
     _extract_zip(blob, vendor / "yara-forge")
@@ -519,9 +524,15 @@ def _fetch_git(
     transport: Transport | None = None,
 ) -> PackPin:
     description = _json(f"https://api.github.com/repos/{repo}", transport=transport)
-    branch = str(description["default_branch"])
-    commit = _json(f"https://api.github.com/repos/{repo}/commits/{branch}", transport=transport)
-    sha = str(commit["sha"])
+    commit_url = f"https://api.github.com/repos/{repo}/commits/"
+    try:
+        commit = _json(commit_url + str(description["default_branch"]), transport=transport)
+        sha = str(commit["sha"])
+    except (KeyError, TypeError):
+        raise RuleDownloadError(f"unexpected commit data for {repo}") from None
+    # The pin becomes part of the download URL; accept only a full commit id.
+    if _COMMIT_SHA.fullmatch(sha) is None:
+        raise RuleDownloadError(f"unexpected commit data for {repo}")
     url = f"https://codeload.github.com/{repo}/tar.gz/{sha}"
     blob = _bytes(url, transport=transport)
     digest = hashlib.sha256(blob).hexdigest()

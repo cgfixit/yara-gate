@@ -105,7 +105,7 @@ def process_inbox_file(
     try:
         placed = intake(home, src)
     except IntakeRejected as exc:
-        return _reject_entry(home, src, exc.reason)
+        return _reject_entry(home, src, exc.reason, policy)
     result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
     write_reports(home.reports, result)
     _relocate(home, result)
@@ -381,7 +381,9 @@ def _fit_name(prefix: str, name: str) -> str:
     return prefix + name
 
 
-def _reject_entry(home: GatePaths, src: Path, reason: str) -> ScanResult:
+def _reject_entry(
+    home: GatePaths, src: Path, reason: str, policy: ScanPolicy = ScanPolicy.default
+) -> ScanResult:
     """Move the inbox entry aside. Never readlink and never open the target."""
     home.ensure()
     rejected = home.quarantine / "_rejected"
@@ -398,6 +400,7 @@ def _reject_entry(home: GatePaths, src: Path, reason: str) -> ScanResult:
         verdict=Verdict.incomplete,
         incomplete_reason=reason,
         path=str(dest),
+        policy=policy,
     )
     write_reports(home.reports, result, stem=f"rejected-{token}")
     return result

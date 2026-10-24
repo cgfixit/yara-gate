@@ -114,6 +114,19 @@ def _rejected_report(home: GatePaths, result_sha: str) -> str:
     return (home.reports / f"rejected-{result_sha}.json").read_text(encoding="utf-8")
 
 
+def test_rejected_entry_report_records_the_policy(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    link = home.inbox / "link.txt"
+    link.symlink_to(outside)
+    result = process_inbox_file(home, link, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+    assert result.verdict is Verdict.incomplete
+    assert result.policy is ScanPolicy.agent_ingest
+    report = next(home.reports.glob("rejected-*.json")).read_text(encoding="utf-8")
+    assert '"policy": "agent-ingest"' in report
+
+
 def test_symlink_in_inbox_is_rejected_not_copied(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     outside = tmp_path / "outside.txt"
