@@ -271,4 +271,3 @@ def test_a_stray_byte_keeps_derived_views_and_the_joiner_check(
     result = scan_file(entity, rules_dir=rules_copy, policy="agent-ingest")
     assert result.verdict is Verdict.block
     assert any(f.view == "html-unescaped" for f in result.findings)
-
