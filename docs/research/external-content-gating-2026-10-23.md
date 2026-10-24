@@ -1,6 +1,8 @@
 # External-content gates for agents and ordinary applications
 
-Research date: October 23, 2026, America/New_York. Research baseline: yara-gate
+>Research date: October 23, 2026
+
+America/New_York. Research baseline: yara-gate
 `30d7126bc8ec60fed08094accbd3c0ffc8c9cb77`. The clean local `main` was fast-forwarded
 19 commits from `b32ffe1` after fetching origin and confirming the repository's default
 branch is `main`. Other worktrees were preserved. This document records research and inert
