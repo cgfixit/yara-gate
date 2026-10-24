@@ -114,6 +114,32 @@ def test_update_failure_keeps_existing_vendor(tmp_path: Path) -> None:
     assert list(root.glob(".staging-*")) == []
 
 
+def test_update_without_core_asset_is_a_download_error(tmp_path: Path) -> None:
+    root = _rules_tree(tmp_path)
+    retained = (root / "vendor" / "retained.yar").read_bytes()
+
+    def transport(_url: str) -> bytes:
+        return json.dumps({"tag_name": "20261004", "assets": []}).encode()
+
+    with pytest.raises(RuleDownloadError, match="yara-forge-rules-core.zip"):
+        update_packs(root, transport=transport)
+    assert (root / "vendor" / "retained.yar").read_bytes() == retained
+    assert list(root.glob(".staging-*")) == []
+
+
+def test_private_and_global_rules_are_counted(tmp_path: Path) -> None:
+    (tmp_path / "local").mkdir()
+    (tmp_path / "local" / "a.yar").write_text(
+        'private rule helper { strings: $a = "zz" condition: $a }\n'
+        "global private rule g { condition: true }\n"
+        "rule top : tag { condition: helper }\n",
+        encoding="utf-8",
+    )
+    _rules, _skipped, error, compiled, _skip = compile_sources(tmp_path)
+    assert error is None
+    assert compiled == 3
+
+
 def test_install_verifies_lock_sha256_and_keeps_old_on_mismatch(tmp_path: Path) -> None:
     root = _rules_tree(tmp_path)
     blob = _kept_zip()

@@ -10,7 +10,7 @@ from pathlib import Path
 from yara_gate.rules import compile_sources
 
 REPO = Path(__file__).resolve().parents[2]
-_RULE = re.compile(r"(?m)^rule\s+([A-Za-z0-9_]+)\s*\{")
+_RULE = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)\s*\{")
 _META = ("intent", "severity", "verdict_on_match", "reference")
 
 
