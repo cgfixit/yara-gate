@@ -35,6 +35,7 @@ HEURISTICS = {
     "heuristic_mcp_shell",
     "heuristic_mcp_hidden_instruction",
     "heuristic_double_extension",
+    "heuristic_filename_control",
     "heuristic_document_executable",
     "heuristic_nested_executable",
     "heuristic_pdf_JavaScript",
@@ -271,6 +272,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'{"description":"reads a file"}\n',
         ),
         ("heuristic_double_extension", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_launcher", b"hello\n", b"hello\n"),
+        ("heuristic_filename_control", b"hello\n", b"hello\n"),
         (
             "heuristic_document_executable",
             zipped("evil.exe", mini_pe()),
@@ -345,6 +348,10 @@ def main() -> None:
         for rule_id, fire, miss in pairs():
             if rule_id == "container_disk_image_dmg":
                 rule_id = "container_disk_image"
+            # A launcher suffix after a decoy; script names after .html stay clean.
+            launcher = rule_id == "heuristic_double_extension_launcher"
+            if launcher:
+                rule_id = "heuristic_double_extension"
             fire_name = "photo.png.app" if rule_id == "heuristic_double_extension" else "fire.bin"
             miss_name = "photo.png" if rule_id == "heuristic_double_extension" else "miss.bin"
             doc_names = {
@@ -360,9 +367,12 @@ def main() -> None:
                 "heuristic_pickle_reduce": ("danger.pkl", "note.pkl"),
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
+                "heuristic_filename_control": ("invoice_\u202efdp.exe", "invoice_pdf.exe"),
             }
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]
+            if launcher:
+                fire_name, miss_name = "invoice.pdf.lnk", "page.html.js"
             fire_ids = _scan(root, rules, fire_name, fire)
             miss_ids = _scan(root, rules, miss_name, miss)
             if rule_id not in fire_ids:

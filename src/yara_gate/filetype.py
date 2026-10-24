@@ -62,12 +62,28 @@ DOCUMENT_SUFFIXES = frozenset(
         ".htm",
     }
 )
-_DOUBLE_EXT = re.compile(r"(?i).*\.(pdf|png|jpe?g|gif|docx|txt|html|rtf)\.(exe|dll|scr|app)$")
+_DECOY = r"pdf|png|jpe?g|gif|bmp|webp|heic|docx?|xlsx?|pptx?|odt|rtf"
+# A decoy suffix, optional padding, then a suffix that runs or opens something on its own.
+# Plain text and HTML decoys pair only with binaries: names such as page.html.js are real code.
+_DOUBLE_EXT = re.compile(
+    rf"(?i).*\.(?:(?:{_DECOY}|txt|html?)[\s._-]*\.(?:exe|dll|scr|app|com|pif|cpl|msi)"
+    rf"|(?:{_DECOY})[\s._-]*\.(?:lnk|url|scf|hta|js|jse|vbs|vbe|wsf|wsh|bat|cmd|ps1|msc|jar"
+    r"|desktop|command|library-ms|searchconnector-ms))$"
+)
+# Directional and invisible controls that can reorder or hide part of a displayed name.
+# ZWNJ and ZWJ are left out: Persian and Indic names use them.
+_NAME_CONTROLS = re.compile(
+    "[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\U000e0000-\U000e007f]"
+)
 _EXECUTABLE_KINDS = frozenset({"pe", "elf", "macho"})
 
 
 def double_extension(path: Path) -> bool:
     return _DOUBLE_EXT.match(path.name) is not None
+
+
+def name_has_controls(name: str) -> bool:
+    return _NAME_CONTROLS.search(name) is not None
 
 
 def is_document_name(path: Path) -> bool:
