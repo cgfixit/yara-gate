@@ -129,7 +129,7 @@ Dated links, each marked [primary] or [secondary].
 Known traps:
 
 - YARA-X rejects regexes that mix greedy and non-greedy quantifiers.
-- Escapes like `‮` can be decoded into real bidi characters on the way into
+- Escapes like `\u202e` can be decoded into real bidi characters on the way into
   source files. Keep source ASCII and check for non-ASCII before committing.
 - As root, a mode-0 file is still readable, so permission tests fail everywhere.
   Compare against the base revision before calling a failure a regression.
