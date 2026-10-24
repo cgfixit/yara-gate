@@ -319,6 +319,11 @@ Codex workflows are maintained under `.agents/skills/`. Invoke
 checks and source review, then `$yara-gate-optimizer` for a requested improvement
 pass. The optimizer is manual-only. Both are tailored to this repository; the
 runtime and demo evidence skills supply their specialized verification steps.
+`$cg-researcher-optimize` is the planning-first pass: a time-boxed read-only scan,
+dated research on Windows, macOS, and Linux delivery techniques, reproduction of
+each lead, and a plan of 4-7 independent PRs. Its
+[PROMPT.md](.agents/skills/cg-researcher-optimize/PROMPT.md) is the same pass as a
+standalone prompt for an agent that does not load skill files, such as Grok.
 
 `pyproject.toml` names the package, the `yara-gate` command, and the ruff and mypy settings. `uv.lock` is the only dependency pin. Do not add a `requirements.txt` beside it. `.python-version` contains `3.12`, which is the interpreter `uv sync` should use. `src/yara_gate/py.typed` marks the importable package as typed. `LICENSE` is the MIT license. `.editorconfig` sets UTF-8, LF, and four-space Python indents so an editor matches ruff.
 
