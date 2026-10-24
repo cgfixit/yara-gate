@@ -40,7 +40,7 @@ uv run python docs/research/probe_rule_coverage.py --verify
 
 It copies shipped local rules and exercises library and CLI behavior without executing samples or downloading packs. Use a narrower direct probe for unrelated changes; do not repeat the entire probe for image or prose edits.
 
-Run Ruff on changed Python files and `uv run mypy --strict src` when Python contracts change. Lint changed Actions workflows with a compatible `actionlint`. Prefer actual command/API/UI execution locally; leave the broad pytest and selftest suites to the existing Ubuntu/macOS CI unless a focused test is needed for a concrete risk or explicitly requested. Do not disable hosted coverage to make a change pass.
+Run Ruff on changed Python files and `uv run mypy --strict src` when Python contracts change. Lint changed Actions workflows with actionlint v1.7.12, the version CI builds with `go install`. Prefer actual command/API/UI execution locally; leave the broad pytest and selftest suites to the existing Ubuntu/macOS CI unless a focused test is needed for a concrete risk or explicitly requested. Do not disable hosted coverage to make a change pass. Hosted CI runs on Ubuntu 24.04 and macOS 15 as a non-root user. A root container can read a mode-0 file, so permission-denied paths such as `test_missing_bundled_rules_exit_2` fail there on every revision; reproduce a failure on the base revision before treating it as a regression.
 
 For live-demo UI changes, use Computer Use or an equivalent real browser against `yara-gate demo --rules <disposable-rules>`. A syntax check or root `demo.html` preview is not live scanner acceptance. Store requested inert screenshots under `screenshots/`, preserving capture provenance and original bytes.
 
