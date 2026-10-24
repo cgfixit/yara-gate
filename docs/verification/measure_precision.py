@@ -98,6 +98,219 @@ def _pem() -> str:
     return "-----BEGIN PUBLIC KEY-----\n" + blob + "\n-----END PUBLIC KEY-----\n"
 
 
+def _crlf(*lines: str) -> bytes:
+    return ("\r\n".join(lines) + "\r\n").encode("ascii")
+
+
+def _library_ms(*urls: str, bom: bool = False) -> bytes:
+    connectors = "".join(
+        '  <searchConnectorDescription publisher="Microsoft" product="Windows">\r\n'
+        "   <isDefaultSaveLocation>true</isDefaultSaveLocation>\r\n"
+        "   <isSupported>false</isSupported>\r\n"
+        f"   <simpleLocation>\r\n    <url>{url}</url>\r\n   </simpleLocation>\r\n"
+        "  </searchConnectorDescription>\r\n"
+        for url in urls
+    )
+    text = (
+        '<?xml version="1.0" encoding="UTF-8"?>\r\n'
+        '<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">\r\n'
+        " <name>@shell32.dll,-34575</name>\r\n"
+        " <version>6</version>\r\n"
+        " <isLibraryPinned>true</isLibraryPinned>\r\n"
+        " <iconReference>imageres.dll,-1002</iconReference>\r\n"
+        " <templateInfo>\r\n"
+        "  <folderType>{7d49d726-3c21-4f05-99aa-fdc2c9474656}</folderType>\r\n"
+        " </templateInfo>\r\n"
+        f" <searchConnectorDescriptionList>\r\n{connectors} </searchConnectorDescriptionList>\r\n"
+        "</libraryDescription>\r\n"
+    )
+    return (b"\xef\xbb\xbf" if bom else b"") + text.encode("ascii")
+
+
+def _search_connector(url: str) -> bytes:
+    return _crlf(
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<searchConnectorDescription xmlns="http://schemas.microsoft.com/windows/2009/searchConnector">',
+        " <description>Team reports</description>",
+        " <isSearchOnlyItem>false</isSearchOnlyItem>",
+        " <includeInStartMenuScope>true</includeInStartMenuScope>",
+        f" <simpleLocation>\r\n  <url>{url}</url>\r\n </simpleLocation>",
+        "</searchConnectorDescription>",
+    )
+
+
+def _windows_files() -> list[tuple[str, bytes, str]]:
+    """Shortcut-family files Explorer reads when it lists a folder.
+
+    The tagged files are shapes the README names as matches for an advisory rule. They stay
+    in the denominator so the measurement reports those collisions.
+    """
+    folders = {
+        "Documents": (
+            "FDD39AD0-238F-46AF-ADB4-6C85480369C7",
+            "ED4824AF-DCE4-45A8-81E2-FC7965083634",
+        ),
+        "Music": ("4BD8D571-6D19-48D3-BE97-422220080E43", "3214FAB5-9757-4298-BB61-92A9DEAA44FF"),
+        "Pictures": (
+            "33E28130-4E1E-4676-835A-98395C3BC3BB",
+            "B6EBFB86-6907-413C-9AF7-4FC2ABF07CC5",
+        ),
+        "Videos": ("18989B1D-99B5-455B-841C-AB7C74E4DDFC", "2400183A-6185-49FB-A2D8-4A392A602BA3"),
+    }
+    files = [
+        (
+            f"windows/libraries/{name}.library-ms",
+            _library_ms(*(f"knownfolder:{{{guid}}}" for guid in guids), bom=index % 2 == 0),
+            "",
+        )
+        for index, (name, guids) in enumerate(folders.items())
+    ]
+    projects = _library_ms(r"C:\Users\Public\Projects", r"D:\Archive\Projects")
+    files += [
+        ("windows/libraries/Projects.library-ms", projects, ""),
+        (
+            "windows/libraries/Team.library-ms",
+            _library_ms(r"\\fileserver.corp.example\team"),
+            "fileserver-library",
+        ),
+        (
+            "windows/connectors/Reports.searchConnector-ms",
+            _search_connector(r"C:\Data\Reports"),
+            "",
+        ),
+        (
+            "windows/connectors/Intranet.searchConnector-ms",
+            _search_connector("https://intranet.example/sites/reports/Shared%20Documents"),
+            "sharepoint-connector",
+        ),
+    ]
+    favorite = (
+        "[{000214A0-0000-0000-C000-000000000046}]",
+        "Prop3=19,11",
+        "[InternetShortcut]",
+        "IDList=",
+    )
+    files += [
+        (
+            "windows/favorites/Windows docs.url",
+            _crlf(
+                *favorite,
+                "URL=https://learn.microsoft.com/en-us/windows/",
+                "IconFile=https://learn.microsoft.com/favicon.ico",
+                "IconIndex=1",
+                "HotKey=0",
+            ),
+            "",
+        ),
+        (
+            "windows/favorites/Status page.url",
+            _crlf(
+                "[DEFAULT]",
+                "BASEURL=https://status.example/",
+                "[InternetShortcut]",
+                "URL=https://status.example/",
+            ),
+            "",
+        ),
+        (
+            "windows/desktop/Project tracker.url",
+            _crlf("[InternetShortcut]", "URL=https://tracker.example/projects/42"),
+            "",
+        ),
+        (
+            "windows/desktop/Spacewar.url",
+            _crlf(
+                *favorite,
+                "IconIndex=0",
+                "URL=steam://rungameid/480",
+                r"IconFile=C:\Program Files (x86)\Steam\steam\games\spacewar.ico",
+            ),
+            "",
+        ),
+        (
+            "windows/desktop/Mail the team.url",
+            _crlf("[InternetShortcut]", "URL=mailto:team@example.com"),
+            "",
+        ),
+        (
+            "windows/start-menu/Handbook.url",
+            _crlf("[InternetShortcut]", "URL=file:///C:/Program%20Files/Example/docs/index.html"),
+            "local-file-url",
+        ),
+        (
+            "windows/desktop/Show Desktop.scf",
+            _crlf(
+                "[Shell]",
+                "Command=2",
+                "IconFile=explorer.exe,3",
+                "[Taskbar]",
+                "Command=ToggleDesktop",
+            ),
+            "",
+        ),
+        (
+            "windows/desktop/Window Switcher.scf",
+            _crlf(
+                "[Shell]",
+                "Command=1",
+                "IconFile=explorer.exe,3",
+                "[Taskbar]",
+                "Command=WindowsSwitcher",
+            ),
+            "",
+        ),
+    ]
+    documents = _crlf(
+        "[.ShellClassInfo]",
+        r"LocalizedResourceName=@%SystemRoot%\system32\shell32.dll,-21770",
+        r"IconResource=%SystemRoot%\system32\imageres.dll,-112",
+        r"IconFile=%SystemRoot%\system32\shell32.dll",
+        "IconIndex=-235",
+    )
+    files += [
+        # Explorer often writes desktop.ini as UTF-16LE with a byte order mark.
+        ("windows/Documents/desktop.ini", b"\xff\xfe" + documents.decode().encode("utf-16-le"), ""),
+        (
+            "windows/Pictures/desktop.ini",
+            _crlf(
+                "[.ShellClassInfo]",
+                r"LocalizedResourceName=@%SystemRoot%\system32\shell32.dll,-21779",
+                r"IconResource=%SystemRoot%\system32\imageres.dll,-113",
+                "[ViewState]",
+                "Mode=",
+                "Vid=",
+                "FolderType=Pictures",
+            ),
+            "",
+        ),
+        (
+            "windows/OneDrive/desktop.ini",
+            _crlf(
+                "[.ShellClassInfo]",
+                r"IconResource=C:\Program Files\Microsoft OneDrive\OneDrive.exe,0",
+            ),
+            "",
+        ),
+        (
+            "windows/Dropbox/desktop.ini",
+            _crlf(
+                "[.ShellClassInfo]",
+                r"IconResource=C:\Program Files (x86)\Dropbox\Client\Dropbox.exe,-2302",
+                "InfoTip=Dropbox",
+            ),
+            "",
+        ),
+        (
+            "windows/Branding/desktop.ini",
+            _crlf(
+                "[.ShellClassInfo]", r"IconResource=\\fileserver.corp.example\branding\folder.ico,0"
+            ),
+            "fileserver-icon",
+        ),
+    ]
+    return files
+
+
 def build_corpus(root: Path) -> dict[str, str]:
     """Write benign files. Return name -> plant tag (empty when the file is ordinary)."""
     tags: dict[str, str] = {}
@@ -195,6 +408,8 @@ def build_corpus(root: Path) -> dict[str, str]:
         )
     for index in range(6):
         add(f"blobs/short-{index:02d}.txt", (b"A" * 40) + b"\n")
+    for name, data, tag in _windows_files():
+        add(name, data, tag)
 
     for index in range(8):
         body = (PLANTED["phrase"] + f" ({index})\n").encode()
@@ -329,7 +544,7 @@ def markdown(report: PrecisionReport) -> str:
         "This corpus has no true positives, so the rate is a false-positive rate.",
         "It is not a precision ratio.",
         "",
-        "Planted documentary files, and why they are in the denominator:",
+        "Tagged files (planted documentary text or a documented Windows collision):",
     ]
     for tag, count in sorted(report.planted.items()):
         lines.append(f"- `{tag}`: {count} files")
