@@ -51,7 +51,8 @@ def main(
 
 @app.command()
 def scan(
-    path: Path,
+    # A str, not a Path: Path("./-") normalizes to "-" and would read stdin.
+    path: str = typer.Argument(..., metavar="PATH"),
     home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
@@ -74,11 +75,11 @@ def scan(
 ) -> None:
     """Scan a file or folder, or '-' for stdin. Inbox paths are quarantined. Others stay put."""
     try:
-        if str(path) == "-":
+        if path == "-":
             code = _scan_stdin(GatePaths(home), name, timeout_s, rules, policy, json_output)
         else:
             code = _scan_path(
-                path, GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
+                Path(path), GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
             )
     except typer.Exit:
         raise

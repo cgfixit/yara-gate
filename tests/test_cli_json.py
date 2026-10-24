@@ -142,3 +142,25 @@ def test_json_stdin_scans_in_memory_with_logical_name(tmp_path: Path, rules_copy
     assert b"collector.invalid" not in command.stdout
     assert not (tmp_path / "-").exists()
     assert not any((home / "inbox").iterdir())
+
+
+def test_dot_slash_dash_scans_the_file_not_stdin(tmp_path: Path, rules_copy: Path) -> None:
+    (tmp_path / "-").write_bytes(eicar_bytes())
+    command = subprocess.run(
+        [
+            str(Path(sys.executable).parent / "yara-gate"),
+            "scan",
+            "./-",
+            "--home",
+            str(tmp_path / "gate"),
+            "--rules",
+            str(rules_copy),
+            "--json",
+        ],
+        input=b"",
+        capture_output=True,
+        check=False,
+        cwd=tmp_path,
+    )
+    assert command.returncode == 1
+    assert json.loads(command.stdout)["verdict"] == "block"
