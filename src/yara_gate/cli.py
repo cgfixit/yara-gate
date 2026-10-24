@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import stat
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -21,6 +22,7 @@ from yara_gate.rules import (
     promote,
     update_packs,
 )
+from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes
 from yara_gate.selftest import run_selftest
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -64,12 +66,20 @@ def scan(
     json_output: bool = typer.Option(
         False, "--json", help="Emit one JSON report per file to stdout (JSON Lines)."
     ),
+    name: str = typer.Option(
+        "stdin",
+        "--name",
+        help="With PATH '-', the logical file name of stdin. Its suffix drives type checks.",
+    ),
 ) -> None:
-    """Scan a file or folder. Inbox paths are quarantined. Other paths stay put."""
+    """Scan a file or folder, or '-' for stdin. Inbox paths are quarantined. Others stay put."""
     try:
-        code = _scan_path(
-            path, GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
-        )
+        if str(path) == "-":
+            code = _scan_stdin(GatePaths(home), name, timeout_s, rules, policy, json_output)
+        else:
+            code = _scan_path(
+                path, GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
+            )
     except typer.Exit:
         raise
     except Exception as exc:
@@ -280,16 +290,37 @@ def _scan_path(
             result = _refuse_path(home, item, "symlink not followed", policy)
         else:
             result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
-        if json_output:
-            typer.echo(json.dumps(compact_report(result), separators=(",", ":")))
-        else:
-            reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
-            typer.echo(
-                f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
-                f"exit={exit_code(result)}{reason}"
-            )
+        _emit(result, json_output)
         worst = max(worst, exit_code(result))
     return worst
+
+
+def _scan_stdin(
+    home: GatePaths,
+    name: str,
+    timeout_s: int,
+    rules: Path | None,
+    policy: ScanPolicy,
+    json_output: bool,
+) -> int:
+    """Scan stdin in memory. Over 100 MiB is incomplete; its sha256 covers what was read."""
+    home.ensure()
+    data = sys.stdin.buffer.read(MAX_FILE_BYTES + 1)
+    result = scan_bytes(data, name=name, timeout_s=timeout_s, rules_dir=rules, policy=policy)
+    write_reports(home.reports, result)
+    _emit(result, json_output)
+    return exit_code(result)
+
+
+def _emit(result: ScanResult, json_output: bool) -> None:
+    if json_output:
+        typer.echo(json.dumps(compact_report(result), separators=(",", ":")))
+        return
+    reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
+    typer.echo(
+        f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
+        f"exit={exit_code(result)}{reason}"
+    )
 
 
 def _list_files(root: Path) -> tuple[list[Path], list[Path]]:

@@ -81,12 +81,51 @@ def scan_file(
         )
 
 
+def scan_bytes(
+    data: bytes,
+    *,
+    name: str = "input",
+    timeout_s: int = 30,
+    rules_dir: Path | None = None,
+    policy: ScanPolicy | str = ScanPolicy.default,
+) -> ScanResult:
+    """Scan bytes the caller already holds, such as a chat or SMS message body.
+
+    Nothing is written to disk and nothing is moved. ``name`` supplies the suffix that the
+    extension-sensitive checks read (the YARA ``yara_gate_ext`` global, type mismatch, double
+    extension, MCP JSON and model headers); only its final component is kept, and it becomes
+    the report ``path``. The verdict describes these bytes: consume the same buffer, not a
+    later reread.
+    """
+    label = Path(name).name or "input"
+    # bytes(5) would build five NUL bytes; anything not bytes-like is a failed scan.
+    payload = bytes(data) if isinstance(data, bytes | bytearray | memoryview) else None
+    try:
+        if payload is None:
+            raise TypeError("scan_bytes needs bytes")
+        return _scan_file(
+            Path(label),
+            timeout_s=timeout_s,
+            rules_dir=rules_dir,
+            policy=ScanPolicy(policy),
+            data=payload,
+        )
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception:
+        digest = hashlib.sha256(payload).hexdigest() if payload is not None else "0" * 64
+        return result_from_findings(
+            sha256=digest, path=label, findings=[], incomplete_reason="scan failed"
+        )
+
+
 def _scan_file(
     file_path: Path,
     *,
     timeout_s: int,
     rules_dir: Path | None,
     policy: ScanPolicy,
+    data: bytes | None = None,
 ) -> ScanResult:
     budget = Budget(time.monotonic() + timeout_s)
     digest = "0" * 64
@@ -108,16 +147,17 @@ def _scan_file(
             result.policy_reason = "agent-ingest holds advisory findings"
         return result
 
-    if not file_path.is_file():
-        return finish("unreadable file")
-    try:
-        if file_path.stat().st_size > MAX_FILE_BYTES:
-            digest = hash_file(file_path)
-            return finish("file exceeds 100MB")
-        with file_path.open("rb") as handle:
-            data = handle.read(MAX_FILE_BYTES + 1)
-    except OSError:
-        return finish("unreadable file")
+    if data is None:
+        if not file_path.is_file():
+            return finish("unreadable file")
+        try:
+            if file_path.stat().st_size > MAX_FILE_BYTES:
+                digest = hash_file(file_path)
+                return finish("file exceeds 100MB")
+            with file_path.open("rb") as handle:
+                data = handle.read(MAX_FILE_BYTES + 1)
+        except OSError:
+            return finish("unreadable file")
     digest = hashlib.sha256(data).hexdigest()
     if len(data) > MAX_FILE_BYTES:
         return finish("file exceeds 100MB")
