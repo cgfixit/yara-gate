@@ -8,8 +8,9 @@ rule linux_desktop_exec_fetch {
         reference = "https://www.bleepingcomputer.com/news/security/apt36-hackers-abuse-linux-desktop-files-to-install-malware/"
         technique = "T1204.002"
     strings:
-        // The tool must be on the Exec line itself, after the [Desktop Entry] header.
-        $exec = /\[Desktop Entry\][\s\S]{0,4096}[\r\n][ \t]*Exec[ \t]*=[^\r\n]{0,1024}\b(curl|wget|base64[ \t]+(-d|--decode)|xxd[ \t]+-r|openssl[ \t]+enc)\b/ nocase ascii wide
+        // The tool must be in command position on the Exec line: first, after a shell -c, or
+        // after a separator. A browser URL such as https://curl.se/ is an argument, not a command.
+        $exec = /\[Desktop Entry\][\s\S]{0,4096}[\r\n][ \t]*Exec[ \t]*=([^\r\n]{0,1024}([;&|`(]|[ \t]-c[ \t]+["']?))?[ \t]*["']?((\/usr)?(\/local)?\/s?bin\/)?(curl|wget|base64[ \t]+(-d|--decode)|xxd[ \t]+-r|openssl[ \t]+enc)\b/ nocase ascii wide
     condition:
         $exec
 }

