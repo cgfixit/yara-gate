@@ -154,9 +154,9 @@ force-push a branch that is already published; push a follow-up commit.
 - A tool call or JSON layer can decode `\u202e`-style escapes into the real
   characters, which writes Trojan-Source bidi controls into Python source. Write
   escapes from a script, then confirm the changed source files are ASCII-only.
-- A root container can read a mode-0 file, so `test_missing_bundled_rules_exit_2`
-  fails as root on every revision. Reproduce on the base revision before treating
-  a failure as your regression.
+- A root container can read a mode-0 file, so a `chmod`-based permission test
+  passes or fails depending on the user. Patch the read instead, and reproduce on
+  the base revision before treating a failure as your regression.
 - `actionlint-py` ships only an sdist that downloads an unhashed binary at build
   time. CI builds actionlint with `go install …@<version>`, which is checked
   against `sum.golang.org`.
