@@ -119,6 +119,8 @@ print(result.verdict, result.incomplete_reason)
 
 `result.verdict` is `clean`, `advisory`, `block`, or `incomplete`.
 
+To check a message or other text you already have in memory, without writing a file, pipe it to `yara-gate scan - --name message.txt`, or call `scan_bytes(data, name="message.txt")` from Python. The exit codes are the same.
+
 `scan_file(path, policy="agent-ingest")` applies the same conservative advisory policy as the CLI. Without that argument, the default policy retains advisory/exit 0 behavior.
 
 ## 5. Read a report

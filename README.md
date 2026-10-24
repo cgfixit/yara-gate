@@ -283,7 +283,7 @@ result.verdict  # "clean", "advisory", "block", or "incomplete"
 
 Pass `policy="agent-ingest"` for CyClaw corpus intake and for a harness attachment or repository read. The default remains `policy="default"`. See [Where this helps CyClaw and CG-agent-harness](#where-this-helps-cyclaw-and-cg-agent-harness).
 
-`scan_file` does not move files and does not open a socket. Pass `rules_dir` to point at a different rules tree. The default is this project's `rules/` directory. A caller can use this function without the drop folder.
+`scan_file` does not move files and does not open a socket. `scan_bytes(data, name="message.txt")` scans a buffer you already hold, such as a chat or SMS message, with the same checks and no file at all; `yara-gate scan - --name message.txt` does the same for stdin. See [messages and other in-memory content](docs/integrations.md#messages-and-other-in-memory-content). Pass `rules_dir` to point at a different rules tree. The default is this project's `rules/` directory. A caller can use this function without the drop folder.
 
 ## Demo
 

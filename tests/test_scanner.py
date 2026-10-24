@@ -20,7 +20,7 @@ from yara_gate.samples import (
     risky_pdf,
     zip_named_pdf,
 )
-from yara_gate.scanner import ScanTimeout, archive_limit, scan_file
+from yara_gate.scanner import ScanTimeout, archive_limit, scan_bytes, scan_file
 
 
 def _scan(tmp_path: Path, rules_copy: Path, name: str, payload: bytes):
@@ -33,6 +33,24 @@ def _assert_block(tmp_path: Path, rules_copy: Path, name: str, payload: bytes) -
     result = _scan(tmp_path, rules_copy, name, payload)
     assert result.verdict is Verdict.block
     assert exit_code(result) == 1
+
+
+def test_scan_bytes_matches_scan_file(tmp_path: Path, rules_copy: Path) -> None:
+    for name, payload in (("note.md", injection_markdown()), ("open.pdf", risky_pdf())):
+        on_disk = _scan(tmp_path, rules_copy, name, payload)
+        in_memory = scan_bytes(payload, name=f"../{name}", rules_dir=rules_copy)
+        assert in_memory.path == name
+        assert in_memory.sha256 == on_disk.sha256
+        assert in_memory.verdict is on_disk.verdict
+        assert [item.rule_id for item in in_memory.findings] == [
+            item.rule_id for item in on_disk.findings
+        ]
+
+
+def test_scan_bytes_refuses_non_bytes(rules_copy: Path) -> None:
+    result = scan_bytes(5, rules_dir=rules_copy)  # type: ignore[arg-type]
+    assert result.verdict is Verdict.incomplete
+    assert result.incomplete_reason == "scan failed"
 
 
 def test_zero_width_only_blocks_default_policy(tmp_path: Path, rules_copy: Path) -> None:

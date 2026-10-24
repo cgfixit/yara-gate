@@ -62,6 +62,50 @@ and validate the SHA-256 when handing bytes to another process.
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
 
+## Messages and other in-memory content
+
+A chat or SMS bridge, a webhook, or a sync client often holds content in memory
+rather than as a file. Scan that buffer directly:
+
+```python
+import hashlib
+
+from yara_gate import scan_bytes
+
+body = incoming_message.encode("utf-8")
+result = scan_bytes(body, name="sms.txt", policy="agent-ingest", rules_dir=rules_root)
+allowed = (
+    result.verdict == "clean"
+    and result.incomplete_reason is None
+    and result.sha256 == hashlib.sha256(body).hexdigest()
+)
+```
+
+`scan_bytes` writes nothing and moves nothing. Hand the same `body` to the
+model; do not re-read or re-encode it after the scan. `name` supplies the suffix
+that the extension-sensitive checks read, so pass the type the consumer will
+treat it as (`message.txt`, `payload.json`, `attachment.pdf`). Only its final
+component is kept, and it becomes the report `path`, so leave phone numbers and
+other identifiers out of it. Input that is not bytes, `bytearray`, or
+`memoryview` returns incomplete with `scan failed`.
+
+From another process, pipe the content to `scan -`:
+
+```sh
+printf '%s' "$BODY" | yara-gate scan - --name sms.txt --json --policy agent-ingest \
+  --home "$GATE_HOME" --rules "$RULES_ROOT"
+```
+
+That emits one JSON record, writes the usual report pair under `--home`, and
+exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
+100 MiB plus one byte; larger input is incomplete (`file exceeds 100MB`) and its
+`sha256` covers only the bytes read. To scan a file literally named `-`, pass
+`./-`.
+
+A message gate is a hold decision, not authorization. Treat every inbound
+message as untrusted data, keep it fenced in the prompt, and keep the
+consumer's own approval checks on any tool or send action it proposes.
+
 ## CyClaw and CG-agent-harness
 
 Use the strict gate before CyClaw reads/chunks an untrusted corpus file, or before
