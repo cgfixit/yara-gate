@@ -2,15 +2,21 @@ name: codeql
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   analyze:
     name: Analyze Python
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read

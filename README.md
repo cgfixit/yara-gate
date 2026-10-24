@@ -51,6 +51,8 @@ uv sync --frozen
 uv run yara-gate --version
 ```
 
+On Windows, only in-place scanning is supported and tested. A `windows-2025` CI job compiles the rules, runs the fire and near-miss pairs, and scans files outside the inbox with the library and the CLI (`docs/verification/check_scan_only.py`). Inbox intake, `watch`, and `selftest` depend on POSIX link checks (no-follow opens and link counts) and run only on Ubuntu 24.04 and macOS 15. The rules inspect Windows file types on every host.
+
 `yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.0). It does not call the Homebrew `yara` binary.
 
 `uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. An installed copy copies the packaged local rules, not a checkout path that is not on disk. An unexpected selftest error prints `incomplete: <Type>` and exits 2. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
@@ -300,7 +302,7 @@ Create `~/Library/Logs/yara-gate` before you load the agent. Loading it is a sep
 
 ## CI files
 
-`.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
+`.github/workflows/ci.yml` and `.github/workflows/codeql.yml` are in the tree. Actions are pinned to commit SHAs. The token permission is `contents: read`, except the CodeQL job which also has `security-events: write`. There is no `pull_request_target` trigger. Both workflows run on pull requests and on pushes to `main`; a newer push to the same pull request cancels the older run, and each job stops after 30 minutes. A third job, `scan-only (windows-2025)`, runs the rule checks and in-place scans on Windows. The Linux CI job lints the workflows with actionlint v1.7.12, built with `go install`, which checks the module against the Go checksum database. `.github/dependabot.yml` schedules weekly updates for `uv` and GitHub Actions.
 
 For focused runtime verification, run `uv run python docs/research/probe_rule_coverage.py --verify`. It exercises real library scans and CLI intake in disposable homes, including strict-policy rescans and incomplete coverage, without executing target content. CI runs it on macOS and Linux before the existing regression suites. The [delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) records the 16-rule pack's 70 library cases, 16 CLI operations, and three compilation/deadline checks. The initial [research](docs/research/universal-rule-research.md) and [intake verification](docs/verification/intake-coverage.md) preserve earlier evidence and remaining work.
 

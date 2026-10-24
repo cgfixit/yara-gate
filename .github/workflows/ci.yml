@@ -1,16 +1,23 @@
 name: ci
 
 on:
+  # Branch pushes run through their pull request; pushing to every branch ran each PR twice.
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +27,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Actionlint
+        if: runner.os == 'Linux'
+        env:
+          GOFLAGS: -modcacherw
+        # go install checks the module against sum.golang.org.
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
 
       - name: Install uv and Python 3.12
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
@@ -48,6 +64,9 @@ jobs:
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
 
+      - name: In-place scans
+        run: uv run python docs/verification/check_scan_only.py
+
       - name: Exercise intake and rule coverage
         run: uv run python docs/research/probe_rule_coverage.py --verify
 
@@ -56,3 +75,36 @@ jobs:
 
       - name: Pytest
         run: uv run pytest
+
+  # Windows is a scan target, not an intake host: inbox intake, watch and selftest need
+  # POSIX no-follow opens and link counts, so this job runs only the in-place checks.
+  windows:
+    name: scan-only (windows-2025)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync from the lock file
+        run: uv sync --frozen --group dev
+
+      - name: Compile and lint local rules
+        run: uv run python docs/verification/lint_rules.py
+
+      - name: Rule fire and near-miss pairs
+        run: uv run python docs/verification/check_rule_pairs.py
+
+      - name: Added-rule checks
+        run: uv run python docs/verification/check_added_rules.py
+
+      - name: In-place scans
+        run: uv run python docs/verification/check_scan_only.py

@@ -1,6 +1,6 @@
 # yara-gate user guide
 
-Use this when you want to scan a file on this Mac before anything else reads it. The tool is a command-line program. There is no application window.
+Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows only `yara-gate scan` of a file outside the inbox and the Python `scan_file` call are supported; the drop folder and `watch` need macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
 
 The project lives at `~/Projects/yara-gate`. The holding folders live at `~/YaraGate`.
 
@@ -35,21 +35,21 @@ incomplete (exit 2) and keeps inbox files in quarantine. Run `rules install` wit
 remain available before installation. Older installations need one successful
 install or update to establish this record; scans do not enroll them automatically.
 
-Scanning works offline with the 20 shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
+Scanning works offline with the shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
 
 ```bash
-uv run yara-gate rules update
+uv run yara-gate rules install
 ```
 
 That exits 2 and prints `refusing: pass --allow-network`. The scan path itself never downloads anything. When you want the packs:
 
 ```bash
-uv run yara-gate rules update --allow-network
+uv run yara-gate rules install --allow-network
 ```
 
-The command prints one line per pack (`pin` and `sha256`) and then `compiled_rules=... skipped_rules=...`. A later run on 2026-10-04 printed `compiled_rules=13535 skipped_rules=13`. The 13 names are in `rules/vendor/SKIPPED.md`. Most of those signature-base files need external variables that yara-x does not have here, so they are skipped instead of failing the whole scan.
+`rules install` downloads the pins already recorded in `rules.lock` and checks each sha256, so you get the reviewed set. The command prints one line per pack (`pin` and `sha256`) and then `compiled_rules=... skipped_rules=...`. A `rules update` run on 2026-10-04 printed `compiled_rules=13535 skipped_rules=13`. The 13 names are in `rules/vendor/SKIPPED.md`. Most of those signature-base files need external variables that yara-x does not have here, so they are skipped instead of failing the whole scan.
 
-Run the update again when you want newer pins. It replaces the vendor files and rewrites `rules/rules.lock`.
+Run `uv run yara-gate rules update --allow-network` when you want newer pins. It resolves the current upstream release and commits, replaces the vendor files, and rewrites `rules/rules.lock`. Either command leaves the previous vendor tree and lock in place if anything fails.
 
 ## 3. Watch the inbox
 
@@ -156,7 +156,7 @@ Promote compiles the edited rule before it writes the file. If the compile fails
 
 ## 7. What a normal file will and will not trip
 
-Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, and on explicit left/right bidi overrides. Common emoji/language joiners are allowed. Other invisible indicators and directional isolates are advisory.
+Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, on bidi controls (overrides, embeddings, and isolates), and on invisible characters (a zero-width space, a left-to-right or right-to-left mark, a word joiner, a BOM after the first byte, or a Unicode tag). A ZWJ inside an emoji sequence, and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters, are allowed; any other ZWNJ or ZWJ blocks.
 
 Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases such as "ignore previous instructions", and on hidden HTML that contains those phrases. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch.
 
