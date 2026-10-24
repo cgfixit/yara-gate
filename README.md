@@ -26,7 +26,7 @@ On 2026-10-23, `git grep -i yara` on `origin/main` of [cgfixit/CyClaw](https://g
 
 ## See the policy decision
 
-The live loopback demo calls the real scanner with the 32-rule local pack. In this
+The live loopback demo calls the real scanner with the 35-rule local pack. In this
 October 19 capture of the earlier 20-rule pack, an inert HTML-encoded instruction is detected in the
 `html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
 exit 1**, while retaining its advisory finding severity.
@@ -154,7 +154,7 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 32 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 35 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 A successful install or update also records `installed_vendor_files` in the
 rules root's `rules.lock`. If a recorded file, pack directory, or the whole vendor
@@ -206,13 +206,13 @@ These lexical combinations can also occur in legitimate administration, export c
 
 ### Later local checks
 
-`rules/local/` in this tree has 32 YARA rules in 31 files. Recount them with `rg -N '^rule ' rules/local`. The table above is the delivery-pattern subset. These checks are the ones the delivery table does not list.
+`rules/local/` in this tree has 35 YARA rules in 32 files. Recount them with `rg -N '^rule ' rules/local`. The table above is the delivery-pattern subset. These checks are the ones the delivery table does not list.
 
 | ID | Severity | What it matches |
 | --- | --- | --- |
-| [`script_base64_decode_pipe`](rules/local/script_base64_decode_pipe.yar) | Advisory | `base64` decode piped into a shell |
+| [`script_base64_decode_pipe`](rules/local/script_base64_decode_pipe.yar) | Advisory | `base64` decode piped into `sh`, `bash`, or `zsh` |
 | [`script_osascript_shell`](rules/local/script_osascript_shell.yar) | Advisory | `osascript -e` running `do shell script` |
-| [`script_clear_quarantine`](rules/local/script_clear_quarantine.yar) | Advisory | A command that clears the macOS quarantine attribute |
+| [`script_clear_quarantine`](rules/local/script_clear_quarantine.yar) | Advisory | An `xattr` command (optionally after `sudo`) that deletes `com.apple.quarantine` (`-d`, `-rd`, `-r -d`) or clears every attribute (`-c`, `-cr`) |
 | [`script_launchagent_shell`](rules/local/script_launchagent_shell.yar) | Advisory | LaunchAgent program arguments that run a shell downloader |
 | [`script_chmod_execute`](rules/local/script_chmod_execute.yar) | Advisory | `chmod +x` and execution in the same short region |
 | [`doc_rtf_object`](rules/local/doc_rtf_object.yar) | Block | RTF object data or an object update |
@@ -223,9 +223,19 @@ These lexical combinations can also occur in legitimate administration, export c
 
 `script_download_execute` does not match a file that also contains "the following command", "common lure", or "for example" within 160 bytes before `curl`, `wget`, or a PowerShell download cmdlet. That exception covers the whole file. An SVG `foreignObject` without a script or an `onload` handler does not match `doc_svg_active`. A disk-image filename without the magic bytes does not match `container_disk_image`.
 
+### macOS and Linux launcher checks
+
+| Rule ID | Required indicators | Finding severity |
+| --- | --- | --- |
+| [`linux_desktop_exec_fetch`](rules/local/unix_launcher_lures.yar) | A `[Desktop Entry]` whose `Exec=` line runs `curl`, `wget`, `base64 -d`, `xxd -r`, or `openssl enc` | Advisory |
+| [`script_fetch_chmod_run`](rules/local/unix_launcher_lures.yar) | One line that runs `curl` or `wget`, then `chmod` (`+x`, `u+x`, or an octal mode), then launches a path (`/`, `./`, `~/`, or a variable) | Advisory |
+| [`web_applescript_url_lure`](rules/local/unix_launcher_lures.yar) | An `applescript://com.apple.scripteditor?action=new` link whose prefilled script contains `do shell script`, `curl`, or `osascript` | Advisory |
+
+The `.desktop` shape is the [APT36 campaign](https://www.bleepingcomputer.com/news/security/apt36-hackers-abuse-linux-desktop-files-to-install-malware/) that shipped a launcher named like a PDF inside a zip. The download, `chmod`, run chain and `xattr -c` are the [AMOS stealer bootstrap](https://www.sophos.com/blog/why-amos-matters-the-macos-malware-stealing-data-at-scale). Script Editor links are the [ClickFix variant](https://www.bleepingcomputer.com/news/security/new-macos-stealer-campaign-uses-script-editor-in-clickfix-attack/) that avoids Terminal. A vendor install line such as `curl -o install.sh … && chmod +x install.sh && ./install.sh` also matches `script_fetch_chmod_run`. A chain that ends in `sudo mv` or an install step, a `chmod` on a later line, a `.desktop` file that only mentions `curl` in `Comment=`, and a Script Editor link that only shows a dialog do not match.
+
 The scanner also reports these checks without a YARA rule. `heuristic_pickle_reduce` walks pickle opcodes. It blocks a `GLOBAL` or `STACK_GLOBAL` of `os`, `subprocess`, `builtins`, `posix`, or `nt`, or a callable named `eval` or `exec`, when a later `REDUCE` or `NEWOBJ` is present. Any name from those five modules blocks. The check is not limited to `system` or `popen`. The walker does not call `pickle.loads`. It skips `SHORT_BINBYTES` and `BINBYTES`. Any other opcode it does not know stops the walk and reports nothing. `heuristic_safetensors_header` blocks a `.safetensors` file whose header length or tensor offsets do not fit the file. `heuristic_gguf_header` blocks a `.gguf` file, or any bytes that start with `GGUF`, when the version is not 1, 2, or 3, the counts exceed 100,000, or a following record does not parse. `heuristic_ooxml_vba` and `heuristic_ooxml_dde` block. `heuristic_ooxml_oleobject` and `heuristic_ooxml_altchunk` are advisory. `heuristic_mcp_shell` and `heuristic_mcp_hidden_instruction` are advisory on a JSON object. `heuristic_double_extension`, `heuristic_document_executable`, and `heuristic_nested_executable` block.
 
-On the generated 246-file corpus measured with this pack, each of the 32 YARA rules hit 0 files. No heuristic id hit either. The rate is files hit divided by files scanned. The write-up is [Precision after the local pack grew](docs/verification/precision-after-growth.md). Vendor rule bodies stay out of git. The license reasons are in [Vendor pack review](docs/verification/vendor-pack-review.md).
+On the generated 246-file corpus, each of the 35 YARA rules hit 0 files. No heuristic id hit either. The rate is files hit divided by files scanned. The 32-rule write-up is [Precision after the local pack grew](docs/verification/precision-after-growth.md). Vendor rule bodies stay out of git. The license reasons are in [Vendor pack review](docs/verification/vendor-pack-review.md).
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
 
