@@ -28,6 +28,14 @@ Limits: the files are synthetic and hand-shaped from documented formats, not col
 Windows hosts, and the mix is chosen, so the rate over 267 files understates how often these
 rules fire on a real Windows profile. Read the per-file list, not the percentage.
 
+## After the UNC promotion
+
+Same corpus, same command, on the branch that adds `win_library_unc_location` (40 rules,
+0 incomplete). `Team.library-ms` now hits the block rule instead of the advisory one; the
+https search connector stays on `win_library_remote_location`; the other two hits are
+unchanged; every other rule, including the new one, hit 0 files. The table below is the
+earlier 39-rule run.
+
 ## Table
 
 Revision `f210a64a70f7b5edf0497590e1d6eac8e1e6d775`. YARA-X `1.22.0`.
