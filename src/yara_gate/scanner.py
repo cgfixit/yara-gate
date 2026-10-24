@@ -3,6 +3,7 @@
 import hashlib
 import math
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from yara_gate.filetype import (
     is_document_name,
     is_executable_kind,
     mismatch,
+    name_has_controls,
     sniff,
     utf16_encoding,
 )
@@ -127,28 +129,17 @@ def _scan_file(
         return finish(error or "yara-x missing")
     fingerprint = ruleset
     engine_version = yara_x_version()
-    if double_extension(file_path):
-        findings.append(
-            Finding(
-                rule_id="heuristic_double_extension",
-                severity=Severity.block,
-                source=FindingSource.heuristic,
-            )
-        )
+    # Only the submitted name: the directories above it belong to the operator.
+    findings.extend(_name_findings([file_path.name]))
     try:
         for unit in content_units(ContentUnit(file_path.name, data), budget):
             budget.check()
             path = Path(unit.name)
             kind = sniff(unit.data)
             extra: list[Finding] = []
-            if unit.member_path and double_extension(path):
-                extra.append(
-                    Finding(
-                        rule_id="heuristic_double_extension",
-                        severity=Severity.block,
-                        source=FindingSource.heuristic,
-                    )
-                )
+            if unit.member_path:
+                # Every component: an Invoice.pdf.app bundle hides behind its inner file names.
+                extra.extend(_name_findings(path.parts))
             if is_executable_kind(kind) and unit.member_path and is_document_name(file_path):
                 extra.append(
                     Finding(
@@ -210,6 +201,27 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+def _name_findings(parts: Sequence[str]) -> list[Finding]:
+    found: list[Finding] = []
+    if any(double_extension(Path(part)) for part in parts):
+        found.append(
+            Finding(
+                rule_id="heuristic_double_extension",
+                severity=Severity.block,
+                source=FindingSource.heuristic,
+            )
+        )
+    if any(name_has_controls(part) for part in parts):
+        found.append(
+            Finding(
+                rule_id="heuristic_filename_control",
+                severity=Severity.block,
+                source=FindingSource.heuristic,
+            )
+        )
+    return found
 
 
 def _decoded_text(data: bytes) -> tuple[str, str] | None:

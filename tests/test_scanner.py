@@ -253,3 +253,22 @@ def test_a_stray_byte_keeps_derived_views_and_the_joiner_check(
     result = scan_file(entity, rules_dir=rules_copy, policy="agent-ingest")
     assert result.verdict is Verdict.block
     assert any(f.view == "html-unescaped" for f in result.findings)
+
+
+def test_disguised_member_names_block(tmp_path: Path, rules_copy: Path) -> None:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("Invoice.pdf.app/Contents/MacOS/Invoice", b"inert\n")
+        archive.writestr("Invoice_\u202efdp.scr", b"inert\n")
+    result = _scan(tmp_path, rules_copy, "bundle.zip", buf.getvalue())
+    found = {(item.rule_id, tuple(item.member_path)) for item in result.findings}
+    assert ("heuristic_double_extension", ("zip:0",)) in found
+    assert ("heuristic_filename_control", ("zip:1",)) in found
+    assert result.verdict is Verdict.block
+
+
+def test_decoy_parent_directory_does_not_block(tmp_path: Path, rules_copy: Path) -> None:
+    folder = tmp_path / "Invoice.pdf.app"
+    folder.mkdir()
+    result = _scan(folder, rules_copy, "notes.txt", b"meeting notes\n")
+    assert result.verdict is Verdict.clean
