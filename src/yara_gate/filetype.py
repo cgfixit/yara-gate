@@ -28,12 +28,33 @@ EXT_EXPECT: dict[str, str] = {
     ".docm": "zip",
     ".xlsm": "zip",
     ".pptm": "zip",
+    # Other zip containers that a double-click opens or installs.
+    ".jar": "zip",
+    ".apk": "zip",
+    ".appx": "zip",
+    ".msix": "zip",
+    ".appxbundle": "zip",
+    ".msixbundle": "zip",
+    ".xpi": "zip",
+    ".vsix": "zip",
+    ".nupkg": "zip",
+    ".whl": "zip",
+    ".epub": "zip",
+    ".odt": "zip",
+    ".ods": "zip",
+    ".odp": "zip",
     ".doc": "ole",
     ".xls": "ole",
     ".ppt": "ole",
     ".exe": "pe",
     ".dll": "pe",
     ".scr": "pe",
+    ".xll": "pe",
+    ".cpl": "pe",
+    ".ocx": "pe",
+    ".sys": "pe",
+    ".drv": "pe",
+    ".efi": "pe",
     ".elf": "elf",
     ".txt": "text",
     ".md": "text",
@@ -42,6 +63,20 @@ EXT_EXPECT: dict[str, str] = {
     ".json": "text",
     ".yaml": "text",
     ".yml": "text",
+    ".csv": "text",
+    ".svg": "text",
+    ".xml": "text",
+    ".rtf": "text",
+    ".ini": "text",
+    ".url": "text",
+    ".scf": "text",
+    ".reg": "text",
+    ".ps1": "text",
+    ".vbs": "text",
+    ".js": "text",
+    ".sh": "text",
+    ".bat": "text",
+    ".cmd": "text",
 }
 
 TEXT_EXTS = {".txt", ".md", ".html", ".htm", ".json", ".yaml", ".yml"}
@@ -53,21 +88,37 @@ DOCUMENT_SUFFIXES = frozenset(
         ".jpg",
         ".jpeg",
         ".gif",
+        ".bmp",
+        ".webp",
+        ".heic",
         ".doc",
         ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".odt",
+        ".ods",
+        ".csv",
         ".txt",
         ".md",
         ".rtf",
         ".html",
         ".htm",
+        ".svg",
+        ".eml",
     }
 )
-_DECOY = r"pdf|png|jpe?g|gif|bmp|webp|heic|docx?|xlsx?|pptx?|odt|rtf"
+_DECOY = r"pdf|png|jpe?g|gif|bmp|webp|heic|docx?|xlsx?|pptx?|odt|ods|csv|rtf|mp[34]|mov|one"
 # A decoy suffix, optional padding, then a suffix that runs or opens something on its own.
 # Plain text and HTML decoys pair only with binaries: names such as page.html.js are real code.
+# Launchers: Windows script hosts and shortcuts, disk images that mount, app packages and
+# ClickOnce manifests that install, registry and setup files, and macOS scripts and packages.
 _DOUBLE_EXT = re.compile(
-    rf"(?i).*\.(?:(?:{_DECOY}|txt|html?)[\s._-]*\.(?:exe|dll|scr|app|com|pif|cpl|msi)"
+    rf"(?i).*\.(?:(?:{_DECOY}|txt|html?)[\s._-]*\.(?:exe|dll|scr|app|com|pif|cpl|msi|xll)"
     rf"|(?:{_DECOY})[\s._-]*\.(?:lnk|url|scf|hta|js|jse|vbs|vbe|wsf|wsh|bat|cmd|ps1|msc|jar"
+    r"|iso|img|vhdx?|msix(bundle)?|appx(bundle)?|application|appref-ms|reg|inf|chm|diagcab"
+    r"|msp|mst|pkg|dmg|scpt|terminal|workflow|webloc"
     r"|desktop|command|library-ms|searchconnector-ms))$"
 )
 # Directional and invisible controls that can reorder or hide part of a displayed name.

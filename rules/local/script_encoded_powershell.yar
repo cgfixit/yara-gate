@@ -1,7 +1,7 @@
 rule script_encoded_powershell {
     meta:
         author = "yara-gate"
-        description = "Encoded PowerShell launch with hidden-window or execution-policy-bypass flags on the same command line"
+        description = "Encoded PowerShell launch with hidden-window or execution-policy bypass or unrestricted flags on the same command line"
         intent = "Advisory on encoded PowerShell with a hidden window or a bypass"
         severity = "advisory"
         verdict_on_match = "advisory"
@@ -12,7 +12,7 @@ rule script_encoded_powershell {
         $command = /\b(powershell|pwsh)(\.exe)?["']?[ \t]+[^\r\n;|&]{1,1024}/ nocase ascii wide
         $encoded = /[ \t]-(e|ec|enc|encodedcommand)[ \t]+["']?[A-Za-z0-9+\/]{40,512}={0,2}(["' \t\r\n]|$)/ nocase ascii wide
         $hidden = /[ \t]-w(indowstyle)?[ \t]+(hidden|h)\b/ nocase ascii wide
-        $bypass = /[ \t]-(ep|executionpolicy)[ \t]+bypass\b/ nocase ascii wide
+        $bypass = /[ \t]-(ep|executionpolicy)[ \t]+(bypass|unrestricted)\b/ nocase ascii wide
     condition:
         for any i in (1..#command) : (
             $encoded in (@command[i]..@command[i] + !command[i] - 1) and

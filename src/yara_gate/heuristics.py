@@ -76,6 +76,11 @@ def joiner_findings(text: str) -> list[Finding]:
 def pdf_findings(data: bytes) -> list[Finding]:
     if sniff(data) != "pdf":
         return []
+    return pdf_token_findings(data)
+
+
+def pdf_token_findings(data: bytes) -> list[Finding]:
+    """PDF action and embedding names in ``data``, which may be an inflated stream view."""
     findings: list[Finding] = []
     for token in PDF_TOKENS:
         found = _pdf_name_span(data, token)
