@@ -10,6 +10,7 @@ import re
 import secrets
 import shutil
 import tarfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -43,6 +44,11 @@ _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
 # Content hash of one rules directory. Later files in the same run stat instead of rereading.
 _DIGEST_STAMP: dict[str, tuple[object, ...]] = {}
 _DIGEST_VALUE: dict[str, str] = {}
+# The sorted rule-file listing of one folder, keyed by folder, valid while every directory
+# under it keeps its mtime. A directory touched within the racy window is never cached, so a
+# file created in the same timestamp tick as the listing cannot be missed (git's "racily clean").
+_LISTING: dict[str, tuple[tuple[tuple[str, int], ...], list[Path]]] = {}
+_RACY_WINDOW_NS = 2_000_000_000
 
 
 class RuleDownloadError(Exception):
@@ -275,12 +281,44 @@ def shadowed_rule_lines(rules_dir: Path, *, overlay: bool | None = None) -> list
 
 
 def _collect_rules(folder: Path, found: list[Path], *, nested: bool = True) -> None:
-    if nested:
-        found.extend(sorted(folder.rglob("*.yar")))
-        found.extend(sorted(folder.rglob("*.yara")))
+    if not nested:
+        found.extend(sorted(folder.glob("*.yar")))
+        found.extend(sorted(folder.glob("*.yara")))
         return
-    found.extend(sorted(folder.glob("*.yar")))
-    found.extend(sorted(folder.glob("*.yara")))
+    key = str(folder)
+    stamp = _directory_stamp(folder)
+    cached = _LISTING.get(key)
+    if cached is not None and stamp is not None and cached[0] == stamp:
+        found.extend(cached[1])
+        return
+    listing = sorted(folder.rglob("*.yar"))
+    listing.extend(sorted(folder.rglob("*.yara")))
+    found.extend(listing)
+    if stamp is None:
+        _LISTING.pop(key, None)
+    else:
+        _LISTING[key] = (stamp, list(listing))
+
+
+def _directory_stamp(folder: Path) -> tuple[tuple[str, int], ...] | None:
+    """The mtime of every directory under ``folder``, or None when one changed too recently.
+
+    Adding, deleting, or renaming a rule file changes its directory's mtime; an edit in place
+    is caught by the per-file stat in ``ruleset_digest``. Symlinked directories are followed
+    so a staged vendor tree reached through a link is stamped too.
+    """
+    now = time.time_ns()
+    rows: list[tuple[str, int]] = []
+    for dirpath, dirnames, _files in os.walk(folder, followlinks=True):
+        try:
+            info = os.stat(dirpath)
+        except OSError:
+            return None
+        if now - info.st_mtime_ns < _RACY_WINDOW_NS:
+            return None
+        rows.append((dirpath, info.st_mtime_ns))
+        dirnames.sort()
+    return tuple(rows)
 
 
 @functools.cache
@@ -940,6 +978,7 @@ def _clear_cache(rules_dir: Path) -> None:
     _MEMO.clear()
     _DIGEST_STAMP.clear()
     _DIGEST_VALUE.clear()
+    _LISTING.clear()
     cache = _user_cache_dir()
     if cache.exists():
         shutil.rmtree(cache, ignore_errors=True)
