@@ -133,7 +133,7 @@ the aggregate exit code. Diagnostics go to stderr. See the [integration contract
 and ingestion example](docs/integrations.md); consumers must check both the
 process exit and the returned records.
 
-Findings also identify their YARA namespace, content `view`, and archive `member_path` as container ordinals such as `zip:0` (including directory entries in the numbering). Member names and decoded text are not copied into reports. Offsets refer to that member/view, not to the enclosing archive. SARIF keeps derived/member offsets in result properties instead of attaching them to the outer file's physical region. Scan records include the engine version, ruleset fingerprint, and skipped vendor-file count.
+Findings also identify their YARA namespace, content `view`, and archive `member_path` as container ordinals such as `zip:0` (including directory entries in the numbering). Member names and decoded text are not copied into reports. Offsets refer to that member/view, not to the enclosing archive. SARIF keeps derived/member offsets in result properties instead of attaching them to the outer file's physical region. Scan records include the engine version, ruleset fingerprint, skipped vendor-file count, the number of compiled rules (`compiled_rules`, so a consumer can tell a 39-rule local scan from one with installed packs), the `yara-gate` version that produced the record (`tool_version`), and the wall-clock scan time (`scan_seconds`). Each report file is written to a temporary sibling name and renamed into place, so a reader polling `reports/` never opens a partial file.
 
 ## Rule packs
 
@@ -290,7 +290,7 @@ Pass `policy="agent-ingest"` for CyClaw corpus intake and for a harness attachme
 
 `demo.html` is a limited standalone JavaScript illustration. It does not implement the full current rule pack, decoded views, archives, or policy. Use the live demo below to exercise the current scanner.
 
-`yara-gate demo` is the full scan. It serves a page on `127.0.0.1` and prints the URL. Port `0` picks a free port. That page calls `scan_file` on a temporary file the server creates and deletes.
+`yara-gate demo` is the full scan. It serves a page on `127.0.0.1` and prints the URL. Port `0` picks a free port. That page calls `scan_bytes` on the sample or pasted text; nothing is written to disk.
 
 ```bash
 uv run yara-gate demo --rules rules

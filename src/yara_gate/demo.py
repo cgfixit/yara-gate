@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import json
-import os
 import secrets
-import shutil
-import tempfile
 import threading
 from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from yara_gate.models import ScanPolicy, ScanResult, exit_code
 from yara_gate.samples import base64_text, clean_text, mini_pe
-from yara_gate.scanner import scan_file
+from yara_gate.scanner import scan_bytes
 
 _MAX_TEXT = 64 * 1024
 _MAX_BODY = (128 * 1024) + 256
@@ -115,14 +112,8 @@ def scan_request(request: DemoRequest, *, rules_dir: Path | None) -> DemoRespons
         name, payload = _sample_file(request.sample)
     else:
         name, payload = "paste.txt", (request.text or "").encode("utf-8")
-    root = Path(tempfile.mkdtemp(prefix="yara-gate-demo-"))
-    os.chmod(root, 0o700)
-    try:
-        path = root / name
-        path.write_bytes(payload)
-        result = scan_file(path, rules_dir=rules_dir, policy=request.policy)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+    # In memory: a pasted document never touches the disk, not even under a temporary name.
+    result = scan_bytes(payload, name=name, rules_dir=rules_dir, policy=request.policy)
     return view_result(result)
 
 
