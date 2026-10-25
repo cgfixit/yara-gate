@@ -183,7 +183,10 @@ owner decision.
 - Overlap with other PRs:
 
 ## Sources
-Dated links, each marked [primary], [secondary], or [not fetched].
+Every link carries a publication date (YYYY-MM or YYYY-MM-DD) and a [primary] or
+[secondary] mark, plus [not fetched] when your network could not reach it. If the
+page shows no date, write `undated`; never leave the date out. Every
+reproduced-leads row fills all five columns.
 ```
 
 ## If execution is requested

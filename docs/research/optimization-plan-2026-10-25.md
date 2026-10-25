@@ -9,6 +9,11 @@ URL followed by the scanner.
 
 ## Baseline
 
+Branch point `7156e5a`. While this pass ran, `main` advanced to `db49ec7` (#55-#62: atomic
+reports, root-safe test, PDF coverage note, text-control check, Windows precision corpus,
+`win_library_unc_location`, skill source dates). Every draft below was merged with that
+`main` before its final push; #68 and #69 dropped the parts #55 and #56 had already landed.
+
 | Gate | Result |
 | --- | --- |
 | `ruff check .`, `ruff format --check .`, `mypy --strict src` | pass |
@@ -185,15 +190,15 @@ filetype changes extend existing block heuristics.
   2023-12-28 [primary, fetched 2026-10-25]
 - Microsoft, "Think before you Click(Fix)", 2025-08-21 [primary, cited by the existing
   rule metadata; not re-fetched]
-- Claude Code hooks reference (`code.claude.com/docs/en/hooks`): `onFailure`
+- Claude Code hooks reference (`code.claude.com/docs/en/hooks`), undated page: `onFailure`
   `"block"` requires v2.1.295+, exit 2 blocks a command hook [primary, fetched 2026-10-25]
 - FileFix disclosure by mr.d0x, 2025-06-23; Acronis and BleepingComputer coverage of
   in-the-wild FileFix campaigns, 2025 [secondary, via web search]
 - Elastic Security Labs, "GrimResource" (MSC + `apds.dll`), 2024-06 [primary; not fetched,
   host unreachable from this container]
 - MS-ONESTORE FileDataStoreObject GUID `{BDE316E7-2665-4511-A4C4-8D4D0B7A9EAC}` and
-  `.one` header GUID `{7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}` [primary spec; not fetched;
-  the rule was verified against a synthetic file built from those GUIDs]
-- OWASP CSV Injection; MITRE T1218.005, T1059.005, T1547.001, T1105, T1559.002;
-  Invariant Labs MCP tool-poisoning notice (2025-04); MSRC CVE-2022-30190 guidance
-  (2022-05) [primary; not fetched, hosts unreachable from this container]
+  `.one` header GUID `{7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}`, undated spec [primary; not
+  fetched; the rule was verified against a synthetic file built from those GUIDs]
+- OWASP CSV Injection, undated; MITRE T1218.005, T1059.005, T1547.001, T1105, T1559.002,
+  undated; Invariant Labs MCP tool-poisoning notice, 2025-04; MSRC CVE-2022-30190 guidance,
+  2022-05 [primary; not fetched, hosts unreachable from this container]
