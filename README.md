@@ -351,7 +351,7 @@ pass. The optimizer is manual-only. Both are tailored to this repository; the
 runtime and demo evidence skills supply their specialized verification steps.
 `$cg-researcher-optimize` is the planning-first pass: a time-boxed read-only scan,
 dated research on Windows, macOS, and Linux delivery techniques, reproduction of
-each lead, and a plan of 4-7 independent PRs. Its
+each lead, and a plan of 3-8 independent PRs. Its
 [PROMPT.md](.agents/skills/cg-researcher-optimize/PROMPT.md) is the same pass as a
 standalone prompt for an agent that does not load skill files, such as Grok.
 
@@ -362,14 +362,24 @@ standalone prompt for an agent that does not load skill files, such as Grok.
 ## Layout
 
 ```text
-demo.html              single-file browser page for the local patterns
+demo.html              limited standalone JavaScript illustration; not the scanner
 pyproject.toml         package metadata, the yara-gate script, ruff, mypy, pytest
 uv.lock                locked dependency set
 .python-version        Python 3.12 pin for uv
-src/yara_gate/         cli, quarantine, scanner, filetype, heuristics, rules, hunt, report, demo, launchd
+AGENTS.md              contracts and verification rules for agents working in this tree
+SECURITY.md            reporting and network scope
+user-guide.md          operator walkthrough
+src/yara_gate/         cli, quarantine, scanner, content, filetype, heuristics, models, rules,
+                       hunt, report, demo, demo_page.html, launchd, samples, selftest
 src/yara_gate/py.typed empty marker that the package ships types
-rules/local/           agent rules and promoted or candidate hunt rules
-rules/vendor/          curated packs after an explicit update (not committed, except SKIPPED.md)
+rules/local/           shipped rules and promoted or candidate hunt rules
+rules/vendor/          curated packs after an explicit install or update (only SKIPPED.md is committed)
 rules/rules.lock       pins for those packs
-tests/                 fixtures are generated at run time, except the small benign text corpus
+tests/                 fixtures are generated at run time, except tests/fixtures/benign/
+docs/integrations.md   caller contract for pipelines, messages, and agent hooks
+docs/examples/         runnable integration examples
+docs/verification/     CI-run checks (rule lint, pairs, added rules, precision, scan-only) and dated records
+docs/research/         the direct probe, signature fixtures, and dated research notes
+.agents/skills/        Codex and Grok workflows for this repository
+.github/               ci.yml, codeql.yml, dependabot.yml
 ```

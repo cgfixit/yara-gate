@@ -1,6 +1,6 @@
 ---
 name: cg-researcher-optimize
-description: Research-led optimization pass for yara-gate. Run a time-boxed, read-only scan of the rules and detection code on the latest default branch, research current Windows, macOS, and Linux delivery techniques, reproduce each lead with inert input, and plan 4-7 independent, scoped pull requests (rule coverage, filename and format checks, agent-ingest integration surfaces, bugs, telemetry, CI, docs). Use this whenever someone asks to "optimize", "audit", "expand the rules", "harden", or "plan PRs" for yara-gate, or asks how yara-gate can protect CyClaw, cg-researcher, cg-agent-harness, a Dropbox-style sync folder, or an inbound message channel, even if they don't name this skill. Not for a single known bug, a one-rule tweak, or live vendor-pack updates.
+description: Research-led optimization pass for yara-gate. Run a time-boxed, read-only scan of the rules and detection code on the latest default branch, research current Windows, macOS, and Linux delivery techniques, reproduce each lead with inert input, and plan 3-8 independent, scoped pull requests (rule coverage, filename and format checks, agent-ingest integration surfaces, bugs, telemetry, CI, docs). Use this whenever someone asks to "optimize", "audit", "expand the rules", "harden", or "plan PRs" for yara-gate, or asks how yara-gate can protect CyClaw, cg-researcher, cg-agent-harness, a Dropbox-style sync folder, or an inbound message channel, even if they don't name this skill. Not for a single known bug, a one-rule tweak, or live vendor-pack updates.
 ---
 
 # cg-researcher-optimize
@@ -29,15 +29,20 @@ List open pull requests and their files: a lead that an open PR already covers i
 not yours. Note recently merged titles so the plan does not redo finished work.
 Preserve any dirty or divergent local work.
 
+Read the open issues: each is a lead to plan, defer with a reason, or mark as
+already closed by a merged PR.
+
 Sync with `uv sync --frozen --group dev` and run the cheap gates once: Ruff,
 `mypy --strict src`, `docs/verification/lint_rules.py`,
-`docs/verification/check_rule_pairs.py`, and
-`docs/research/probe_rule_coverage.py --verify`. A red baseline changes the plan:
-fixing it comes first.
+`docs/verification/check_rule_pairs.py`, `docs/verification/check_added_rules.py`,
+`docs/verification/measure_precision.py --fail-over`, and
+`docs/research/probe_rule_coverage.py --verify --benign-stdlib`. Check `uv lock --check`
+and compare locked versions with PyPI. A red baseline changes the plan: fixing it
+comes first.
 
 ## 2. Time-boxed read-only scan
 
-Default box: about three minutes of reading, longer only if the requester sets it.
+Default box: about five minutes of reading, longer only if the requester sets it.
 Read only. No edits, no installs beyond the locked sync, no vendor downloads. The
 box keeps the pass about evidence rather than a tour of the codebase.
 
@@ -64,7 +69,8 @@ Questions that find real gaps:
 - What does a disguised name look like at the name level (decoy suffix plus a
   launcher suffix, padding, bidi or invisible characters), including inside a zip?
 - Can a consumer scan content it holds in memory (a chat or SMS body, a webhook
-  payload), or does it have to write a file first?
+  payload, an MCP tool list), and does the scan see what the reader sees: JSON
+  escapes decoded, HTML entities decoded, compressed PDF text inflated?
 - Do reports record what actually ran (policy, rule counts, skip counts)?
 
 Write each lead down as you go: the input, the code path, and the expected effect.
@@ -93,7 +99,7 @@ For a proposed rule, prototype it in the disposable copy and run positives and
 near-misses before committing to it in the plan. A rule that cannot be bounded
 against a realistic benign case stays out.
 
-## 5. Plan 4-7 pull requests
+## 5. Plan 3-8 pull requests
 
 One concern per PR, each branching from the default branch so that any of them can
 merge first. Before finalizing, predict file overlap. Two PRs that both append tests
@@ -105,7 +111,8 @@ what blocks, and that is the owner's call. Favor work that ships. Say so when a
 proposal is architecture for its own sake, or would need a product decision the
 owner has deferred.
 
-Use this structure:
+Use this structure (the standalone [PROMPT.md](PROMPT.md) carries the same
+structure plus an `Issue:` line per PR):
 
 ```markdown
 # yara-gate optimization plan: <date>, base <short sha>
