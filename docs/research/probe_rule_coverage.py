@@ -376,6 +376,7 @@ def main() -> None:
     delivery = delivery_cases()
     delivery.update(signature_cases("delivery-signatures.json"))
     delivery.update(signature_cases("windows-format-signatures.json"))
+    delivery.update(signature_cases("unix-signatures.json"))
     agent_cases = signature_cases("agent-signatures.json")
     delivery.update(agent_cases)
     delivery_rules = set().union(*(rule_set(rule_id) for _, rule_id in delivery.values()))
@@ -486,6 +487,7 @@ def main() -> None:
         signature_rules = (
             signature_cases("delivery-signatures.json")
             | signature_cases("windows-format-signatures.json")
+            | signature_cases("unix-signatures.json")
             | agent_cases
         )
         new_rule_ids = set().union(*(rule_set(rule_id) for _, rule_id in signature_rules.values()))
