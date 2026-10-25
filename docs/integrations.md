@@ -102,6 +102,16 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 `sha256` covers only the bytes read. To scan a file literally named `-`, pass
 `./-`.
 
+A JSON body is read twice: as raw bytes and as a `json-unescaped` view in which
+`\u0049gnore`, `\n`, and surrogate pairs are decoded, so an escape cannot hide a
+phrase from the lexical rules. A PDF is read as raw bytes and as a `pdf-flate`
+view of its inflated text streams, so a phrase or a `/JavaScript` action inside
+a compressed content or object stream is seen. A clean PDF verdict therefore
+covers the raw bytes, the PDF name checks on both views, and the YARA rules on
+both views; it does not cover text split across operators, other stream
+filters, images, or OCR. A consumer that extracts text itself should also pass
+that extracted text through `scan_bytes`.
+
 A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
 consumer's own approval checks on any tool or send action it proposes.

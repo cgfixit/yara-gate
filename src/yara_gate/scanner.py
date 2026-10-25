@@ -21,6 +21,7 @@ from yara_gate.content import (
     ContentLimit,
     ContentUnit,
     content_units,
+    pdf_views,
     text_views,
 )
 from yara_gate.filetype import (
@@ -32,7 +33,7 @@ from yara_gate.filetype import (
     sniff,
     utf16_encoding,
 )
-from yara_gate.heuristics import heuristic_findings, joiner_findings
+from yara_gate.heuristics import heuristic_findings, joiner_findings, pdf_token_findings
 from yara_gate.models import (
     Finding,
     FindingSource,
@@ -229,6 +230,16 @@ def _scan_file(
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
+                for finding in view_findings:
+                    finding.member_path = list(unit.member_path)
+                    finding.view = view
+                    findings.append(finding)
+            for view, derived in pdf_views(unit.data, budget):
+                budget.check()
+                seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
+                view_findings = _yara_findings(rules, derived, ext, seconds)
+                # An action dictionary inside an object stream is invisible to the raw check.
+                view_findings.extend(pdf_token_findings(derived))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
