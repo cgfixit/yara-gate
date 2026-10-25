@@ -102,22 +102,28 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 `sha256` covers only the bytes read. To scan a file literally named `-`, pass
 `./-`.
 
+A JSON body is read twice: as raw bytes and as a `json-unescaped` view in which
+`\u0049gnore`, `\n`, and surrogate pairs are decoded, so an escape cannot hide a
+phrase from the lexical rules. PDFs are covered below.
+
 A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
 consumer's own approval checks on any tool or send action it proposes.
 
 ## PDFs and other compressed documents
 
-A PDF verdict covers the file's raw bytes. yara-gate does not decompress PDF
-streams, so text inside a `/FlateDecode` stream, which is how most PDFs store
-it, never reaches the text rules. A PDF whose only problem is a prompt-injection
-phrase in compressed text scans **clean**, even under `agent-ingest`. The same
-holds for other stream filters, object streams, and text inside Office XML
-parts. The PDF and Office structure checks still run on the raw file.
+A PDF verdict covers the file's raw bytes and the `pdf-flate` view: every
+`/FlateDecode` stream that inflates to text (content streams and object streams)
+is handed to the text rules and to the PDF name checks, so a prompt-injection
+phrase or a `/JavaScript` action inside compressed text is seen. Not covered:
+text split across several `Tj` operators or text runs, other stream filters
+(LZW, ASCII85, PNG predictors), images, and text inside Office XML parts beyond
+the member scan. The PDF and Office structure checks still run on the raw file.
 
-When an agent reads extracted text rather than the file, gate that text too:
-scan the original file, then pass the extractor's output through `scan_bytes`
-(or `scan -`) before the text reaches the model.
+A consumer that extracts text itself should gate that text too, since the
+extractor's output is what the model reads: scan the original file, then pass
+the extractor's output through `scan_bytes` (or `scan -`) before the text
+reaches the model.
 
 ```python
 text = extract_text(path).encode("utf-8")  # your extractor
