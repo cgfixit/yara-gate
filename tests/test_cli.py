@@ -1,6 +1,7 @@
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -156,3 +157,37 @@ def test_dir_scan_reports_an_unreadable_directory(tmp_path: Path) -> None:
         hidden.chmod(stat.S_IRWXU)
     assert proc.returncode == 2
     assert "directory not readable" in proc.stdout
+
+
+def test_cli_import_does_not_load_the_scanner() -> None:
+    """--version, rules, and demo start without compiling anything (issue #44)."""
+    code = (
+        "import sys, yara_gate.cli\n"
+        "loaded = sorted(m for m in sys.modules if m.startswith(('yara_gate.', 'yara_x', "
+        "'urllib.request', 'importlib.metadata')))\n"
+        "print(' '.join(loaded))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert "yara_gate.cli" in out
+    for heavy in ("yara_gate.scanner", "yara_gate.rules", "yara_gate.quarantine", "yara_x"):
+        assert heavy not in out, out
+
+
+def test_package_exports_resolve_lazily() -> None:
+    code = (
+        "import sys, yara_gate\n"
+        "assert 'yara_gate.scanner' not in sys.modules\n"
+        "yara_gate.scan_bytes, yara_gate.scan_file, yara_gate.ScanResult\n"
+        "assert 'yara_gate.scanner' in sys.modules\n"
+        "from yara_gate.rules import _PinnedRedirect\n"
+        "import yara_gate.rules\n"
+        "assert _PinnedRedirect is yara_gate.rules._PinnedRedirect\n"
+        "try:\n"
+        "    yara_gate.nothing\n"
+        "except AttributeError:\n"
+        "    print('ok')\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "ok"

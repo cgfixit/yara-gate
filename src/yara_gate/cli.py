@@ -1,29 +1,46 @@
 """Command line for yara-gate. Unhandled errors exit 2."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 import stat
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 import typer
 
 from yara_gate import __version__
 from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
-from yara_gate.quarantine import GatePaths, process_inbox_file, scan_in_place, watch
-from yara_gate.report import compact_report, write_reports
-from yara_gate.rules import (
-    RuleDownloadError,
-    compile_sources,
-    default_rules_dir,
-    install_packs,
-    promote,
-    update_packs,
-)
-from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes
-from yara_gate.selftest import run_selftest
+
+if TYPE_CHECKING:
+    from yara_gate.quarantine import GatePaths
+    from yara_gate.rules import RulesLock
+
+# The scanner, rule loader, reports, and selftest are imported inside the command that needs
+# them, so --version, rules, demo, and install-agent start without compiling anything. The
+# three wrappers keep the names tests patch on this module.
+
+
+def run_selftest() -> int:
+    from yara_gate import selftest
+
+    return selftest.run_selftest()
+
+
+def install_packs(root: Path) -> RulesLock:
+    from yara_gate import rules
+
+    return rules.install_packs(root)
+
+
+def update_packs(root: Path) -> RulesLock:
+    from yara_gate import rules
+
+    return rules.update_packs(root)
+
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 rules_app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -87,6 +104,8 @@ def scan(
     Several paths are scanned in order, each exactly as a single path is. The exit code is
     the worst one seen (incomplete 2, then block 1); a missing path does not stop the rest.
     """
+    from yara_gate.quarantine import GatePaths
+
     try:
         targets = _targets(paths or [], paths_from, null)
         if targets == ["-"]:
@@ -153,6 +172,8 @@ def watch_inbox(
     policy: ScanPolicy = typer.Option(ScanPolicy.default, "--policy"),
 ) -> None:
     """Watch inbox/ and move each file to clean/ or blocked/."""
+    from yara_gate.quarantine import GatePaths, watch
+
     try:
         watch(GatePaths(home), rules_dir=rules, timeout_s=timeout_s, policy=policy)
     except KeyboardInterrupt:
@@ -221,6 +242,7 @@ def hunt(
 ) -> None:
     """Write a candidate rule from a confirmed file. Candidates do not block."""
     from yara_gate.hunt import hunt as build_hunt
+    from yara_gate.quarantine import GatePaths
 
     try:
         rule_path, hits = build_hunt(
@@ -248,6 +270,8 @@ def rules_install(
     rules: Path | None = typer.Option(None, "--rules"),
 ) -> None:
     """Install the packs named in rules.lock. Refuses to run without --allow-network."""
+    from yara_gate.rules import compile_sources, default_rules_dir
+
     if not allow_network:
         typer.echo("refusing: pass --allow-network", err=True)
         raise typer.Exit(code=2)
@@ -272,6 +296,8 @@ def rules_update(
     rules: Path | None = typer.Option(None, "--rules"),
 ) -> None:
     """Download pinned vendor packs. Refuses to run without --allow-network."""
+    from yara_gate.rules import compile_sources, default_rules_dir
+
     if not allow_network:
         typer.echo("refusing: pass --allow-network", err=True)
         raise typer.Exit(code=2)
@@ -296,6 +322,8 @@ def rules_promote(
     rules: Path | None = typer.Option(None, "--rules"),
 ) -> None:
     """Let a candidate rule block on later scans."""
+    from yara_gate.rules import promote
+
     try:
         path = promote(rule_id, rules)
     except Exception as exc:
@@ -305,6 +333,8 @@ def rules_promote(
 
 
 def _echo_incomplete(exc: Exception) -> NoReturn:
+    from yara_gate.rules import RuleDownloadError
+
     if isinstance(exc, RuleDownloadError):
         typer.echo(f"incomplete: {exc}", err=True)
     else:
@@ -327,6 +357,8 @@ def _scan_path(
     follow_symlinks: bool = False,
     json_output: bool = False,
 ) -> int:
+    from yara_gate.quarantine import process_inbox_file, scan_in_place
+
     home.ensure()
     try:
         info = path.lstat()
@@ -361,6 +393,9 @@ def _scan_stdin(
     json_output: bool,
 ) -> int:
     """Scan stdin in memory. Over 100 MiB is incomplete; its sha256 covers what was read."""
+    from yara_gate.report import write_reports
+    from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes
+
     home.ensure()
     data = sys.stdin.buffer.read(MAX_FILE_BYTES + 1)
     result = scan_bytes(data, name=name, timeout_s=timeout_s, rules_dir=rules, policy=policy)
@@ -370,6 +405,8 @@ def _scan_stdin(
 
 
 def _emit(result: ScanResult, json_output: bool) -> None:
+    from yara_gate.report import compact_report
+
     if json_output:
         typer.echo(json.dumps(compact_report(result), separators=(",", ":")))
         return
@@ -404,6 +441,8 @@ def _refuse_path(
     home: GatePaths, path: Path, reason: str, policy: ScanPolicy = ScanPolicy.default
 ) -> ScanResult:
     """Report an outside path as incomplete without reading it."""
+    from yara_gate.report import write_reports
+
     token = hashlib.sha256(str(path).encode()).hexdigest()
     result = ScanResult(
         sha256=token,
