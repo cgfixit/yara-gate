@@ -191,11 +191,11 @@ The delivery-pattern rules report these IDs:
 
 | Rule ID | Required indicators | Finding severity |
 | --- | --- | --- |
-| [`web_clickfix_lure`](rules/local/web_clickfix_lure.yar) | Verification language, clipboard-copy API, shell-opening instructions, and paste instructions near each other | Advisory |
+| [`web_clickfix_lure`](rules/local/web_clickfix_lure.yar) | Verification language, a clipboard-copy API (`writeText`, `write`, or `execCommand('copy')`), an instruction to open Run, a terminal, PowerShell, or the File Explorer address bar, and a paste instruction near each other | Advisory |
 | [`web_html_smuggling`](rules/local/web_html_smuggling.yar) | Base64 decoding, Blob/URL APIs, and a nearby literal script, executable, disk-image, or archive download filename | Advisory |
-| [`script_encoded_powershell`](rules/local/script_encoded_powershell.yar) | An encoded command plus hidden-window or execution-policy-bypass flags in a bounded PowerShell command fragment | Advisory |
-| [`script_mshta_remote`](rules/local/script_mshta_remote.yar) | A direct HTTP(S) target passed to `mshta` | Advisory |
-| [`script_regsvr32_remote_scriptlet`](rules/local/script_regsvr32_remote_scriptlet.yara) | Regsvr32 with remote `/i:` and `scrobj.dll` in one bounded command | Advisory |
+| [`script_encoded_powershell`](rules/local/script_encoded_powershell.yar) | An encoded command plus a hidden-window flag or an execution policy of `Bypass` or `Unrestricted` in a bounded PowerShell command fragment | Advisory |
+| [`script_mshta_remote`](rules/local/script_mshta_remote.yar) | A direct HTTP(S) target, or an inline `vbscript:` or `javascript:` URL, passed to `mshta` | Advisory |
+| [`script_regsvr32_remote_scriptlet`](rules/local/script_regsvr32_remote_scriptlet.yara) | Regsvr32 with a remote `/i:` or `-i:` target and `scrobj.dll` in one bounded command | Advisory |
 | [`script_rundll32_mshtml`](rules/local/script_rundll32_mshtml.yara) | Rundll32 JavaScript protocol invoking MSHTML `RunHTMLApplication` | Advisory |
 | [`shortcut_powershell_encoded`](rules/local/shortcut_interpreter.yara) | Parsed PowerShell target plus encoded and hidden/bypass arguments | Advisory |
 | [`shortcut_mshta_remote`](rules/local/shortcut_interpreter.yara) | Parsed MSHTA target with an HTTP(S) argument | Advisory |
@@ -228,15 +228,15 @@ The shapes come from [CVE-2025-33053](https://blog.checkpoint.com/research/insid
 | [`script_base64_decode_pipe`](rules/local/script_base64_decode_pipe.yar) | Advisory | `base64` decode piped into `sh`, `bash`, or `zsh` |
 | [`script_osascript_shell`](rules/local/script_osascript_shell.yar) | Advisory | `osascript -e` running `do shell script` |
 | [`script_clear_quarantine`](rules/local/script_clear_quarantine.yar) | Advisory | An `xattr` command (optionally after `sudo`) that deletes `com.apple.quarantine` (`-d`, `-rd`, `-r -d`) or clears every attribute (`-c`, `-cr`) |
-| [`script_launchagent_shell`](rules/local/script_launchagent_shell.yar) | Advisory | LaunchAgent program arguments that run a shell downloader |
-| [`script_chmod_execute`](rules/local/script_chmod_execute.yar) | Advisory | `chmod +x` and execution in the same short region |
+| [`script_launchagent_shell`](rules/local/script_launchagent_shell.yar) | Advisory | LaunchAgent program arguments that run `/bin/sh`, `bash`, `zsh`, or `/usr/bin/python3`, `perl`, `ruby`, `osascript`, `curl`, or `env`, with `curl`, `wget`, `osascript`, `base64`, or `urlopen` in the plist |
+| [`script_chmod_execute`](rules/local/script_chmod_execute.yar) | Advisory | `chmod +x`, `u+x`, or an octal mode, then a launch on the next line or after `&&` or `;` |
 | [`doc_rtf_object`](rules/local/doc_rtf_object.yar) | Block | RTF object data or an object update |
 | [`doc_svg_active`](rules/local/doc_svg_active.yar) | Block | An SVG with a script or an `onload` handler |
 | [`agent_markdown_exfil`](rules/local/agent_markdown_exfil.yar) | Advisory | A Markdown image or link whose query contains a template |
 | [`agent_fake_chat_marker`](rules/local/agent_fake_chat_marker.yar) | Advisory | A fake system or assistant chat marker with an instruction verb, or a closing tool-result tag with no opening tag |
 | [`container_disk_image`](rules/local/container_disk_image.yar) | Advisory | ISO, VHD, or DMG magic at the offset that format uses |
 
-`script_download_execute` does not match a file that also contains "the following command", "common lure", or "for example" within 160 bytes before `curl`, `wget`, or a PowerShell download cmdlet. That exception covers the whole file. An SVG `foreignObject` without a script or an `onload` handler does not match `doc_svg_active`. A disk-image filename without the magic bytes does not match `container_disk_image`.
+`script_download_execute` matches `curl` or `wget` piped into `sh`, `bash`, `zsh`, `python`, or `perl`, with or without `sudo` in between; `bash <(curl …)` and `sh -c "$(curl …)"`; and a PowerShell download (`Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `iwr`, `irm`) on the same line as `Invoke-Expression` or `iex`. The Homebrew install line is the known benign collision. It does not match a file that also contains "the following command", "common lure", or "for example" within 160 bytes before one of those download words. That exception covers the whole file. An SVG `foreignObject` without a script or an `onload` handler does not match `doc_svg_active`. A disk-image filename without the magic bytes does not match `container_disk_image`.
 
 ### macOS and Linux launcher checks
 

