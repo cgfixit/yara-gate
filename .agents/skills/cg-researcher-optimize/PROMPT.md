@@ -111,7 +111,9 @@ is the deliverable.
 - Benign collisions and severity:
 - Overlap with other PRs:
 ## Sources
-Dated links, each marked [primary] or [secondary].
+Every link carries a publication date (YYYY-MM or YYYY-MM-DD) and a [primary] or
+[secondary] mark. If the page shows no date, write `undated`; never leave the date out.
+Every reproduced-leads row fills all five columns.
 ```
 
 ## If execution is requested
