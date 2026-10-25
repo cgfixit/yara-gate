@@ -129,20 +129,27 @@ def _scan_file(
     policy: ScanPolicy,
     data: bytes | None = None,
 ) -> ScanResult:
-    budget = Budget(time.monotonic() + timeout_s)
+    started = time.monotonic()
+    budget = Budget(started + timeout_s)
     digest = "0" * 64
     findings: list[Finding] = []
     fingerprint: str | None = None
     engine_version: str | None = None
     skip_count = 0
+    compiled = 0
 
     def finish(reason: str | None = None) -> ScanResult:
+        from yara_gate import __version__
+
         result = result_from_findings(
             sha256=digest, path=str(file_path), findings=findings, incomplete_reason=reason
         )
         result.ruleset_sha256 = fingerprint
         result.engine_version = engine_version
         result.skipped_rule_files = skip_count
+        result.compiled_rules = compiled
+        result.tool_version = __version__
+        result.scan_seconds = round(time.monotonic() - started, 3)
         result.policy = policy
         if policy is ScanPolicy.agent_ingest and result.verdict is Verdict.advisory:
             result.verdict = Verdict.block
@@ -164,7 +171,7 @@ def _scan_file(
     if len(data) > MAX_FILE_BYTES:
         return finish("file exceeds 100MB")
     root = rules_dir or default_rules_dir()
-    rules, _skipped, error, _compiled, skip_count, ruleset = compile_ruleset(root)
+    rules, _skipped, error, compiled, skip_count, ruleset = compile_ruleset(root)
     if error or rules is None:
         return finish(error or "yara-x missing")
     fingerprint = ruleset

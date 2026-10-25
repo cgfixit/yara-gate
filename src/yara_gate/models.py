@@ -77,6 +77,10 @@ class ScanResult(_Dumpable):
     skipped_rule_files: int = 0
     policy: ScanPolicy = ScanPolicy.default
     policy_reason: str | None = None
+    # What ran: how many rules compiled, which yara-gate produced the record, and how long it took.
+    compiled_rules: int = 0
+    tool_version: str | None = None
+    scan_seconds: float | None = None
 
     def __post_init__(self) -> None:
         self.verdict = Verdict(self.verdict)

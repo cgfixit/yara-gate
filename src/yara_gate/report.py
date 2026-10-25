@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 from pathlib import Path
 
 from yara_gate import __version__
@@ -15,9 +16,20 @@ def write_reports(
     digest = stem or result.sha256 or "0" * 64
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
-    sarif_path.write_text(json.dumps(_sarif(result), indent=2) + "\n", encoding="utf-8")
-    json_path.write_text(json.dumps(compact_report(result), indent=2) + "\n", encoding="utf-8")
+    _write_whole(sarif_path, json.dumps(_sarif(result), indent=2) + "\n")
+    _write_whole(json_path, json.dumps(compact_report(result), indent=2) + "\n")
     return sarif_path, json_path
+
+
+def _write_whole(path: Path, text: str) -> None:
+    """Write to a sibling temporary name, then rename, so a reader never sees a partial report."""
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def redact(path: str) -> str:
@@ -43,6 +55,9 @@ def compact_report(result: ScanResult) -> dict[str, object]:
         "skipped_rule_files": result.skipped_rule_files,
         "policy": result.policy.value,
         "policy_reason": result.policy_reason,
+        "compiled_rules": result.compiled_rules,
+        "tool_version": result.tool_version,
+        "scan_seconds": result.scan_seconds,
         "findings": [_finding(item) for item in result.findings],
     }
 
@@ -111,6 +126,8 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                     "ruleset_sha256": result.ruleset_sha256,
                     "engine_version": result.engine_version,
                     "skipped_rule_files": result.skipped_rule_files,
+                    "compiled_rules": result.compiled_rules,
+                    "scan_seconds": result.scan_seconds,
                     "verdict": result.verdict.value,
                     "policy": result.policy.value,
                     "policy_reason": result.policy_reason,
