@@ -98,8 +98,54 @@ def test_double_extension_covers_launchers_and_padding() -> None:
         assert double_extension(Path(name)), name
     assert double_extension(Path("invoice.pdf          .exe"))
     assert double_extension(Path("invoice.pdf\u3000.exe"))
-    for name in ("page.html.js", "notes.txt.js", "archive.tar.gz", "v1.2.exe", "report.pdf.zip"):
+    # Disk images mount, packages install, and macOS scripts run on a double-click.
+    for name in (
+        "photo.jpg.iso",
+        "scan.pdf.img",
+        "report.docx.vhdx",
+        "invoice.pdf.msix",
+        "setup.pdf.application",
+        "notes.csv.reg",
+        "guide.pdf.chm",
+        "statement.pdf.pkg",
+        "photo.heic.dmg",
+        "memo.docx.scpt",
+        "clip.mp4.lnk",
+        "notes.one.exe",
+        "budget.xlsx.xll",
+    ):
+        assert double_extension(Path(name)), name
+    for name in (
+        "page.html.js",
+        "notes.txt.js",
+        "archive.tar.gz",
+        "v1.2.exe",
+        "report.pdf.zip",
+        "backup.iso",
+        "photo.jpg.bak",
+        "data.csv.gz",
+    ):
         assert not double_extension(Path(name)), name
+
+
+def test_extension_expectations_cover_packages_add_ins_and_text_formats(tmp_path: Path) -> None:
+    from yara_gate.filetype import extension_kind, mismatch
+    from yara_gate.samples import mini_pe
+
+    pe = sniff(mini_pe())
+
+    assert extension_kind(Path("tool.jar")) == "zip"
+    assert extension_kind(Path("app.msix")) == "zip"
+    assert extension_kind(Path("addin.xll")) == "pe"
+    assert extension_kind(Path("panel.cpl")) == "pe"
+    assert extension_kind(Path("rows.csv")) == "text"
+    assert extension_kind(Path("icon.svg")) == "text"
+    assert extension_kind(Path("a.bin")) is None
+    # A PE saved as an Excel add-in is not a mismatch; a PE saved as a jar or a csv is.
+    assert not mismatch(Path("addin.xll"), pe)
+    assert mismatch(Path("tool.jar"), pe)
+    assert mismatch(Path("rows.csv"), pe)
+    assert not mismatch(Path("rows.csv"), "text")
 
 
 def test_name_controls_skip_script_joiners() -> None:
