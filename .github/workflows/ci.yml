@@ -72,6 +72,7 @@ jobs:
 
       - name: Local rule false positives
         run: uv run python docs/verification/measure_precision.py --fail-over
+
       - name: No bidi or invisible controls in tracked text
         run: uv run python docs/verification/check_text_controls.py
 
