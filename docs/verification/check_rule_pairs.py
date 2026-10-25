@@ -307,6 +307,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("heuristic_double_extension", b"hello\n", b"hello\n"),
         ("heuristic_double_extension_launcher", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_image", b"hello\n", b"hello\n"),
+        ("heuristic_double_extension_package", b"hello\n", b"hello\n"),
         ("heuristic_filename_control", b"hello\n", b"hello\n"),
         (
             "heuristic_document_executable",
@@ -382,9 +384,16 @@ def main() -> None:
         for rule_id, fire, miss in pairs():
             if rule_id == "container_disk_image_dmg":
                 rule_id = "container_disk_image"
-            # A launcher suffix after a decoy; script names after .html stay clean.
-            launcher = rule_id == "heuristic_double_extension_launcher"
+            # A launcher suffix after a decoy; script names after .html stay clean. A disk
+            # image or app package after a decoy; a plain disk image or archive stays clean.
+            disguises = {
+                "heuristic_double_extension_launcher": ("invoice.pdf.lnk", "page.html.js"),
+                "heuristic_double_extension_image": ("photo.jpg.iso", "backup.iso"),
+                "heuristic_double_extension_package": ("statement.pdf.msix", "report.pdf.zip"),
+            }
+            launcher = rule_id in disguises
             if launcher:
+                disguise_names = disguises[rule_id]
                 rule_id = "heuristic_double_extension"
             fire_name = "photo.png.app" if rule_id == "heuristic_double_extension" else "fire.bin"
             miss_name = "photo.png" if rule_id == "heuristic_double_extension" else "miss.bin"
@@ -406,7 +415,7 @@ def main() -> None:
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]
             if launcher:
-                fire_name, miss_name = "invoice.pdf.lnk", "page.html.js"
+                fire_name, miss_name = disguise_names
             fire_ids = _scan(root, rules, fire_name, fire)
             miss_ids = _scan(root, rules, miss_name, miss)
             if rule_id not in fire_ids:
