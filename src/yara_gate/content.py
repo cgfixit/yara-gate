@@ -3,10 +3,12 @@
 import gzip
 import html
 import io
+import re
 import tarfile
 import time
 import unicodedata
 import zipfile
+import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +20,25 @@ MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
 MAX_ARCHIVE_DEPTH = 3
 MAX_MEMBERS = 1000
+MAX_PDF_STREAMS = 2000
+
+# JSON string escapes. A surrogate pair is decoded as one character; a lone surrogate stays escaped.
+_JSON_ESCAPE = re.compile(
+    r"\\u[dD][89abAB][0-9a-fA-F]{2}\\u[dD][c-fC-F][0-9a-fA-F]{2}"
+    r"|\\u[0-9a-fA-F]{4}|\\[\"\\/bfnrt]"
+)
+_JSON_SIMPLE = {
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
+_PDF_STREAM = re.compile(rb"stream\r?\n")
+_PDF_END = re.compile(rb"\r?\n?endstream")
 
 
 class ContentLimit(Exception):
@@ -150,6 +171,12 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     unescaped = html.unescape(text)
     if unescaped != text:
         yield "html-unescaped", _derived(unescaped, budget)
+    # A chat body, webhook payload, or tool result arrives as JSON; the reader sees \u0049 as I.
+    stripped = text.lstrip()
+    if stripped[:1] in ("{", "[") and "\\" in stripped:
+        decoded = _JSON_ESCAPE.sub(_json_escape, text)
+        if decoded != text:
+            yield "json-unescaped", _derived(decoded, budget)
     # ASCII cannot contain Cf characters or Unicode variation selectors.
     # Check after unescaping: an ASCII entity can introduce either one.
     if unescaped.isascii():
@@ -162,6 +189,71 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     )
     if normalized != unescaped:
         yield "format-controls-removed", _derived(normalized, budget)
+
+
+def _json_escape(match: re.Match[str]) -> str:
+    token = match.group()
+    if len(token) == 12:
+        high = int(token[2:6], 16)
+        low = int(token[8:12], 16)
+        return chr(0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00))
+    if len(token) == 6:
+        code = int(token[2:], 16)
+        # A lone surrogate cannot be encoded as UTF-8; keep the escape text.
+        return token if 0xD800 <= code <= 0xDFFF else chr(code)
+    return _JSON_SIMPLE[token[1]]
+
+
+def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
+    """Inflate FlateDecode streams that hold text and return them as one ``pdf-flate`` view.
+
+    Content and object streams are text once inflated, so the lexical rules and PDF name
+    checks can read them. Fonts, images, and other binary streams are dropped after inflation.
+    Each stream is capped at the file limit, the total at the shared expansion budget, and the
+    deadline is checked between chunks, so a decompression bomb ends the scan as incomplete.
+    """
+    if not data.startswith(b"%PDF"):
+        return
+    parts: list[bytes] = []
+    for count, start in enumerate(_PDF_STREAM.finditer(data)):
+        if count >= MAX_PDF_STREAMS:
+            raise ContentLimit("pdf streams exceed 2000")
+        budget.check()
+        head = data[max(0, start.start() - 1024) : start.start()]
+        if b"/FlateDecode" not in head or b"/FlateDecode" not in head[head.rfind(b"<<") :]:
+            continue
+        end = _PDF_END.search(data, start.end())
+        inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+        if inflated and sniff(inflated) == "text":
+            parts.append(inflated)
+    if parts:
+        yield "pdf-flate", b"\n".join(parts)
+
+
+def _inflate(raw: bytes, budget: Budget) -> bytes | None:
+    inflater = zlib.decompressobj()
+    output = bytearray()
+    cursor = 0
+    try:
+        while cursor < len(raw) or inflater.unconsumed_tail:
+            budget.check()
+            chunk = inflater.unconsumed_tail or raw[cursor : cursor + 64 * 1024]
+            if not inflater.unconsumed_tail:
+                cursor += len(chunk)
+            piece = inflater.decompress(chunk, 64 * 1024)
+            budget.expanded += len(piece)
+            if budget.expanded > MAX_EXTRACT_BYTES:
+                raise ContentLimit("extracted size exceeds 500MB")
+            output.extend(piece)
+            if len(output) > MAX_FILE_BYTES:
+                raise ContentLimit("pdf stream exceeds 100MB")
+            if inflater.eof:
+                break
+        output.extend(inflater.flush())
+    except zlib.error:
+        # A corrupt or truncated stream is not text the reader sees; the raw bytes were scanned.
+        return bytes(output) or None
+    return bytes(output)
 
 
 def _derived(text: str, budget: Budget) -> bytes:
