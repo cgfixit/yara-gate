@@ -7,6 +7,15 @@ YARA-X 1.22.0, yara-gate 0.2.0. Inert inputs, copied rules under temporary roots
 disposable gate homes. No target executed, no vendor pack downloaded, no referenced
 URL followed by the scanner.
 
+## Outcome (updated 2026-10-25, later in the pass)
+
+The owner merged #63, #66, #67, #64, #68, and #69 into `main` during the pass (main
+`149681b` carries all six). #65 and #70 stay open as drafts, rebased on that main. A
+fresh read-only pass over `149681b` with inert macOS and Linux shapes found seven
+credential-prompt, keychain, and persistence shapes that still scanned clean; they are
+the ninth draft, #71 (`claude/unix-persistence-lures`, three advisory rules, 48 -> 51).
+CI on the current head of every open draft was green at the last check.
+
 ## Baseline
 
 Branch point `7156e5a`. While this pass ran, `main` advanced to `db49ec7` (#55-#62: atomic
