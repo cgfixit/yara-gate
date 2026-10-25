@@ -246,8 +246,14 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"[Shell]\r\nCommand=2\r\nIconFile=explorer.exe,3\r\n",
         ),
         (
-            "win_library_remote_location",
+            "win_library_unc_location",
             _library(b"\\\\192.0.2.10\\shared"),
+            # The same XML quoted in a write-up: the library must be the document root.
+            b"# Lure notes\n\n```xml\n" + _library(b"\\\\192.0.2.10\\shared") + b"```\n",
+        ),
+        (
+            "win_library_remote_location",
+            _library(b"https://intranet.example/sites/reports"),
             _library(b"knownfolder:{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"),
         ),
         (

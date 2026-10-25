@@ -31,11 +31,29 @@ rule win_shortcut_remote_icon {
         $icon
 }
 
+rule win_library_unc_location {
+    meta:
+        author = "yara-gate"
+        description = "Library or search connector file whose location URL is a UNC path or a file URL with a host"
+        intent = "Block a .library-ms or .searchConnector-ms file that makes Explorer contact an SMB host when it lists the folder or extracts the archive"
+        severity = "block"
+        verdict_on_match = "block"
+        reference = "https://research.checkpoint.com/2025/cve-2025-24054-ntlm-exploit-in-the-wild/"
+        technique = "T1187"
+    strings:
+        // The description must open the file, after an optional XML declaration, so a
+        // write-up that quotes one stays advisory. Entity-encoded slashes reach this rule
+        // through the html-unescaped view.
+        $unc = /[ \t\r\n]{0,64}(<\?xml[^>]{0,256}>[ \t\r\n]{0,64})?<(libraryDescription|searchConnectorDescription)\b[\s\S]{0,8192}<url[ \t\r\n]*>[ \t\r\n]*(<!\[CDATA\[[ \t\r\n]*)?(file:)?[\\\/]{2}([^\\\/<]|[\\\/]{2})/ nocase ascii wide
+    condition:
+        $unc in (0..3)
+}
+
 rule win_library_remote_location {
     meta:
         author = "yara-gate"
-        description = "Library or search connector description whose location URL is a UNC path, file URL, or web address"
-        intent = "Advisory on a .library-ms or .searchConnector-ms file that points Explorer at a remote location"
+        description = "Library or search connector description whose location URL is a web address or file URL, or a UNC path that win_library_unc_location does not block"
+        intent = "Advisory on a .library-ms or .searchConnector-ms location that points Explorer at a remote site, or on quoted library XML"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://research.checkpoint.com/2025/cve-2025-24054-ntlm-exploit-in-the-wild/"
@@ -44,7 +62,7 @@ rule win_library_remote_location {
         // \b keeps <searchConnectorDescriptionList> from counting as a connector root.
         $location = /<(libraryDescription|searchConnectorDescription)\b[\s\S]{0,8192}<url>[ \t\r\n]*(\\\\|file:|https?:\/\/)/ nocase ascii wide
     condition:
-        $location
+        $location and not win_library_unc_location
 }
 
 rule web_search_ms_remote {
