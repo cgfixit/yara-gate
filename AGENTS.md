@@ -10,6 +10,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
 - `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is only a limited JavaScript illustration.
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
+- `docs/verification/`: the checks CI runs (`lint_rules`, `check_rules_lock`, `check_rule_pairs`, `check_added_rules`, `measure_precision`, `check_scan_only`) and dated records. `docs/research/probe_rule_coverage.py` is the direct library/CLI probe. `docs/examples/`: runnable integration scripts.
 
 Establish behavior from these callers and models before relying on README examples or dated research. Fetch and detect the actual default branch before starting a publication branch; do not hard-code a historical branch name. Preserve dirty and divergent work. Review applicable nested instructions and any PR template added upstream.
 

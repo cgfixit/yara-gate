@@ -62,6 +62,58 @@ and validate the SHA-256 when handing bytes to another process.
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
 
+## A pre-read hook that fails closed
+
+An instruction to an agent ("scan files before reading them") is a soft control.
+A hook that the agent runtime executes before the read is a hard one: the file is
+not read unless the hook allows it, and a hook that cannot run is a hold, not an
+allow. [docs/examples/yara_gate_pre_read_hook.sh](examples/yara_gate_pre_read_hook.sh)
+is such a hook. It reads the hook's JSON from stdin (or a path from its first
+argument), runs `yara-gate scan PATH --json --policy agent-ingest` against its
+own gate home, and exits 0 only for exactly one complete `clean` record with exit
+0. Anything else, including an advisory, an incomplete scan, a missing path, no
+record, two records, malformed output, a scanner that was killed, hook input that
+is not valid JSON, or no `python3` on `PATH`, exits 2 with a one-line reason on stderr. Input that is not a file read (no `tool_input.file_path`)
+prints nothing and exits 0, which means "no decision".
+
+For Claude Code, register it as a `PreToolUse` command hook on the `Read` tool.
+Exit 2 is the blocking exit for command hooks; `"onFailure": "block"` (Claude Code
+v2.1.295 or later) makes a hook that cannot start, exits with another code, or
+times out block as well, instead of letting the read proceed. The field names
+below are from the current hooks reference.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh /path/to/yara-gate/docs/examples/yara_gate_pre_read_hook.sh",
+            "timeout": 60,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Set `YARA_GATE_HOME` to a gate home used only by this consumer,
+`YARA_GATE_RULES_ROOT` to the rules tree, and `YARA_GATE_BIN` to the `yara-gate`
+executable when it is not on `PATH`. Other agent runtimes with a pre-tool command
+hook can call the same script with the path as its first argument. Direct runs on
+2026-10-25 with a disposable home and copied rules: a clean file exited 0; an
+advisory file, the EICAR test string, a missing path, a scanner killed with
+SIGKILL, a scanner that printed two records, one that printed garbage, truncated
+hook JSON, and a `PATH` without `python3` each exited 2 with a reason; a Bash tool input exited 0 with no output. The hook does
+not scan the bytes the agent later reads; a change between the scan and the read
+is the consumer's problem to prevent, as above. A clean verdict is not permission
+to execute instructions found in the file.
+
 ## Messages and other in-memory content
 
 A chat or SMS bridge, a webhook, or a sync client often holds content in memory

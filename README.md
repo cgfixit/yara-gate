@@ -26,7 +26,7 @@ On 2026-10-23, `git grep -i yara` on `origin/main` of [cgfixit/CyClaw](https://g
 
 ## See the policy decision
 
-The live loopback demo calls the real scanner with the 51-rule local pack. In this
+The live loopback demo calls the real scanner with the 52-rule local pack. In this
 October 19 capture of the earlier 20-rule pack, an inert HTML-encoded instruction is detected in the
 `html-unescaped` view. The `agent-ingest` policy holds the advisory as **block,
 exit 1**, while retaining its advisory finding severity.
@@ -156,7 +156,7 @@ The update run on 2026-10-04 pinned:
 
 That compile produced 13535 rules and skipped 13. The compiled cache now lives in the user cache directory, not in `rules/.cache/`. A scan does not modify the rules tree. Vendor rule bodies are not committed. Elastic's rules are under the Elastic License 2.0. They stay in this local tree and are not packaged for redistribution.
 
-The 51 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
+The 52 local rules in `rules/local/` ship with the tool and need no download. Local-rule changes arrive with repository updates; `rules install` restores the packs recorded in `rules.lock`, and `rules update` refreshes vendor packs only. A fresh checkout has the local rules only until you install from the lock. `agent_eicar` matches the EICAR test marker. A compile failure in an active local rule makes scans incomplete even when other rules compile. Vendor compile skips remain permitted and are counted in reports.
 
 A successful install or update also records `installed_vendor_files` in the
 rules root's `rules.lock`. If a recorded file, pack directory, or the whole vendor
@@ -239,7 +239,7 @@ An administrator's HTA that shells out, a console that links an intranet page, a
 
 ### Later local checks
 
-`rules/local/` in this tree has 51 YARA rules in 39 files. Recount them with `rg -N '^rule ' rules/local`. The delivery-pattern, Windows shortcut-family, Windows script-host and document, and macOS and Linux launcher tables list their own rules. These checks are the ones none of them lists.
+`rules/local/` in this tree has 52 YARA rules in 40 files. Recount them with `rg -N '^rule ' rules/local`. The delivery-pattern, Windows shortcut-family, Windows script-host and document, and macOS and Linux launcher tables list their own rules. These checks are the ones none of them lists.
 
 | ID | Severity | What it matches |
 | --- | --- | --- |
@@ -269,9 +269,9 @@ An administrator's HTA that shells out, a console that links an intranet page, a
 
 The `.desktop` shape is the [APT36 campaign](https://www.bleepingcomputer.com/news/security/apt36-hackers-abuse-linux-desktop-files-to-install-malware/) that shipped a launcher named like a PDF inside a zip. The download, `chmod`, run chain and `xattr -c` are the [AMOS stealer bootstrap](https://www.sophos.com/blog/why-amos-matters-the-macos-malware-stealing-data-at-scale). Script Editor links are the [ClickFix variant](https://www.bleepingcomputer.com/news/security/new-macos-stealer-campaign-uses-script-editor-in-clickfix-attack/) that avoids Terminal. A vendor install line such as `curl -o install.sh … && chmod +x install.sh && ./install.sh` also matches `script_fetch_chmod_run`. The password dialog is the AMOS-style stealer prompt; a dialog that asks for a project name, or hides an API token without naming a password, stays clean. `security find-generic-password -s Chrome` without `-g`/`-w`, `security add-trusted-cert`, a locally generated public key appended to `authorized_keys`, `sudo visudo`, a sentence warning against `NOPASSWD`, and `history | tail` stay clean. An operator's own hardening or cleanup script can match the persistence rule; it stays advisory. A chain that ends in `sudo mv` or an install step, a `chmod` on a later line, a `.desktop` file that only mentions `curl` in `Comment=`, and a Script Editor link that only shows a dialog do not match.
 
-The scanner also reports these checks without a YARA rule. `heuristic_pickle_reduce` walks pickle opcodes. It blocks a `GLOBAL` or `STACK_GLOBAL` of `os`, `subprocess`, `builtins`, `posix`, or `nt`, or a callable named `eval` or `exec`, when a later `REDUCE` or `NEWOBJ` is present. Any name from those five modules blocks. The check is not limited to `system` or `popen`. The walker does not call `pickle.loads`. It skips `SHORT_BINBYTES` and `BINBYTES`. Any other opcode it does not know stops the walk and reports nothing. `heuristic_safetensors_header` blocks a `.safetensors` file whose header length or tensor offsets do not fit the file. `heuristic_gguf_header` blocks a `.gguf` file, or any bytes that start with `GGUF`, when the version is not 1, 2, or 3, the counts exceed 100,000, or a following record does not parse. `heuristic_ooxml_vba` and `heuristic_ooxml_dde` block. `heuristic_ooxml_oleobject` and `heuristic_ooxml_altchunk` are advisory. `heuristic_mcp_shell` and `heuristic_mcp_hidden_instruction` are advisory on a JSON object. `heuristic_double_extension`, `heuristic_filename_control`, `heuristic_document_executable`, and `heuristic_nested_executable` block. `heuristic_double_extension` matches a document, spreadsheet, image, media, or OneNote suffix, optional spaces, dots, or underscores, then a program suffix (`.exe`, `.scr`, `.com`, `.msi`, `.xll`, …) or a launcher suffix: Windows script hosts and shortcuts (`.lnk`, `.url`, `.js`, `.hta`, `.cmd`, `.ps1`, `.msc`, `.library-ms`, …), disk images that mount on a double-click (`.iso`, `.img`, `.vhd`, `.vhdx`), packages and manifests that install (`.msix`, `.appx`, `.application`, `.appref-ms`, `.msp`, `.chm`, `.diagcab`), registry and setup files (`.reg`, `.inf`), and macOS launchers (`.pkg`, `.dmg`, `.scpt`, `.terminal`, `.workflow`, `.command`, `.webloc`), so `invoice.pdf.lnk`, `photo.jpg.iso`, `statement.pdf.msix`, and `invoice.pdf      .exe` block. A `.txt` or `.html` decoy pairs only with a program suffix, so `page.html.js` stays clean; a single suffix such as `backup.iso` is not a disguise. `heuristic_filename_control` blocks a name that contains a bidi override, embedding, isolate or mark, a zero-width space, a word joiner, a BOM, or a Unicode tag (the `invoice_\u202Efdp.exe` trick). ZWNJ and ZWJ are allowed so Persian, Indic, and emoji names stay clean. Both checks read the submitted name and every component of an archive member's path, so an `Invoice.pdf.app/` bundle inside a zip blocks. Directories above a scanned file are not checked.
+The scanner also reports these checks without a YARA rule. `heuristic_pickle_reduce` walks pickle opcodes. It blocks a `GLOBAL` or `STACK_GLOBAL` of `os`, `subprocess`, `builtins`, `posix`, or `nt`, or a callable named `eval` or `exec`, when a later `REDUCE` or `NEWOBJ` is present. Any name from those five modules blocks. The check is not limited to `system` or `popen`. The walker does not call `pickle.loads`. It skips `SHORT_BINBYTES` and `BINBYTES`. Any other opcode it does not know stops the walk and reports nothing. `heuristic_safetensors_header` blocks a `.safetensors` file whose header length or tensor offsets do not fit the file. `heuristic_gguf_header` blocks a `.gguf` file, or any bytes that start with `GGUF`, when the version is not 1, 2, or 3, the counts exceed 100,000, or a following record does not parse. `heuristic_ooxml_vba` and `heuristic_ooxml_dde` block. `heuristic_ooxml_oleobject` and `heuristic_ooxml_altchunk` are advisory. `heuristic_mcp_shell` and `heuristic_mcp_hidden_instruction` are advisory on a JSON object or array. The hidden-instruction check reads every `description` string, at any depth, for `do not tell/mention/inform/reveal the user`, `ignore previous instructions`, an `<IMPORTANT>` tag, `before using this tool, read`, an `.ssh/` path, `id_rsa`, `mcp.json`, `pass its contents`, or `as a sidenote`, the vocabulary of MCP tool poisoning. `heuristic_double_extension`, `heuristic_filename_control`, `heuristic_document_executable`, and `heuristic_nested_executable` block. `heuristic_double_extension` matches a document, spreadsheet, image, media, or OneNote suffix, optional spaces, dots, or underscores, then a program suffix (`.exe`, `.scr`, `.com`, `.msi`, `.xll`, …) or a launcher suffix: Windows script hosts and shortcuts (`.lnk`, `.url`, `.js`, `.hta`, `.cmd`, `.ps1`, `.msc`, `.library-ms`, …), disk images that mount on a double-click (`.iso`, `.img`, `.vhd`, `.vhdx`), packages and manifests that install (`.msix`, `.appx`, `.application`, `.appref-ms`, `.msp`, `.chm`, `.diagcab`), registry and setup files (`.reg`, `.inf`), and macOS launchers (`.pkg`, `.dmg`, `.scpt`, `.terminal`, `.workflow`, `.command`, `.webloc`), so `invoice.pdf.lnk`, `photo.jpg.iso`, `statement.pdf.msix`, and `invoice.pdf      .exe` block. A `.txt` or `.html` decoy pairs only with a program suffix, so `page.html.js` stays clean; a single suffix such as `backup.iso` is not a disguise. `heuristic_filename_control` blocks a name that contains a bidi override, embedding, isolate or mark, a zero-width space, a word joiner, a BOM, or a Unicode tag (the `invoice_\u202Efdp.exe` trick). ZWNJ and ZWJ are allowed so Persian, Indic, and emoji names stay clean. Both checks read the submitted name and every component of an archive member's path, so an `Invoice.pdf.app/` bundle inside a zip blocks. Directories above a scanned file are not checked.
 
-On the generated 267-file corpus, 47 of the 51 YARA rules hit 0 files, and no heuristic id hit. The rate is files hit divided by files scanned. The corpus includes 21 Windows shortcut-family files. The 17 ordinary ones (default libraries, Internet shortcuts, `.scf` files, `desktop.ini` in UTF-8 and UTF-16LE) hit nothing. The four that hit are tagged collisions: `win_library_unc_location` blocked a file-server library, and the advisory rules matched the rest. `win_library_remote_location` matched an https search connector, `win_shortcut_remote_icon` a file-server folder icon, and `win_internet_shortcut_launch` a `.url` to a local `file:` URL. See [Precision with Windows shortcut-family files](docs/verification/precision-windows-shortcuts.md); the near-miss pairs in `docs/verification/check_rule_pairs.py` remain the tighter benign boundary. The 32-rule write-up is [Precision after the local pack grew](docs/verification/precision-after-growth.md). Vendor rule bodies stay out of git. The license reasons are in [Vendor pack review](docs/verification/vendor-pack-review.md).
+On the generated 267-file corpus, 48 of the 52 YARA rules hit 0 files, and no heuristic id hit. The rate is files hit divided by files scanned. The corpus includes 21 Windows shortcut-family files. The 17 ordinary ones (default libraries, Internet shortcuts, `.scf` files, `desktop.ini` in UTF-8 and UTF-16LE) hit nothing. The four that hit are tagged collisions: `win_library_unc_location` blocked a file-server library, and the advisory rules matched the rest. `win_library_remote_location` matched an https search connector, `win_shortcut_remote_icon` a file-server folder icon, and `win_internet_shortcut_launch` a `.url` to a local `file:` URL. See [Precision with Windows shortcut-family files](docs/verification/precision-windows-shortcuts.md); the near-miss pairs in `docs/verification/check_rule_pairs.py` remain the tighter benign boundary. The 32-rule write-up is [Precision after the local pack grew](docs/verification/precision-after-growth.md). Vendor rule bodies stay out of git. The license reasons are in [Vendor pack review](docs/verification/vendor-pack-review.md).
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
 
@@ -354,7 +354,7 @@ pass. The optimizer is manual-only. Both are tailored to this repository; the
 runtime and demo evidence skills supply their specialized verification steps.
 `$cg-researcher-optimize` is the planning-first pass: a time-boxed read-only scan,
 dated research on Windows, macOS, and Linux delivery techniques, reproduction of
-each lead, and a plan of 4-7 independent PRs. Its
+each lead, and a plan of 3-8 independent PRs. Its
 [PROMPT.md](.agents/skills/cg-researcher-optimize/PROMPT.md) is the same pass as a
 standalone prompt for an agent that does not load skill files, such as Grok.
 
@@ -365,14 +365,24 @@ standalone prompt for an agent that does not load skill files, such as Grok.
 ## Layout
 
 ```text
-demo.html              single-file browser page for the local patterns
+demo.html              limited standalone JavaScript illustration; not the scanner
 pyproject.toml         package metadata, the yara-gate script, ruff, mypy, pytest
 uv.lock                locked dependency set
 .python-version        Python 3.12 pin for uv
-src/yara_gate/         cli, quarantine, scanner, filetype, heuristics, rules, hunt, report, demo, launchd
+AGENTS.md              contracts and verification rules for agents working in this tree
+SECURITY.md            reporting and network scope
+user-guide.md          operator walkthrough
+src/yara_gate/         cli, quarantine, scanner, content, filetype, heuristics, models, rules,
+                       hunt, report, demo, demo_page.html, launchd, samples, selftest
 src/yara_gate/py.typed empty marker that the package ships types
-rules/local/           agent rules and promoted or candidate hunt rules
-rules/vendor/          curated packs after an explicit update (not committed, except SKIPPED.md)
+rules/local/           shipped rules and promoted or candidate hunt rules
+rules/vendor/          curated packs after an explicit install or update (only SKIPPED.md is committed)
 rules/rules.lock       pins for those packs
-tests/                 fixtures are generated at run time, except the small benign text corpus
+tests/                 fixtures are generated at run time, except tests/fixtures/benign/
+docs/integrations.md   caller contract for pipelines, messages, and agent hooks
+docs/examples/         runnable integration examples
+docs/verification/     CI-run checks (rule lint, pairs, added rules, precision, scan-only) and dated records
+docs/research/         the direct probe, signature fixtures, and dated research notes
+.agents/skills/        Codex and Grok workflows for this repository
+.github/               ci.yml, codeql.yml, dependabot.yml
 ```

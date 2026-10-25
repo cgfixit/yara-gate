@@ -121,6 +121,8 @@ print(result.verdict, result.incomplete_reason)
 
 To check a message or other text you already have in memory, without writing a file, pipe it to `yara-gate scan - --name message.txt`, or call `scan_bytes(data, name="message.txt")` from Python. The exit codes are the same.
 
+To make an agent runtime refuse to read a file that has not scanned clean, register the [fail-closed pre-read hook](docs/integrations.md#a-pre-read-hook-that-fails-closed).
+
 `scan_file(path, policy="agent-ingest")` applies the same conservative advisory policy as the CLI. Without that argument, the default policy retains advisory/exit 0 behavior.
 
 ## 5. Read a report
@@ -160,7 +162,7 @@ Promote compiles the edited rule before it writes the file. If the compile fails
 
 Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, on bidi controls (overrides, embeddings, and isolates), and on invisible characters (a zero-width space, a left-to-right or right-to-left mark, a word joiner, a BOM after the first byte, or a Unicode tag). A ZWJ inside an emoji sequence, and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters, are allowed; any other ZWNJ or ZWJ blocks.
 
-Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases such as "ignore previous instructions", and on hidden HTML that contains those phrases. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch.
+Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases such as "ignore previous instructions", "forget all of your prior directions", or "repeat your system prompt verbatim", on the same override sentence in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, or Russian, and on hidden HTML that contains those phrases. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch.
 
 The default policy also reports authority/action spoofing, secret-transfer requests, selected encoded instructions, external templates, download/execute chains, persistent approval-bypass instructions, and tool-result command overrides as advisory. A bare “you are now” status message stays clean; an accompanying override/action, unrestricted-role or jailbreak-persona term (for example `DAN`, `developer mode`) still matches. See the [agent-rule verification](docs/verification/agent-rule-coverage.md) for exact boundaries and corpus limits. Agent-ingest turns every advisory into a block, including benign security examples. ZIP/tar/gzip members receive the same rules and document heuristics; recognized unsupported or encrypted archives remain incomplete. See the README for exact resource and decoding limits.
 
