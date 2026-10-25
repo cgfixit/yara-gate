@@ -74,7 +74,7 @@ The default root is `~/YaraGate/`. Pass `--home` to use another directory. `ensu
 uv run yara-gate watch
 ```
 
-Watch scans files already sitting in the inbox, then keeps scanning new ones. A second watch exits 2 while the first process is alive. The lock file is `~/YaraGate/.watch.pid`.
+Watch scans files already sitting in the inbox, then keeps scanning new ones. A file whose last write is at least a second old is scanned at once; a fresh file is scanned on the next half-second pass if its size and mtime have not changed, so a drop of many files no longer waits 0.2 s per file. A one-shot drain of a fresh file still pauses 0.2 s and compares. A second watch exits 2 while the first process is alive. The lock file is `~/YaraGate/.watch.pid`.
 
 ```bash
 uv run yara-gate scan path/to/file
@@ -90,7 +90,7 @@ On intake the tool hashes the file, copies it into `quarantine/<sha256>/`, strip
 ```mermaid
 flowchart TD
     drop["inbox/ file"] --> watch["watch or yara-gate scan"]
-    watch --> settle["skip dotfiles; size stable 0.2s"]
+    watch --> settle["skip dotfiles; last write 1s old, or unchanged since the previous look"]
     settle --> intake["intake: sha256 copy into quarantine/sha/"]
     intake --> known{"same sha already in clean, blocked, or quarantine?"}
     known -->|yes| reuse["return existing slot to quarantine; delete the new inbox copy"]

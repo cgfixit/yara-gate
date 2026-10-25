@@ -242,3 +242,65 @@ def test_dotfile_rescan_under_a_stricter_policy_leaves_clean(
     assert result.verdict is Verdict.block
     assert not any(home.clean.rglob(".note.md"))
     assert len(list(home.blocked.rglob(".note.md"))) == 1
+
+
+def test_drain_of_settled_files_does_not_sleep_per_file(tmp_path: Path, rules_copy: Path) -> None:
+    import os
+    import time
+
+    from yara_gate.quarantine import drain_inbox
+
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    old = time.time() - 10
+    for index in range(40):
+        path = home.inbox / f"n{index}.txt"
+        path.write_text(f"note {index}\n")
+        os.utime(path, (old, old))
+    started = time.monotonic()
+    drain_inbox(home, rules_dir=rules_copy)
+    elapsed = time.monotonic() - started
+    assert len(list(home.clean.iterdir())) == 40
+    assert not list(home.inbox.iterdir())
+    # 40 files at the old fixed 0.2 s each would be 8 s before any scan work.
+    assert elapsed < 4.0
+
+
+def test_watch_pass_waits_for_a_file_still_being_written(tmp_path: Path, rules_copy: Path) -> None:
+    import hashlib
+    import threading
+    import time
+
+    from yara_gate.quarantine import _drain, _InboxHandler
+
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    target = home.inbox / "slow.txt"
+    chunks = [f"chunk {index} of ordinary notes\n".encode() for index in range(5)]
+
+    def writer() -> None:
+        with target.open("wb") as handle:
+            for chunk in chunks:
+                handle.write(chunk)
+                handle.flush()
+                time.sleep(0.3)
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    handler = _InboxHandler(home, rules_copy, 30)
+    scanned_early = False
+    while thread.is_alive():
+        _drain(handler, home, wait=False)
+        if list(home.clean.iterdir()) or list(home.blocked.iterdir()):
+            scanned_early = True
+        time.sleep(0.1)
+    thread.join()
+    assert not scanned_early
+    # Two unchanged looks after the last write: the file is settled and scanned whole.
+    for _ in range(3):
+        _drain(handler, home, wait=False)
+        time.sleep(0.1)
+    digest = hashlib.sha256(b"".join(chunks)).hexdigest()
+    assert (home.clean / digest).is_dir()
+    assert not target.exists()
+    assert handler._pending == {}
