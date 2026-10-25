@@ -123,8 +123,6 @@ def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
     """The positional paths, then the listed ones, in order, with exact duplicates dropped."""
     found = list(paths)
     if paths_from is not None:
-        if paths_from == "-" and "-" in found:
-            raise ValueError("stdin cannot be both a path list and the scanned input")
         raw = sys.stdin.buffer.read() if paths_from == "-" else Path(paths_from).read_bytes()
         separator = b"\0" if null else b"\n"
         for item in raw.split(separator):
@@ -133,10 +131,16 @@ def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
                 found.append(text)
     if not found and paths_from is None:
         raise ValueError("no paths given")
-    # An empty list scans nothing and exits 0, like an empty directory.
+    # A listed "-" would scan whatever is left of stdin, possibly the list itself. Refuse it.
+    if paths_from is not None and "-" in found:
+        raise ValueError("'-' cannot appear in a path list")
+    # An empty list scans nothing and exits 0, like an empty directory. A set keeps the
+    # duplicate check linear for a long find -print0 list; the list keeps the order.
+    seen: set[str] = set()
     distinct: list[str] = []
     for item in found:
-        if item not in distinct:
+        if item not in seen:
+            seen.add(item)
             distinct.append(item)
     return distinct
 

@@ -247,3 +247,24 @@ def test_dash_must_be_the_only_path(tmp_path: Path, rules_copy: Path) -> None:
     nothing = _run_many(tmp_path / "gate", rules_copy)
     assert nothing.returncode == 2
     assert b"no paths given" in nothing.stderr
+    # A "-" inside the list, or beside a stdin list, would scan the leftover stream itself.
+    for args, stdin in (
+        (("--paths-from", "-", "--null"), b"-\0"),
+        (("--paths-from", "-"), b"-\n"),
+        (("-", "--paths-from", "-"), b"hello"),
+    ):
+        listed = _run_many(tmp_path / "gate", rules_copy, *args, stdin=stdin)
+        assert listed.returncode == 2, args
+        assert b"'-' cannot appear in a path list" in listed.stderr
+        assert listed.stdout == b""
+
+
+def test_targets_dedupe_scales_linearly() -> None:
+    import time
+
+    from yara_gate.cli import _targets
+
+    many = [f"/inert/{index}.txt" for index in range(40_000)]
+    started = time.monotonic()
+    assert len(_targets(many + many, None, False)) == 40_000
+    assert time.monotonic() - started < 2.0
