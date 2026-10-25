@@ -985,3 +985,51 @@ def test_scan_path_does_not_import_pydantic() -> None:
     """Every `yara-gate scan` is a new process for callers that shell out per file."""
     code = "import sys, yara_gate.cli; sys.exit('pydantic' in sys.modules)"
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_rule_listing_is_cached_and_still_sees_adds_deletes_and_same_tick_files(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The walk is skipped only while every directory mtime is old and unchanged."""
+    import os
+    import time
+
+    from yara_gate.rules import _LISTING, rule_files
+
+    walks: list[Path] = []
+    real_rglob = Path.rglob
+
+    def counting(self: Path, pattern: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        walks.append(self)
+        return real_rglob(self, pattern, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rglob", counting)
+    _LISTING.clear()
+    old = time.time() - 10
+    for folder in (rules_copy / "local", rules_copy / "vendor"):
+        os.utime(folder, (old, old))
+    first = rule_files(rules_copy, overlay=False)
+    assert walks
+    walks.clear()
+    assert rule_files(rules_copy, overlay=False) == first
+    assert walks == [], "an unchanged old tree must not be walked again"
+    # A file created now changes the directory mtime to now: the listing is rebuilt and the
+    # fresh directory is not cached again until the racy window has passed.
+    extra = rules_copy / "vendor" / "extra.yar"
+    extra.write_text("rule extra_rule { condition: false }\n", encoding="utf-8")
+    added = rule_files(rules_copy, overlay=False)
+    assert extra in added and len(added) == len(first) + 1
+    walks.clear()
+    rule_files(rules_copy, overlay=False)
+    assert walks, "a directory touched within the racy window is walked every time"
+    os.utime(rules_copy / "vendor", (old, old))
+    rule_files(rules_copy, overlay=False)
+    walks.clear()
+    assert rule_files(rules_copy, overlay=False) == added
+    assert walks == []
+    extra.unlink()
+    assert rule_files(rules_copy, overlay=False) == first
+    # Load order is the sorted order the walk produces, with .yar before .yara.
+    assert first == sorted(p for p in first if p.suffix == ".yar") + sorted(
+        p for p in first if p.suffix == ".yara"
+    )
