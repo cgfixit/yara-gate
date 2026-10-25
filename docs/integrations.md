@@ -125,6 +125,14 @@ not scan the bytes the agent later reads; a change between the scan and the read
 is the consumer's problem to prevent, as above. A clean verdict is not permission
 to execute instructions found in the file.
 
+## Agent Plugin
+
+[`plugin/`](../plugin/) is an Agent Plugin for Cursor and other hosts that load that
+layout. Its stdio server exposes `scan_file`, `scan_dir`, and `scan_content`, and
+runs `yara-gate` from `PATH` or `YARA_GATE_BIN` with the default policy
+`agent-ingest`. The plugin does not vendor the scanner and is not published to a
+marketplace. The pre-read hook above is the control that runs before a read.
+
 ## Messages and other in-memory content
 
 A chat or SMS bridge, a webhook, or a sync client often holds content in memory

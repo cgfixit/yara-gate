@@ -386,5 +386,6 @@ docs/examples/         runnable integration examples
 docs/verification/     CI-run checks (rule lint, pairs, added rules, precision, scan-only) and dated records
 docs/research/         the direct probe, signature fixtures, and dated research notes
 .agents/skills/        Codex and Grok workflows for this repository
+plugin/                Agent Plugin (manifest, stdio MCP server, skill); calls yara-gate on PATH
 .github/               ci.yml, codeql.yml, dependabot.yml
 ```

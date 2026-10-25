@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "yara-gate",
+  "version": "0.2.0",
+  "description": "Scan an untrusted file, folder, or in-memory text with the local yara-gate CLI (YARA-X plus heuristics) before an agent opens, reads, or runs it. Offline; no network.",
+  "author": {
+    "name": "Christopher Grady",
+    "url": "https://github.com/cgfixit"
+  },
+  "repository": "https://github.com/cgfixit/yara-gate",
+  "license": "MIT",
+  "keywords": [
+    "yara",
+    "security",
+    "malware",
+    "prompt-injection",
+    "mcp"
+  ]
+}
