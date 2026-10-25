@@ -13,17 +13,27 @@ RULES="${YARA_GATE_RULES_ROOT:-}"
 SCAN_TIMEOUT="${YARA_GATE_SCAN_TIMEOUT:-30}"
 YARA_GATE_BIN="${YARA_GATE_BIN:-yara-gate}"
 
+# python3 parses the hook input and the scan record. Without it nothing can be checked, so block.
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "yara-gate hook: python3 not found; blocking" >&2
+  exit 2
+fi
+
 if [ "$#" -ge 1 ]; then
   target="$1"
 else
-  target=$(python3 -c 'import json,sys
+  # Input that does not parse is not "no decision": it could be a read we cannot see.
+  if ! target=$(python3 -c 'import json,sys
 try:
     data = json.load(sys.stdin)
 except Exception:
-    sys.exit(0)
+    sys.exit(3)
 tool_input = data.get("tool_input") if isinstance(data, dict) else None
 path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-print(path if isinstance(path, str) else "")')
+print(path if isinstance(path, str) else "")'); then
+    echo "yara-gate hook: hook input is not valid JSON; blocking" >&2
+    exit 2
+  fi
 fi
 
 if [ -z "$target" ]; then

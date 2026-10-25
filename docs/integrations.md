@@ -72,8 +72,8 @@ is such a hook. It reads the hook's JSON from stdin (or a path from its first
 argument), runs `yara-gate scan PATH --json --policy agent-ingest` against its
 own gate home, and exits 0 only for exactly one complete `clean` record with exit
 0. Anything else, including an advisory, an incomplete scan, a missing path, no
-record, two records, malformed output, or a scanner that was killed, exits 2 with
-a one-line reason on stderr. Input that is not a file read (no `tool_input.file_path`)
+record, two records, malformed output, a scanner that was killed, hook input that
+is not valid JSON, or no `python3` on `PATH`, exits 2 with a one-line reason on stderr. Input that is not a file read (no `tool_input.file_path`)
 prints nothing and exits 0, which means "no decision".
 
 For Claude Code, register it as a `PreToolUse` command hook on the `Read` tool.
@@ -108,8 +108,8 @@ executable when it is not on `PATH`. Other agent runtimes with a pre-tool comman
 hook can call the same script with the path as its first argument. Direct runs on
 2026-10-25 with a disposable home and copied rules: a clean file exited 0; an
 advisory file, the EICAR test string, a missing path, a scanner killed with
-SIGKILL, a scanner that printed two records, and one that printed garbage each
-exited 2 with a reason; a Bash tool input exited 0 with no output. The hook does
+SIGKILL, a scanner that printed two records, one that printed garbage, truncated
+hook JSON, and a `PATH` without `python3` each exited 2 with a reason; a Bash tool input exited 0 with no output. The hook does
 not scan the bytes the agent later reads; a change between the scan and the read
 is the consumer's problem to prevent, as above. A clean verdict is not permission
 to execute instructions found in the file.
