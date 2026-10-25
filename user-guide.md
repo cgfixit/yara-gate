@@ -106,7 +106,7 @@ uv run yara-gate scan ~/Downloads/notes.txt --home ~/YaraGate
 echo $?
 ```
 
-Exit codes are 0, 1, and 2 as in the table above. This does not relocate `~/Downloads/notes.txt`. The report still appears in `~/YaraGate/reports/`.
+Exit codes are 0, 1, and 2 as in the table above. This does not relocate `~/Downloads/notes.txt`. The report still appears in `~/YaraGate/reports/`. You can name several files or folders at once, or feed a list with `--paths-from list.txt` (or `--paths-from - --null` after `find ... -print0`); the exit code is the worst one, and a missing path is reported without stopping the others.
 
 To run the same check from Python, without moving the file and without a network call:
 

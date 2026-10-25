@@ -51,8 +51,8 @@ def main(
 
 @app.command()
 def scan(
-    # A str, not a Path: Path("./-") normalizes to "-" and would read stdin.
-    path: str = typer.Argument(..., metavar="PATH"),
+    # Strings, not Paths: Path("./-") normalizes to "-" and would read stdin.
+    paths: list[str] | None = typer.Argument(None, metavar="PATH..."),
     home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
@@ -72,21 +72,73 @@ def scan(
         "--name",
         help="With PATH '-', the logical file name of stdin. Its suffix drives type checks.",
     ),
+    paths_from: str | None = typer.Option(
+        None,
+        "--paths-from",
+        metavar="FILE",
+        help="Read more paths from FILE, one per line, or from stdin with '-'.",
+    ),
+    null: bool = typer.Option(
+        False, "--null", help="With --paths-from, paths are NUL-separated, not line-separated."
+    ),
 ) -> None:
-    """Scan a file or folder, or '-' for stdin. Inbox paths are quarantined. Others stay put."""
+    """Scan files or folders, or '-' for stdin. Inbox paths are quarantined. Others stay put.
+
+    Several paths are scanned in order, each exactly as a single path is. The exit code is
+    the worst one seen (incomplete 2, then block 1); a missing path does not stop the rest.
+    """
     try:
-        if path == "-":
+        targets = _targets(paths or [], paths_from, null)
+        if targets == ["-"]:
             code = _scan_stdin(GatePaths(home), name, timeout_s, rules, policy, json_output)
         else:
-            code = _scan_path(
-                Path(path), GatePaths(home), timeout_s, rules, policy, follow_symlinks, json_output
-            )
+            if "-" in targets:
+                raise ValueError("'-' must be the only PATH")
+            code = 0
+            for target in targets:
+                code = max(
+                    code,
+                    _scan_path(
+                        Path(target),
+                        GatePaths(home),
+                        timeout_s,
+                        rules,
+                        policy,
+                        follow_symlinks,
+                        json_output,
+                    ),
+                )
     except typer.Exit:
         raise
+    except ValueError as exc:
+        typer.echo(f"incomplete: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     except Exception as exc:
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     raise typer.Exit(code=code)
+
+
+def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
+    """The positional paths, then the listed ones, in order, with exact duplicates dropped."""
+    found = list(paths)
+    if paths_from is not None:
+        if paths_from == "-" and "-" in found:
+            raise ValueError("stdin cannot be both a path list and the scanned input")
+        raw = sys.stdin.buffer.read() if paths_from == "-" else Path(paths_from).read_bytes()
+        separator = b"\0" if null else b"\n"
+        for item in raw.split(separator):
+            text = os.fsdecode(item if null else item.rstrip(b"\r"))
+            if text:
+                found.append(text)
+    if not found and paths_from is None:
+        raise ValueError("no paths given")
+    # An empty list scans nothing and exits 0, like an empty directory.
+    distinct: list[str] = []
+    for item in found:
+        if item not in distinct:
+            distinct.append(item)
+    return distinct
 
 
 @app.command()
