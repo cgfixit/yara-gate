@@ -116,6 +116,27 @@ A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
 consumer's own approval checks on any tool or send action it proposes.
 
+## PDFs and other compressed documents
+
+A PDF verdict covers the file's raw bytes. yara-gate does not decompress PDF
+streams, so text inside a `/FlateDecode` stream, which is how most PDFs store
+it, never reaches the text rules. A PDF whose only problem is a prompt-injection
+phrase in compressed text scans **clean**, even under `agent-ingest`. The same
+holds for other stream filters, object streams, and text inside Office XML
+parts. The PDF and Office structure checks still run on the raw file.
+
+When an agent reads extracted text rather than the file, gate that text too:
+scan the original file, then pass the extractor's output through `scan_bytes`
+(or `scan -`) before the text reaches the model.
+
+```python
+text = extract_text(path).encode("utf-8")  # your extractor
+held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=rules_root)
+```
+
+Allow the document only when both verdicts are clean. Name the text `.txt`
+(not `report.pdf`) so the scan treats it as text.
+
 ## CyClaw and CG-agent-harness
 
 Use the strict gate before CyClaw reads/chunks an untrusted corpus file, or before
