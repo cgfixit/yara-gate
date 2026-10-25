@@ -1,0 +1,4 @@
+interface:
+  display_name: "fable-protocol"
+  short_description: "Reasoning discipline: calibration, verification, security lens, anti-sycophancy"
+  default_prompt: "Use $fable-protocol for this task: mark speculation, verify current-state facts, and review the result as a hostile senior engineer."
