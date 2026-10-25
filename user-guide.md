@@ -121,6 +121,8 @@ print(result.verdict, result.incomplete_reason)
 
 To check a message or other text you already have in memory, without writing a file, pipe it to `yara-gate scan - --name message.txt`, or call `scan_bytes(data, name="message.txt")` from Python. The exit codes are the same.
 
+To make an agent runtime refuse to read a file that has not scanned clean, register the [fail-closed pre-read hook](docs/integrations.md#a-pre-read-hook-that-fails-closed).
+
 `scan_file(path, policy="agent-ingest")` applies the same conservative advisory policy as the CLI. Without that argument, the default policy retains advisory/exit 0 behavior.
 
 ## 5. Read a report
