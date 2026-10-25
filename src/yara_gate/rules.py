@@ -2,7 +2,6 @@
 
 import functools
 import hashlib
-import importlib.metadata
 import io
 import json
 import os
@@ -13,14 +12,12 @@ import tarfile
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 import zipfile
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from http.client import HTTPMessage
 from pathlib import Path
-from typing import IO, Any
+from typing import Any
 
 import platformdirs
 
@@ -324,6 +321,8 @@ def _directory_stamp(folder: Path) -> tuple[tuple[str, int], ...] | None:
 @functools.cache
 def yara_x_version() -> str:
     """The installed engine version. Looked up once: the metadata scan costs milliseconds."""
+    import importlib.metadata
+
     return importlib.metadata.version("yara-x")
 
 
@@ -645,33 +644,49 @@ def _allowed_url(url: str) -> str:
     return url
 
 
-class _PinnedRedirect(urllib.request.HTTPRedirectHandler):
-    """Re-check every redirect hop against the host allowlist."""
+@functools.cache
+def _redirect_handler() -> type:
+    """The redirect handler class. urllib.request and http.client load only when a download runs."""
+    import urllib.request
+    from http.client import HTTPMessage
+    from typing import IO
 
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: IO[bytes],
-        code: int,
-        msg: str,
-        headers: HTTPMessage,
-        newurl: str,
-    ) -> urllib.request.Request | None:
-        joined = urllib.parse.urljoin(req.full_url, newurl)
-        _allowed_url(joined)
-        new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is None:
-            return None
-        old_host = urllib.parse.urlparse(req.full_url).hostname
-        new_host = urllib.parse.urlparse(new.full_url).hostname
-        if new_host != old_host:
-            new.headers.pop("Authorization", None)
-            new.unredirected_hdrs.pop("Authorization", None)
-        elif new_host == "api.github.com":
-            token = req.get_header("Authorization")
-            if token and not new.has_header("Authorization"):
-                new.add_unredirected_header("Authorization", token)
-        return new
+    class _PinnedRedirect(urllib.request.HTTPRedirectHandler):
+        """Re-check every redirect hop against the host allowlist."""
+
+        def redirect_request(
+            self,
+            req: urllib.request.Request,
+            fp: IO[bytes],
+            code: int,
+            msg: str,
+            headers: HTTPMessage,
+            newurl: str,
+        ) -> urllib.request.Request | None:
+            joined = urllib.parse.urljoin(req.full_url, newurl)
+            _allowed_url(joined)
+            new = super().redirect_request(req, fp, code, msg, headers, newurl)
+            if new is None:
+                return None
+            old_host = urllib.parse.urlparse(req.full_url).hostname
+            new_host = urllib.parse.urlparse(new.full_url).hostname
+            if new_host != old_host:
+                new.headers.pop("Authorization", None)
+                new.unredirected_hdrs.pop("Authorization", None)
+            elif new_host == "api.github.com":
+                token = req.get_header("Authorization")
+                if token and not new.has_header("Authorization"):
+                    new.add_unredirected_header("Authorization", token)
+            return new
+
+    return _PinnedRedirect
+
+
+def __getattr__(name: str) -> Any:
+    # Tests and callers reach the handler class as yara_gate.rules._PinnedRedirect.
+    if name == "_PinnedRedirect":
+        return _redirect_handler()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _github_token(url: str) -> str | None:
@@ -730,6 +745,8 @@ def _bytes(url: str, *, transport: Transport | None = None) -> bytes:
     if transport is not None:
         body = transport(clean)
     else:
+        import urllib.request
+
         # An empty proxy map stops HTTP_PROXY from sending this call elsewhere.
         request = urllib.request.Request(clean)  # noqa: S310
         request.add_unredirected_header("User-Agent", "yara-gate")
@@ -737,7 +754,7 @@ def _bytes(url: str, *, transport: Transport | None = None) -> bytes:
         token = _github_token(clean)
         if token:
             request.add_unredirected_header("Authorization", f"Bearer {token}")
-        opener = urllib.request.build_opener(_PinnedRedirect, urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(_redirect_handler(), urllib.request.ProxyHandler({}))
         try:
             with opener.open(request, timeout=180) as response:
                 body = _read_capped(response)
