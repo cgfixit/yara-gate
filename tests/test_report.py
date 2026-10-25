@@ -54,6 +54,28 @@ def test_clean_still_writes_both_reports(tmp_path: Path, rules_copy: Path) -> No
     assert result.findings == []
 
 
+def test_failed_report_write_keeps_previous_reports(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_bytes(clean_text())
+    result = scan_file(path, rules_dir=rules_copy)
+    reports = tmp_path / "reports"
+    before = {report: report.read_bytes() for report in write_reports(reports, result)}
+    real_write = Path.write_text
+
+    def torn_write(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        real_write(self, data[: len(data) // 2], *args, **kwargs)  # type: ignore[arg-type]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", torn_write)
+    with pytest.raises(OSError, match="disk full"):
+        write_reports(reports, result)
+    monkeypatch.undo()
+    assert {report: report.read_bytes() for report in before} == before
+    assert sorted(reports.iterdir()) == sorted(before)
+
+
 def test_redact_needs_a_path_separator(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", "/x/u")
     assert redact("/x/u") == "~"
@@ -79,41 +101,3 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
     assert compact["scan_seconds"] == result.scan_seconds
     sarif = json.loads(_sarif_path.read_text(encoding="utf-8"))
     assert sarif["runs"][0]["properties"]["compiled_rules"] == compiled
-
-
-def test_report_write_is_whole_or_absent(
-    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import yara_gate.report as report
-
-    path = tmp_path / "notes.txt"
-    path.write_bytes(clean_text())
-    result = scan_file(path, rules_dir=rules_copy)
-    reports = tmp_path / "reports"
-    sarif_path, json_path = write_reports(reports, result)
-    before = json_path.read_bytes()
-
-    def fail_midway(*_args: object, **_kwargs: object) -> str:
-        raise OSError("disk full while serializing")
-
-    monkeypatch.setattr(report, "compact_report", fail_midway)
-    with pytest.raises(OSError):
-        write_reports(reports, result)
-    # The failed JSON write left the previous complete report in place and no temp file behind.
-    assert json_path.read_bytes() == before
-    assert sarif_path.is_file()
-    assert [item.name for item in reports.iterdir() if item.name.startswith(".")] == []
-    monkeypatch.undo()
-
-    original = Path.write_text
-
-    def flaky(self: Path, text: str, encoding: str = "utf-8") -> int:
-        if self.name.startswith(".") and self.name.endswith(".tmp"):
-            raise OSError("interrupted")
-        return original(self, text, encoding=encoding)
-
-    monkeypatch.setattr(Path, "write_text", flaky)
-    with pytest.raises(OSError):
-        write_reports(reports, result)
-    assert json_path.read_bytes() == before
-    assert [item.name for item in reports.iterdir() if item.name.endswith(".tmp")] == []
