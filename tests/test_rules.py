@@ -568,15 +568,15 @@ def test_missing_bundled_rules_exit_2(tmp_path: Path, monkeypatch: pytest.Monkey
     locked.mkdir()
     yar = locked / "agent_eicar.yar"
     yar.write_text("rule agent_eicar { condition: false }\n", encoding="utf-8")
-    # A root user can read a mode-0 file, so the read itself is made to fail instead of chmod.
-    original_read = Path.read_bytes
+    real_open = Path.open
 
-    def denied(self: Path) -> bytes:
-        if self == yar:
+    def denied_open(self: Path, *args: object, **kwargs: object) -> object:
+        # chmod(0) does not stop uid 0, so refuse the read itself for every user.
+        if self.resolve() == yar.resolve():
             raise PermissionError(13, "Permission denied", str(self))
-        return original_read(self)
+        return real_open(self, *args, **kwargs)  # type: ignore[call-overload]
 
-    monkeypatch.setattr(Path, "read_bytes", denied)
+    monkeypatch.setattr(Path, "open", denied_open)
     monkeypatch.setattr("yara_gate.rules.shipped_local_dir", lambda: locked)
     unreadable = scan_file(sample, rules_dir=root)
     assert unreadable.verdict is Verdict.incomplete
