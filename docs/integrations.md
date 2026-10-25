@@ -4,7 +4,7 @@
 emits one compact JSON object per scanned file on stdout (JSON Lines). Each
 object uses the same schema as the JSON report on disk: verdict, exit code,
 policy, rule IDs, severity, member/view provenance, engine/ruleset identity,
-and scan-completeness fields. No matched content is included. Paths abbreviate
+compiled rule count, tool version, scan time, and scan-completeness fields. No matched content is included. Paths abbreviate
 the user's home prefix; other path components remain visible.
 
 The default human-readable output is unchanged when `--json` is absent.

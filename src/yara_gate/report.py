@@ -55,6 +55,9 @@ def compact_report(result: ScanResult) -> dict[str, object]:
         "skipped_rule_files": result.skipped_rule_files,
         "policy": result.policy.value,
         "policy_reason": result.policy_reason,
+        "compiled_rules": result.compiled_rules,
+        "tool_version": result.tool_version,
+        "scan_seconds": result.scan_seconds,
         "findings": [_finding(item) for item in result.findings],
     }
 
@@ -123,6 +126,8 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                     "ruleset_sha256": result.ruleset_sha256,
                     "engine_version": result.engine_version,
                     "skipped_rule_files": result.skipped_rule_files,
+                    "compiled_rules": result.compiled_rules,
+                    "scan_seconds": result.scan_seconds,
                     "verdict": result.verdict.value,
                     "policy": result.policy.value,
                     "policy_reason": result.policy_reason,
