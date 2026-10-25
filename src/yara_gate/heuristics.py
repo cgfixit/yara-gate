@@ -254,7 +254,17 @@ _PICKLE_MODULES = frozenset({"os", "subprocess", "builtins", "posix", "nt"})
 _PICKLE_NAMES = frozenset({"eval", "exec"})
 _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|pwsh)(\s|$)")
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
-_HIDDEN_INSTRUCTION = re.compile(r"(?i)do not tell the user|ignore previous instructions")
+# Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
+# or a request to read a key or client config and pass it along in another argument.
+_HIDDEN_INSTRUCTION = re.compile(
+    r"(?i)do not (tell|mention|inform|reveal|show)( this| it| that)?( to)? the user"
+    r"|don'?t (tell|mention)( this| it)?( to)? the user"
+    r"|ignore (all )?previous instructions"
+    r"|<\s*important\s*>"
+    r"|before (using|calling|running) this tool,? (read|open|cat)\b"
+    r"|~?/?\.ssh/|\bid_(rsa|ed25519)\b|\bmcp\.json\b"
+    r"|\bpass (its|the|their|this) contents?\b|\b(as|in) an? sidenote\b"
+)
 
 
 def pickle_reduce_findings(path: Path, data: bytes) -> list[Finding]:
@@ -301,7 +311,7 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
 
 
 def mcp_tool_findings(path: Path, data: bytes) -> list[Finding]:
-    if path.suffix.lower() != ".json" or not data.lstrip().startswith(b"{"):
+    if path.suffix.lower() != ".json" or not data.lstrip().startswith((b"{", b"[")):
         return []
     try:
         parsed = json.loads(data)
