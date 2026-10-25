@@ -64,6 +64,9 @@ jobs:
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
 
+      - name: No bidi or invisible controls in tracked text
+        run: uv run python docs/verification/check_text_controls.py
+
       - name: In-place scans
         run: uv run python docs/verification/check_scan_only.py
 
@@ -102,6 +105,9 @@ jobs:
 
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
+
+      - name: No bidi or invisible controls in tracked text
+        run: uv run python docs/verification/check_text_controls.py
 
       - name: Added-rule checks
         run: uv run python docs/verification/check_added_rules.py

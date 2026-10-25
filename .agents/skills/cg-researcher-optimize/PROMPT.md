@@ -111,7 +111,9 @@ is the deliverable.
 - Benign collisions and severity:
 - Overlap with other PRs:
 ## Sources
-Dated links, each marked [primary] or [secondary].
+Every link carries a publication date (YYYY-MM or YYYY-MM-DD) and a [primary] or
+[secondary] mark. If the page shows no date, write `undated`; never leave the date out.
+Every reproduced-leads row fills all five columns.
 ```
 
 ## If execution is requested
@@ -129,7 +131,8 @@ Dated links, each marked [primary] or [secondary].
 Known traps:
 
 - YARA-X rejects regexes that mix greedy and non-greedy quantifiers.
-- Escapes like `‮` can be decoded into real bidi characters on the way into
+- Escapes like `\u202e` can be decoded into real bidi characters on the way into
   source files. Keep source ASCII and check for non-ASCII before committing.
-- As root, a mode-0 file is still readable, so permission tests fail everywhere.
-  Compare against the base revision before calling a failure a regression.
+- As root, a mode-0 file is still readable, so a `chmod`-based permission test
+  depends on the user. Patch the read instead, and compare against the base
+  revision before calling a failure a regression.

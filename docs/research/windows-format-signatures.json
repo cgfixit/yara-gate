@@ -68,7 +68,7 @@
   },
   {
     "name": "reg_run_mshta_utf16.reg",
-    "text": "﻿Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n\"Updater\"=\"mshta.exe C:\\inert\\page.hta\"\r\n",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\r\n\"Updater\"=\"mshta.exe C:\\inert\\page.hta\"\r\n",
     "expected": "win_reg_run_interpreter",
     "encoding": "utf-16le"
   },
