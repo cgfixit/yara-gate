@@ -19,6 +19,11 @@ from yara_gate.scanner import scan_file
 
 # The common per-component limit on Linux and macOS, in encoded bytes.
 _NAME_MAX = 255
+# A regular file whose last write is at least this old is treated as fully written.
+_SETTLE_AGE_NS = 1_000_000_000
+# A fresher file must look the same on two looks at least this far apart (the watch loop
+# interval), so a writer that pauses between chunks is not mistaken for a finished one.
+_SETTLE_WINDOW_NS = 500_000_000
 
 
 @dataclass(frozen=True)
@@ -161,7 +166,9 @@ def watch(
     signal.signal(signal.SIGTERM, _request_stop)
     try:
         while not stop:
-            _drain(handler, home)
+            # A fresh file is recorded on one pass and scanned on the next if it has not
+            # changed, so the loop never sleeps per file and never holds the lock while waiting.
+            _drain(handler, home, wait=False)
             time.sleep(0.5)
     finally:
         observer.stop()
@@ -178,20 +185,23 @@ def drain_inbox(
     timeout_s: int = 30,
     policy: ScanPolicy = ScanPolicy.default,
 ) -> None:
-    """Scan files already sitting in inbox/."""
-    _drain(_InboxHandler(home, rules_dir, timeout_s, policy), home)
+    """Scan files already sitting in inbox/. A file still being written is given 0.2 s."""
+    _drain(_InboxHandler(home, rules_dir, timeout_s, policy), home, wait=True)
 
 
-def _drain(handler: "_InboxHandler", home: GatePaths) -> None:
-    for path in sorted(home.inbox.iterdir()):
-        handler.handle(path)
+def _drain(handler: "_InboxHandler", home: GatePaths, *, wait: bool) -> None:
+    entries = sorted(home.inbox.iterdir())
+    for path in entries:
+        handler.handle(path, wait=wait)
+    handler.forget_missing({str(path) for path in entries})
 
 
 def _dispatch(event: object, handler: "_InboxHandler") -> None:
     path = getattr(event, "dest_path", None) or getattr(event, "src_path", None)
     if not path or getattr(event, "is_directory", False):
         return
-    handler.handle(Path(str(path)))
+    # The watch loop drains again within 0.5 s; a file still being written waits for that.
+    handler.handle(Path(str(path)), wait=False)
 
 
 class _InboxHandler:
@@ -207,8 +217,10 @@ class _InboxHandler:
         self.timeout_s = timeout_s
         self.policy = policy
         self._lock = threading.Lock()
+        # Size, mtime, and the time of the first look at each fresh regular file, keyed by path.
+        self._pending: dict[str, tuple[int, int, int]] = {}
 
-    def handle(self, path: Path) -> None:
+    def handle(self, path: Path, *, wait: bool = True) -> None:
         with self._lock:
             if path.name.startswith("."):
                 return
@@ -219,7 +231,7 @@ class _InboxHandler:
             if stat.S_ISDIR(info.st_mode):
                 return
             if stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_nlink == 1:
-                if not _size_settled(path):
+                if not self._settled(path, info, wait):
                     return
             try:
                 result = process_inbox_file(
@@ -233,14 +245,41 @@ class _InboxHandler:
                 return
             print(f"{result.verdict} sha256={result.sha256}", flush=True)
 
+    def forget_missing(self, present: set[str]) -> None:
+        with self._lock:
+            for key in [key for key in self._pending if key not in present]:
+                del self._pending[key]
 
-def _size_settled(path: Path) -> bool:
-    try:
-        first = path.stat().st_size
+    def _settled(self, path: Path, info: os.stat_result, wait: bool) -> bool:
+        """True when the file has stopped changing.
+
+        A last write at least one second old counts as settled at once. Otherwise the file
+        must show the same size and mtime on two looks at least half a second apart: a
+        previous pass of the watch loop (``wait=False``), or a 0.2 s pause here
+        (``wait=True``, the one-shot drain, as before).
+        """
+        key = str(path)
+        now = time.time_ns()
+        stamp = (info.st_size, info.st_mtime_ns)
+        if now - info.st_mtime_ns >= _SETTLE_AGE_NS:
+            self._pending.pop(key, None)
+            return True
+        prior = self._pending.get(key)
+        if prior is not None and prior[:2] == stamp:
+            if now - prior[2] >= _SETTLE_WINDOW_NS:
+                self._pending.pop(key, None)
+                return True
+            if not wait:
+                return False
+        if not wait:
+            self._pending[key] = (*stamp, now)
+            return False
         time.sleep(0.2)
-        return path.is_file() and path.stat().st_size == first
-    except OSError:
-        return False
+        try:
+            again = path.stat()
+        except OSError:
+            return False
+        return stat.S_ISREG(again.st_mode) and (again.st_size, again.st_mtime_ns) == stamp
 
 
 def _existing_slot(home: GatePaths, digest: str) -> Path | None:
