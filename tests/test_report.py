@@ -81,3 +81,23 @@ def test_redact_needs_a_path_separator(monkeypatch: pytest.MonkeyPatch) -> None:
     assert redact("/x/u") == "~"
     assert redact("/x/u/notes.txt") == "~/notes.txt"
     assert redact("/x/u2/secret-project.txt") == "/x/u2/secret-project.txt"
+
+
+def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
+    from yara_gate import __version__
+    from yara_gate.rules import compile_sources
+
+    path = tmp_path / "notes.txt"
+    path.write_bytes(clean_text())
+    result = scan_file(path, rules_dir=rules_copy)
+    _rules, _skipped, _error, compiled, _skips = compile_sources(rules_copy)
+    assert result.compiled_rules == compiled > 0
+    assert result.tool_version == __version__
+    assert result.scan_seconds is not None and 0 <= result.scan_seconds < 30
+    _sarif_path, js = write_reports(tmp_path / "reports", result)
+    compact = json.loads(js.read_text(encoding="utf-8"))
+    assert compact["compiled_rules"] == compiled
+    assert compact["tool_version"] == __version__
+    assert compact["scan_seconds"] == result.scan_seconds
+    sarif = json.loads(_sarif_path.read_text(encoding="utf-8"))
+    assert sarif["runs"][0]["properties"]["compiled_rules"] == compiled
