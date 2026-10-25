@@ -16,6 +16,15 @@ credential-prompt, keychain, and persistence shapes that still scanned clean; th
 the ninth draft, #71 (`claude/unix-persistence-lures`, three advisory rules, 48 -> 51).
 CI on the current head of every open draft was green at the last check.
 
+Later the same day the owner merged #65, #70, #71, and the multi-path scan #73 (`main`
+`9ed087c`). Three of the deferred measurement issues then got a before/after number each
+and a draft: #75 for the watcher settle sleep (#42), #76 for the rules-tree listing
+cache (#43), and #77 for process startup (#44: `--version` 143 -> 87 ms and
+`rules --help` 217 -> 165 ms median over seven fresh runs; one-file `scan` unchanged
+within noise). The owner had closed #44 as not planned once #73 landed, so #77 is a
+draft for that call. #38, #39, and #40 remain product decisions. The unfetched sources
+in the list below stayed unfetched: the network policy blocks them.
+
 ## Baseline
 
 Branch point `7156e5a`. While this pass ran, `main` advanced to `db49ec7` (#55-#62: atomic
