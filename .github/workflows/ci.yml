@@ -46,6 +46,9 @@ jobs:
       - name: Sync from the lock file
         run: uv sync --frozen --group dev
 
+      - name: Lock file matches pyproject
+        run: uv lock --check
+
       - name: Ruff
         run: uv run ruff check .
 
@@ -63,6 +66,12 @@ jobs:
 
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
+
+      - name: Added-rule checks
+        run: uv run python docs/verification/check_added_rules.py
+
+      - name: Local rule false positives
+        run: uv run python docs/verification/measure_precision.py --fail-over
 
       - name: In-place scans
         run: uv run python docs/verification/check_scan_only.py
