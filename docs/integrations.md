@@ -49,7 +49,18 @@ allowed = (
 ```
 
 Treat malformed output, unexpected record counts, or process failure as a
-failed gate. Under default policy, advisory is exit 0; choosing `agent-ingest`
+failed gate.
+
+Several files in one process cost one startup instead of one per file:
+`yara-gate scan A B C --json ...`, or `--paths-from FILE` (`-` for stdin,
+`--null` for NUL-separated names). Each path is handled exactly as a single
+path is, in argument order; the exit code is the worst one; a missing path
+writes no record and does not stop the rest; an exact duplicate path is
+scanned once; an empty list exits 0 with no records. The batch form of the
+check above: every record must be a complete `clean` with exit 0, the record
+count must equal the number of distinct paths you passed, and the process
+exit must be 0. Correlate records with inputs by their `path` field, which is
+the scan-time location (the quarantine slot for an inbox file). Under default policy, advisory is exit 0; choosing `agent-ingest`
 holds those findings as block/exit 1 without changing finding severity.
 
 Inbox inputs still pass through quarantine, receive reports, and move only
