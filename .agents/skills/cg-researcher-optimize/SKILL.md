@@ -129,7 +129,9 @@ Lead and why: did not reproduce, already in an open PR, out of scope.
 - Overlap with other PRs:
 
 ## Sources
-Dated links, marked [primary] or [secondary].
+Every link carries a publication date (YYYY-MM or YYYY-MM-DD) and a [primary] or
+[secondary] mark. If the page shows no date, write `undated`; never leave the date out.
+Every reproduced-leads row fills all five columns.
 ```
 
 ## 6. Execute, only when asked
