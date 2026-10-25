@@ -208,6 +208,9 @@ filetype changes extend existing block heuristics.
 - MS-ONESTORE FileDataStoreObject GUID `{BDE316E7-2665-4511-A4C4-8D4D0B7A9EAC}` and
   `.one` header GUID `{7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}`, undated spec [primary; not
   fetched; the rule was verified against a synthetic file built from those GUIDs]
-- OWASP CSV Injection, undated; MITRE T1218.005, T1059.005, T1547.001, T1105, T1559.002,
-  undated; Invariant Labs MCP tool-poisoning notice, 2025-04; MSRC CVE-2022-30190 guidance,
+- MITRE ATT&CK T1218.005, T1059.005, T1547.001, T1105, T1559.002, T1204.001/002, T1566.001:
+  verified in the ATT&CK STIX bundle v20.0 (`mitre-attack/attack-stix-data`, fetched
+  2026-10-25) [primary]; see `docs/verification/consumer-batch-scan-2026-10-25.md`
+- OWASP CSV Injection, undated [primary; the GitHub mirror serves a stub, not fetched];
+  Invariant Labs MCP tool-poisoning notice, 2025-04; MSRC CVE-2022-30190 guidance,
   2022-05 [primary; not fetched, hosts unreachable from this container]
