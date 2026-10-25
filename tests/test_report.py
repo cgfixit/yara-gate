@@ -54,6 +54,28 @@ def test_clean_still_writes_both_reports(tmp_path: Path, rules_copy: Path) -> No
     assert result.findings == []
 
 
+def test_failed_report_write_keeps_previous_reports(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "notes.txt"
+    path.write_bytes(clean_text())
+    result = scan_file(path, rules_dir=rules_copy)
+    reports = tmp_path / "reports"
+    before = {report: report.read_bytes() for report in write_reports(reports, result)}
+    real_write = Path.write_text
+
+    def torn_write(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        real_write(self, data[: len(data) // 2], *args, **kwargs)  # type: ignore[arg-type]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", torn_write)
+    with pytest.raises(OSError, match="disk full"):
+        write_reports(reports, result)
+    monkeypatch.undo()
+    assert {report: report.read_bytes() for report in before} == before
+    assert sorted(reports.iterdir()) == sorted(before)
+
+
 def test_redact_needs_a_path_separator(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", "/x/u")
     assert redact("/x/u") == "~"

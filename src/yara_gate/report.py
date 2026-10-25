@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 from pathlib import Path
 
 from yara_gate import __version__
@@ -15,9 +16,20 @@ def write_reports(
     digest = stem or result.sha256 or "0" * 64
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
-    sarif_path.write_text(json.dumps(_sarif(result), indent=2) + "\n", encoding="utf-8")
-    json_path.write_text(json.dumps(compact_report(result), indent=2) + "\n", encoding="utf-8")
+    _replace_text(sarif_path, json.dumps(_sarif(result), indent=2) + "\n")
+    _replace_text(json_path, json.dumps(compact_report(result), indent=2) + "\n")
     return sarif_path, json_path
+
+
+def _replace_text(path: Path, text: str) -> None:
+    # A reader polling the directory sees the previous report or the new one, never part of one.
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def redact(path: str) -> str:
