@@ -25,6 +25,11 @@ within noise). The owner had closed #44 as not planned once #73 landed, so #77 i
 draft for that call. #38, #39, and #40 remain product decisions. The unfetched sources
 in the list below stayed unfetched: the network policy blocks them.
 
+The owner then merged #75, #76, and #77 (`main` `80b3319`), so #77 shipped even though
+#44 stays closed as not planned. No draft from this pass remains open. #78, an Agent
+Plugin PR from the Grok bot, was closed unmerged at the owner's request. #38, #39, and
+#40 remain product decisions.
+
 ## Baseline
 
 Branch point `7156e5a`. While this pass ran, `main` advanced to `db49ec7` (#55-#62: atomic
