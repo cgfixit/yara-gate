@@ -130,7 +130,8 @@ _EXECUTABLE_KINDS = frozenset({"pe", "elf", "macho"})
 
 
 def double_extension(path: Path) -> bool:
-    return _DOUBLE_EXT.match(path.name) is not None
+    # NFKC folds a fullwidth dot (U+FF0E) in "Invoice．pdf.exe" to the ASCII dot Explorer shows.
+    return _DOUBLE_EXT.match(unicodedata.normalize("NFKC", path.name)) is not None
 
 
 def name_has_controls(name: str) -> bool:

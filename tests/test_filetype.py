@@ -98,6 +98,8 @@ def test_double_extension_covers_launchers_and_padding() -> None:
         assert double_extension(Path(name)), name
     assert double_extension(Path("invoice.pdf          .exe"))
     assert double_extension(Path("invoice.pdf\u3000.exe"))
+    # A fullwidth dot renders as a dot; NFKC folds it before the suffix check.
+    assert double_extension(Path("Invoice\uff0epdf.exe"))
     # Disk images mount, packages install, and macOS scripts run on a double-click.
     for name in (
         "photo.jpg.iso",
