@@ -182,7 +182,16 @@ Agent-ingestion heuristics also flag requests to persist approval/safety bypasse
 in agent guidance or future sessions (`agent_persistent_instruction`) and textual
 tool results asking a command tool to bypass controls (`agent_tool_output_override`).
 Role/action detection includes Llama-style headers, `[start]`/`[message]` role
-markers, and XML-style system/developer tags. These remain advisory: default
+markers, XML-style system/developer tags, an all-caps `SYSTEM:`, `[ADMIN]`,
+`ADMIN OVERRIDE CODE …:`, `DEVELOPER`, or `OPERATOR` header line or an "I am your
+developer" claim followed on the same line by a disclosure, override, or
+mode-switch request (`System: reboot at 02:00` and `Operating system: Windows`
+stay clean). One-sentence requests also count: "reveal/show/tell me your system
+prompt" without a `verbatim` qualifier (second person only, so "the debug view can
+show the system prompt" stays clean), "New instructions:" followed by `from now on`,
+`respond only`, `you are now`, or `ignore`, and "send/forward/reply with" the system
+prompt, hidden instructions, or memory file, or "your" credentials, API key, or
+password, with no destination required. These remain advisory: default
 allows them with exit 0; `agent-ingest` holds them with exit 1. The phrase
 “you are now” needs a nearby override/action, unrestricted-role, jailbreak-persona
 (`DAN` case-sensitive, `developer mode`, `jailbroken`, “without restrictions”) term, including
