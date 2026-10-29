@@ -73,6 +73,67 @@ and validate the SHA-256 when handing bytes to another process.
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
 
+## Synced folders (Dropbox, OneDrive, iCloud Drive)
+
+A sync client's folder is never the gate's inbox. Inbox intake copies its input
+into `quarantine/<sha256>/` and then removes the inbox entry; a sync client would
+treat that as a deletion and propagate it to every other device and shared-folder
+member. A directory scan of an inbox also consumes client metadata (`.dropbox`,
+`.DS_Store`, `desktop.ini`); only `watch` skips dotfiles. Two more facts decide the
+design: inbox intake needs `O_NOFOLLOW` and a link count, which Python provides on
+Unix only, so on Windows there is no quarantine, no clean slot, and no settle
+logic, only in-place scans; and the inbox settle logic takes a file whose last
+write is a second old, so a writer that pauses longer than that is scanned
+truncated and the rest of its write is lost with the removed inbox entry.
+
+The consumer therefore copies, never moves, out of the sync folder into a
+directory the gate owns, and reads only what the gate allowed:
+
+1. Walk the sync folder without following links. Skip dotfiles and client
+   metadata (`.dropbox`, `.DS_Store`, `desktop.ini`, `Icon\r`, `~$` Office locks,
+   `.tmp`, `.part`, `.crdownload`), symlinks and other non-regular entries, Windows
+   reparse points (junctions and online-only cloud placeholders: a read would make
+   the client download them, which is a network side effect the gate must not
+   cause), and zero-length files (a placeholder, or a write in progress).
+2. Take a file only when two looks at least a second apart agree on its size and
+   mtime, then copy it through a temporary name and rename it into the gate's
+   staging directory, so no watcher sees a partial copy. Compare the source's size
+   and mtime again after the copy and drop the copy if they changed.
+3. Scan the staged copy with `yara-gate scan STAGED --json --policy agent-ingest
+   --home GATE_REPORTS --rules RULES`. Allow it only for exit 0, exactly one record,
+   `verdict` `clean`, `exit_code` 0, `incomplete_reason` null, `policy`
+   `agent-ingest`, and a record `sha256` equal to the SHA-256 of the staged bytes.
+   Everything else, including a scanner that did not start, is held.
+4. Move the staged copy into `allowed/<sha256>/` or `held/<sha256>/` with the
+   record beside it. The consumer reads `allowed/` only. The sync folder is never
+   written, so a later change there cannot reach bytes already allowed, and a
+   changed source arrives as a new SHA-256 on the next pass.
+5. Keep a ledger of path, size, mtime, and SHA-256 so unchanged files are not
+   rescanned. The ledger and the records hold no file content.
+
+[docs/examples/sync_folder_gate.py](examples/sync_folder_gate.py) does exactly
+this with the standard library, on Windows, macOS, and Linux. On a POSIX host the
+staging directory may instead be the gate's own `inbox/`, which adds the
+quarantine and `clean/` slot semantics on top. A `conflicted copy` file (two
+devices edited one file offline) is scanned like any other and named in the log;
+whether to allow such files is the consumer's policy. A direct run on 2026-10-29
+against a fake sync folder holding a clean file, an injected file, a `.dropbox`
+marker, `desktop.ini`, an Office lock file, a `.crdownload`, a zero-byte `.pdf`, a
+symlink, a conflicted copy with injected text, and a file still being appended:
+the two injected files and the conflicted copy were held, the clean file allowed,
+every metadata, link, and placeholder entry skipped with a reason, the growing
+file skipped as `changing` and allowed whole on the next pass, the sync folder's
+listing and bytes unchanged afterwards, the allowed copies' SHA-256 equal to their
+records, no file content in the ledger or records, and a gate home inside the sync
+folder refused with exit 2.
+
+Not established here: how the Dropbox client itself writes (temporary name and
+rename, or in place), how its online-only placeholders look on each OS, whether it
+marks synced files with a Windows `Zone.Identifier` stream or a macOS
+`com.apple.quarantine` attribute (the gate's copy drops both), and which device or
+member wrote a file (only the client's own log knows). Test each on a real client
+before relying on it; the skip rules above fail closed when in doubt.
+
 ## A pre-read hook that fails closed
 
 An instruction to an agent ("scan files before reading them") is a soft control.
