@@ -99,6 +99,20 @@ _LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*"
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
 
+# Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
+# proofing boundary, so the joined text is what the lexical rules need.
+_OOXML_TEXT_PART = re.compile(
+    r"(?i)^(word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml"
+    r"|xl/sharedStrings\.xml|ppt/(slides|notesSlides)/[^/]+\.xml)$"
+)
+# A text run, a paragraph or shared-string end, or a Word break or tab, in document order.
+_OOXML_TOKEN = re.compile(
+    rb"<(?:w:t|t|a:t)(?:\s[^>]*)?>([^<]*)</(?:w:t|t|a:t)>"
+    rb"|</(?:w:p|a:p|si)>"
+    rb"|<w:(?:br|cr)\b[^>]*/?>"
+    rb"|<w:tab\b[^>]*/?>"
+)
+
 _PDF_STREAM = re.compile(rb"stream\r?\n")
 _PDF_END = re.compile(rb"\r?\n?endstream")
 
@@ -316,6 +330,37 @@ def _json_escape(match: re.Match[str]) -> str:
         # A lone surrogate cannot be encoded as UTF-8; keep the escape text.
         return token if 0xD800 <= code <= 0xDFFF else chr(code)
     return _JSON_SIMPLE[token[1]]
+
+
+def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
+    """Join the text runs of a Word, Excel, or PowerPoint XML part into one ``ooxml-text`` view.
+
+    Only the parts a reader sees are joined (document body, headers, footers, notes, comments,
+    shared strings, slides). Runs inside one paragraph are joined without a separator, paragraphs
+    end with a newline, breaks and tabs become whitespace, and XML entities are decoded. No XML
+    parser runs and no entity is expanded beyond the predefined and numeric ones. A part with
+    fewer than two runs is left to the raw and HTML-unescaped views of the member itself.
+    """
+    if not _OOXML_TEXT_PART.match(name) or b"<" not in data[:1024]:
+        return
+    parts: list[str] = []
+    runs = 0
+    for count, match in enumerate(_OOXML_TOKEN.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        token = match.group()
+        text = match.group(1)
+        if text is not None:
+            runs += 1
+            parts.append(html.unescape(text.decode("utf-8", errors="replace")))
+        elif token.startswith(b"</"):
+            parts.append("\n")
+        elif token.startswith(b"<w:tab"):
+            parts.append("\t")
+        else:
+            parts.append("\n")
+    if runs >= 2:
+        yield "ooxml-text", _derived("".join(parts), budget)
 
 
 def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:

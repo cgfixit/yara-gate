@@ -21,6 +21,7 @@ from yara_gate.content import (
     ContentLimit,
     ContentUnit,
     content_units,
+    ooxml_text_views,
     pdf_views,
     text_views,
 )
@@ -248,6 +249,14 @@ def _scan_file(
                 # An action dictionary inside an object stream is invisible to the raw check.
                 view_findings.extend(pdf_token_findings(derived))
                 for finding in view_findings:
+                    finding.member_path = list(unit.member_path)
+                    finding.view = view
+                    findings.append(finding)
+            for view, derived in ooxml_text_views(unit.name, unit.data, budget):
+                budget.check()
+                seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
+                # A sentence split across Word runs is one sentence to the reader.
+                for finding in _yara_findings(rules, derived, ext, seconds):
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
