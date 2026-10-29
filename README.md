@@ -85,7 +85,7 @@ find incoming -type f -print0 | uv run yara-gate scan --paths-from - --null
 
 A path inside the inbox is quarantined and then moved. Any other path stays where it is. The report is still written under the gate root. A folder scan uses the worst exit code in the folder. Several paths, on the command line or read from `--paths-from FILE` (`-` for stdin, `--null` for NUL-separated names), are scanned in order, each exactly as a single path is, in one process; the exit code is the worst one seen, a missing path prints `incomplete: missing path` and does not stop the rest, an exact duplicate path is scanned once, and an empty list exits 0 with no records. `-` (stdin content) must be the only path.
 
-On intake the tool hashes the file, copies it into `quarantine/<sha256>/`, strips the executable bit, and removes the inbox copy. Dropping the same bytes again reuses that slot and returns it to quarantine for a fresh scan under the selected policy.
+On intake the tool hashes the file, copies it into `quarantine/<sha256>/`, strips the executable bit, and removes the inbox copy. Because the inbox copy is removed, a sync client's folder (Dropbox, OneDrive, iCloud Drive) must never be the inbox: the client would propagate the deletion. Copy out of the sync folder into a directory the gate owns and read only what the gate allowed; [docs/integrations.md](docs/integrations.md#synced-folders-dropbox-onedrive-icloud-drive) states the contract and `docs/examples/sync_folder_gate.py` implements it on Windows, macOS, and Linux. Dropping the same bytes again reuses that slot and returns it to quarantine for a fresh scan under the selected policy.
 
 ```mermaid
 flowchart TD
