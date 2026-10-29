@@ -167,7 +167,10 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 
 A JSON body is read twice: as raw bytes and as a `json-unescaped` view in which
 `\u0049gnore`, `\n`, and surrogate pairs are decoded, so an escape cannot hide a
-phrase from the lexical rules. PDFs are covered below.
+phrase from the lexical rules. Any text body also gets a `text-folded` view when
+fullwidth letters, a Cyrillic or Greek look-alike inside a Latin word, leet digits,
+spaced-out letters, or a control character would otherwise keep a phrase from the
+rules. PDFs are covered below.
 
 A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the

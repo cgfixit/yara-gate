@@ -37,6 +37,68 @@ _JSON_SIMPLE = {
     "r": "\r",
     "t": "\t",
 }
+# Letters that render like Latin letters (Unicode TR39 confusables for Cyrillic and Greek). They are
+# folded only inside a token that already mixes Latin with another script, so Russian or Greek
+# prose is left alone and "Ign\u043ere" (Cyrillic o) becomes "Ignore".
+_CONFUSABLES = str.maketrans(
+    {
+        "\u0430": "a",
+        "\u0435": "e",
+        "\u043e": "o",
+        "\u0440": "p",
+        "\u0441": "c",
+        "\u0443": "y",
+        "\u0445": "x",
+        "\u0456": "i",
+        "\u0458": "j",
+        "\u0455": "s",
+        "\u04bb": "h",
+        "\u0410": "A",
+        "\u0412": "B",
+        "\u0415": "E",
+        "\u041a": "K",
+        "\u041c": "M",
+        "\u041d": "H",
+        "\u041e": "O",
+        "\u0420": "P",
+        "\u0421": "C",
+        "\u0422": "T",
+        "\u0425": "X",
+        "\u03b1": "a",
+        "\u03b5": "e",
+        "\u03b9": "i",
+        "\u03ba": "k",
+        "\u03bd": "v",
+        "\u03bf": "o",
+        "\u03c1": "p",
+        "\u03c4": "t",
+        "\u03c5": "u",
+        "\u0391": "A",
+        "\u0392": "B",
+        "\u0395": "E",
+        "\u0397": "H",
+        "\u0399": "I",
+        "\u039a": "K",
+        "\u039c": "M",
+        "\u039d": "N",
+        "\u039f": "O",
+        "\u03a1": "P",
+        "\u03a4": "T",
+        "\u03a7": "X",
+        "\u03a5": "Y",
+        "\u0396": "Z",
+    }
+)
+# Digits and symbols that stand in for letters, folded only inside a token that also has letters.
+_LEET = str.maketrans(
+    {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
+)
+_WORD = re.compile(r"[^\W_]+")
+_LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
+# Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
+_SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
+_SPACERS = re.compile(r"[ .\-_*]")
+
 _PDF_STREAM = re.compile(rb"stream\r?\n")
 _PDF_END = re.compile(rb"\r?\n?endstream")
 
@@ -179,16 +241,68 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
             yield "json-unescaped", _derived(decoded, budget)
     # ASCII cannot contain Cf characters or Unicode variation selectors.
     # Check after unescaping: an ASCII entity can introduce either one.
-    if unescaped.isascii():
-        return
-    # Inspect hidden formatting without modifying the original or interpreting it as authority.
-    normalized = "".join(
-        char
-        for char in unescaped
-        if unicodedata.category(char) != "Cf" and not 0xFE00 <= ord(char) <= 0xFE0F
-    )
-    if normalized != unescaped:
-        yield "format-controls-removed", _derived(normalized, budget)
+    normalized = unescaped
+    if not unescaped.isascii():
+        # Inspect hidden formatting without modifying the original or interpreting it as authority.
+        normalized = "".join(
+            char
+            for char in unescaped
+            if unicodedata.category(char) != "Cf" and not 0xFE00 <= ord(char) <= 0xFE0F
+        )
+        if normalized != unescaped:
+            yield "format-controls-removed", _derived(normalized, budget)
+    # A reader sees "Ign\u043ere", fullwidth letters, "1gn0r3", or "i g n o r e" as the word; the
+    # lexical rules do not. Fold those spellings into one more labeled view of the same bytes.
+    folded = folded_text(unescaped)
+    if folded != unescaped and folded != normalized:
+        yield "text-folded", _derived(folded, budget)
+
+
+def folded_text(text: str) -> str:
+    """Return ``text`` with look-alike spellings folded to plain letters, for a derived view.
+
+    NFKC compatibility normalization (fullwidth and other presentation forms), removal of format
+    controls and of control characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
+    folded to Latin inside mixed-script tokens, letters spaced one apart rejoined, and digit or
+    symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
+    numbers stay as written. The result is a view; the original bytes are scanned unchanged.
+    """
+    folded = unicodedata.normalize("NFKC", text)
+    if not folded.isascii() or any(ord(char) < 32 for char in folded):
+        folded = "".join(
+            char
+            for char in folded
+            if char in "\t\r\n"
+            or (
+                unicodedata.category(char) not in ("Cf", "Cc") and not 0xFE00 <= ord(char) <= 0xFE0F
+            )
+        )
+    if not folded.isascii():
+        folded = _WORD.sub(_fold_confusables, folded)
+    folded = _SPACED.sub(lambda match: _SPACERS.sub("", match.group()), folded)
+    return _LEET_TOKEN.sub(_fold_leet, folded)
+
+
+def _fold_confusables(match: re.Match[str]) -> str:
+    word = match.group()
+    if word.isascii():
+        return word
+    scripts = {_script(char) for char in word if char.isalpha()}
+    if "LATIN" in scripts and len(scripts) > 1:
+        return word.translate(_CONFUSABLES)
+    return word
+
+
+def _script(char: str) -> str:
+    name = unicodedata.name(char, "")
+    return name.partition(" ")[0]
+
+
+def _fold_leet(match: re.Match[str]) -> str:
+    word = match.group()
+    if any(char.isalpha() for char in word):
+        return word.translate(_LEET)
+    return word
 
 
 def _json_escape(match: re.Match[str]) -> str:
