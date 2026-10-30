@@ -16,7 +16,7 @@ You should see `yara-gate 0.2.0`.
 
 The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
 
-To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/`, and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/` (only older versions wrote it; the compiled cache now lives in the user cache directory), and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
 
 Check the install with the built-in fixture run:
 
