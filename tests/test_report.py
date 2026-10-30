@@ -101,3 +101,25 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
     assert compact["scan_seconds"] == result.scan_seconds
     sarif = json.loads(_sarif_path.read_text(encoding="utf-8"))
     assert sarif["runs"][0]["properties"]["compiled_rules"] == compiled
+    assert compact["units_scanned"] == 1
+    assert compact["bytes_scanned"] == len(clean_text())
+    assert compact["yara_seconds"] is not None
+    assert sarif["runs"][0]["properties"]["views_scanned"] == compact["views_scanned"]
+
+
+def test_coverage_counts_members_and_views(rules_copy: Path) -> None:
+    import io
+    import zipfile
+
+    from yara_gate.scanner import scan_bytes
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("a.html", "caf&eacute;\n")
+        archive.writestr("b.txt", "plain\n")
+    result = scan_bytes(buf.getvalue(), name="bundle.zip", rules_dir=rules_copy)
+    assert result.units_scanned == 3
+    assert result.views_scanned == {"html-unescaped": 1}
+    broken = scan_bytes(b"PK\x03\x04broken", name="bad.zip", rules_dir=rules_copy)
+    assert broken.incomplete_reason is not None
+    assert broken.units_scanned == 0 and broken.yara_seconds is None

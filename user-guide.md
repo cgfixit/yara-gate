@@ -1,6 +1,6 @@
 # yara-gate user guide
 
-Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox or in the drop folder and the Python `scan_file` call are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
+Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox, inbox intake through `yara-gate scan`, and the Python `scan_file` and `scan_bytes` calls are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
 
 The project lives at `~/Projects/yara-gate`. The holding folders live at `~/YaraGate`.
 
@@ -16,7 +16,7 @@ You should see `yara-gate 0.2.0`.
 
 The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
 
-To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/`, and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/` (only older versions wrote it; the compiled cache now lives in the user cache directory), and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
 
 Check the install with the built-in fixture run:
 
@@ -131,7 +131,7 @@ Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. O
 
 A home-directory path is shown as `~/...`. The path is where the file was while it was scanned, which is the quarantine slot, even if the file was then moved to `clean/` or `blocked/`.
 
-Reports include policy, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, and the scan time in seconds. Finding `member_path` entries identify archive members by ordinal, without disclosing their names; `view` identifies raw bytes or derived text (`decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` for look-alike spellings folded to plain letters, `pdf-flate` for inflated PDF streams, or `ooxml-text` for the joined text runs of a Word, Excel, or PowerPoint part). Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
+Reports include policy, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive members by ordinal, without disclosing their names; `view` identifies raw bytes or derived text (`decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` for look-alike spellings folded to plain letters, `pdf-flate` for inflated PDF streams, or `ooxml-text` for the joined text runs of a Word, Excel, or PowerPoint part). Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
 For a delivery-pattern finding, compare its `rule_id` with the [README rule table](README.md#what-this-catches-and-what-it-does-not) and the [documented match boundaries](docs/research/modern-delivery-rules.md#rule-boundaries-and-benign-collisions). These delivery rules have advisory severity. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 

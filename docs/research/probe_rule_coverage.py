@@ -344,6 +344,12 @@ def main() -> None:
     }
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w") as archive:
+        entry = tarfile.TarInfo("attachment.pdf")
+        entry.size = len(active_pdf)
+        archive.addfile(entry, io.BytesIO(active_pdf))
+    # A name with a .. segment is refused before its bytes are read, whatever they hold.
+    escape_buffer = io.BytesIO()
+    with tarfile.open(fileobj=escape_buffer, mode="w") as archive:
         entry = tarfile.TarInfo("../attachment.pdf")
         entry.size = len(active_pdf)
         archive.addfile(entry, io.BytesIO(active_pdf))
@@ -377,6 +383,7 @@ def main() -> None:
                 b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
                 b"trailer\n<< /Size 3 /Root 1 0 R /Encrypt 2 0 R >>\n%%EOF\n"
             ),
+            "escape_tar.tar": escape_buffer.getvalue(),
             "macro_zip.zip": zipped("macro.docm", docm_with_autoopen()),
             "depth.zip": nested_zip(4),
             "encrypted.zip": bytes(encrypted),
@@ -419,6 +426,7 @@ def main() -> None:
         "unsupported.7z",
         "too_many.zip",
         "encrypted.pdf",
+        "escape_tar.tar",
     ):
         expected[name] = "incomplete"
     delivery = delivery_cases()
