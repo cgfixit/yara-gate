@@ -1,6 +1,7 @@
 import hashlib
 import io
 import stat
+import tarfile
 import time
 import zipfile
 import zlib
@@ -227,6 +228,52 @@ def test_zip_of_eicar_blocks(tmp_path: Path, rules_copy: Path) -> None:
     result = _scan(tmp_path, rules_copy, "bundle.zip", buf.getvalue())
     assert result.verdict is Verdict.block
     assert any(item.rule_id == "agent_eicar" for item in result.findings)
+
+
+def _zip_entry(name: str, data: bytes = b"inert\n", mode: int = 0) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        info = zipfile.ZipInfo(name)
+        info.create_system = 3
+        info.external_attr = mode << 16
+        archive.writestr(info, data)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("name", ["../escape.txt", "/abs/path.txt", "C:\\x.txt", "a\\..\\x.txt"])
+def test_zip_member_that_escapes_is_incomplete(tmp_path: Path, rules_copy: Path, name: str) -> None:
+    result = _scan(tmp_path, rules_copy, "bundle.zip", _zip_entry(name))
+    assert result.verdict is Verdict.incomplete
+    assert result.incomplete_reason == "archive member escapes the archive"
+
+
+def test_zip_member_with_a_nul_byte_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
+    # ZipInfo truncates a name at NUL when writing, so patch the stored bytes.
+    raw = _zip_entry("ok.txtQ.exe").replace(b"ok.txtQ.exe", b"ok.txt\x00.exe")
+    result = _scan(tmp_path, rules_copy, "bundle.zip", raw)
+    assert result.incomplete_reason == "archive member escapes the archive"
+
+
+def test_zip_symlink_entry_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
+    raw = _zip_entry("link", b"/etc/passwd", stat.S_IFLNK | 0o777)
+    result = _scan(tmp_path, rules_copy, "bundle.zip", raw)
+    assert result.incomplete_reason == "archive contains unsupported member"
+
+
+@pytest.mark.parametrize("name", ["./a/b.txt", "notes..txt", "dir/x.txt"])
+def test_ordinary_zip_member_names_stay_clean(tmp_path: Path, rules_copy: Path, name: str) -> None:
+    result = _scan(tmp_path, rules_copy, "bundle.zip", _zip_entry(name, mode=stat.S_IFREG | 0o644))
+    assert result.verdict is Verdict.clean
+
+
+def test_tar_member_that_escapes_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as archive:
+        info = tarfile.TarInfo("../x.txt")
+        info.size = 6
+        archive.addfile(info, io.BytesIO(b"inert\n"))
+    result = _scan(tmp_path, rules_copy, "bundle.tar", buf.getvalue())
+    assert result.incomplete_reason == "archive member escapes the archive"
 
 
 def test_archive_depth() -> None:
