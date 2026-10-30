@@ -1,5 +1,9 @@
 """Bounded in-memory content views. Member names are never extracted to disk."""
 
+import email
+import email.errors
+import email.message
+import email.policy
 import gzip
 import html
 import io
@@ -116,6 +120,18 @@ _OOXML_TOKEN = re.compile(
 _PDF_STREAM = re.compile(rb"stream\r?\n")
 _PDF_END = re.compile(rb"\r?\n?endstream")
 
+# A mail message with a MIME body: header lines, a Content-Type, one more message header, and
+# either a multipart body or an encoded single part. A reader's mail client shows the decoded
+# parts, so they are scanned as members; the raw message is scanned as well.
+_MIME_FIRST_LINE = re.compile(rb"\A(?:[A-Za-z][A-Za-z0-9-]*:[ \t]|From )")
+_MIME_HEADER_NAME = re.compile(rb"(?m)^([A-Za-z][A-Za-z0-9-]*):")
+_MIME_BLANK = re.compile(rb"\r?\n\r?\n")
+_MIME_ENCODED = re.compile(rb"content-transfer-encoding:[ \t]*(base64|quoted-printable)")
+_MIME_MESSAGE_HEADERS = frozenset(
+    {b"mime-version", b"from", b"subject", b"message-id", b"received"}
+)
+_MIME_PART_SUFFIX = {"text/plain": ".txt", "text/html": ".html", "text/csv": ".csv"}
+
 
 class ContentLimit(Exception):
     """Inspection did not cover all required content."""
@@ -168,7 +184,21 @@ def archive_kind(data: bytes) -> str | None:
         return "gzip"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
+    if _mime_message(data):
+        return "mime"
     return None
+
+
+def _mime_message(data: bytes) -> bool:
+    head = data[:8192]
+    if not _MIME_FIRST_LINE.match(head):
+        return False
+    blank = _MIME_BLANK.search(head)
+    headers = (head[: blank.start()] if blank else head).lower()
+    names = {match.group(1) for match in _MIME_HEADER_NAME.finditer(headers)}
+    if b"content-type" not in names or not names & _MIME_MESSAGE_HEADERS:
+        return False
+    return b"multipart/" in headers or _MIME_ENCODED.search(headers) is not None
 
 
 def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator[ContentUnit]:
@@ -185,7 +215,15 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
         for index, name, data in _members(unit, kind, budget):
             member = ContentUnit(name, data, (*unit.member_path, f"{kind}:{index}"))
             yield from content_units(member, budget, depth + 1)
-    except (OSError, EOFError, RuntimeError, ValueError, zipfile.BadZipFile, tarfile.TarError):
+    except (
+        OSError,
+        EOFError,
+        RuntimeError,
+        ValueError,
+        zipfile.BadZipFile,
+        tarfile.TarError,
+        email.errors.MessageError,
+    ):
         raise ContentLimit("archive unreadable or encrypted") from None
     yield unit
 
@@ -205,6 +243,8 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                     raise ContentLimit("archive unreadable or encrypted")
                 with archive.open(info) as stream:
                     yield index, info.filename, budget.read(stream)
+    elif kind == "mime":
+        yield from _mime_members(unit, budget)
     elif kind == "tar":
         # Stream mode avoids collecting all member metadata before enforcing the count cap.
         with tarfile.open(fileobj=io.BytesIO(unit.data), mode="r|") as archive:
@@ -228,6 +268,52 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
             name += ".tar"
         with gzip.GzipFile(fileobj=io.BytesIO(unit.data)) as compressed:
             yield 0, name, budget.read(compressed)
+
+
+def _mime_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
+    """Decode each leaf part of a mail message: bodies, attachments, and nested messages' leaves.
+
+    The ordinal is the part's position in the message walk, so a report never carries a part
+    name. The member name is the attachment's final path component, or a suffix from the part
+    type, so the name checks and the ``yara_gate_ext`` global see what a reader would save.
+    """
+    budget.check()
+    message = email.message_from_bytes(unit.data, policy=email.policy.compat32)
+    for index, part in enumerate(message.walk()):
+        if part.is_multipart():
+            continue
+        budget.member()
+        payload = part.get_payload(decode=True)
+        if not isinstance(payload, bytes) or not payload:
+            continue
+        if len(payload) > MAX_FILE_BYTES:
+            raise ContentLimit("archive member exceeds 100MB")
+        budget.expanded += len(payload)
+        if budget.expanded > MAX_EXTRACT_BYTES:
+            raise ContentLimit("extracted size exceeds 500MB")
+        yield index, _mime_part_name(part, index), _mime_part_text(part, payload)
+
+
+def _mime_part_name(part: email.message.Message, index: int) -> str:
+    filename = part.get_filename()
+    if filename:
+        name = Path(filename.replace("\\", "/")).name
+        if name:
+            return name
+    return f"part-{index}{_MIME_PART_SUFFIX.get(part.get_content_type(), '')}"
+
+
+def _mime_part_text(part: email.message.Message, payload: bytes) -> bytes:
+    """Transcode a text part declared in a legacy charset to UTF-8 so the lexical rules read it."""
+    if part.get_content_maintype() != "text":
+        return payload
+    charset = (part.get_content_charset() or "").lower()
+    if charset in ("", "utf-8", "utf8", "us-ascii", "ascii", "utf-16", "utf-16le", "utf-16be"):
+        return payload
+    try:
+        return payload.decode(charset).encode("utf-8")
+    except (LookupError, UnicodeError):
+        return payload
 
 
 _JSON_START = re.compile(r"[\[{]\s*(?:[\"{\[\]}\d-]|(?:true|false|null)\b)")

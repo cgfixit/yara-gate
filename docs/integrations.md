@@ -233,6 +233,21 @@ fullwidth letters, a Cyrillic or Greek look-alike inside a Latin word, leet digi
 spaced-out letters, or a control character would otherwise keep a phrase from the
 rules. PDFs are covered below.
 
+A mail message with a MIME body (an `.eml` file, or the raw bytes a mail hook or
+IMAP client holds) is opened as a container, like a zip: each decoded leaf part, a
+quoted-printable or base64 body, an attachment, the leaves of a forwarded message,
+is scanned as a member `mime:N`, where `N` is the part's position in the message and
+never its name. The attachment's own file name drives the name and type checks, so
+an `Invoice.pdf.exe` attachment blocks and a `report.pdf` that is really a program
+is a `filetype_mismatch_pe`, and a soft line break or base64 wrapping cannot split a
+phrase from the lexical rules. A text part declared in a legacy charset
+(`iso-8859-1`, `windows-1252`) is transcoded to UTF-8 for its member view. The raw
+message is scanned as well. Plain text with mail-like headers but no encoded or
+multipart body, an HTTP response, and prose that mentions `Content-Type:` are not
+containers. A message that carries an executable attachment blocks as
+`heuristic_document_executable`, as a `.docx` carrying an `.exe` does, and the
+shared size, count, depth, and deadline limits apply to the decoded parts.
+
 A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
 consumer's own approval checks on any tool or send action it proposes.
