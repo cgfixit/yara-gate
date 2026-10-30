@@ -230,7 +230,14 @@ def test_zip_of_eicar_blocks(tmp_path: Path, rules_copy: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "trailer", [b"/Encrypt 5 0 R", b"/Encrypt << /Filter /Standard >>", b"/Encr#79pt 5 0 R"]
+    "trailer",
+    [
+        b"/Encrypt 5 0 R",
+        b"/Encrypt << /Filter /Standard >>",
+        b"/Encr#79pt 5 0 R",
+        b"/Encrypt % a comment separates tokens\n5 0 R",
+        b"/Encrypt 5 % here too\n0 R",
+    ],
 )
 def test_encrypted_pdf_is_incomplete(tmp_path: Path, rules_copy: Path, trailer: bytes) -> None:
     data = (
@@ -251,6 +258,15 @@ def test_encrypt_named_in_prose_or_metadata_flag_stays_clean(
         b"endstream\nendobj\n%%EOF\n"
     )
     assert _scan(tmp_path, rules_copy, "plain.pdf", data).verdict is Verdict.clean
+
+
+def test_encrypt_in_a_comment_or_page_text_stays_clean(tmp_path: Path, rules_copy: Path) -> None:
+    data = (
+        b"%PDF-1.4\n% Example: /Encrypt 5 0 R\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+        b"4 0 obj\n<< /Length 25 >>\nstream\nBT (/Encrypt 5 0 R) Tj ET\nendstream\nendobj\n"
+        b"trailer\n<< /Root 1 0 R /Info (see /Encrypt 5 0 R) >>\n%%EOF\n"
+    )
+    assert _scan(tmp_path, rules_copy, "doc.pdf", data).verdict is Verdict.clean
 
 
 def test_encrypted_office_package_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
