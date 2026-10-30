@@ -113,13 +113,14 @@ _DECOY = r"pdf|png|jpe?g|gif|bmp|webp|heic|docx?|xlsx?|pptx?|odt|ods|csv|rtf|mp[
 # A decoy suffix, optional padding, then a suffix that runs or opens something on its own.
 # Plain text and HTML decoys pair only with binaries: names such as page.html.js are real code.
 # Launchers: Windows script hosts and shortcuts, disk images that mount, app packages and
-# ClickOnce manifests that install, registry and setup files, and macOS scripts and packages.
+# ClickOnce or App Installer manifests that install, registry and setup files, Remote Desktop
+# and theme files that reach a host when opened, and macOS scripts and packages.
 _DOUBLE_EXT = re.compile(
     rf"(?i).*\.(?:(?:{_DECOY}|txt|html?)[\s._-]*\.(?:exe|dll|scr|app|com|pif|cpl|msi|xll)"
     rf"|(?:{_DECOY})[\s._-]*\.(?:lnk|url|scf|hta|js|jse|vbs|vbe|wsf|wsh|bat|cmd|ps1|msc|jar"
     r"|iso|img|vhdx?|msix(bundle)?|appx(bundle)?|application|appref-ms|reg|inf|chm|diagcab"
     r"|msp|mst|pkg|dmg|scpt|terminal|workflow|webloc"
-    r"|desktop|command|library-ms|searchconnector-ms))$"
+    r"|desktop|command|library-ms|searchconnector-ms|rdp|theme|appinstaller))$"
 )
 # Directional and invisible controls that can reorder or hide part of a displayed name.
 # ZWNJ and ZWJ are left out: Persian and Indic names use them.

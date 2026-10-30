@@ -66,3 +66,20 @@ rule win_reg_run_interpreter {
     condition:
         ($header5 or $header4) and ($run or $ifeo)
 }
+
+rule win_script_encoded_body {
+    meta:
+        author = "yara-gate"
+        description = "Windows Script Encoder body: the #@~^ opening marker with its length field and the ==^#~@ closing marker"
+        intent = "Advisory on a .vbe or .jse body, or an encoded script block in a page, that the script engines decode at run time so a reader cannot see it"
+        severity = "advisory"
+        verdict_on_match = "advisory"
+        reference = "https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/scripting-articles/d14c8zsc(v=vs.84)"
+        technique = "T1027.010"
+    strings:
+        // screnc writes the marker, a six-character base64 length, then ==; the body ends with ==^#~@.
+        $open = /#@~\^[A-Za-z0-9+\/]{6}==/ ascii wide
+        $close = "==^#~@" ascii wide
+    condition:
+        $open and $close
+}
