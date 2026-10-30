@@ -34,7 +34,12 @@ from yara_gate.filetype import (
     sniff,
     utf16_encoding,
 )
-from yara_gate.heuristics import heuristic_findings, joiner_findings, pdf_token_findings
+from yara_gate.heuristics import (
+    base64_run_signals,
+    heuristic_findings,
+    joiner_findings,
+    pdf_token_findings,
+)
 from yara_gate.models import (
     Finding,
     FindingSource,
@@ -264,6 +269,11 @@ def _scan_file(
             for view, derived in text_views(unit.data, budget):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
+                if view == "text-folded":
+                    # Folding rewrites digits inside base64 (0 to o), which breaks the media
+                    # exemptions; the raw bytes already carry the base64 verdict, and folding
+                    # cannot create a real encoded payload that the raw view missed.
+                    view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
@@ -295,6 +305,9 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+_RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:
@@ -383,10 +396,16 @@ def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
-    try:
-        scanner.set_global("yara_gate_ext", ext)
-    except (TypeError, ValueError):
-        pass
+    blob, exe = base64_run_signals(data)
+    for name, value in (
+        ("yara_gate_ext", ext),
+        ("yara_gate_b64_blob", blob),
+        ("yara_gate_b64_exe", exe),
+    ):
+        try:
+            scanner.set_global(name, value)
+        except (TypeError, ValueError):
+            pass
     try:
         return scanner.scan(data)
     except yara_x.TimeoutError as exc:

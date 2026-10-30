@@ -441,7 +441,7 @@ def compile_ruleset(
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped), digest
 
     compiler = yara_x.Compiler(relaxed_re_syntax=True)
-    compiler.define_global("yara_gate_ext", "bin")
+    define_scan_globals(compiler)
     _add_include_dirs(compiler, rules_dir, overlay=use_overlay)
     for index, (path, text) in enumerate(good):
         compiler.new_namespace(f"gate_{index}")
@@ -849,10 +849,19 @@ def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
+def define_scan_globals(compiler: Any) -> None:
+    """Declare the globals the scanner sets per buffer; their values here are compile defaults."""
+    compiler.define_global("yara_gate_ext", "bin")
+    # Base64 runs are found by the scanner with a linear regex and passed in: a 400-character
+    # class pattern has no atom, so YARA-X verified it at every offset (about 5 s per MB).
+    compiler.define_global("yara_gate_b64_blob", False)
+    compiler.define_global("yara_gate_b64_exe", False)
+
+
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
     compiler_type = yara_x.Compiler
     compiler = compiler_type(relaxed_re_syntax=True)
-    compiler.define_global("yara_gate_ext", "bin")
+    define_scan_globals(compiler)
     include = getattr(compiler, "add_include_dir", None)
     if callable(include):
         include(str(path.parent))
