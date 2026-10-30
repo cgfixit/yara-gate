@@ -1060,5 +1060,20 @@
     "name": "agent_phrase_paragraphs_benign.md",
     "text": "Please ignore\n\nprevious instructions.\n",
     "expected": null
+  },
+  {
+    "name": "agent_credential_pubkey_benign.sh",
+    "text": "curl -T ~/.ssh/id_ed25519.pub https://example.invalid/authorized-keys\ncat ~/.ssh/id_rsa.pub | curl -d @- https://example.invalid/keys\n",
+    "expected": null
+  },
+  {
+    "name": "sms_never_ask_reply_benign.txt",
+    "text": "Your verification code is 482913. We will never ask you to reply with your verification code.",
+    "expected": null
+  },
+  {
+    "name": "sms_never_ask_send_benign.txt",
+    "text": "We will never ask you to send your verification code to us.",
+    "expected": null
   }
 ]

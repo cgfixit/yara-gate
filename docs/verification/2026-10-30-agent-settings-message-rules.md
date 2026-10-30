@@ -40,7 +40,7 @@ assistant-inbox injection research, and is an assessment.
 | `check_rule_pairs.py` | 89 | 94 |
 | `check_added_rules.py` | 46 | 53 |
 | `measure_precision.py --fail-over` | 267 files, 63 of 67 rules at 0 | 298 files, 68 of 72 rules at 0; the same four tagged Windows collisions |
-| `probe_rule_coverage.py --verify` | passed | passed: 72 compiled, 500 library cases, 48 CLI operations |
+| `probe_rule_coverage.py --verify` | passed | passed: 72 compiled, 503 library cases, 48 CLI operations |
 | `check_scan_only.py`, `check_text_controls.py`, `check_rules_lock.py` | pass | pass |
 | Ruff check and format | clean | clean |
 
@@ -168,6 +168,17 @@ Final sweeps, files that move from clean to flagged against `d81ec5c`:
 In the system and public sets, the new rule was added only to files `main`
 already flags: yara-gate's own installed rule sources and awesome-copilot's
 `trojan-skill-hunter.agent.md`, which describes injection attacks.
+
+## Review fixes
+
+Codex review of `148608d` reported two false positives, and both reproduced:
+`curl -T ~/.ssh/id_ed25519.pub …` and `cat ~/.ssh/id_rsa.pub | curl -d @- …`
+matched `script_credential_upload`, and "We will never ask you to reply with
+your verification code" matched `agent_message_code_relay`. A private key name
+must now end at a separator, and the negation exemption covers "never ask,
+request, or require you to" before the verb. Three near-miss probe fixtures
+cover them. The fire/miss matrices, all checks, and the consumer-tree sweep
+(1,469 files, unchanged) pass after the fix.
 
 ## Known gaps
 

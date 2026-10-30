@@ -20,8 +20,8 @@ rule agent_message_code_relay {
         // The account-takeover story: "I sent you a 6-digit code by mistake, please send it back".
         $mistake = /\b(sent|texted)[ \t]+(you[ \t]+(a|my|the|an|this)[ \t]+((([0-9]{1,2}|six|four)[- ]digit|verification|login|whatsapp|sms|activation)[ \t]+)?code|(a|my|the|an|this)[ \t]+((([0-9]{1,2}|six|four)[- ]digit|verification|login|whatsapp|sms|activation)[ \t]+)?code[ \t]+(to|on)[ \t]+(you|your[ \t]+(phone|number|mobile)))[ \t,]*by[ \t]+(mistake|accident)\b/ nocase ascii wide
         // A refusal ("never share your code with anyone", "do not forward this code to anyone") is
-        // the notice, not the request.
-        $negated = /\b(do not|don't|dont|never|not to|won't|will never|should not|shouldn't|cannot|can't)[ \t]+(ever[ \t]+)?(forward|send|text|share|give|tell|read|reply|respond)\b/ nocase ascii wide
+        // the notice, not the request, and so is "we will never ask you to send your code".
+        $negated = /\b(do not|don't|dont|never|not to|won't|will never|should not|shouldn't|cannot|can't)[ \t]+(ever[ \t]+)?((ask|request|require|tell)[ \t]+(you[ \t]+)?to[ \t]+)?(forward|send|text|share|give|tell|read|reply|respond)\b/ nocase ascii wide
     condition:
         $mistake or
         for any of ($relay, $received_me, $received_to, $reply, $link) : (
