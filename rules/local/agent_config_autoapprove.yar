@@ -18,13 +18,13 @@ rule agent_config_approval_bypass {
         $claude_mcp = /"enableAllProjectMcpServers"[ \t\r\n]*:[ \t\r\n]*true\b/ ascii wide
         $base_url = /"ANTHROPIC_BASE_URL"[ \t\r\n]*:[ \t\r\n]*"https?:\/\// ascii wide
         // Either key alone is a common CI setting; together they run every command unasked with full
-        // disk and network access.
+        // disk and network access. Only a .toml counts: Codex's own Rust tests embed the same pair.
         $codex_approval = /\bapproval_policy[ \t]*=[ \t]*["']never["']/ ascii wide
         $codex_sandbox = /\bsandbox_mode[ \t]*=[ \t]*["']danger-full-access["']/ ascii wide
     condition:
         $vscode or $copilot_claude or $claude_mode or
         ($claude_mcp and $base_url) or
-        ($codex_approval and $codex_sandbox)
+        ($codex_approval and $codex_sandbox and yara_gate_ext == "toml")
 }
 
 rule agent_cli_secret_sweep {

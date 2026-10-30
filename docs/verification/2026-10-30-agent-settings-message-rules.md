@@ -40,7 +40,7 @@ assistant-inbox injection research, and is an assessment.
 | `check_rule_pairs.py` | 89 | 93 |
 | `check_added_rules.py` | 46 | 51 |
 | `measure_precision.py --fail-over` | 267 files, 63 of 67 rules at 0 | 293 files, 67 of 71 rules at 0; the same four tagged Windows collisions |
-| `probe_rule_coverage.py --verify` | passed | passed: 71 compiled, 489 library cases, 46 CLI operations |
+| `probe_rule_coverage.py --verify` | passed | passed: 71 compiled, 490 library cases, 46 CLI operations |
 | `check_scan_only.py`, `check_text_controls.py`, `check_rules_lock.py` | pass | pass |
 | Ruff check and format | clean | clean |
 
@@ -82,6 +82,32 @@ set includes the installed Claude Code package, which contains the strings
 `--dangerously-skip-permissions`, and `ANTHROPIC_BASE_URL`; none of the new
 rules matched it. This is a system and package corpus, not a production
 false-positive rate, and it holds few agent settings files or SMS bodies.
+
+## Public repository sweep
+
+25,668 files up to 1 MB from shallow clones of nine public repositories were
+scanned with the `d81ec5c` rules and with this branch's rules. The clones were
+taken on 2026-10-30 and treated as untrusted data; nothing in them was run.
+
+| Repository | Commit | What it covers |
+| --- | --- | --- |
+| dotnet/msbuild | `86743d0` | MSBuild targets and inline-task tests |
+| dotnet/arcade | `c4681eb` | `eng/` build targets |
+| microsoft/Windows-driver-samples | `f4c1ff8` | driver INFs |
+| rtrouton/rtrouton_scripts | `aa27142` | Mac admin scripts |
+| joshua-d-miller/macOSLAPS | `5dd5e59` | `dscl` password handling |
+| anthropics/claude-code | `d4dfed4` | Claude Code settings, hooks, and examples |
+| github/awesome-copilot | `5269f7e` | Copilot and VS Code customizations |
+| openai/codex | `275a9a8` | Codex config and tests |
+| pypa/setuptools | `049ae8e` | `.pth` sources |
+
+On the first run, `agent_config_approval_bypass` matched 8 files in openai/codex,
+all Rust tests that embed a config string with `approval_policy = "never"` and
+`sandbox_mode = "danger-full-access"`. That pair now counts only in a `.toml`
+file, which is where Codex reads it, and a probe fixture covers the Rust-test
+shape. After the fix the branch matches the baseline on all 25,668 files: no
+file gained or lost a finding. The Claude Code and awesome-copilot clones hold
+committed settings, hooks, and MCP examples; none matched.
 
 Not run: the CyClaw and CG-agent-harness consumer corpus in
 [`agent-ingest-corpus.jsonl`](agent-ingest-corpus.jsonl). Those repositories
