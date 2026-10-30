@@ -381,6 +381,37 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'<a href="search-ms:query=a&crumb=location:%5C%5C192.0.2.10%5Cs">x</a>\n',
             b'<a href="search-ms:query=notes&crumb=location:C%3A%5CUsers">x</a>\n',
         ),
+        (
+            "win_rdp_resource_redirect",
+            b"full address:s:example.invalid\r\ndrivestoredirect:s:*\r\n",
+            # What mstsc saves by default: no drive value, no RemoteApp.
+            b"screen mode id:i:2\r\nfull address:s:rds.example\r\ndrivestoredirect:s:\r\n"
+            b"redirectclipboard:i:1\r\nremoteapplicationmode:i:0\r\n",
+        ),
+        (
+            "win_rdp_resource_redirect",
+            "full address:s:example.invalid\r\nremoteapplicationmode:i:1\r\n".encode("utf-16"),
+            b"drivestoredirect:s:*\r\nremoteapplicationmode:i:1\r\n",
+        ),
+        (
+            "win_theme_remote_resource",
+            b"[Theme]\r\nDisplayName=Dark\r\n[Control Panel\\Desktop]\r\n"
+            b"Wallpaper=\\\\192.0.2.10\\share\\w.jpg\r\n",
+            b"[Theme]\r\nDisplayName=Mine\r\n[Control Panel\\Desktop]\r\n"
+            b"Wallpaper=%SystemRoot%\\web\\wallpaper\\a.jpg\r\n[VisualStyles]\r\n"
+            b"Path=%ResourceDir%\\Themes\\Aero\\Aero.msstyles\r\n",
+        ),
+        (
+            "win_theme_remote_resource",
+            b"[Theme]\r\nDisplayName=S\r\n[VisualStyles]\r\nPath=\\\\192.0.2.10\\s\\x.msstyles\r\n",
+            # The same key in an INI that is not a theme.
+            b"[Paths]\r\nWallpaper=\\\\192.0.2.10\\share\\w.jpg\r\n",
+        ),
+        (
+            "win_script_encoded_body",
+            b"#@~^UwAAAA==inert==^#~@",
+            b"Encoded scripts start with #@~^ and end with ^#~@.\n",
+        ),
         ("web_clickfix_lure", _clickfix(), b"Verify you are human. Complete the form.\n"),
         ("web_html_smuggling", _smuggle(), _smuggle().replace(b"example.zip", b"example.png")),
         ("container_disk_image", iso(), b"0123456789"),
@@ -633,6 +664,7 @@ def main() -> None:
                 "heuristic_double_extension_launcher": ("invoice.pdf.lnk", "page.html.js"),
                 "heuristic_double_extension_image": ("photo.jpg.iso", "backup.iso"),
                 "heuristic_double_extension_package": ("statement.pdf.msix", "report.pdf.zip"),
+                "heuristic_double_extension_session": ("invoice.pdf.rdp", "server.rdp"),
             }
             launcher = rule_id in disguises
             if launcher:

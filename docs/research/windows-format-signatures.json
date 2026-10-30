@@ -148,6 +148,68 @@
     "expected": null
   },
   {
+    "name": "rdp_drive_redirect.rdp",
+    "text": "full address:s:example.invalid\r\ndrivestoredirect:s:*\r\nredirectclipboard:i:1\r\n",
+    "expected": "win_rdp_resource_redirect"
+  },
+  {
+    "name": "rdp_remoteapp_utf16.bin",
+    "text": "full address:s:example.invalid\r\nremoteapplicationmode:i:1\r\nremoteapplicationprogram:s:||inert\r\n",
+    "expected": "win_rdp_resource_redirect",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "rdp_mstsc_saved.rdp",
+    "text": "screen mode id:i:2\r\nfull address:s:rds.example\r\ndrivestoredirect:s:\r\nredirectclipboard:i:1\r\nredirectprinters:i:1\r\nremoteapplicationmode:i:0\r\n",
+    "expected": null
+  },
+  {
+    "name": "rdp_no_address.txt",
+    "text": "drivestoredirect:s:*\r\nremoteapplicationmode:i:1\r\n",
+    "expected": null
+  },
+  {
+    "name": "theme_unc_wallpaper.theme",
+    "text": "[Theme]\r\nDisplayName=Dark\r\n[Control Panel\\Desktop]\r\nWallpaper=\\\\192.0.2.10\\share\\w.jpg\r\nTileWallpaper=0\r\n",
+    "expected": "win_theme_remote_resource"
+  },
+  {
+    "name": "theme_unc_brand.theme",
+    "text": "[Theme]\r\nDisplayName=Corp\r\nBrandImage=\\\\192.0.2.10\\brand\\logo.png\r\n[Control Panel\\Desktop]\r\nWallpaper=%SystemRoot%\\web\\wallpaper\\a.jpg\r\n",
+    "expected": "win_theme_remote_resource"
+  },
+  {
+    "name": "theme_unc_style.theme",
+    "text": "[Theme]\r\nDisplayName=S\r\n[VisualStyles]\r\nPath=\\\\192.0.2.10\\s\\x.msstyles\r\nColorStyle=NormalColor\r\n",
+    "expected": "win_theme_remote_resource"
+  },
+  {
+    "name": "theme_local.theme",
+    "text": "[Theme]\r\nDisplayName=Mine\r\n[Control Panel\\Desktop]\r\nWallpaper=%SystemRoot%\\web\\wallpaper\\a.jpg\r\n[VisualStyles]\r\nPath=%ResourceDir%\\Themes\\Aero\\Aero.msstyles\r\n[MasterThemeSelector]\r\nMTSM=DABJDKT\r\n",
+    "expected": null
+  },
+  {
+    "name": "ini_unc_not_theme.ini",
+    "text": "[Paths]\r\nWallpaper=\\\\192.0.2.10\\share\\w.jpg\r\n",
+    "expected": null
+  },
+  {
+    "name": "vbe_encoded.vbe",
+    "text": "#@~^UwAAAA==inert==^#~@",
+    "expected": "win_script_encoded_body"
+  },
+  {
+    "name": "jse_encoded.zip",
+    "text": "#@~^EwAAAA==inert==^#~@",
+    "container": "zip",
+    "expected": "win_script_encoded_body"
+  },
+  {
+    "name": "encoder_writeup.md",
+    "text": "Encoded scripts start with the marker #@~^ and end with ^#~@; the length sits between.\n",
+    "expected": null
+  },
+  {
     "name": "certutil_download.cmd",
     "text": "certutil -urlcache -split -f https://example.invalid/inert.txt inert.txt\n",
     "expected": "win_lolbin_download"
