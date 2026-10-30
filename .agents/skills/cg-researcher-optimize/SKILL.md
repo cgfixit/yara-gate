@@ -151,7 +151,7 @@ behavior and run only those by node id, after confirming that they fail on the o
 source.
 
 Each rule PR needs a fire and near-miss pair in `check_rule_pairs.py` (CI fails
-without one), README rows, and updated counts. Open draft PRs, follow their CI to a
+without one), `docs/rules.md` rows, and updated counts there and in the README. Open draft PRs, follow their CI to a
 result, and keep them unmerged unless the owner says otherwise. Never amend or
 force-push a branch that is already published; push a follow-up commit.
 
