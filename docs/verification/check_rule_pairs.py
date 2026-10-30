@@ -616,6 +616,11 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"Add-MpPreference -ExclusionPath C:\\src\\inert-repo\r\n",
         ),
         (
+            "win_defender_tamper",
+            b"sc.exe config WinDefend start= disabled\r\n",
+            b"sc.exe config WinDefend start= auto\r\n",
+        ),
+        (
             "win_amsi_bypass",
             b"[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils')"
             b".GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\r\n",

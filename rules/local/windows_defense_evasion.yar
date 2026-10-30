@@ -16,7 +16,8 @@ rule win_defender_tamper {
         // A policy value that switches Defender off: reg add, Set-ItemProperty, or a .reg line.
         $regcmd = /\b(reg(\.exe)?[ \t]+add|Set-ItemProperty|New-ItemProperty)\b[^\r\n]{0,240}\bDisable(AntiSpyware|AntiVirus|RealtimeMonitoring|BehaviorMonitoring|OnAccessProtection|ScanOnRealtimeEnable)\b[^\r\n]{0,80}([\/-]d[ \t]+["']?0*1\b|-Value[ \t]+["']?0*1\b)/ nocase ascii wide
         $regfile = /(^|[\r\n])[ \t]*"Disable(AntiSpyware|AntiVirus|RealtimeMonitoring|BehaviorMonitoring|OnAccessProtection)"[ \t]*=[ \t]*dword:0{0,7}1\b/ nocase ascii wide
-        $service = /\b(sc(\.exe)?[ \t]+(stop|delete|config)[ \t]+WinDefend\b|Stop-Service\b[^\r\n;|]{0,40}\bWinDefend\b)/ nocase ascii wide
+        // config counts only when it disables the service; "start= auto" repairs protection.
+        $service = /\b(sc(\.exe)?[ \t]+(stop|delete)[ \t]+WinDefend\b|sc(\.exe)?[ \t]+config[ \t]+WinDefend\b[^\r\n;|&]{0,80}\bstart=[ \t]*disabled\b|Stop-Service\b[^\r\n;|]{0,40}\bWinDefend\b)/ nocase ascii wide
     condition:
         any of them
 }
