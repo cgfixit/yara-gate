@@ -81,6 +81,13 @@ class ScanResult(_Dumpable):
     compiled_rules: int = 0
     tool_version: str | None = None
     scan_seconds: float | None = None
+    # What was covered, counted up to the point the scan finished or stopped: content units
+    # (the file plus archive and mail members), derived views by name, bytes handed to YARA, and
+    # YARA time. Counts only; no names, offsets, or content.
+    units_scanned: int = 0
+    views_scanned: dict[str, int] = field(default_factory=dict)
+    bytes_scanned: int = 0
+    yara_seconds: float | None = None
 
     def __post_init__(self) -> None:
         self.verdict = Verdict(self.verdict)

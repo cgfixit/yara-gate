@@ -8,6 +8,7 @@ import gzip
 import html
 import io
 import re
+import stat
 import tarfile
 import time
 import unicodedata
@@ -25,6 +26,10 @@ MAX_EXTRACT_BYTES = 500 * 1024 * 1024
 MAX_ARCHIVE_DEPTH = 3
 MAX_MEMBERS = 1000
 MAX_PDF_STREAMS = 2000
+# A zip entry's Unix file type: none recorded, a regular file, or a directory. Anything else (a
+# symlink, device, or FIFO) is what tar already refuses as an unsupported member.
+_ZIP_PLAIN_MODES = frozenset((0, stat.S_IFREG, stat.S_IFDIR))
+_DRIVE = re.compile(r"[A-Za-z]:")
 
 # JSON string escapes. A surrogate pair is decoded as one character; a lone surrogate stays escaped.
 _JSON_ESCAPE = re.compile(
@@ -238,6 +243,10 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                 raise ContentLimit("archive members exceed 1000")
             for index, info in enumerate(archive.infolist()):
                 budget.member()
+                # orig_filename keeps the NUL and backslashes that ZipInfo.filename rewrites.
+                _check_member_name(info.orig_filename)
+                if stat.S_IFMT(info.external_attr >> 16) not in _ZIP_PLAIN_MODES:
+                    raise ContentLimit("archive contains unsupported member")
                 if info.is_dir():
                     continue
                 if info.file_size > MAX_FILE_BYTES:
@@ -253,6 +262,7 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
         with tarfile.open(fileobj=io.BytesIO(unit.data), mode="r|") as archive:
             for index, entry in enumerate(archive):
                 budget.member()
+                _check_member_name(entry.name)
                 if entry.isdir():
                     continue
                 if not entry.isfile():
@@ -273,12 +283,30 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
             yield 0, name, budget.read(compressed)
 
 
+def _check_member_name(name: str) -> None:
+    """Refuse a member name that another unpacker would write outside its target directory.
+
+    Nothing here extracts to disk, but a clean verdict would tell a consumer that unpacks the
+    archive later that it is safe. ``./a`` and ``notes..txt`` stay in the tree. The reason never
+    carries the name, because reports identify members by ordinal only.
+    """
+    path = name.replace("\\", "/")
+    if (
+        "\x00" in path
+        or path.startswith("/")
+        or _DRIVE.match(path) is not None
+        or ".." in path.split("/")
+    ):
+        raise ContentLimit("archive member escapes the archive")
+
+
 def _mime_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
     """Decode each leaf part of a mail message: bodies, attachments, and nested messages' leaves.
 
     The ordinal is the part's position in the message walk, so a report never carries a part
     name. The member name is the attachment's final path component, or a suffix from the part
-    type, so the name checks and the ``yara_gate_ext`` global see what a reader would save.
+    type, so the name checks and the ``yara_gate_ext`` global see what a reader would save. Mail
+    has no directory tree, so a filename such as ``../x`` is reduced to ``x`` rather than refused.
     """
     budget.check()
     message = email.message_from_bytes(unit.data, policy=email.policy.compat32)

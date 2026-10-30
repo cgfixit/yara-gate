@@ -107,12 +107,15 @@ A sync client's folder is never the gate's inbox. Inbox intake copies its input
 into `quarantine/<sha256>/` and then removes the inbox entry; a sync client would
 treat that as a deletion and propagate it to every other device and shared-folder
 member. A directory scan of an inbox also consumes client metadata (`.dropbox`,
-`.DS_Store`, `desktop.ini`); only `watch` skips dotfiles. Two more facts decide the
-design: inbox intake needs `O_NOFOLLOW` and a link count, which Python provides on
-Unix only, so on Windows there is no quarantine, no clean slot, and no settle
-logic, only in-place scans; and the inbox settle logic takes a file whose last
-write is a second old, so a writer that pauses longer than that is scanned
-truncated and the rest of its write is lost with the removed inbox entry.
+`.DS_Store`, `desktop.ini`); only `watch` skips dotfiles. The inbox settle logic
+also takes a file whose last write is a second old, so a writer that pauses longer
+than that is scanned truncated and the rest of its write is lost with the removed
+inbox entry. On Windows, intake has no `O_NOFOLLOW`: it refuses a symlink,
+junction, hardlink, or cloud-file placeholder from its `lstat` before opening, then
+requires the opened file to match that `lstat` (#102, exercised by
+`docs/verification/check_intake.py` on the `windows-2025` CI job). `watch` still
+needs macOS or Linux, and a real Dropbox or OneDrive placeholder has not been
+tested on a Windows host.
 
 The consumer therefore copies, never moves, out of the sync folder into a
 directory the gate owns, and reads only what the gate allowed:
@@ -140,9 +143,10 @@ directory the gate owns, and reads only what the gate allowed:
    rescanned. The ledger and the records hold no file content.
 
 [docs/examples/sync_folder_gate.py](examples/sync_folder_gate.py) does exactly
-this with the standard library, on Windows, macOS, and Linux. On a POSIX host the
-staging directory may instead be the gate's own `inbox/`, which adds the
-quarantine and `clean/` slot semantics on top. A `conflicted copy` file (two
+this with the standard library, on Windows, macOS, and Linux. The staging
+directory may instead be the gate's own `inbox/`, which adds the quarantine and
+`clean/` slot semantics on top (on Windows through the `lstat`-then-identity
+intake above). A `conflicted copy` file (two
 devices edited one file offline) is scanned like any other and named in the log;
 whether to allow such files is the consumer's policy. A direct run on 2026-10-29
 against a fake sync folder holding a clean file, an injected file, a `.dropbox`
