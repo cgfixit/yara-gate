@@ -245,6 +245,11 @@ def _scan_file(
                 budget.check()
                 seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
                 view_findings = _yara_findings(rules, derived, ext, seconds)
+                if view == "text-folded":
+                    # Folding rewrites digits inside base64 (0 to o), which breaks the media
+                    # exemptions; the raw bytes already carry the base64 verdict, and folding
+                    # cannot create a real encoded payload that the raw view missed.
+                    view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
@@ -278,6 +283,9 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+_RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:
