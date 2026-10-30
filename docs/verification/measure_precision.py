@@ -311,6 +311,69 @@ def _windows_files() -> list[tuple[str, bytes, str]]:
     return files
 
 
+def _agent_files() -> list[tuple[str, bytes]]:
+    """Code notices, chat about source code, committed agent settings, and unattended CI runs."""
+    files: list[tuple[str, bytes]] = []
+    notices = (
+        "Your verification code is {n}. Do not share this code with anyone.",
+        "G-{n} is your Google verification code. Never share it.",
+        "WhatsApp code {n}. Don't share this code with others.",
+        "{n} is your sign-in code. We will never ask you to send it to us.",
+        "Use {n} to verify your phone. If you didn't request it, ignore this text.",
+    )
+    for index, notice in enumerate(notices * 2):
+        files.append((f"sms/code-{index:02d}.txt", notice.format(n=482913 + index).encode()))
+    chats = (
+        "Can you send me the code here? The function fails on line 12.",
+        "Please send the code to me for review before Friday.",
+        "Paste the code you got from the OAuth redirect into the terminal.",
+        "Please send the password reset link to my work email, I'm locked out.",
+    )
+    for index, chat in enumerate(chats):
+        files.append((f"sms/chat-{index:02d}.txt", chat.encode()))
+    settings = (
+        {"permissions": {"defaultMode": "acceptEdits", "allow": ["Bash(npm test)"]}},
+        {"enableAllProjectMcpServers": True},
+        {"env": {"ANTHROPIC_BASE_URL": "https://llm-gateway.corp.example"}},
+        {
+            "hooks": {
+                "PostToolUse": [
+                    {
+                        "matcher": "Edit|Write",
+                        "hooks": [{"type": "command", "command": "npx prettier --write ."}],
+                    }
+                ]
+            }
+        },
+        {"chat.tools.terminal.autoApprove": {"npm test": True}, "editor.formatOnSave": True},
+    )
+    for index, value in enumerate(settings):
+        files.append((f"agents/settings-{index:02d}.json", json.dumps(value, indent=2).encode()))
+    files.append(
+        ("agents/config.toml", b'approval_policy = "never"\nsandbox_mode = "workspace-write"\n')
+    )
+    for index in range(3):
+        files.append(
+            (
+                f"agents/review-{index:02d}.yml",
+                (
+                    b"      - run: claude -p --dangerously-skip-permissions 'Fix lint errors'\n"
+                    b"        env:\n"
+                    b"          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}\n"
+                    b"      - run: cp .env.example .env\n"
+                ),
+            )
+        )
+    for index in range(3):
+        files.append(
+            (
+                f"scripts/netrc-{index:02d}.sh",
+                f"curl --netrc-file ~/.netrc -o out-{index}.json https://example.invalid/api\n".encode(),
+            )
+        )
+    return files
+
+
 def build_corpus(root: Path) -> dict[str, str]:
     """Write benign files. Return name -> plant tag (empty when the file is ordinary)."""
     tags: dict[str, str] = {}
@@ -410,6 +473,8 @@ def build_corpus(root: Path) -> dict[str, str]:
         add(f"blobs/short-{index:02d}.txt", (b"A" * 40) + b"\n")
     for name, data, tag in _windows_files():
         add(name, data, tag)
+    for name, data in _agent_files():
+        add(name, data)
 
     for index in range(8):
         body = (PLANTED["phrase"] + f" ({index})\n").encode()

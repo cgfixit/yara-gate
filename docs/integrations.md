@@ -245,6 +245,13 @@ component is kept, and it becomes the report `path`, so leave phone numbers and
 other identifiers out of it. Input that is not bytes, `bytearray`, or
 `memoryview` returns incomplete with `scan failed`.
 
+Besides the injection rules, a message body can match `agent_message_code_relay`:
+a request to send or forward a one-time code or a received sign-in link to
+someone, the step that hands an account to whoever wrote the message. It is
+advisory, so `agent-ingest` holds the message. An ordinary code notice ("your
+code is 482913, do not share it") stays clean. See [docs/rules.md](rules.md) for
+its boundaries.
+
 From another process, pipe the content to `scan -`:
 
 ```sh
