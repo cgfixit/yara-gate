@@ -34,8 +34,8 @@ rule agent_base64_executable {
     strings:
         // MZ encodes as TV followed by o, p, q, or r; 7F 45 4C 46 as f0VMR; FE ED FA CE/CF as /u36z;
         // the little-endian CE/CF FA ED FE as zvrt/ or z/rt/. CA FE BA BE is left out because Java
-        // class files share it with fat Mach-O.
-        $exe = /(^|[^A-Za-z0-9+\/])(TV[opqr]|f0VMR|\/u36z|z[v\/]rt\/)[A-Za-z0-9+\/]{397}/
+        // class files share it with fat Mach-O. Each suffix length makes the whole run 400.
+        $exe = /(^|[^A-Za-z0-9+\/])(TV[opqr][A-Za-z0-9+\/]{397}|(f0VMR|\/u36z|z[v\/]rt\/)[A-Za-z0-9+\/]{395})/
     condition:
         $exe
 }
