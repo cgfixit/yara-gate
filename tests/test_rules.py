@@ -330,6 +330,26 @@ def test_selftest_unexpected_error_exits_2(monkeypatch: pytest.MonkeyPatch) -> N
     assert "Traceback" not in text
 
 
+def test_watch_names_the_running_watcher(tmp_path: Path, rules_copy: Path) -> None:
+    # A live pid in the lock file is the "already running" case; nothing is watched.
+    home = tmp_path / "gate"
+    home.mkdir()
+    (home / ".watch.pid").write_text(str(os.getpid()), encoding="utf-8")
+    result = CliRunner().invoke(app, ["watch", "--home", str(home), "--rules", str(rules_copy)])
+    text = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "incomplete: watch already running" in text
+    assert "RuntimeError" not in text
+
+
+def test_promote_names_the_missing_candidate(rules_copy: Path) -> None:
+    result = CliRunner().invoke(app, ["rules", "promote", "nosuch", "--rules", str(rules_copy)])
+    text = (result.stdout or "") + (result.stderr or "")
+    assert result.exit_code == 2
+    assert "incomplete: not found: nosuch" in text
+    assert "FileNotFoundError" not in text
+
+
 @pytest.mark.slow
 def test_wheel_install_end_to_end(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]

