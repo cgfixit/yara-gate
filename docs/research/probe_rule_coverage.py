@@ -344,6 +344,12 @@ def main() -> None:
     }
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w") as archive:
+        entry = tarfile.TarInfo("attachment.pdf")
+        entry.size = len(active_pdf)
+        archive.addfile(entry, io.BytesIO(active_pdf))
+    # A name with a .. segment is refused before its bytes are read, whatever they hold.
+    escape_buffer = io.BytesIO()
+    with tarfile.open(fileobj=escape_buffer, mode="w") as archive:
         entry = tarfile.TarInfo("../attachment.pdf")
         entry.size = len(active_pdf)
         archive.addfile(entry, io.BytesIO(active_pdf))
@@ -372,6 +378,7 @@ def main() -> None:
             "rtf_template.rtf": b"{\\rtf1{\\*\\template https://example.invalid/template}}",
             "pdf_tar.tar": tar_buffer.getvalue(),
             "pdf_tgz.tgz": gzip.compress(tar_buffer.getvalue(), mtime=0),
+            "escape_tar.tar": escape_buffer.getvalue(),
             "macro_zip.zip": zipped("macro.docm", docm_with_autoopen()),
             "depth.zip": nested_zip(4),
             "encrypted.zip": bytes(encrypted),
@@ -407,7 +414,14 @@ def main() -> None:
         "split_instruction.txt",
     ):
         expected[name] = "block"
-    for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
+    for name in (
+        "depth.zip",
+        "encrypted.zip",
+        "broken.zip",
+        "unsupported.7z",
+        "too_many.zip",
+        "escape_tar.tar",
+    ):
         expected[name] = "incomplete"
     delivery = delivery_cases()
     delivery.update(signature_cases("delivery-signatures.json"))
