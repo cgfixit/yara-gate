@@ -11,7 +11,7 @@ rule dev_vscode_autorun_task {
     strings:
         $open = /"runOn"[ \t\r\n]*:[ \t\r\n]*"folderOpen"/ ascii wide
         // The inline-program flag may sit in the task's args array instead of its command line.
-        $fetch = /\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm)\b|\bnode[ \t]+-e\b|\bpython3?[ \t]+-c\b|"(node|python3?)"[^\]\r\n]{0,40}"-[ec]"|\bbase64[ \t]+(-d|--decode)\b|\bpowershell(\.exe)?[^"\r\n]{0,40}[ \t]-e(nc|ncodedcommand)?\b/ nocase ascii wide
+        $fetch = /\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm)\b|\bnode[ \t]+-e\b|\bpython3?[ \t]+-c\b|"(node|python3?)"[^\]}]{0,160}"-[ec]"|\bbase64[ \t]+(-d|--decode)\b|\bpowershell(\.exe)?[^"\r\n]{0,40}[ \t]-e(nc|ncodedcommand)?\b/ nocase ascii wide
         $hidden = /"reveal"[ \t\r\n]*:[ \t\r\n]*"never"/ ascii wide
     condition:
         for any i in (1..#open) : (

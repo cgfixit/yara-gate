@@ -27,7 +27,7 @@ rule macos_archive_upload {
         technique = "T1560.001"
     strings:
         $ditto = /\bditto[ \t]+-c[ \t]+-k\b/ nocase ascii wide
-        $upload = /\bcurl\b[^\r\n]{0,256}([ \t](-F|--form)[ \t]+["']?[A-Za-z0-9_-]{1,32}=@|[ \t](--data-binary|-T|--upload-file)[ \t]+["']?@?[\/~$])/ nocase ascii wide
+        $upload = /\bcurl\b[^\r\n]{0,256}([ \t](-F|--form)[ \t]+["']?[A-Za-z0-9_-]{1,32}=@|[ \t]--data-binary[ \t]+["']?@[^\s"']|[ \t](-T|--upload-file)[ \t]+["']?[^\s"'-])/ nocase ascii wide
     condition:
         for any i in (1..#ditto) : ($upload in (@ditto[i]..@ditto[i] + 4096))
 }
