@@ -296,11 +296,13 @@ def test_watch_pass_waits_for_a_file_still_being_written(tmp_path: Path, rules_c
         time.sleep(0.1)
     thread.join()
     assert not scanned_early
-    # Two unchanged looks after the last write: the file is settled and scanned whole.
-    for _ in range(3):
+    # The file settles once two looks 0.5 s apart agree or its mtime is 1 s old. Poll until the
+    # clean slot appears so a slow runner cannot race the settle window this test exercises.
+    digest = hashlib.sha256(b"".join(chunks)).hexdigest()
+    deadline = time.monotonic() + 5.0
+    while not (home.clean / digest).is_dir() and time.monotonic() < deadline:
         _drain(handler, home, wait=False)
         time.sleep(0.1)
-    digest = hashlib.sha256(b"".join(chunks)).hexdigest()
     assert (home.clean / digest).is_dir()
     assert not target.exists()
     assert handler._pending == {}
