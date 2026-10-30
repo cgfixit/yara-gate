@@ -1,6 +1,6 @@
 # yara-gate user guide
 
-Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox or in the drop folder and the Python `scan_file` call are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
+Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox, inbox intake through `yara-gate scan`, and the Python `scan_file` and `scan_bytes` calls are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
 
 The project lives at `~/Projects/yara-gate`. The holding folders live at `~/YaraGate`.
 

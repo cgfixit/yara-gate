@@ -1,0 +1,4 @@
+# Check out every file byte for byte. Rule sources, rules.lock and its pin, and the benign
+# fixtures are hashed and scanned as exact bytes; CRLF conversion on a Windows checkout would
+# change the ruleset fingerprint and fail the rules.lock pin.
+* -text
