@@ -128,6 +128,19 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
     )
     return [
         ("agent_base64_blob", base64_text(), b"payload:\n" + b"A" * 40 + b"\n"),
+        (
+            "agent_base64_blob",
+            b"-----BEGIN CERTIFICATE-----\n" + b"Q" * 400 + b"\n-----END CERTIFICATE-----\n"
+            b"x\n" + base64_text(),
+            b'<img src="data:image/png;base64,'
+            + base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(400))
+            + b'">\n',
+        ),
+        (
+            "agent_base64_executable",
+            b'{"blob":"' + base64.b64encode(mini_pe() + bytes(400)) + b'"}\n',
+            b'{"blob":"' + base64.b64encode(b"\xca\xfe\xba\xbe" + bytes(400)) + b'"}\n',
+        ),
         ("agent_bidi_formatting", "Name: \u2067text\u2069\n".encode(), b"Name: text\n"),
         ("agent_bidi_override", "see\u202ethe\n".encode(), b"see the\n"),
         ("agent_eicar", eicar_bytes(), b"not a test file\n"),
