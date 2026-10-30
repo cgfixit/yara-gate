@@ -311,6 +311,77 @@ def _windows_files() -> list[tuple[str, bytes, str]]:
     return files
 
 
+def _platform_files() -> list[tuple[str, bytes]]:
+    """Build tasks, setup INFs, JXA automation, admin scripts, and .pth files that stay clean."""
+    task = (
+        '<Project><UsingTask TaskName="Stamp" TaskFactory="RoslynCodeTaskFactory" '
+        'AssemblyFile="$(MSBuildToolsPath)\\Microsoft.Build.Tasks.Core.dll">'
+        '<Task><Code Type="Fragment" Language="cs"><![CDATA[{body}]]></Code></Task>'
+        "</UsingTask></Project>\n"
+    )
+    bodies = (
+        'var p = Process.Start("git", "rev-parse HEAD"); Version = p.StandardOutput.ReadToEnd();',
+        "File.WriteAllText(Output, Input.ToUpperInvariant());",
+        "Log.LogMessage(MessageImportance.High, Name);",
+        "var text = client.GetStringAsync(Url).Result; File.WriteAllText(Output, text);",
+    )
+    files = [
+        (f"build/stamp-{i:02d}.targets", task.format(body=b).encode()) for i, b in enumerate(bodies)
+    ]
+    files.append(
+        (
+            "build/profile.inf",
+            _crlf(
+                "[Version]",
+                "Signature=$chicago$",
+                "AdvancedINF=2.5",
+                "[DefaultInstall]",
+                "RunPreSetupCommands=RunPreSetupCommandsSection",
+                "CopyFiles=Profile.CopyFiles",
+                "[RunPreSetupCommandsSection]",
+                "cmmgr32.exe /s /u Profile.inf",
+                "[Profile.CopyFiles]",
+                "Profile.cms",
+            ),
+        )
+    )
+    files.append(
+        (
+            "build/driver.inf",
+            _crlf("[Version]", 'Signature="$Windows NT$"', "Class=Ports", "[Manufacturer]"),
+        )
+    )
+    files.append(
+        (
+            "mac/desktop.js",
+            b"var app = Application.currentApplication();\napp.includeStandardAdditions = true;\n"
+            b"app.doShellScript('ls ~/Desktop');\n",
+        )
+    )
+    files.append(
+        (
+            "mac/pwtest.sh",
+            b'#!/bin/bash\ndscl . -authonly "$1" "$2" && echo valid || echo invalid\n',
+        )
+    )
+    files.append(
+        (
+            "python/distutils-precedence.pth",
+            b"import os; var = 'SETUPTOOLS_USE_DISTUTILS'; enabled = os.environ.get(var, "
+            b"'local') == 'local'; enabled and __import__('_distutils_hack').add_shim(); \n",
+        )
+    )
+    files.append(("python/_virtualenv.pth", b"import _virtualenv\n"))
+    files.append(("python/paths.pth", b"/opt/project/src\n"))
+    files.append(
+        (
+            "python/__editable__.inert-1.0.pth",
+            b"import __editable___inert_1_0_finder; __editable___inert_1_0_finder.install()\n",
+        )
+    )
+    return files
+
+
 def _agent_files() -> list[tuple[str, bytes]]:
     """Code notices, chat about source code, committed agent settings, and unattended CI runs."""
     files: list[tuple[str, bytes]] = []
@@ -478,6 +549,8 @@ def build_corpus(root: Path) -> dict[str, str]:
         add(f"blobs/short-{index:02d}.txt", (b"A" * 40) + b"\n")
     for name, data, tag in _windows_files():
         add(name, data, tag)
+    for name, data in _platform_files():
+        add(name, data)
     for name, data in _agent_files():
         add(name, data)
 

@@ -626,6 +626,7 @@ def main() -> None:
             "agent_relay.txt",
             "agent_config_bypass.json",
             "agent_override_guidance.txt",
+            "msbuild_inline.csproj",
         )
         cli_cases += tuple(
             (name, cases[name], policy, verdict, destination)

