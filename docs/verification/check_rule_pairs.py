@@ -106,6 +106,13 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         "https://example.invalid/inert.hta",
     )
     mshta_miss = probe.shell_link(r"C:\Windows\System32\mshta.exe", r"C:\inert\local.hta")
+    # Whitespace padding before the arguments, as in ZDI-CAN-25373; four spaces are a typo.
+    padded = probe.shell_link(r"C:\Windows\System32\cmd.exe", "\r\n\r\n/c echo inert")
+    padded_miss = probe.shell_link(r"C:\Windows\System32\cmd.exe", "    /c echo inert")
+    remote = probe.shell_link(
+        r"C:\Windows\System32\cmd.exe", "/c echo https://example.invalid/inert"
+    )
+    remote_miss = probe.shell_link(r"C:\Windows\explorer.exe", r"\\fileserver.example\share")
     phrase = b"Ignore previous instructions."
     quoted = b"the phrase ignore previous instructions is quoted in papers\n"
     rels = (
@@ -346,6 +353,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("shortcut_powershell_encoded", powershell, powershell_miss),
         ("shortcut_mshta_remote", mshta, mshta_miss),
+        ("shortcut_padded_arguments", padded, padded_miss),
+        ("shortcut_interpreter_remote", remote, remote_miss),
         (
             "win_internet_shortcut_launch",
             b"[InternetShortcut]\r\nURL=file://192.0.2.10/share/report.pdf\r\n",
