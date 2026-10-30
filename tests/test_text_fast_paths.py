@@ -81,3 +81,16 @@ def test_base64_run_signals_scope_exemptions_to_each_run() -> None:
     assert base64_run_signals(pem + b"\n" + plain) == (True, False)
     assert base64_run_signals(b'{"a":"' + pe + b'"}') == (True, True)
     assert base64_run_signals(b"A" * 399) == (False, False)
+
+
+def test_a_400_character_elf_run_blocks_behind_a_media_prefix(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    import base64
+
+    elf = base64.b64encode(b"\x7fELF\x02\x01\x01\x00" + bytes(292))
+    assert len(elf) == 400
+    page = tmp_path / "x.html"
+    page.write_bytes(b'<img src="data:image/png;base64,' + elf + b'">')
+    result = scan_file(page, rules_dir=rules_copy)
+    assert any(f.rule_id == "agent_base64_executable" for f in result.findings)
