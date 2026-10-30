@@ -87,12 +87,14 @@ Pick the row by where the content lives when the caller first sees it.
 | A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
 | An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | Whatever the hook allowed |
 
-One rule covers every row: **the content is read only for exit 0 and exactly one
-complete `clean` record per scanned input** (`verdict == "clean"`,
-`incomplete_reason is None`, `policy == "agent-ingest"`). Exit 1 (held or blocked),
-exit 2 (incomplete), no record, a malformed record, a crash, or a timeout all mean
-"not scanned, do not read". A caller must not turn "the scanner failed" into
-"nothing was found".
+One rule covers every row: **the content is read only when its own input has exactly
+one complete `clean` record** (`verdict == "clean"`, `incomplete_reason is None`,
+`policy == "agent-ingest"`) **and the process did not exit 2**. `--json` writes one
+record per line. For a single input, that means exit 0. A batch exits with its worst
+result, so exit 1 still lets a path with its own complete `clean` record through,
+while exit 2 means read nothing from that batch. No record, a malformed line, a
+crash, or a timeout all mean "not scanned, do not read". A caller must not turn
+"the scanner failed" into "nothing was found".
 
 Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
