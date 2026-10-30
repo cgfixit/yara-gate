@@ -94,3 +94,13 @@ def test_a_400_character_elf_run_blocks_behind_a_media_prefix(
     page.write_bytes(b'<img src="data:image/png;base64,' + elf + b'">')
     result = scan_file(page, rules_dir=rules_copy)
     assert any(f.rule_id == "agent_base64_executable" for f in result.findings)
+
+
+def test_a_base64_run_after_an_equals_sign_is_not_folded(tmp_path: Path, rules_copy: Path) -> None:
+    import base64
+
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(600))
+    note = tmp_path / "note.txt"
+    note.write_bytes(b"image=" + png + b"\n")
+    result = scan_file(note, rules_dir=rules_copy, policy="agent-ingest")
+    assert result.verdict.value == "clean"

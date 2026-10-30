@@ -106,9 +106,10 @@ _SPACERS = re.compile(r"[ .\-_*]")
 # inside it would turn media magic and ";base64," into strings no rule expects, and no phrase
 # hides in 200 characters without a space, so folded_text leaves such runs as written. A MIME or
 # PEM body wrapped at 60 to 76 characters is three or more such lines. The lookbehind starts a
-# match only where a run starts, which keeps the search linear on a large body.
+# match only where a run starts, which keeps the search linear on a large body. An = before a
+# run is a delimiter (image=..., ?q=...), not part of it, so it does not block the match.
 _ENCODED_RUN = re.compile(
-    r"(?<![A-Za-z0-9+/=])"
+    r"(?<![A-Za-z0-9+/])"
     r"(?:(?:data:[A-Za-z0-9.+/-]{1,80};base64,"
     r"|-----BEGIN [A-Z0-9 ]{1,40}-----\r?\n"
     r"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)?"
