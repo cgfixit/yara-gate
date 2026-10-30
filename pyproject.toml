@@ -15,6 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "olefile>=0.46",
     "oletools>=0.60.2",
     "platformdirs>=4.12.4",
     "pydantic>=2.7",
@@ -59,7 +60,7 @@ packages = ["yara_gate"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["yara_x", "oletools", "oletools.*", "watchdog", "watchdog.*"]
+module = ["yara_x", "olefile", "oletools", "oletools.*", "watchdog", "watchdog.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

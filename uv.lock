@@ -827,6 +827,7 @@ name = "yara-gate"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "olefile" },
     { name = "oletools" },
     { name = "platformdirs" },
     { name = "pydantic" },
@@ -844,6 +845,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "olefile", specifier = ">=0.46" },
     { name = "oletools", specifier = ">=0.60.2" },
     { name = "platformdirs", specifier = ">=4.12.4" },
     { name = "pydantic", specifier = ">=2.7" },

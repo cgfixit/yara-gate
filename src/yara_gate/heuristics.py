@@ -5,6 +5,7 @@ import json
 import re
 import unicodedata
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
@@ -47,6 +48,9 @@ def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | No
     findings.extend(mcp_tool_findings(path, data))
     office, error = office_findings(path, data)
     findings.extend(office)
+    if error is None and pdf_encrypted(data):
+        # The strings and streams a reader decrypts are ciphertext here, so the text is unread.
+        error = "encrypted pdf"
     return findings, error
 
 
@@ -102,6 +106,112 @@ def pdf_findings(data: bytes) -> list[Finding]:
     return pdf_token_findings(data)
 
 
+def pdf_encrypted(data: bytes) -> bool:
+    """True when a trailer or XRef stream dictionary has an /Encrypt entry.
+
+    A small top-level tokenizer skips whitespace and comments between tokens (both are legal
+    separators), literal and hex strings, and stream bodies, so /Encrypt in page text, a comment,
+    or a content stream does not count. The key is compared after #xx decoding, and its value
+    must be a dictionary or an indirect reference.
+    """
+    if sniff(data) != "pdf":
+        return False
+    if b"Encr" not in data and b"#" not in data:
+        return False
+    tokens = _pdf_top_tokens(data)
+    window: list[bytes] = []
+    depth = 0
+    root_kind = b""
+    last_keyword = b""
+    for token in tokens:
+        if token == b"<<":
+            if depth == 0:
+                root_kind = b"trailer" if last_keyword == b"trailer" else b"object"
+                window = []
+            depth += 1
+            window.append(token)
+            continue
+        if token == b">>":
+            depth = max(0, depth - 1)
+            if depth == 0 and window:
+                window.append(token)
+                if _pdf_dict_encrypts(window, root_kind):
+                    return True
+                window = []
+            continue
+        if depth:
+            window.append(token)
+        elif not token.startswith(b"/"):
+            last_keyword = token
+    return False
+
+
+def _pdf_dict_encrypts(window: list[bytes], root_kind: bytes) -> bool:
+    """Look for a direct /Encrypt key in the outermost dictionary of ``window``."""
+    names = [_decode_pdf_name(item) if item.startswith(b"/") else item for item in window]
+    if root_kind != b"trailer":
+        typed = any(
+            names[i] == b"/Type" and names[i + 1] == b"/XRef" for i in range(len(names) - 1)
+        )
+        if not typed:
+            return False
+    depth = 0
+    for index, item in enumerate(names):
+        if item == b"<<":
+            depth += 1
+        elif item == b">>":
+            depth -= 1
+        elif depth == 1 and item == b"/Encrypt":
+            rest = names[index + 1 : index + 4]
+            if rest[:1] == [b"<<"]:
+                return True
+            if len(rest) == 3 and rest[0].isdigit() and rest[1].isdigit() and rest[2] == b"R":
+                return True
+    return False
+
+
+def _pdf_top_tokens(data: bytes) -> Iterator[bytes]:
+    """Yield PDF tokens outside strings, comments, and stream bodies."""
+    position = 0
+    size = len(data)
+    while position < size:
+        match = _PDF_LEX.match(data, position)
+        if match is None:
+            position += 1
+            continue
+        token = match.group()
+        position = match.end()
+        first = token[:1]
+        if first in b"\x00\t\n\f\r " or first == b"%":
+            continue
+        if token == b"(":
+            position = _skip_pdf_string(data, position)
+            continue
+        if first == b"<" and token != b"<<":
+            continue
+        if token == b"stream":
+            end = data.find(b"endstream", position)
+            position = size if end < 0 else end + len(b"endstream")
+            continue
+        yield token
+
+
+def _skip_pdf_string(data: bytes, position: int) -> int:
+    depth = 1
+    size = len(data)
+    while position < size and depth:
+        char = data[position]
+        if char == 0x5C:
+            position += 2
+            continue
+        if char == 0x28:
+            depth += 1
+        elif char == 0x29:
+            depth -= 1
+        position += 1
+    return position
+
+
 def pdf_token_findings(data: bytes) -> list[Finding]:
     """PDF action and embedding names in ``data``, which may be an inflated stream view."""
     findings: list[Finding] = []
@@ -145,6 +255,10 @@ def office_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]
         return [], None
     from oletools.olevba import VBA_Parser, detect_autoexec
 
+    if data.startswith(OLE) and _ole_encrypted(data):
+        # An encrypted OOXML package or a legacy file encrypted in place: macros, text, and
+        # embedded objects are ciphertext, so a clean result would describe nothing.
+        return [], "encrypted office file"
     try:
         parser = VBA_Parser(str(path), data=data)
     except Exception:
@@ -198,6 +312,26 @@ def _extracted_code(parser: object) -> str:
     except Exception:
         return ""
     return "\n".join(parts)
+
+
+def _ole_encrypted(data: bytes) -> bool:
+    """Detect [MS-OFFCRYPTO] encryption from stream names and msoffcrypto, without decrypting."""
+    import olefile
+    from oletools.crypto import is_encrypted
+
+    try:
+        ole = olefile.OleFileIO(data)
+    except Exception:
+        return False
+    try:
+        if ole.exists("EncryptedPackage") or ole.exists("\x06DataSpaces"):
+            return True
+        try:
+            return bool(is_encrypted(ole))
+        except Exception:
+            return False
+    finally:
+        ole.close()
 
 
 def _looks_like_office(path: Path, data: bytes) -> bool:
@@ -283,6 +417,13 @@ _B64_PREFIX = re.compile(
     rb"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)\Z"
 )
 _PDF_NAME = re.compile(rb"/(?:[^\x00\t\n\f\r /<>\[\]()#%]|#[0-9A-Fa-f]{2})+")
+# Whitespace, a comment, a dictionary bracket, a hex string, a string opener, an array bracket,
+# a name, or a regular token (number or keyword).
+_PDF_LEX = re.compile(
+    rb"[\x00\t\n\f\r ]+|%[^\r\n]*|<<|>>|<[0-9A-Fa-f\x00\t\n\f\r ]*>|\(|[\[\]{}]"
+    rb"|/(?:[^\x00\t\n\f\r /<>\[\]()#%{}]|#[0-9A-Fa-f]{2})*"
+    rb"|[^\x00\t\n\f\r /<>\[\]()%{}]+"
+)
 
 
 def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
