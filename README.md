@@ -75,10 +75,13 @@ from yara_gate import scan_bytes, scan_file
 
 body = incoming_message.encode("utf-8")
 r = scan_bytes(body, name="sms.txt", policy="agent-ingest")
-allowed = (r.verdict == "clean" and r.incomplete_reason is None
-           and r.sha256 == hashlib.sha256(body).hexdigest())
+allowed = (
+    r.verdict == "clean"
+    and r.incomplete_reason is None
+    and r.sha256 == hashlib.sha256(body).hexdigest()
+)
 
-scan_file("attachment.pdf", policy="agent-ingest")   # never moves the file, never opens a socket
+scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, never opens a socket
 ```
 
 `name` supplies only the suffix that the type checks read. Keep phone numbers and other identifiers out of it, because it becomes the report path.
