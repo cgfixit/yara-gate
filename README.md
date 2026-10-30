@@ -51,7 +51,7 @@ uv sync --frozen
 uv run yara-gate --version
 ```
 
-On Windows, only in-place scanning is supported and tested. A `windows-2025` CI job compiles the rules, runs the fire and near-miss pairs, and scans files outside the inbox with the library and the CLI (`docs/verification/check_scan_only.py`). Inbox intake, `watch`, and `selftest` depend on POSIX link checks (no-follow opens and link counts) and run only on Ubuntu 24.04 and macOS 15. The rules inspect Windows file types on every host.
+On Windows, in-place scanning and inbox intake through `yara-gate scan` are tested. A `windows-2025` CI job compiles the rules, runs the fire and near-miss pairs, scans files outside the inbox with the library and the CLI (`docs/verification/check_scan_only.py`), and takes files through the inbox (`docs/verification/check_intake.py`). Python has no no-follow open on Windows, so intake refuses a symlink, junction, hardlink, or cloud-file placeholder from its `lstat` before any open and checks that the opened file is the one `lstat` saw. `watch` and `selftest` run only on Ubuntu 24.04 and macOS 15. On Windows the gate folders are not made owner-only (`chmod` sets only the read-only flag there; they inherit the ACL of the folder they are in; under the default `%USERPROFILE%\YaraGate` that is normally the user, SYSTEM, and Administrators), and a file in `clean/` keeps its extension, so a `.exe` there still runs on a double-click. The rules inspect Windows file types on every host.
 
 `yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.1). It does not call the Homebrew `yara` binary.
 
