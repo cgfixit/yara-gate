@@ -80,7 +80,30 @@ none matched. The host is Linux, so it holds no Windows build trees or macOS
 admin scripts; the near-miss fixtures above stand in for them. This is a
 system and package corpus, not a production false-positive rate.
 
-Not run: a sweep of real Windows build repositories or Mac admin script
+## Public repository sweep
+
+25,668 files up to 1 MB from shallow clones of nine public repositories were
+scanned with the `d81ec5c` rules and with this branch's rules. The clones were
+taken on 2026-10-30 and treated as untrusted data; nothing in them was run.
+
+| Repository | Commit | What it covers |
+| --- | --- | --- |
+| dotnet/msbuild | `86743d0` | MSBuild targets and inline-task tests |
+| dotnet/arcade | `c4681eb` | `eng/` build targets |
+| microsoft/Windows-driver-samples | `f4c1ff8` | driver INFs |
+| rtrouton/rtrouton_scripts | `aa27142` | Mac admin scripts |
+| joshua-d-miller/macOSLAPS | `5dd5e59` | `dscl` password handling |
+| anthropics/claude-code | `d4dfed4` | Claude Code settings, hooks, and examples |
+| github/awesome-copilot | `5269f7e` | Copilot and VS Code customizations |
+| openai/codex | `275a9a8` | Codex config and tests |
+| pypa/setuptools | `049ae8e` | `.pth` sources |
+
+This branch matches the baseline on all 25,668 files: no file gained or lost a
+finding. The set includes real inline MSBuild tasks (dotnet/msbuild and
+dotnet/arcade), real driver INFs, Mac admin scripts that run `dscl`, macOSLAPS,
+and setuptools' `.pth` sources.
+
+Not run: a sweep of private Windows build repositories or Mac admin script
 collections, and the CyClaw and CG-agent-harness consumer corpus. Hosted CI
 (Ubuntu, macOS, Windows) and CodeQL results belong to the pull request head,
 separately from this record.
