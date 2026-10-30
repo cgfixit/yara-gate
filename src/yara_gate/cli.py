@@ -179,7 +179,7 @@ def watch_inbox(
     except KeyboardInterrupt:
         raise typer.Exit(code=0) from None
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        typer.echo(f"incomplete: {_incomplete_text(exc)}", err=True)
         raise typer.Exit(code=2) from exc
 
 
@@ -211,7 +211,7 @@ def install_agent(
     try:
         path = write_launch_agent(dest, home=home)
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        typer.echo(f"incomplete: {_incomplete_text(exc)}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(path)
 
@@ -253,11 +253,8 @@ def hunt(
             rules_dir=rules,
             confirmed_by=confirmed_by,
         )
-    except ValueError as exc:
-        typer.echo(f"incomplete: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        typer.echo(f"incomplete: {_incomplete_text(exc)}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"candidate {rule_path.name} hits={len(hits)}")
     for hit in hits:
@@ -327,9 +324,23 @@ def rules_promote(
     try:
         path = promote(rule_id, rules)
     except Exception as exc:
-        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        typer.echo(f"incomplete: {_incomplete_text(exc)}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"promoted {path.name}")
+
+
+def _incomplete_text(exc: Exception) -> str:
+    """The message for an error yara-gate raised on purpose; the class name for anything else.
+
+    ``watch already running``, ``no distinctive strings``, and ``<id> is not a hunt rule`` tell the
+    operator what to do. A missing candidate or confirmed file names what was not found. An
+    unexpected exception keeps its class name, as ``scan``, ``selftest``, and ``demo`` print it.
+    """
+    if isinstance(exc, FileNotFoundError):
+        return f"not found: {exc}"
+    if isinstance(exc, ValueError | RuntimeError):
+        return str(exc) or exc.__class__.__name__
+    return exc.__class__.__name__
 
 
 def _echo_incomplete(exc: Exception) -> NoReturn:
