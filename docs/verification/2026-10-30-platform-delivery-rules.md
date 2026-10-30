@@ -103,8 +103,17 @@ finding. The set includes real inline MSBuild tasks (dotnet/msbuild and
 dotnet/arcade), real driver INFs, Mac admin scripts that run `dscl`, macOSLAPS,
 and setuptools' `.pth` sources.
 
+## Consumer corpus
+
+The 150 files in [`agent-ingest-corpus.jsonl`](agent-ingest-corpus.jsonl) were
+read at their pinned revisions (CyClaw `34b44e1`, CG-agent-harness `3301c0c`),
+and every SHA-256 matched. The full trees at current HEAD (CyClaw `a5b5212`,
+CG-agent-harness `ff5df3a`, 1,469 files) were also scanned. Comparing the
+`d81ec5c` rules with this branch's rules, no file gained or lost a finding in
+either set.
+
 Not run: a sweep of private Windows build repositories or Mac admin script
-collections, and the CyClaw and CG-agent-harness consumer corpus. Hosted CI
+collections. Hosted CI
 (Ubuntu, macOS, Windows) and CodeQL results belong to the pull request head,
 separately from this record.
 
