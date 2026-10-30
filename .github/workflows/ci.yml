@@ -113,6 +113,10 @@ jobs:
       - name: Compile and lint local rules
         run: uv run python docs/verification/lint_rules.py
 
+      # Fails if the checkout rewrote line endings (see .gitattributes).
+      - name: Check rules.lock hashes
+        run: uv run python docs/verification/check_rules_lock.py
+
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
 

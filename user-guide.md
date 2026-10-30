@@ -1,6 +1,6 @@
 # yara-gate user guide
 
-Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox or in the drop folder and the Python `scan_file` call are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
+Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox, inbox intake through `yara-gate scan`, and the Python `scan_file` and `scan_bytes` calls are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
 
 The project lives at `~/Projects/yara-gate`. The holding folders live at `~/YaraGate`.
 
@@ -16,7 +16,7 @@ You should see `yara-gate 0.2.0`.
 
 The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
 
-To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/`, and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/` (only older versions wrote it; the compiled cache now lives in the user cache directory), and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
 
 Check the install with the built-in fixture run:
 
