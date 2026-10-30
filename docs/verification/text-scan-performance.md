@@ -71,9 +71,13 @@ time to `content.text_views`. Profiling on this host (Linux, Python 3.12.3, YARA
 Changes: the scanner finds base64 runs with a linear `re` walk
 (`heuristics.base64_run_signals`) and passes `yara_gate_b64_blob` and
 `yara_gate_b64_exe` to YARA as globals. The two rules keep their ids, `source`,
-and `verdict_on_match`. `folded_text` leaves runs of 200+ characters, and blocks of
-three or more 60+ character lines, as written; ASCII text drops control characters
-with one `str.translate`. A differential run of 200,000 random short texts
+and `verdict_on_match`. ASCII text drops control characters in `folded_text` with one
+`str.translate`. The scanner ignores the two base64 rules on the `text-folded` view,
+where folding turns `0` into `o` inside base64 and breaks the media exemptions; the
+raw view carries the base64 verdict for the same bytes. (An earlier version of this
+change left long runs unfolded instead. The Codex security review on #117 showed that
+`/` lets a run absorb the first word of a phrase, so 195 `A`s plus
+`//1gn0r3 previous instructions` scanned clean; that protection was removed.) A differential run of 200,000 random short texts
 (controls, NBSP, U+3000, combining marks, confusables) gave identical output to
 `main`'s `folded_text`.
 
@@ -82,19 +86,19 @@ with one `str.translate`. A differential run of 200,000 random short texts
 
 | Case | Bytes | `main` s | this change s | Verdict (both) |
 | --- | ---: | ---: | ---: | --- |
-| `ascii.txt` | 4,194,304 | 1.579 | 1.011 | clean |
-| `utf16.txt` | 8,388,610 | 1.638 | 0.990 | clean |
-| `entities.html` | 4,349,648 | 1.751 | 1.000 | clean |
-| `base64-run.txt` | 4,194,304 | 12.622 | 0.067 | advisory |
-| `base64-wrapped.txt` | 4,304,680 | 5.878 | 0.339 | clean |
+| `ascii.txt` | 4,194,304 | 1.579 | 0.622 | clean |
+| `utf16.txt` | 8,388,610 | 1.638 | 0.895 | clean |
+| `entities.html` | 4,349,648 | 1.751 | 0.776 | clean |
+| `base64-run.txt` | 4,194,304 | 12.622 | 0.602 | advisory |
+| `base64-wrapped.txt` | 4,304,680 | 5.878 | 0.837 | clean |
 
 #112's fixture, `scan_bytes` with the default 30 s timeout:
 
 | Input | `main` | this change |
 | --- | --- | --- |
-| 21.2 MB `.eml`, one 15 MB base64 attachment | 30.05 s, incomplete `timeout` | 2.50 s, block (`agent_bidi_*`, `agent_invisible_unicode` on the decoded random attachment: #109) |
-| the same base64 body as a bare `.txt` | 30.01 s, incomplete `timeout` | 1.50 s, clean |
-| 22.0 MB single base64 run | (not run; 4 MiB took 12.6 s) | 0.41 s, advisory `agent_base64_blob` |
+| 21.2 MB `.eml`, one 15 MB base64 attachment | 30.05 s, incomplete `timeout` | 5.87 s, block (`agent_bidi_*`, `agent_invisible_unicode` on the decoded random attachment: #109) |
+| the same base64 body as a bare `.txt` | 30.01 s, incomplete `timeout` | 3.96 s, clean |
+| 22.0 MB single base64 run | (not run; 4 MiB took 12.6 s) | 3.59 s, advisory `agent_base64_blob` |
 
 The external-content probe (34 rows) and `probe_rule_coverage.py --verify
 --benign-stdlib` returned the same verdicts before and after.

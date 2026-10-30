@@ -102,20 +102,6 @@ _LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*"
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
-# A long base64 run, with its data: URI, PEM, or SSH key-type prefix, is not prose. Leet folding
-# inside it would turn media magic and ";base64," into strings no rule expects, and no phrase
-# hides in 200 characters without a space, so folded_text leaves such runs as written. A MIME or
-# PEM body wrapped at 60 to 76 characters is three or more such lines. The lookbehind starts a
-# match only where a run starts, which keeps the search linear on a large body. An = before a
-# run is a delimiter (image=..., ?q=...), not part of it, so it does not block the match.
-_ENCODED_RUN = re.compile(
-    r"(?<![A-Za-z0-9+/])"
-    r"(?:(?:data:[A-Za-z0-9.+/-]{1,80};base64,"
-    r"|-----BEGIN [A-Z0-9 ]{1,40}-----\r?\n"
-    r"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)?"
-    r"[A-Za-z0-9+/]{200,}={0,2}"
-    r"|(?:[A-Za-z0-9+/]{60,}={0,2}\r?\n){3,})"
-)
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
 _ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
@@ -389,23 +375,9 @@ def folded_text(text: str) -> str:
     NFKC compatibility normalization (fullwidth and other presentation forms), removal of format
     controls and of control characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
     folded to Latin inside mixed-script tokens, letters spaced one apart rejoined, and digit or
-    symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, ordinary
-    numbers, and long base64 runs stay as written. The result is a view; the original bytes are
-    scanned unchanged.
+    symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
+    numbers stay as written. The result is a view; the original bytes are scanned unchanged.
     """
-    if _ENCODED_RUN.search(text) is None:
-        return _fold(text)
-    parts: list[str] = []
-    cursor = 0
-    for match in _ENCODED_RUN.finditer(text):
-        parts.append(_fold(text[cursor : match.start()]))
-        parts.append(match.group())
-        cursor = match.end()
-    parts.append(_fold(text[cursor:]))
-    return "".join(parts)
-
-
-def _fold(text: str) -> str:
     if not text.strip(" \t\r\n"):
         return text
     folded = unicodedata.normalize("NFKC", text)
