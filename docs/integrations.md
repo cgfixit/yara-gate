@@ -73,6 +73,32 @@ and validate the SHA-256 when handing bytes to another process.
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
 
+## Which entry point to use
+
+CyClaw, CG-agent-harness, and any other caller use the same CLI or library call.
+Pick the row by where the content lives when the caller first sees it.
+
+| Content arrives as | Call | Read afterwards |
+| --- | --- | --- |
+| A file on disk that the caller owns | `yara-gate scan PATH --json --policy agent-ingest` | The same path, after the SHA-256 in the record matches the bytes you read |
+| Several files at once | `scan A B C` or `--paths-from FILE`, same flags | Each path whose record is a complete `clean`, matched by `path` |
+| A file the gate should take over | Drop it in the gate `inbox/`; `scan` or `watch` quarantines it | `clean/<sha256>/` only |
+| A message, webhook body, or tool result in memory | `scan_bytes(body, name=..., policy="agent-ingest")` or `scan - --name ...` | The same `body` bytes, never a re-read or re-encode |
+| A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
+| An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | Whatever the hook allowed |
+
+One rule covers every row: **the content is read only for exit 0 and exactly one
+complete `clean` record per scanned input** (`verdict == "clean"`,
+`incomplete_reason is None`, `policy == "agent-ingest"`). Exit 1 (held or blocked),
+exit 2 (incomplete), no record, a malformed record, a crash, or a timeout all mean
+"not scanned, do not read". A caller must not turn "the scanner failed" into
+"nothing was found".
+
+Two things the gate does not decide for the caller: whether a clean file's
+instructions may be followed (they may not; keep content fenced as data), and who
+releases a held file. Release is a human review of the report, not a filename or
+repository-wide allowlist.
+
 ## Synced folders (Dropbox, OneDrive, iCloud Drive)
 
 A sync client's folder is never the gate's inbox. Inbox intake copies its input
