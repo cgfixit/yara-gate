@@ -142,7 +142,7 @@ def _search_connector(url: str) -> bytes:
 def _windows_files() -> list[tuple[str, bytes, str]]:
     """Shortcut-family files Explorer reads when it lists a folder.
 
-    The tagged files are shapes the README names as matches for an advisory rule. They stay
+    The tagged files are shapes docs/rules.md names as matches for an advisory rule. They stay
     in the denominator so the measurement reports those collisions.
     """
     folders = {
