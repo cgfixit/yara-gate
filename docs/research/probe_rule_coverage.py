@@ -625,6 +625,7 @@ def main() -> None:
             "agent_role_zip.zip",
             "agent_relay.txt",
             "agent_config_bypass.json",
+            "agent_override_guidance.txt",
         )
         cli_cases += tuple(
             (name, cases[name], policy, verdict, destination)

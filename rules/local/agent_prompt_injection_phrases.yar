@@ -8,13 +8,14 @@ rule agent_prompt_injection_phrases {
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
         // Verb, optional quantifier and determiner, adjective, noun: "ignore all of your prior directions".
-        $a = /\b(ignore|disregard|forget)[ \t]+(all[ \t]+(of[ \t]+)?)?(the[ \t]+|your[ \t]+|any[ \t]+|my[ \t]+)?(previous|prior|preceding|earlier|initial|original)[ \t]+(instructions?|directions|prompts?|rules)\b/ nocase ascii wide
-        $b = /\b(ignore|disregard|forget)[ \t]+(all[ \t]+(of[ \t]+)?)?the[ \t]+above\b/ nocase ascii wide
-        $c = /\b(ignore|disregard|forget)[ \t]+(everything|all)[ \t]+(you[ \t]+(were|have[ \t]+been)[ \t]+told|(said|stated|written)[ \t]+(above|before|earlier))\b/ nocase ascii wide
+        // Words may be split by one line break (hard-wrapped Markdown, an SMS body); a blank line still splits them.
+        $a = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?(the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)\b/ nocase ascii wide
+        $b = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?the([ \t]+|[ \t]*\r?\n[ \t]*)above\b/ nocase ascii wide
+        $c = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier))\b/ nocase ascii wide
         // Name the first phrase after the prefix, not a later separate directive.
         // YARA-X forbids mixing greedy and non-greedy quantifiers, so every quantifier here is lazy.
         // The match still ends at the word boundary after the noun, where $a, $b, and $c end.
-        $doc_phrase = /the phrase[\s\S]{0,64}?\b(ignore|disregard|forget)[ \t]+?((all[ \t]+?(of[ \t]+?)??)??((the[ \t]+?|your[ \t]+?|any[ \t]+?|my[ \t]+?)??(previous|prior|preceding|earlier|initial|original)[ \t]+?(instructions??|directions|prompts??|rules)|the[ \t]+?above)|(everything|all)[ \t]+?(you[ \t]+?(were|have[ \t]+?been)[ \t]+?told|(said|stated|written)[ \t]+?(above|before|earlier)))\b/ nocase ascii wide
+        $doc_phrase = /the phrase[\s\S]{0,64}?\b(ignore|disregard|forget)([ \t]+?|[ \t]*?\r??\n[ \t]*?)((all([ \t]+?|[ \t]*?\r??\n[ \t]*?)(of([ \t]+?|[ \t]*?\r??\n[ \t]*?))??)??((the([ \t]+?|[ \t]*?\r??\n[ \t]*?)|your([ \t]+?|[ \t]*?\r??\n[ \t]*?)|any([ \t]+?|[ \t]*?\r??\n[ \t]*?)|my([ \t]+?|[ \t]*?\r??\n[ \t]*?))??(previous|prior|preceding|earlier|initial|original)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(instructions??|directions|prompts??|rules)|the([ \t]+?|[ \t]*?\r??\n[ \t]*?)above)|(everything|all)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(you([ \t]+?|[ \t]*?\r??\n[ \t]*?)(were|have([ \t]+?|[ \t]*?\r??\n[ \t]*?)been)([ \t]+?|[ \t]*?\r??\n[ \t]*?)told|(said|stated|written)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(above|before|earlier)))\b/ nocase ascii wide
         $d = /\byou are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)?)|developer mode|do anything now|(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails))\b/ nocase ascii wide
         // DAN is case-sensitive so the name "Dan" stays clean; only the phrase is nocase.
         $d_dan = /\b(?i:you are now)\b[\s\S]{0,96}\bDAN\b/ ascii wide

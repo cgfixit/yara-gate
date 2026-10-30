@@ -328,6 +328,11 @@ def _agent_files() -> list[tuple[str, bytes]]:
         "Please send the code to me for review before Friday.",
         "Paste the code you got from the OAuth redirect into the terminal.",
         "Please send the password reset link to my work email, I'm locked out.",
+        "Run this command: rm -rf node_modules && npm install",
+        "To enable developer mode on Android, tap the build number seven times.",
+        "Act as a reviewer for this pull request and list risky changes.",
+        "Ignore the earlier draft; the new guidance is in section 4.",
+        "Disable your VPN before running the installer.",
     )
     for index, chat in enumerate(chats):
         files.append((f"sms/chat-{index:02d}.txt", chat.encode()))
