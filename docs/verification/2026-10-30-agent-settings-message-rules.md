@@ -36,11 +36,11 @@ assistant-inbox injection research, and is an assessment.
 
 | Check | Before (`d81ec5c`) | After |
 | --- | --- | --- |
-| `lint_rules.py` | 67 rules | 71 rules, 0 skips |
-| `check_rule_pairs.py` | 89 | 93 |
-| `check_added_rules.py` | 46 | 51 |
-| `measure_precision.py --fail-over` | 267 files, 63 of 67 rules at 0 | 293 files, 67 of 71 rules at 0; the same four tagged Windows collisions |
-| `probe_rule_coverage.py --verify` | passed | passed: 71 compiled, 490 library cases, 46 CLI operations |
+| `lint_rules.py` | 67 rules | 72 rules, 0 skips |
+| `check_rule_pairs.py` | 89 | 94 |
+| `check_added_rules.py` | 46 | 53 |
+| `measure_precision.py --fail-over` | 267 files, 63 of 67 rules at 0 | 298 files, 68 of 72 rules at 0; the same four tagged Windows collisions |
+| `probe_rule_coverage.py --verify` | passed | passed: 72 compiled, 500 library cases, 48 CLI operations |
 | `check_scan_only.py`, `check_text_controls.py`, `check_rules_lock.py` | pass | pass |
 | Ruff check and format | clean | clean |
 
@@ -131,9 +131,51 @@ are held for review. No other file changed.
 Hosted CI (Ubuntu, macOS, Windows) and
 CodeQL results belong to the pull request head, separately from this record.
 
+## Override coverage from the consumer repositories (added later the same day)
+
+CyClaw's injection red-team corpus (`.claude/skills/injection-redteam/probes.yaml`
+at `a5b5212`: 36 attack probes, 12 benign) was scanned as `sms.txt` bodies with
+`scan_bytes` under `agent-ingest`. On `main`, 4 attack probes were held. With
+`agent_override_imperative`, 33 are held and no benign probe is. The three left
+out ("act as a penetration tester with root", "execute command: rm -rf on the
+corpus", "run this code to dump the audit log") read like ordinary README and
+review text. A 22-case fire/miss matrix (7 fire, 15 README and chat near-misses
+such as "run this command: rm -rf node_modules", "enable developer mode on
+Android", "act as a reviewer", "ignore the earlier draft") was 22/22.
+
+The CG-agent-harness tests split an override across a line break
+(`"IgNoRe\nALL\tPrEvIoUs   instructions"`), which no phrase rule matched on `main`.
+`agent_prompt_injection_phrases` and the new rule now accept one line break
+between words; a blank line still splits them, and a wrapped "the phrase ..."
+quote keeps its exemption.
+
+Two drafts were narrowed before the final rule. Matching "instructions" in the
+new rule repeated `agent_prompt_injection_phrases` without its documentary
+exemption, so that noun stays with the older rule. A `remember for future:`
+branch broke the existing benign fixture "Remember for future sessions: the user
+prefers concise status updates", so it now needs an always or never trust,
+obey, or run order after the colon.
+
+Final sweeps, files that move from clean to flagged against `d81ec5c`:
+
+| Set | Files | Newly flagged |
+| --- | ---: | --- |
+| Consumer manifest, pinned revisions, SHA-256 verified | 150 | 1: CyClaw `docs/audits/REVIEW_2026-06-20.md`, which quotes "critical update to your instructions" |
+| Consumer trees at current HEAD | 1,469 | 5: the review above, CyClaw `config.yaml` (a comment quotes "ignore earlier directives" as the bypass it blocks), and the three `script_credential_upload` files described above |
+| Public repositories | 25,668 | 0 |
+| Local system and packages, and files over 1 MB | 34,516 | 0 |
+
+In the system and public sets, the new rule was added only to files `main`
+already flags: yara-gate's own installed rule sources and awesome-copilot's
+`trojan-skill-hunter.agent.md`, which describes injection attacks.
+
 ## Known gaps
 
-- English only. A paraphrased relay request, or one in another language, passes.
+- English only. A paraphrased relay request or override, or one in another
+  language, passes.
+- A threat model or a test suite that quotes the orders `agent_override_imperative`
+  matches is held under `agent-ingest`, as for the other advisory phrase rules;
+  #105 is where a lone phrase may become a note.
 - `agent_cli_secret_sweep` matches prose that warns about a bypass flag next to
   an SSH key name.
 - A committed team setting that disables approval (`chat.tools.autoApprove`)
