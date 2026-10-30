@@ -206,15 +206,25 @@ def _scan_file(
                     )
                 )
             if mismatch(path, kind):
-                extra.append(
-                    Finding(
-                        rule_id=f"filetype_mismatch_{kind}",
-                        severity=Severity.block
-                        if kind in {"pe", "elf", "macho"}
-                        else Severity.advisory,
-                        source=FindingSource.filetype,
+                if unit.data:
+                    extra.append(
+                        Finding(
+                            rule_id=f"filetype_mismatch_{kind}",
+                            severity=Severity.block
+                            if kind in {"pe", "elf", "macho"}
+                            else Severity.advisory,
+                            source=FindingSource.filetype,
+                        )
                     )
-                )
+                else:
+                    # Zero bytes sniff as text; a cloud placeholder is not a disguised type.
+                    extra.append(
+                        Finding(
+                            rule_id="heuristic_empty_file",
+                            severity=Severity.advisory,
+                            source=FindingSource.heuristic,
+                        )
+                    )
             seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
             ext = path.suffix.lower().removeprefix(".")
             extra.extend(_yara_findings(rules, unit.data, ext, seconds))

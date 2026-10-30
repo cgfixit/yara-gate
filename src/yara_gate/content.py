@@ -230,6 +230,14 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
             yield 0, name, budget.read(compressed)
 
 
+_JSON_START = re.compile(r"[\[{]\s*(?:[\"{\[\]}\d-]|(?:true|false|null)\b)")
+
+
+def _json_shaped(text: str) -> bool:
+    """True when text opens like JSON, so an INI header such as [Section] is not decoded."""
+    return _JSON_START.match(text) is not None
+
+
 def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     """Return UTF-8 derived views, keeping their offsets separate from raw bytes."""
     if sniff(data) != "text":
@@ -249,7 +257,7 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         yield "html-unescaped", _derived(unescaped, budget)
     # A chat body, webhook payload, or tool result arrives as JSON; the reader sees \u0049 as I.
     stripped = text.lstrip()
-    if stripped[:1] in ("{", "[") and "\\" in stripped:
+    if _json_shaped(stripped) and "\\" in stripped:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
             yield "json-unescaped", _derived(decoded, budget)

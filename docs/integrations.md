@@ -226,7 +226,7 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 `sha256` covers only the bytes read. To scan a file literally named `-`, pass
 `./-`.
 
-A JSON body is read twice: as raw bytes and as a `json-unescaped` view in which
+A JSON body (text that opens with `{` or `[` followed by a JSON token, not an INI header such as `[Section]`) is read twice: as raw bytes and as a `json-unescaped` view in which
 `\u0049gnore`, `\n`, and surrogate pairs are decoded, so an escape cannot hide a
 phrase from the lexical rules. Any text body also gets a `text-folded` view when
 fullwidth letters, a Cyrillic or Greek look-alike inside a Latin word, leet digits,
