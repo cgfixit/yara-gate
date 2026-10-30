@@ -34,7 +34,12 @@ from yara_gate.filetype import (
     sniff,
     utf16_encoding,
 )
-from yara_gate.heuristics import heuristic_findings, joiner_findings, pdf_token_findings
+from yara_gate.heuristics import (
+    base64_run_signals,
+    heuristic_findings,
+    joiner_findings,
+    pdf_token_findings,
+)
 from yara_gate.models import (
     Finding,
     FindingSource,
@@ -366,10 +371,16 @@ def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
-    try:
-        scanner.set_global("yara_gate_ext", ext)
-    except (TypeError, ValueError):
-        pass
+    blob, exe = base64_run_signals(data)
+    for name, value in (
+        ("yara_gate_ext", ext),
+        ("yara_gate_b64_blob", blob),
+        ("yara_gate_b64_exe", exe),
+    ):
+        try:
+            scanner.set_global(name, value)
+        except (TypeError, ValueError):
+            pass
     try:
         return scanner.scan(data)
     except yara_x.TimeoutError as exc:

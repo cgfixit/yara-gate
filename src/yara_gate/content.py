@@ -102,10 +102,22 @@ _LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*"
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
-# A long base64 run, with its data: URI prefix, is not prose. Leet folding inside it would turn
-# media magic and ";base64," into strings no rule expects, and no phrase hides in 200 characters
-# without a space, so folded_text leaves such runs as written.
-_ENCODED_RUN = re.compile(r"(?:data:[A-Za-z0-9.+/-]{1,80};base64,)?[A-Za-z0-9+/]{200,}={0,2}")
+# A long base64 run, with its data: URI, PEM, or SSH key-type prefix, is not prose. Leet folding
+# inside it would turn media magic and ";base64," into strings no rule expects, and no phrase
+# hides in 200 characters without a space, so folded_text leaves such runs as written. A MIME or
+# PEM body wrapped at 60 to 76 characters is three or more such lines. The lookbehind starts a
+# match only where a run starts, which keeps the search linear on a large body.
+_ENCODED_RUN = re.compile(
+    r"(?<![A-Za-z0-9+/=])"
+    r"(?:(?:data:[A-Za-z0-9.+/-]{1,80};base64,"
+    r"|-----BEGIN [A-Z0-9 ]{1,40}-----\r?\n"
+    r"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)?"
+    r"[A-Za-z0-9+/]{200,}={0,2}"
+    r"|(?:[A-Za-z0-9+/]{60,}={0,2}\r?\n){3,})"
+)
+# Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
+_ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
+_ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
 
 # Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
 # proofing boundary, so the joined text is what the lexical rules need.
@@ -393,8 +405,15 @@ def folded_text(text: str) -> str:
 
 
 def _fold(text: str) -> str:
+    if not text.strip(" \t\r\n"):
+        return text
     folded = unicodedata.normalize("NFKC", text)
-    if not folded.isascii() or any(ord(char) < 32 for char in folded):
+    if folded.isascii():
+        # Same result as the per-character filter below, without a Python loop over every
+        # character of a large ASCII body; every multi-line file has a CR or LF.
+        if _ASCII_CONTROL.search(folded) is not None:
+            folded = folded.translate(_ASCII_CONTROL_DELETE)
+    else:
         folded = "".join(
             char
             for char in folded

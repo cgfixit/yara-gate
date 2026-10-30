@@ -64,3 +64,20 @@ def test_base64_media_passes_and_encoded_executable_blocks(
     result = scan_file(blob, rules_dir=rules_copy)
     assert result.verdict.value == "block"
     assert any(f.rule_id == "agent_base64_executable" for f in result.findings)
+
+
+def test_base64_run_signals_scope_exemptions_to_each_run() -> None:
+    import base64
+
+    from yara_gate.heuristics import base64_run_signals
+
+    plain = base64.b64encode(bytes(range(256)) * 2)
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(600))
+    pe = base64.b64encode(b"MZ\x90\x00" + bytes(600))
+    pem = b"-----BEGIN CERTIFICATE-----\n" + plain + b"\n-----END CERTIFICATE-----\n"
+    assert base64_run_signals(b"x " + plain) == (True, False)
+    assert base64_run_signals(b"data:image/png;base64," + png) == (False, False)
+    assert base64_run_signals(pem) == (False, False)
+    assert base64_run_signals(pem + b"\n" + plain) == (True, False)
+    assert base64_run_signals(b'{"a":"' + pe + b'"}') == (True, True)
+    assert base64_run_signals(b"A" * 399) == (False, False)
