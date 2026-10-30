@@ -102,6 +102,9 @@ _LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*"
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
+# Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
+_ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
+_ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
 
 # Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
 # proofing boundary, so the joined text is what the lexical rules need.
@@ -375,8 +378,15 @@ def folded_text(text: str) -> str:
     symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
     numbers stay as written. The result is a view; the original bytes are scanned unchanged.
     """
+    if not text.strip(" \t\r\n"):
+        return text
     folded = unicodedata.normalize("NFKC", text)
-    if not folded.isascii() or any(ord(char) < 32 for char in folded):
+    if folded.isascii():
+        # Same result as the per-character filter below, without a Python loop over every
+        # character of a large ASCII body; every multi-line file has a CR or LF.
+        if _ASCII_CONTROL.search(folded) is not None:
+            folded = folded.translate(_ASCII_CONTROL_DELETE)
+    else:
         folded = "".join(
             char
             for char in folded

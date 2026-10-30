@@ -73,6 +73,29 @@ def joiner_findings(text: str) -> list[Finding]:
     return findings
 
 
+def base64_run_signals(data: bytes) -> tuple[bool, bool]:
+    """Return (blob, executable) for base64 runs of 400 or more characters in ``data``.
+
+    ``blob`` is a run that is not media, a font, a PEM body, or an SSH key: its first characters
+    are not an image, audio, video, or font header, and it does not follow a ``data:`` media URI,
+    a PEM header, or an SSH key type. ``executable`` is a run whose decoded head is MZ, ELF, or
+    Mach-O. Each exemption covers its own run. The YARA rules agent_base64_blob and
+    agent_base64_executable read these as globals and keep their ids and verdict_on_match.
+    """
+    blob = exe = False
+    for match in _B64_RUN.finditer(data):
+        start = match.start()
+        head = data[start : start + 16]
+        if _B64_EXE.match(head):
+            exe = True
+        if not blob and _B64_MEDIA.match(head) is None:
+            before = data[max(0, start - 128) : start]
+            blob = _B64_PREFIX.search(before) is None
+        if blob and exe:
+            break
+    return blob, exe
+
+
 def pdf_findings(data: bytes) -> list[Finding]:
     if sniff(data) != "pdf":
         return []
@@ -243,6 +266,22 @@ def _script_letter(char: str) -> bool:
     return any(name.startswith(prefix) for prefix in _LETTER_PREFIXES)
 
 
+# A run starts where the previous byte is not in the alphabet, so each run is visited once.
+_B64_RUN = re.compile(rb"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{400,}")
+# PNG, JPEG, GIF, WebP, ISO-BMFF (AVIF, HEIC, MP4), MP3, Ogg, WOFF, WOFF2, OpenType, TrueType: only
+# the characters the magic bytes fix, since the next one depends on the following byte.
+_B64_MEDIA = re.compile(
+    rb"iVBORw0KGg|/9j/|R0lGOD[dl]h|UklGR[A-Za-z0-9+/]{7}RUJQ|AAAA[A-Za-z0-9+/]{2}Z0eX"
+    rb"|SUQz|T2dnU|d09GR|d09GM|T1RUT|AAEAAA"
+)
+# MZ is TV then o-r; 7F ELF is f0VMR; FE ED FA CE/CF is /u36z; CE/CF FA ED FE is zvrt/ or z/rt/.
+# CA FE BA BE is left out because Java class files share it with fat Mach-O.
+_B64_EXE = re.compile(rb"TV[opqr]|f0VMR|/u36z|z[v/]rt/")
+_B64_PREFIX = re.compile(
+    rb"(?:data:(?:image|audio|video|font)/[A-Za-z0-9.+-]{1,64};base64,"
+    rb"|-----BEGIN [A-Z0-9 ]{1,40}-----[\r\n]+"
+    rb"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)\Z"
+)
 _PDF_NAME = re.compile(rb"/(?:[^\x00\t\n\f\r /<>\[\]()#%]|#[0-9A-Fa-f]{2})+")
 
 
