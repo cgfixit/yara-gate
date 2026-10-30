@@ -139,6 +139,22 @@ def _scan_file(
     engine_version: str | None = None
     skip_count = 0
     compiled = 0
+    units = 0
+    views: dict[str, int] = {}
+    scanned_bytes = 0
+    yara_time = 0.0
+
+    def yara(rules: object, payload: bytes, ext: str, view: str | None) -> list[Finding]:
+        nonlocal scanned_bytes, yara_time
+        if view is not None:
+            views[view] = views.get(view, 0) + 1
+        seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
+        begun = time.monotonic()
+        try:
+            return _yara_findings(rules, payload, ext, seconds)
+        finally:
+            scanned_bytes += len(payload)
+            yara_time += time.monotonic() - begun
 
     def finish(reason: str | None = None) -> ScanResult:
         from yara_gate import __version__
@@ -152,6 +168,10 @@ def _scan_file(
         result.compiled_rules = compiled
         result.tool_version = __version__
         result.scan_seconds = round(time.monotonic() - started, 3)
+        result.units_scanned = units
+        result.views_scanned = dict(sorted(views.items()))
+        result.bytes_scanned = scanned_bytes
+        result.yara_seconds = round(yara_time, 3) if units else None
         result.policy = policy
         if policy is ScanPolicy.agent_ingest and result.verdict is Verdict.advisory:
             result.verdict = Verdict.block
@@ -183,6 +203,7 @@ def _scan_file(
     try:
         for unit in content_units(ContentUnit(file_path.name, data), budget):
             budget.check()
+            units += 1
             path = Path(unit.name)
             kind = sniff(unit.data)
             extra: list[Finding] = []
@@ -225,9 +246,8 @@ def _scan_file(
                             source=FindingSource.heuristic,
                         )
                     )
-            seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
             ext = path.suffix.lower().removeprefix(".")
-            extra.extend(_yara_findings(rules, unit.data, ext, seconds))
+            extra.extend(yara(rules, unit.data, ext, None))
             heuristic, office_error = heuristic_findings(path, unit.data)
             extra.extend(heuristic)
             decoded = _decoded_text(unit.data)
@@ -243,8 +263,7 @@ def _scan_file(
                 return finish(office_error)
             for view, derived in text_views(unit.data, budget):
                 budget.check()
-                seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
-                view_findings = _yara_findings(rules, derived, ext, seconds)
+                view_findings = yara(rules, derived, ext, view)
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
@@ -254,8 +273,7 @@ def _scan_file(
                     findings.append(finding)
             for view, derived in pdf_views(unit.data, budget):
                 budget.check()
-                seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
-                view_findings = _yara_findings(rules, derived, ext, seconds)
+                view_findings = yara(rules, derived, ext, view)
                 # An action dictionary inside an object stream is invisible to the raw check.
                 view_findings.extend(pdf_token_findings(derived))
                 for finding in view_findings:
@@ -264,9 +282,8 @@ def _scan_file(
                     findings.append(finding)
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
-                seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
                 # A sentence split across Word runs is one sentence to the reader.
-                for finding in _yara_findings(rules, derived, ext, seconds):
+                for finding in yara(rules, derived, ext, view):
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
