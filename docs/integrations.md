@@ -237,6 +237,12 @@ allowed = (
 )
 ```
 
+Use `agent-ingest` for a message: it holds notes (a lone override phrase) as
+well as advisory findings, because an SMS has no structure to judge by and the
+phrase is the whole attack. `agent-document` is the opposite choice, for a
+retrieved report or test suite that may quote such a phrase; see
+[Documents that quote attacks](#documents-that-quote-attacks).
+
 `scan_bytes` writes nothing and moves nothing. Hand the same `body` to the
 model; do not re-read or re-encode it after the scan. `name` supplies the suffix
 that the extension-sensitive checks read, so pass the type the consumer will
@@ -318,6 +324,32 @@ held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=rule
 Allow the document only when both verdicts are clean. Name the text `.txt`
 (not `report.pdf`) so the scan treats it as text.
 
+### Documents that quote attacks
+
+A threat report, a red-team corpus, or a rule's own test file quotes the phrases
+the override rules match. Under `agent-ingest` those files are held, which is
+right for a message and wrong for a document a person wrote about attacks. The
+`agent-document` policy records a `note` finding (the four phrase rules:
+`agent_prompt_injection_phrases`, its multilingual and base64-encoded forms, and
+`agent_override_imperative`) without changing the verdict, and still holds every
+`advisory` finding: a settings file that turns off approvals, a code-relay
+request, a request to send the system prompt, a hidden-text run, or a role-spoof
+header. The verdict is `advisory` with `policy_reason` set to
+`agent-document records note findings` when only notes matched, and `block` with
+`agent-document holds advisory findings` otherwise.
+
+```python
+result = scan_bytes(text, name="report.txt", policy="agent-document", rules_dir=rules_root)
+allowed = result.verdict in ("clean", "advisory") and result.incomplete_reason is None
+if result.note:
+    log_for_review(result.sha256, [f.rule_id for f in result.findings])
+```
+
+The caller picks the policy because it knows whether it is reading a message or
+a document; the scanner does not guess from the content, and a size or ratio
+rule would be defeated by filler. A document that asks the reader to forward a
+one-time code, or that carries an encoded or hidden instruction, is still held.
+
 ## CyClaw and CG-agent-harness
 
 Use the strict gate before CyClaw reads/chunks an untrusted corpus file, or before
@@ -330,6 +362,7 @@ The [agent-rule coverage record](verification/agent-rule-coverage.md) ties this
 use case to inspected consumer revisions and scans of their current documents.
 Persistent-instruction and textual tool-result rules are advisory by design;
 `agent-ingest` is what holds those findings. Legitimate security documentation can
-match. Release held files through explicit review rather than a filename or
-repository-wide allowlist. These are integration requirements, not a claim that
+match; for a corpus of such documents, `agent-document` releases a file whose
+only findings are notes and still holds the rest. Release other held files
+through explicit review rather than a filename or repository-wide allowlist. These are integration requirements, not a claim that
 either consumer now calls yara-gate automatically.

@@ -68,6 +68,7 @@ class DemoResponse(BaseModel):
     exit_code: int
     sha256: str
     advisory: bool
+    note: bool
     incomplete_reason: str | None
     findings: list[DemoFinding]
     policy: str
@@ -81,6 +82,7 @@ def view_result(result: ScanResult) -> DemoResponse:
         exit_code=exit_code(result),
         sha256=result.sha256,
         advisory=result.advisory,
+        note=result.note,
         incomplete_reason=result.incomplete_reason,
         policy=result.policy.value,
         policy_reason=result.policy_reason,

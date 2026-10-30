@@ -1,6 +1,6 @@
 # Rules, checks, and coverage limits
 
-This page is the reference behind the [README](../README.md). It covers the 78 YARA rules shipped in [`rules/local/`](../rules/local/), the structural checks the scanner runs without YARA, and the measured limits. Each table gives the indicators a rule requires and its finding severity. `verdict_on_match` in the rule sets that severity. Under `agent-ingest`, an advisory finding still holds the file as block.
+This page is the reference behind the [README](../README.md). It covers the 78 YARA rules shipped in [`rules/local/`](../rules/local/), the structural checks the scanner runs without YARA, and the measured limits. Each table gives the indicators a rule requires and its finding severity. `verdict_on_match` in the rule sets that severity: `block`, `advisory`, or `note`. A note is a visible override phrase with nothing else behind it. Under `agent-ingest`, an advisory or note finding holds the file as block. Under `agent-document`, an advisory finding holds the file and a note is only recorded, so a document that quotes an attack passes while a structural signal does not.
 
 A match is a pattern that needs review, not proof of malice. Security write-ups, red-team notes, and administration scripts can match the advisory rules on purpose. The near-miss pairs in [`check_rule_pairs.py`](verification/check_rule_pairs.py) record each rule's benign boundary.
 
@@ -10,16 +10,16 @@ These rules target content an AI agent is about to read: messages, retrieved doc
 
 | Rule ID | What it matches | Finding severity |
 | --- | --- | --- |
-| [`agent_prompt_injection_phrases`](../rules/local/agent_prompt_injection_phrases.yar) | Phrases that try to override an agent's prompt | Advisory |
-| [`agent_prompt_injection_multilingual`](../rules/local/agent_prompt_injection_multilingual.yar) | Override phrases in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, and Russian | Advisory |
-| [`agent_encoded_instruction`](../rules/local/agent_encoded_instruction.yar) | Selected override phrases encoded in base64, including from UTF-16LE source text | Advisory |
+| [`agent_prompt_injection_phrases`](../rules/local/agent_prompt_injection_phrases.yar) | Phrases that try to override an agent's prompt | Note |
+| [`agent_prompt_injection_multilingual`](../rules/local/agent_prompt_injection_multilingual.yar) | Override phrases in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, and Russian | Note |
+| [`agent_encoded_instruction`](../rules/local/agent_encoded_instruction.yar) | Selected override phrases encoded in base64, including from UTF-16LE source text | Note |
 | [`agent_role_spoof_action`](../rules/local/agent_role_spoof_action.yar) | A claim of system authority, an all-caps authority header line, or a developer claim, followed by an override, disclosure, or mode-switch request | Advisory |
 | [`agent_fake_chat_marker`](../rules/local/agent_fake_chat_marker.yar) | A fake system or assistant chat marker with an instruction verb, or a tool-result close tag with no matching open tag | Advisory |
 | [`agent_tool_output_override`](../rules/local/agent_tool_output_override.yar) | Tool-result text that asks a command tool to bypass controls | Advisory |
 | [`agent_persistent_instruction`](../rules/local/agent_persistent_instruction.yar) | A request to persist an approval or safety bypass in agent guidance or future sessions | Advisory |
 | [`agent_secret_transfer_request`](../rules/local/agent_secret_transfer_request.yar) | A request to read sensitive material and send it to an outbound destination, or a one-line request to send the prompt, hidden instructions, memory file, or your credentials | Advisory |
 | [`agent_message_code_relay`](../rules/local/agent_message_code_relay.yar) | A request to forward, send, text, or reply with a one-time code (one that carries a type such as verification or 2FA, a digit count, or "you just received", or a PIN or passcode) to a phone number, an email address, a URL, `me`, or this chat; to forward a received reset or sign-in link; or the "I sent you a code by mistake" story. A refusal on the same line exempts it | Advisory |
-| [`agent_override_imperative`](../rules/local/agent_override_imperative.yar) | An order that names what it acts on: ignore or disregard all, your, or earlier guidance, directives, guidelines, or safety rules; disable, bypass, or remove your filters, guardrails, or safety; a persona (pretend to be, roleplay as, behave as) with no rules or unfiltered; you are no longer bound by; a jailbreak, developer, or sudo mode with no restrictions or root access; `DAN mode`; a critical update to your instructions; a message from your creators or the IT department that orders compliance or a reset; a standing instruction stored in your memory; invoke a tool to email or send; decode and execute | Advisory |
+| [`agent_override_imperative`](../rules/local/agent_override_imperative.yar) | An order that names what it acts on: ignore or disregard all, your, or earlier guidance, directives, guidelines, or safety rules; disable, bypass, or remove your filters, guardrails, or safety; a persona (pretend to be, roleplay as, behave as) with no rules or unfiltered; you are no longer bound by; a jailbreak, developer, or sudo mode with no restrictions or root access; `DAN mode`; a critical update to your instructions; a message from your creators or the IT department that orders compliance or a reset; a standing instruction stored in your memory; invoke a tool to email or send; decode and execute | Note |
 | [`agent_markdown_exfil`](../rules/local/agent_markdown_exfil.yar) | A Markdown image or link whose query string contains a template | Advisory |
 | [`agent_hidden_html`](../rules/local/agent_hidden_html.yar) | Hidden HTML with an instruction-like phrase within 256 bytes | Advisory |
 | [`agent_invisible_unicode`](../rules/local/agent_invisible_unicode.yar) | A zero-width space, a directional mark, a word joiner, an internal BOM, or a Unicode tag | Block |
@@ -62,8 +62,10 @@ prompt" without a `verbatim` qualifier (second person only, so "the debug view c
 show the system prompt" stays clean), "New instructions:" followed by `from now on`,
 `respond only`, `you are now`, or `ignore`, and "send/forward/reply with" the system
 prompt, hidden instructions, or memory file, or "your" credentials, API key, or
-password, with no destination required. These remain advisory: default
-allows them with exit 0; `agent-ingest` holds them with exit 1. The phrase
+password, with no destination required. The role-spoof and secret-transfer
+forms stay advisory; the `agent_prompt_injection_phrases` forms are notes. Under
+the default policy all exit 0; `agent-ingest` holds all of them with exit 1;
+`agent-document` holds the advisory ones and records the notes. The phrase
 “you are now” needs a nearby override/action, unrestricted-role, jailbreak-persona
 (`DAN` case-sensitive, `developer mode`, `jailbroken`, “without restrictions”) term, including
 inside hidden HTML, so ordinary connection-status text stays clean.

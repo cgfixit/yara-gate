@@ -2,9 +2,9 @@ rule agent_prompt_injection_phrases {
     meta:
         author = "yara-gate"
         description = "Phrases that try to override an agent prompt"
-        intent = "Advisory on an instruction to the model, not on a paper that quotes one"
-        severity = "advisory"
-        verdict_on_match = "advisory"
+        intent = "Note on an instruction to the model, not on a paper that quotes one"
+        severity = "note"
+        verdict_on_match = "note"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
         // Verb, optional quantifier and determiner, adjective, noun: "ignore all of your prior directions".

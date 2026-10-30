@@ -19,13 +19,20 @@ class Verdict(StrEnum):
 
 
 class Severity(StrEnum):
+    # A note is a weak signal: a visible override phrase with nothing else behind it. It is
+    # recorded like an advisory and gives the same advisory verdict, and only `agent-document`
+    # treats it differently.
+    note = "note"
     advisory = "advisory"
     block = "block"
 
 
 class ScanPolicy(StrEnum):
     default = "default"
+    # Holds every non-block finding, notes included, for an input the model would act on.
     agent_ingest = "agent-ingest"
+    # Holds advisory findings but records notes, for a document that may quote an attack.
+    agent_document = "agent-document"
 
 
 class FindingSource(StrEnum):
@@ -70,6 +77,7 @@ class ScanResult(_Dumpable):
     verdict: Verdict
     findings: list[Finding] = field(default_factory=list)
     advisory: bool = False
+    note: bool = False
     incomplete_reason: str | None = None
     path: str = ""
     ruleset_sha256: str | None = None
@@ -116,13 +124,15 @@ def result_from_findings(
             verdict=Verdict.incomplete,
             findings=findings,
             advisory=False,
+            note=False,
             incomplete_reason=incomplete_reason,
         )
     has_block = any(item.severity is Severity.block for item in findings)
     has_advisory = any(item.severity is Severity.advisory for item in findings)
+    has_note = any(item.severity is Severity.note for item in findings)
     if has_block:
         verdict = Verdict.block
-    elif has_advisory:
+    elif has_advisory or has_note:
         verdict = Verdict.advisory
     else:
         verdict = Verdict.clean
@@ -132,5 +142,6 @@ def result_from_findings(
         verdict=verdict,
         findings=findings,
         advisory=has_advisory,
+        note=has_note,
         incomplete_reason=None,
     )

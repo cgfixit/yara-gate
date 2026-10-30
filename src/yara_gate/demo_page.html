@@ -80,12 +80,13 @@
     <p>This page scans a built-in sample or a short paste. It does not move files into the drop folder, and it does not download rules.</p>
     <fieldset>
       <legend>Scan policy</legend>
-      <label for="policy">Handling advisory findings</label>
+      <label for="policy">Handling advisory and note findings</label>
       <select id="policy">
-        <option value="default">Default — report advisories</option>
-        <option value="agent-ingest">Agent ingest — block advisories</option>
+        <option value="default">Default — report advisories and notes</option>
+        <option value="agent-ingest">Agent ingest — block advisories and notes</option>
+        <option value="agent-document">Agent document — block advisories, report notes</option>
       </select>
-      <p>Exit 0 can include advisories under the default policy. Agent ingest holds them for review.</p>
+      <p>Exit 0 can include advisories and notes under the default policy. Agent ingest holds both for review. Agent document holds advisories and lets a note (a lone override phrase) through.</p>
     </fieldset>
     <fieldset>
       <legend>Built-in samples</legend>

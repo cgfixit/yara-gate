@@ -2,9 +2,9 @@ rule agent_prompt_injection_multilingual {
     meta:
         author = "yara-gate"
         description = "Override phrases in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, and Russian"
-        intent = "Advisory on a non-English instruction to ignore or forget the previous instructions"
-        severity = "advisory"
-        verdict_on_match = "advisory"
+        intent = "Note on a non-English instruction to ignore or forget the previous instructions"
+        severity = "note"
+        verdict_on_match = "note"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
         // Non-ASCII letters are written as UTF-8 byte escapes so the source stays ASCII.

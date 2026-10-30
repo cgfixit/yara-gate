@@ -200,7 +200,7 @@ def test_bidi_blocks_and_injection_is_advisory(tmp_path: Path, rules_copy: Path)
     noted = _scan(tmp_path, rules_copy, "note.md", injection_markdown())
     assert blocked.verdict is Verdict.block
     assert noted.verdict is Verdict.advisory
-    assert noted.advisory is True
+    assert noted.note is True
     assert "ignore previous instructions" not in noted.model_dump_json()
 
 

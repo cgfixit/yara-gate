@@ -88,14 +88,17 @@ scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, neve
 
 ## Verdicts and policies
 
-| Verdict | Default policy | `agent-ingest` | Exit |
-| --- | --- | --- | --- |
-| `clean` | read | read | 0 |
-| `advisory` | read, report it | **held as block**; the finding keeps its advisory severity | 0 / **1** |
-| `block` | held | held | 1 |
-| `incomplete` | held in quarantine | held in quarantine | 2 |
+| Verdict | Default policy | `agent-ingest` | `agent-document` | Exit |
+| --- | --- | --- | --- | --- |
+| `clean` | read | read | read | 0 |
+| `advisory`, from `note` findings only | read, report it | **held as block** | read, report it | 0 / **1** / 0 |
+| `advisory`, with an `advisory` finding | read, report it | **held as block** | **held as block** | 0 / **1** / **1** |
+| `block` | held | held | held | 1 |
+| `incomplete` | held in quarantine | held in quarantine | held in quarantine | 2 |
 
-`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended. Security write-ups that quote an attack will match and be held. Release them through a person reviewing the report, never through a filename or a repository-wide allowlist. Use a separate gate home for each policy.
+A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) under every policy; the policy changes only the verdict, and `policy_reason` in the record says what it did. A `note` is a visible override phrase with nothing else behind it (`agent_prompt_injection_phrases`, the multilingual and base64-encoded forms, and `agent_override_imperative`). Every other non-blocking rule is `advisory`.
+
+`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended: a message, a tool result, or a file the agent will act on. It holds notes too, so an SMS whose whole text is "ignore previous instructions" is held. `agent-document` is for a retrieved document a person may have written about attacks: a threat report or a test suite that quotes an override phrase passes with the note recorded, while a settings file that turns off approvals, a code-relay request, or a request for the system prompt is still held. The caller knows which one it is reading; the scanner does not guess from the content. Under either policy, release a held file through a person reviewing the report, never through a filename or a repository-wide allowlist. Use a separate gate home for each policy.
 
 ## Drop folder
 
@@ -105,8 +108,8 @@ scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, neve
 | --- | --- |
 | `inbox/` | Drop files here |
 | `quarantine/<sha256>/` | Being scanned, or the scan did not finish |
-| `clean/<sha256>/` | Clean, or advisory under the default policy |
-| `blocked/<sha256>/` | A block finding, or any advisory under `agent-ingest` |
+| `clean/<sha256>/` | Clean, or advisory under the default policy, or notes only under `agent-document` |
+| `blocked/<sha256>/` | A block finding, any advisory or note under `agent-ingest`, or an advisory under `agent-document` |
 | `reports/<sha256>.{sarif,json}` | Written for every scan, before the file moves |
 
 ```mermaid

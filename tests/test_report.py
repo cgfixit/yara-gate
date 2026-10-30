@@ -38,7 +38,8 @@ def test_reports_omit_matched_text(tmp_path: Path, rules_copy: Path) -> None:
     assert "byteOffset" in result["locations"][0]["physicalLocation"]["region"]
     compact = json.loads((home.reports / f"{noted.sha256}.json").read_text(encoding="utf-8"))
     assert compact["verdict"] == "advisory"
-    assert compact["advisory"] is True
+    assert compact["advisory"] is False
+    assert compact["note"] is True
     assert compact["exit_code"] == 0
 
 

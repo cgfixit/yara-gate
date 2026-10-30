@@ -43,14 +43,18 @@ def main() -> None:
                 for key in _META:
                     if f"{key} =" not in meta:
                         failures.append(f"{path.name}:{name} missing {key}")
-                verdict_ok = (
-                    'verdict_on_match = "advisory"' in meta or 'verdict_on_match = "block"' in meta
-                )
-                severity_ok = 'severity = "advisory"' in meta or 'severity = "block"' in meta
+                tiers = tuple(f'"{tier}"' for tier in ("note", "advisory", "block"))
+                verdict_ok = any(f"verdict_on_match = {tier}" in meta for tier in tiers)
+                severity_ok = any(f"severity = {tier}" in meta for tier in tiers)
                 if not verdict_ok:
-                    failures.append(f"{path.name}:{name} verdict is not advisory or block")
+                    failures.append(f"{path.name}:{name} verdict is not note, advisory, or block")
                 if not severity_ok:
-                    failures.append(f"{path.name}:{name} severity is not advisory or block")
+                    failures.append(f"{path.name}:{name} severity is not note, advisory, or block")
+                if verdict_ok and severity_ok:
+                    verdict = meta.split("verdict_on_match = ", 1)[1].split('"')[1]
+                    severity = meta.split("severity = ", 1)[1].split('"')[1]
+                    if verdict != severity:
+                        failures.append(f"{path.name}:{name} severity {severity} is not {verdict}")
         if count != declared:
             failures.append(f"compiled {count} of {declared}")
     if failures:

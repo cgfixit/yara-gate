@@ -2,9 +2,9 @@ rule agent_encoded_instruction {
     meta:
         author = "yara-gate"
         description = "Selected override phrases encoded in base64, including UTF-16LE source text"
-        intent = "Advisory when a known override phrase is base64-encoded"
-        severity = "advisory"
-        verdict_on_match = "advisory"
+        intent = "Note when a known override phrase is base64-encoded"
+        severity = "note"
+        verdict_on_match = "note"
         reference = "https://virustotal.github.io/yara-x/docs/writing_rules/text-patterns/"
     strings:
         $a = "ignore previous instructions" base64

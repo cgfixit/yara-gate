@@ -2,9 +2,9 @@ rule agent_override_imperative {
     meta:
         author = "yara-gate"
         description = "Second-person override, restriction-removal, persona-swap, authority-spoof, memory-poisoning, or tool-hijack instruction to an agent"
-        intent = "Advisory on the instruction shapes in the CyClaw injection red-team corpus that agent_prompt_injection_phrases does not cover: override synonyms (guidance, directives), disable or bypass your filters, a persona with no rules, a message from your creators or the IT department that orders compliance, a request to store a standing instruction in memory, and a decode-and-execute or invoke-tool-to-send order. Each needs the object it acts on, so a README that says run this command, enable developer mode, or act as a reviewer stays clean"
-        severity = "advisory"
-        verdict_on_match = "advisory"
+        intent = "Note on the instruction shapes in the CyClaw injection red-team corpus that agent_prompt_injection_phrases does not cover: override synonyms (guidance, directives), disable or bypass your filters, a persona with no rules, a message from your creators or the IT department that orders compliance, a request to store a standing instruction in memory, and a decode-and-execute or invoke-tool-to-send order. Each needs the object it acts on, so a README that says run this command, enable developer mode, or act as a reviewer stays clean"
+        severity = "note"
+        verdict_on_match = "note"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
         reference_attack = "https://atlas.mitre.org/techniques/AML.T0051"
     strings:

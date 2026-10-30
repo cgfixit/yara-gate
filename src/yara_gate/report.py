@@ -41,12 +41,16 @@ def redact(path: str) -> str:
     return path
 
 
+_SARIF_LEVEL = {"block": "error", "advisory": "warning", "note": "note"}
+
+
 def compact_report(result: ScanResult) -> dict[str, object]:
     """Return the shared JSON report schema, without matched bytes or home prefixes."""
     return {
         "sha256": result.sha256,
         "verdict": result.verdict.value,
         "advisory": result.advisory,
+        "note": result.note,
         "exit_code": exit_code(result),
         "incomplete_reason": result.incomplete_reason,
         "path": redact(result.path),
@@ -100,7 +104,7 @@ def _sarif(result: ScanResult) -> dict[str, object]:
         results.append(
             {
                 "ruleId": item.rule_id,
-                "level": "error" if item.severity.value == "block" else "warning",
+                "level": _SARIF_LEVEL[item.severity.value],
                 "message": {"text": item.rule_id},
                 "properties": _finding(item),
                 "locations": [

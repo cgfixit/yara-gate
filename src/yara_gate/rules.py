@@ -465,7 +465,7 @@ def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
         raise ValueError(f"{target.name} is not a hunt rule")
     updated = text.replace('status = "candidate"', 'status = "promoted"', 1)
     updated = re.sub(
-        r'verdict_on_match\s*=\s*"(advisory|block)"',
+        r'verdict_on_match\s*=\s*"(note|advisory|block)"',
         'verdict_on_match = "block"',
         updated,
         count=1,

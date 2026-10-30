@@ -255,4 +255,4 @@ def test_demo_scan_stays_in_memory(rules_copy: Path, monkeypatch: pytest.MonkeyP
         rules_dir=rules_copy,
     )
     assert held.verdict == "block"
-    assert held.findings[0].severity == "advisory"
+    assert held.findings[0].severity == "note"

@@ -178,9 +178,15 @@ def _scan_file(
         result.bytes_scanned = scanned_bytes
         result.yara_seconds = round(yara_time, 3) if units else None
         result.policy = policy
-        if policy is ScanPolicy.agent_ingest and result.verdict is Verdict.advisory:
-            result.verdict = Verdict.block
-            result.policy_reason = "agent-ingest holds advisory findings"
+        if result.verdict is Verdict.advisory:
+            if policy is ScanPolicy.agent_ingest:
+                result.verdict = Verdict.block
+                result.policy_reason = "agent-ingest holds advisory and note findings"
+            elif policy is ScanPolicy.agent_document and result.advisory:
+                result.verdict = Verdict.block
+                result.policy_reason = "agent-document holds advisory findings"
+            elif policy is ScanPolicy.agent_document:
+                result.policy_reason = "agent-document records note findings"
         return result
 
     if data is None:
@@ -367,7 +373,7 @@ def _yara_findings(rules: object, data: bytes, ext: str, timeout_s: int) -> list
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
         mode = meta.get("verdict_on_match", "block")
-        if mode not in ("advisory", "block"):
+        if mode not in ("note", "advisory", "block"):
             mode = "block"
         offset: int | None = None
         length: int | None = None
