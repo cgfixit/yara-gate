@@ -424,7 +424,7 @@ def _emit(result: ScanResult, json_output: bool) -> None:
     reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
     typer.echo(
         f"{result.verdict} sha256={result.sha256} findings={len(result.findings)} "
-        f"exit={exit_code(result)}{reason}"
+        f"units={result.units_scanned} exit={exit_code(result)}{reason}"
     )
 
 
