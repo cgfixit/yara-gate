@@ -123,20 +123,20 @@ Intake accepts only a regular file with one link and opens it without following 
 
 ## What this catches, and what it does not
 
-**Shipped:** 73 YARA rules in 50 files, grouped into these families:
-- **Agent ingestion:** override phrases in 9 languages, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64 instructions or executables.
+**Shipped:** 78 YARA rules in 54 files, grouped into these families:
+- **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64 instructions or executables.
 - **Windows delivery:** ClickFix, HTML smuggling, encoded PowerShell, `mshta`, `regsvr32`, and `rundll32`, plus shortcut, `.url`, `.library-ms`, `search-ms`, `.rdp`, and `.theme` NTLM leaks.
 - **Windows script hosts and documents:** HTA, WSF, MSC, `.reg` Run keys, encoded scripts, OneNote, CSV, SYLK, and IQY formulas, LOLBin downloads, MSBuild inline tasks that load code, `cmstp` INF scriptlets, and Chromium password decryption.
 - **Windows defense evasion:** Defender tampering, AMSI bypass, and deleting shadow copies.
 - **macOS and Linux:** AMOS-style password prompts and `dscl` password checks next to browser or wallet stores, JXA that runs fetched code, keychain dumps, Gatekeeper and quarantine bypass, archive-and-upload exfiltration, `.desktop` launchers, and sudoers, `ld.so.preload`, and TCC persistence.
-- **Cross-platform:** reverse shells, VS Code folder-open tasks, and Python `.pth` files that run code at interpreter start.
+- **Cross-platform:** reverse shells, credential files piped or attached to an upload, VS Code folder-open tasks, project settings that turn off a coding agent's approval prompts, AI CLIs run with approval off to hunt for wallets and keys, and Python `.pth` files that run code at interpreter start.
 - **Documents and containers:** RTF objects, active SVG, external OOXML and RTF templates, and disk images.
 
 **Structural checks without YARA:** Office macros and DDE, PDF actions (including those inside compressed object streams), executables embedded in documents or nested archives, double extensions, filename control characters, MCP tool poisoning, and pickle, safetensors, and GGUF model files.
 
 **Optional vendor packs**, installed only with `rules install --allow-network`: YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13.
 
-**Precision:** on a generated corpus of 279 benign files, 69 of the 73 rules hit nothing. The other four are documented Windows collisions, each at 0.36%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** on a generated corpus of 310 benign files, 74 of the 78 rules hit nothing. The other four are documented Windows collisions, each at 0.32%. This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
 - It does not catch a novel or targeted payload. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -185,7 +185,7 @@ uv run python docs/research/probe_rule_coverage.py --verify   # real library and
 ```text
 src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, heuristics,
                      models, quarantine, report, rules, hunt, demo, selftest
-rules/local/         the 73 shipped rules; rules/rules.lock pins the vendor packs
+rules/local/         the 78 shipped rules; rules/rules.lock pins the vendor packs
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh

@@ -117,6 +117,17 @@ collections. Hosted CI
 (Ubuntu, macOS, Windows) and CodeQL results belong to the pull request head,
 separately from this record.
 
+## After merging main (`78e30ed`, #124)
+
+The tables above were measured against `d81ec5c`. After `main` with #124 was
+merged into this branch, the tree has 78 rules in 54 files. `lint_rules`
+compiled 78 with no skips. Pairs: 100. Added checks: 57. `measure_precision
+--fail-over`: 310 files, 74 of 78 rules at 0, and the same four tagged Windows
+collisions (0.32% each). `probe_rule_coverage --verify`: passed with 523 library
+cases and 50 CLI operations, including the exact rule sets of every fixture
+from both pull requests. `check_scan_only`, `check_text_controls`,
+`check_rules_lock`, Ruff, and `mypy --strict src` passed.
+
 ## Known gaps
 
 - An inline task that hides its API names (reflection by string, or a renamed
