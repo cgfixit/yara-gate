@@ -372,6 +372,11 @@ def main() -> None:
             "rtf_template.rtf": b"{\\rtf1{\\*\\template https://example.invalid/template}}",
             "pdf_tar.tar": tar_buffer.getvalue(),
             "pdf_tgz.tgz": gzip.compress(tar_buffer.getvalue(), mtime=0),
+            # The trailer names an encryption dictionary, so the streams are ciphertext.
+            "encrypted.pdf": (
+                b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+                b"trailer\n<< /Size 3 /Root 1 0 R /Encrypt 2 0 R >>\n%%EOF\n"
+            ),
             "macro_zip.zip": zipped("macro.docm", docm_with_autoopen()),
             "depth.zip": nested_zip(4),
             "encrypted.zip": bytes(encrypted),
@@ -407,7 +412,14 @@ def main() -> None:
         "split_instruction.txt",
     ):
         expected[name] = "block"
-    for name in ("depth.zip", "encrypted.zip", "broken.zip", "unsupported.7z", "too_many.zip"):
+    for name in (
+        "depth.zip",
+        "encrypted.zip",
+        "broken.zip",
+        "unsupported.7z",
+        "too_many.zip",
+        "encrypted.pdf",
+    ):
         expected[name] = "incomplete"
     delivery = delivery_cases()
     delivery.update(signature_cases("delivery-signatures.json"))

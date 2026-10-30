@@ -47,6 +47,9 @@ def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | No
     findings.extend(mcp_tool_findings(path, data))
     office, error = office_findings(path, data)
     findings.extend(office)
+    if error is None and pdf_encrypted(data):
+        # The strings and streams a reader decrypts are ciphertext here, so the text is unread.
+        error = "encrypted pdf"
     return findings, error
 
 
@@ -77,6 +80,22 @@ def pdf_findings(data: bytes) -> list[Finding]:
     if sniff(data) != "pdf":
         return []
     return pdf_token_findings(data)
+
+
+def pdf_encrypted(data: bytes) -> bool:
+    """True when a PDF's trailer or XRef stream dictionary names an /Encrypt dictionary.
+
+    The name is compared after #xx decoding, as a reader would, so /Encr#79pt counts. The value
+    must be an indirect reference or a dictionary, so /Encrypt as prose in a stream does not.
+    """
+    if sniff(data) != "pdf":
+        return False
+    for match in _PDF_NAME.finditer(data):
+        if _decode_pdf_name(match.group()) != b"/Encrypt":
+            continue
+        if _PDF_ENCRYPT_VALUE.match(data, match.end()) is not None:
+            return True
+    return False
 
 
 def pdf_token_findings(data: bytes) -> list[Finding]:
@@ -122,6 +141,10 @@ def office_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]
         return [], None
     from oletools.olevba import VBA_Parser, detect_autoexec
 
+    if data.startswith(OLE) and _ole_encrypted(data):
+        # An encrypted OOXML package or a legacy file encrypted in place: macros, text, and
+        # embedded objects are ciphertext, so a clean result would describe nothing.
+        return [], "encrypted office file"
     try:
         parser = VBA_Parser(str(path), data=data)
     except Exception:
@@ -175,6 +198,26 @@ def _extracted_code(parser: object) -> str:
     except Exception:
         return ""
     return "\n".join(parts)
+
+
+def _ole_encrypted(data: bytes) -> bool:
+    """Detect [MS-OFFCRYPTO] encryption from stream names and msoffcrypto, without decrypting."""
+    import olefile
+    from oletools.crypto import is_encrypted
+
+    try:
+        ole = olefile.OleFileIO(data)
+    except Exception:
+        return False
+    try:
+        if ole.exists("EncryptedPackage") or ole.exists("\x06DataSpaces"):
+            return True
+        try:
+            return bool(is_encrypted(ole))
+        except Exception:
+            return False
+    finally:
+        ole.close()
 
 
 def _looks_like_office(path: Path, data: bytes) -> bool:
@@ -244,6 +287,7 @@ def _script_letter(char: str) -> bool:
 
 
 _PDF_NAME = re.compile(rb"/(?:[^\x00\t\n\f\r /<>\[\]()#%]|#[0-9A-Fa-f]{2})+")
+_PDF_ENCRYPT_VALUE = re.compile(rb"[\x00\t\n\f\r ]*(?:\d+[\x00\t\n\f\r ]+\d+[\x00\t\n\f\r ]+R|<<)")
 
 
 def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:

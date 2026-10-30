@@ -229,6 +229,46 @@ def test_zip_of_eicar_blocks(tmp_path: Path, rules_copy: Path) -> None:
     assert any(item.rule_id == "agent_eicar" for item in result.findings)
 
 
+@pytest.mark.parametrize(
+    "trailer", [b"/Encrypt 5 0 R", b"/Encrypt << /Filter /Standard >>", b"/Encr#79pt 5 0 R"]
+)
+def test_encrypted_pdf_is_incomplete(tmp_path: Path, rules_copy: Path, trailer: bytes) -> None:
+    data = (
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"trailer\n<< /Size 6 /Root 1 0 R " + trailer + b" >>\n%%EOF\n"
+    )
+    result = _scan(tmp_path, rules_copy, "locked.pdf", data)
+    assert result.verdict is Verdict.incomplete
+    assert result.incomplete_reason == "encrypted pdf"
+
+
+def test_encrypt_named_in_prose_or_metadata_flag_stays_clean(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    data = (
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /EncryptMetadata false >>\nendobj\n"
+        b"2 0 obj\n<< /Length 40 >>\nstream\nBT (the /Encrypt key is a dict) Tj ET\n"
+        b"endstream\nendobj\n%%EOF\n"
+    )
+    assert _scan(tmp_path, rules_copy, "plain.pdf", data).verdict is Verdict.clean
+
+
+def test_encrypted_office_package_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
+    from msoffcrypto.format.ooxml import OOXMLFile
+
+    plain = io.BytesIO()
+    with zipfile.ZipFile(plain, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+        )
+        archive.writestr("word/document.xml", "<w:document>Quarterly notes</w:document>")
+    locked = io.BytesIO()
+    OOXMLFile(io.BytesIO(plain.getvalue())).encrypt("inert", locked)
+    result = _scan(tmp_path, rules_copy, "locked.docx", locked.getvalue())
+    assert result.incomplete_reason == "encrypted office file"
+
+
 def test_archive_depth() -> None:
     assert archive_limit(nested_zip(3)) is None
     assert archive_limit(nested_zip(4)) == "archive depth exceeds 3"
