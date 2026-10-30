@@ -1,12 +1,14 @@
 import hashlib
 import io
 import stat
+import time
 import zipfile
 import zlib
 from pathlib import Path
 
 import pytest
 
+from yara_gate.content import Budget, text_views
 from yara_gate.models import Verdict, exit_code
 from yara_gate.samples import (
     EICAR,
@@ -570,3 +572,30 @@ def test_look_alike_spellings_are_folded_as_a_view(
         assert all(item.view != "raw" for item in result.findings)
     in_memory = scan_bytes(payload, name="note.txt", rules_dir=rules_copy)
     assert in_memory.verdict is verdict
+
+
+def test_ini_section_header_does_not_add_a_json_view(tmp_path: Path, rules_copy: Path) -> None:
+    payload = b"[InternetShortcut]\r\nURL=file://\\\\share\\a.exe\r\n"
+    result = _scan(tmp_path, rules_copy, "link.url", payload)
+    hits = [item for item in result.findings if item.rule_id == "win_internet_shortcut_launch"]
+    assert hits
+    assert {item.view for item in hits} == {"raw"}
+
+
+@pytest.mark.parametrize(
+    "body", [b'{"a": "\\u0049gnore"}', b'["\\u0049gnore"]', b'[ {"a":1}, "\\\\" ]']
+)
+def test_json_shaped_text_still_gets_the_json_view(
+    tmp_path: Path, rules_copy: Path, body: bytes
+) -> None:
+    budget = Budget(deadline=time.monotonic() + 30)
+    assert "json-unescaped" in [view for view, _ in text_views(body, budget)]
+
+
+def test_empty_file_with_a_typed_name_is_labeled_empty(tmp_path: Path, rules_copy: Path) -> None:
+    result = _scan(tmp_path, rules_copy, "placeholder.pdf", b"")
+    assert [item.rule_id for item in result.findings] == ["heuristic_empty_file"]
+    assert result.verdict is Verdict.advisory
+    blocked = scan_bytes(b"", name="placeholder.pdf", policy="agent-ingest", rules_dir=rules_copy)
+    assert blocked.verdict is Verdict.block
+    assert _scan(tmp_path, rules_copy, "notes.txt", b"").findings == []
