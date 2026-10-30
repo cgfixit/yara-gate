@@ -7,6 +7,7 @@ import secrets
 import shutil
 import signal
 import stat
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -24,6 +25,20 @@ _SETTLE_AGE_NS = 1_000_000_000
 # A fresher file must look the same on two looks at least this far apart (the watch loop
 # interval), so a writer that pauses between chunks is not mistaken for a finished one.
 _SETTLE_WINDOW_NS = 500_000_000
+# Python defines O_NOFOLLOW only on POSIX. Without it, intake checks the entry with lstat
+# before the open and checks the opened file's identity after it.
+_NOFOLLOW: int | None = getattr(os, "O_NOFOLLOW", None)
+# Windows opens in text mode unless asked, which rewrites CRLF and stops reading at Ctrl-Z.
+_BINARY: int = getattr(os, "O_BINARY", 0)
+# Windows attributes of a symlink, junction, or cloud-file placeholder, or of data that is not
+# on the local disk. Opening one can follow it or recall it over the network. RECALL_ON_OPEN
+# is left out: it shares 0x40000 with FILE_ATTRIBUTE_EA, which ordinary files can carry.
+_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
+_UNREAD_ATTRIBUTES = (
+    stat.FILE_ATTRIBUTE_REPARSE_POINT
+    | stat.FILE_ATTRIBUTE_OFFLINE
+    | _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+)
 
 
 @dataclass(frozen=True)
@@ -75,6 +90,7 @@ def intake(home: GatePaths, src: Path) -> Path:
     """Copy one regular file into quarantine/<sha256>/ and strip the executable bit."""
     home.ensure()
     fd = _open_regular(src)
+    consumed = False
     try:
         digest = _hash_fd(fd)
         existing = _existing_slot(home, digest)
@@ -84,19 +100,19 @@ def intake(home: GatePaths, src: Path) -> Path:
                 # Every rescan must pass through quarantine, including a stricter policy.
                 os.replace(existing.parent, quarantine)
                 existing = quarantine / existing.name
-            if _same_file(fd, existing):
-                return existing
-            _unlink_entry(src)
+            consumed = not _same_file(fd, existing)
             return existing
         slot = home.quarantine / digest
         slot.mkdir(parents=True, exist_ok=True)
         dest = slot / src.name
         _copy_fd(fd, dest)
-        if not _same_file(fd, dest):
-            _unlink_entry(src)
+        consumed = not _same_file(fd, dest)
         return dest
     finally:
         os.close(fd)
+        # Windows refuses to unlink a file while any handle to it is open, this one included.
+        if consumed:
+            _unlink_entry(src)
 
 
 def process_inbox_file(
@@ -327,6 +343,8 @@ def _acquire_lock(home: GatePaths) -> None:
 
 
 def _alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        return _alive_windows(pid)
     try:
         os.kill(pid, 0)
     except OSError:
@@ -334,9 +352,43 @@ def _alive(pid: int) -> bool:
     return True
 
 
+if sys.platform == "win32":
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _ERROR_ACCESS_DENIED = 5
+    _STILL_ACTIVE = 259
+
+    def _alive_windows(pid: int) -> bool:
+        """Ask the kernel. On Windows os.kill(pid, 0) sends CTRL_C_EVENT; it is not a probe.
+
+        A process that exists but belongs to another user is alive. A process that exited with
+        code 259 reads as alive, which keeps a second watcher out rather than letting one in.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return bool(ctypes.get_last_error() == _ERROR_ACCESS_DENIED)
+        try:
+            code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return bool(code.value == _STILL_ACTIVE)
+        finally:
+            kernel32.CloseHandle(handle)
+
+
 def _open_regular(src: Path) -> int:
     """Open a regular file with one link. Symlinks raise IntakeRejected and are not read."""
-    flags = os.O_RDONLY | os.O_NOFOLLOW
+    if _NOFOLLOW is None:
+        return _open_regular_checked(src)
+    flags = os.O_RDONLY | _NOFOLLOW | _BINARY
     nonblock = getattr(os, "O_NONBLOCK", 0)
     if isinstance(nonblock, int):
         flags |= nonblock
@@ -358,6 +410,28 @@ def _open_regular(src: Path) -> int:
     raise IntakeRejected(reason)
 
 
+def _open_regular_checked(src: Path) -> int:
+    """The same contract without O_NOFOLLOW, as on Windows.
+
+    The entry is refused from its lstat before any open, so a link is never followed and a
+    placeholder is never opened. After the open, the file must be the one lstat saw, which
+    refuses an entry swapped for a link in between.
+    """
+    before = _lstat_or_raise(src)
+    reason = _reject_reason(before)
+    if reason is not None:
+        raise IntakeRejected(reason)
+    fd = os.open(src, os.O_RDONLY | _BINARY)
+    info = os.fstat(fd)
+    reason = _reject_reason(info)
+    if reason is None and not os.path.samestat(before, info):
+        reason = "entry changed during intake"
+    if reason is None:
+        return fd
+    os.close(fd)
+    raise IntakeRejected(reason)
+
+
 def _lstat_or_raise(src: Path) -> os.stat_result:
     try:
         return src.lstat()
@@ -368,6 +442,8 @@ def _lstat_or_raise(src: Path) -> os.stat_result:
 def _reject_reason(info: os.stat_result) -> str | None:
     if stat.S_ISLNK(info.st_mode):
         return "symlink rejected"
+    if getattr(info, "st_file_attributes", 0) & _UNREAD_ATTRIBUTES:
+        return "reparse point or placeholder rejected"
     if not stat.S_ISREG(info.st_mode):
         return "not a regular file"
     if info.st_nlink != 1:

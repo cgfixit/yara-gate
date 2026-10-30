@@ -386,7 +386,7 @@ def _scan_path(
             result = process_inbox_file(
                 home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
             )
-        elif item.is_symlink() and (not follow_symlinks or item.is_dir()):
+        elif (item.is_symlink() or item.is_junction()) and (not follow_symlinks or item.is_dir()):
             result = _refuse_path(home, item, "symlink not followed", policy)
         else:
             result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
@@ -431,8 +431,9 @@ def _emit(result: ScanResult, json_output: bool) -> None:
 def _list_files(root: Path) -> tuple[list[Path], list[Path]]:
     """Walk a directory without following a symlinked file or directory.
 
-    A symlinked directory is listed as an entry so the caller reports it. A directory
-    that cannot be listed goes in the second list; skipping it would read as clean.
+    A symlinked directory or a Windows junction is listed as an entry so the caller
+    reports it; os.walk does not treat a junction as a link. A directory that cannot be
+    listed goes in the second list; skipping it would read as clean.
     """
     found: list[Path] = []
     unreadable: list[Path] = []
@@ -442,7 +443,9 @@ def _list_files(root: Path) -> tuple[list[Path], list[Path]]:
 
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=record):
         base = Path(dirpath)
-        links = [name for name in dirnames if (base / name).is_symlink()]
+        links = [
+            name for name in dirnames if (base / name).is_symlink() or (base / name).is_junction()
+        ]
         dirnames[:] = [name for name in dirnames if name not in links]
         found.extend(base / name for name in [*filenames, *links])
     return sorted(found), sorted(unreadable)

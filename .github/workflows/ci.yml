@@ -88,8 +88,9 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
-  # Windows is a scan target, not an intake host: inbox intake, watch and selftest need
-  # POSIX no-follow opens and link counts, so this job runs only the in-place checks.
+  # Windows has no O_NOFOLLOW, so inbox intake there checks the entry with lstat before the
+  # open and by identity after it; check_intake.py exercises that path. watch and selftest
+  # are not run here.
   windows:
     name: scan-only (windows-2025)
     runs-on: windows-2025
@@ -123,3 +124,6 @@ jobs:
 
       - name: In-place scans
         run: uv run python docs/verification/check_scan_only.py
+
+      - name: Inbox intake without O_NOFOLLOW
+        run: uv run python docs/verification/check_intake.py
