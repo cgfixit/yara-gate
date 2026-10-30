@@ -61,7 +61,17 @@ password tester), `macos_jxa_remote_exec` 7/7, `dev_python_pth_exec` 9/9
 
 ## Benign sweep
 
-The local system and package sweep against `d81ec5c` is in progress; its result replaces this line before the pull request leaves draft.
+65,057 local files were scanned with the `d81ec5c` rules and with this branch's
+rules:
+
+- 34,440 files up to 1 MB from `/usr/share`, `/etc`, the Python 3.12 standard
+  library, the project venv, the Node 22 global packages, `/opt/node-tools`
+  packages, and the Ruby 3.3 library.
+- The 76 files over 1 MB in the same roots.
+- 30,541 files up to 1 MB from the Google Cloud SDK, including its bundled
+  Python.
+
+No file gained or lost a finding, and no incomplete reason changed.
 
 Every `.pth`, `.targets`, `.props`, `.csproj`, `.inf`, `.scpt`, and `.jxa` file on
 the host (19 files: 17 `.pth`, including setuptools, virtualenv, editable, and
