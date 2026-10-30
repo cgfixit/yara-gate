@@ -193,9 +193,9 @@ reproduced-leads row fills all five columns.
 
 - Every new rule needs `intent`, `severity`, `verdict_on_match`, and `reference`
   metadata (`lint_rules.py`), a fire and a near-miss pair in
-  `docs/verification/check_rule_pairs.py` (CI fails without both), a README row,
-  and updated counts (`N YARA rules in M files`, `the N-rule local pack`, the
-  precision sentence). Keep rule source ASCII: write non-ASCII letters as `\xNN`
+  `docs/verification/check_rule_pairs.py` (CI fails without both), a row in
+  `docs/rules.md`, and updated counts in `docs/rules.md` and `README.md` (`N YARA
+  rules in M files`, the precision sentences). Keep rule source ASCII: write non-ASCII letters as `\xNN`
   byte escapes and check with `git grep -nP '[^\x00-\x7F]' -- rules/local`.
 - Keep a rule's quantifiers all greedy or all lazy; YARA-X rejects a mix (E015).
 - Verify by running the changed code with inert input. Leave the broad pytest and
