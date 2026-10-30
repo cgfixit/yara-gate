@@ -623,6 +623,7 @@ def main() -> None:
             "agent_memory_entities.html",
             "agent_tool_utf16be.bin",
             "agent_role_zip.zip",
+            "msbuild_inline.csproj",
         )
         cli_cases += tuple(
             (name, cases[name], policy, verdict, destination)

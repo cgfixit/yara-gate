@@ -37,14 +37,17 @@ judgment, not measured.
    without an allowlist.
 4. **Long-lived `serve --stdio` (#38).** Removes ~0.2 s per-file startup for a
    harness that gates every synced file; must fail closed on EOF or timeout.
-5. **More Windows delivery formats.** MSBuild inline tasks (`UsingTask` with
-   `CodeTaskFactory` plus `Process.Start`/`VirtualAlloc`), ClickOnce
-   `.application`/`.appref-ms` with a remote deployment provider, `cmstp` INF
-   `RunPreSetupCommandsSection`. Each needs a benign sweep of build repos first.
-6. **npm/pip install hooks beyond `curl | sh`.** `postinstall` running
-   `node -e` with a URL, `.pth` files whose line starts with `import` and calls
-   `exec`. `script_download_execute` already covers the `curl | sh` form
-   (the probe's `postinstall.json` baseline note is stale).
+5. **More Windows delivery formats.** Built later on 2026-10-30 as
+   `win_msbuild_inline_task` and `win_inf_scriptlet_install` (see
+   `docs/verification/2026-10-30-platform-delivery-rules.md`). ClickOnce was
+   dropped: a remote `deploymentProvider` is the normal published shape (about
+   5,400 `.application` files on GitHub), so a static rule would mostly match
+   legitimate deployments.
+6. **npm/pip install hooks beyond `curl | sh`.** The `.pth` half is built as
+   `dev_python_pth_exec`. `postinstall` running `node -e` is not: core-js and
+   other packages ship `node -e "try{require('./postinstall')}catch(e){}"`, so
+   `node -e` alone is ordinary. `script_download_execute` already covers the
+   `curl | sh` form.
 
 ## Integration paths that keep the contracts (assessment)
 
