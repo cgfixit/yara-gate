@@ -53,7 +53,7 @@ uv run yara-gate --version
 
 On Windows, only in-place scanning is supported and tested. A `windows-2025` CI job compiles the rules, runs the fire and near-miss pairs, and scans files outside the inbox with the library and the CLI (`docs/verification/check_scan_only.py`). Inbox intake, `watch`, and `selftest` depend on POSIX link checks (no-follow opens and link counts) and run only on Ubuntu 24.04 and macOS 15. The rules inspect Windows file types on every host.
 
-`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.0). It does not call the Homebrew `yara` binary.
+`yara-gate 0.2.0` is the version this tree prints. The scanner imports the `yara-x` package (the lock resolves 1.22.1). It does not call the Homebrew `yara` binary.
 
 `uv run yara-gate selftest` rebuilds the local fixtures and exits 0 only when every expected verdict matches. A fresh copy of this directory can run the same two commands. An installed copy copies the packaged local rules, not a checkout path that is not on disk. An unexpected selftest error prints `incomplete: <Type>` and exits 2. Selftest does not download malware. It writes the EICAR test string and small synthetic documents at run time.
 
