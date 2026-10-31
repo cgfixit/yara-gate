@@ -1,5 +1,6 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import bisect
 import io
 import json
 import re
@@ -189,9 +190,151 @@ def base64_run_signals(data: bytes) -> tuple[bool, bool]:
 
 
 def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
+    """PDF action and embedding names in the raw file, outside verified stream bodies.
+
+    A stream body is data: ASCII85 image text uses ``/`` and letters, so pixels can spell
+    ``/AA`` or ``/JS``. ``pdf_stream_bodies`` returns the bodies that no reader parses as
+    syntax, and names inside them are skipped. References still resolve against every
+    definition in the whole file, bodies included. The walk runs only when a name is found.
+    """
     if sniff(data) != "pdf":
         return []
-    return pdf_token_findings(data, objects)
+    lookup = objects if objects is not None else PdfRawObjects(data)
+    findings = pdf_token_findings(data, lookup)
+    if not findings:
+        return findings
+    bodies = pdf_stream_bodies(data)
+    # A first match outside every body stands; an /OpenAction is judged on all its occurrences.
+    if any(
+        (f.offset is not None and _in_spans(bodies, f.offset))
+        or f.rule_id.startswith("heuristic_pdf_OpenAction")
+        for f in findings
+    ):
+        return pdf_token_findings(data, lookup, skip=bodies)
+    return findings
+
+
+# Any indirect object header, without the digit limits the reference lookup uses.
+_PDF_ANY_HEADER = re.compile(rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj")
+# More top-level tokens than this leaves the file whole: bodies only remove findings.
+MAX_PDF_WALK_TOKENS = 500_000
+
+
+def pdf_stream_bodies(data: bytes) -> list[tuple[int, int]]:
+    """Spans of stream bodies that no PDF reader parses as syntax, sorted, or [] when unsure.
+
+    A body runs from the end-of-line after ``stream`` to the next ``endstream``. One top-level
+    walk from the start of the file skips strings and comments, the way a reader that starts at
+    an object header does. A body is returned only when its ``stream`` keyword follows an
+    ``N G obj`` header and exactly one dictionary, and that dictionary is not an object stream
+    (``/Type /ObjStm`` or a ``/First`` key: readers parse those members). Object-stream bodies
+    are walked past but kept in the scan.
+
+    A reader starts fresh at every object header and at a ``trailer``, and nowhere else, so
+    every ``N G obj`` and every ``trailer`` in the bytes must be one the walk itself read as a
+    token. Otherwise, or when the walk might not agree with a reader, the file is left whole
+    ([]): a header inside an open dictionary or array, a ``<`` that is neither ``<<`` nor a hex
+    string, a ``stream`` keyword that does not follow one header and one dictionary (an object
+    holds one stream), a ``stream`` not followed by CRLF or LF, a body with no ``endstream``, or
+    more than ``MAX_PDF_WALK_TOKENS`` tokens.
+    """
+    if b"stream" not in data:
+        return []
+    bodies: list[tuple[int, int]] = []
+    headers: set[int] = set()
+    trailers: set[int] = set()
+    position = 0
+    size = len(data)
+    depth = 0
+    count = 0
+    # The object since the last header: "start" before its first token, "dict" inside its
+    # first dictionary, "closed" right after it, and "other" otherwise (or with no header).
+    state = "other"
+    objstm = False
+    previous = b""
+    recent: list[tuple[bytes, int]] = []
+    while position < size:
+        match = _PDF_LEX.match(data, position)
+        if match is None:
+            if data[position] == 0x3C:
+                return []
+            position += 1
+            continue
+        token = match.group()
+        start = position
+        position = match.end()
+        first = token[:1]
+        if first in b"\x00\t\n\f\r " or first == b"%":
+            continue
+        count += 1
+        if count > MAX_PDF_WALK_TOKENS:
+            return []
+        if token == b"(":
+            position = _skip_pdf_string(data, position)
+            token = b"()"
+        elif first == b"<" and token != b"<<":
+            token = b"()"
+        if (
+            token == b"obj"
+            and len(recent) == 2
+            and recent[0][0].isdigit()
+            and recent[1][0].isdigit()
+        ):
+            if depth:
+                return []
+            headers.add(recent[0][1])
+            state, objstm, previous, recent = "start", False, b"", []
+            continue
+        recent = [*recent[-1:], (token, start)]
+        if first == b"/" and b"#" in token:
+            token = _decode_pdf_name(token)
+        if token == b"stream":
+            if state != "closed":
+                return []
+            if data.startswith(b"\r\n", position):
+                body = position + 2
+            elif data.startswith(b"\n", position):
+                body = position + 1
+            else:
+                return []
+            end = data.find(b"endstream", body)
+            if end < 0:
+                return []
+            if not objstm:
+                bodies.append((body, end))
+            position = end + len(b"endstream")
+            state, recent = "other", []
+            continue
+        if token in (b"<<", b"["):
+            if state == "start" and token == b"<<":
+                state = "dict"
+            elif state != "dict":
+                state = "other"
+            depth += 1
+        elif token in (b">>", b"]"):
+            depth = max(0, depth - 1)
+            if state == "dict" and depth == 0:
+                state = "closed"
+            elif state != "dict":
+                state = "other"
+        elif token == b"endobj":
+            state, depth = "other", 0
+        else:
+            if token == b"trailer":
+                trailers.add(start)
+            if state == "dict" and depth == 1:
+                if token == b"/First" or (previous == b"/Type" and token == b"/ObjStm"):
+                    objstm = True
+            elif state != "dict":
+                state = "other"
+        previous = token
+    if not bodies:
+        return []
+    if any(m.start() not in headers for m in _PDF_ANY_HEADER.finditer(data)):
+        return []
+    if any(m.start() not in trailers for m in re.finditer(rb"trailer", data)):
+        return []
+    return bodies
 
 
 def pdf_encrypted(data: bytes) -> bool:
@@ -308,24 +451,30 @@ def _skip_pdf_string(data: bytes, position: int) -> int:
     return position
 
 
-def pdf_token_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
+def pdf_token_findings(
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    *,
+    skip: Sequence[tuple[int, int]] = (),
+) -> list[Finding]:
     """PDF action and embedding names in ``data``, which may be an inflated stream view.
 
     Every name blocks except an /OpenAction whose every occurrence opens a page: a direct
     destination array, or a /GoTo action dictionary with no /Next. That one is the note
     ``heuristic_pdf_OpenAction_goto``. ``objects`` returns every definition of an object
     number and generation in the whole file, raw or in an object stream, so a reference read
-    from an inflated view resolves against the file it came from.
+    from an inflated view resolves against the file it came from. A name that starts inside
+    one of the sorted ``skip`` spans is neither reported nor judged as an /OpenAction.
     """
     findings: list[Finding] = []
     for token in PDF_TOKENS:
-        found = _pdf_name_span(data, token)
+        found = _pdf_name_span(data, token, skip)
         if found is None:
             continue
         offset, length = found
         rule_id = "heuristic_pdf_" + token.decode("ascii").removeprefix("/")
         severity = Severity.block
-        if token == b"/OpenAction" and _open_action_is_goto(data, objects):
+        if token == b"/OpenAction" and _open_action_is_goto(data, objects, skip):
             rule_id, severity = "heuristic_pdf_OpenAction_goto", Severity.note
         findings.append(
             Finding(
@@ -345,7 +494,9 @@ _PDF_DESTINATIONS = frozenset(
 _PDF_NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)")
 
 
-def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) -> bool:
+def _open_action_is_goto(
+    data: bytes, objects: PdfObjectLookup | None = None, skip: Sequence[tuple[int, int]] = ()
+) -> bool:
     """True when every /OpenAction in ``data`` only opens a page.
 
     Every occurrence the name scanner finds is read from its own position, so a malformed
@@ -359,7 +510,7 @@ def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) ->
     lookup = objects if objects is not None else PdfRawObjects(data)
     found = 0
     for match in _PDF_NAME.finditer(data):
-        if _decode_pdf_name(match.group()) != b"/OpenAction":
+        if _decode_pdf_name(match.group()) != b"/OpenAction" or _in_spans(skip, match.start()):
             continue
         found += 1
         if found > MAX_PDF_DEFINITIONS:
@@ -688,12 +839,22 @@ _PDF_LEX = re.compile(
 )
 
 
-def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
+def _pdf_name_span(
+    data: bytes, token: bytes, skip: Sequence[tuple[int, int]] = ()
+) -> tuple[int, int] | None:
     for match in _PDF_NAME.finditer(data):
         decoded = _decode_pdf_name(match.group())
-        if decoded == token:
+        if decoded == token and not _in_spans(skip, match.start()):
             return match.start(), len(match.group())
     return None
+
+
+def _in_spans(spans: Sequence[tuple[int, int]], offset: int) -> bool:
+    """True when ``offset`` falls in one of the sorted, disjoint half-open ``spans``."""
+    if not spans:
+        return False
+    index = bisect.bisect_right(spans, offset, key=lambda span: span[0]) - 1
+    return index >= 0 and spans[index][0] <= offset < spans[index][1]
 
 
 # Walk opcodes only. pickle.loads would run the callable this check exists to stop.

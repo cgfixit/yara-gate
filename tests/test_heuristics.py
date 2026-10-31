@@ -281,6 +281,107 @@ def test_pdf_exact_name_stops_at_pdf_whitespace_or_delimiter(delimiter: bytes) -
     ]
 
 
+# ASCII85 image text: "/" and letters are in its alphabet, so pixels can spell a name.
+_A85_PIXELS = b"Gar$0l^FR%Q:.?&[s-<JsUl]/AA)Sn#_CS0I].T6op/JS(edLp`a=gcd/OpenAction]Opt=2e~>"
+_A85_IMAGE = (
+    b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 "
+    b"/Filter [ /ASCII85Decode /FlateDecode ] /Length 80 >>\nstream\n"
+    + _A85_PIXELS
+    + b"\nendstream"
+)
+_JS_ACTION = b"<< /S /JavaScript /JS (x) >>"
+
+
+def _objects_pdf(*bodies: bytes, tail: bytes = b"") -> bytes:
+    data = b"%PDF-1.4\n"
+    for number, body in enumerate(bodies, 1):
+        data += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    return data + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n" + tail
+
+
+def _pdf_ids(data: bytes) -> set[str]:
+    return {f.rule_id for f in pdf_findings(data)}
+
+
+@pytest.mark.parametrize("eol", [b"\n", b"\r\n"])
+def test_pdf_names_in_a_stream_body_are_data(eol: bytes) -> None:
+    image = _A85_IMAGE.replace(b"stream\n", b"stream" + eol, 1)
+    assert _pdf_ids(_objects_pdf(b"<< /Type /Catalog >>", image)) == set()
+    goto = _objects_pdf(b"<< /Type /Catalog /OpenAction [2 0 R /Fit] >>", image)
+    assert [(f.rule_id, f.severity) for f in pdf_findings(goto)] == [
+        ("heuristic_pdf_OpenAction_goto", Severity.note)
+    ]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        # A real action in a dictionary, beside an image whose text spells names.
+        _objects_pdf(b"<< /Type /Catalog /OpenAction " + _JS_ACTION + b" >>", _A85_IMAGE),
+        _objects_pdf(
+            b"<< /Type /Form /AA << /O " + _JS_ACTION + b" >> /Length 3 >>\nstream\nq Q\nendstream"
+        ),
+        # An incremental update after %%EOF.
+        _objects_pdf(
+            b"<< /Type /Catalog >>",
+            _A85_IMAGE,
+            tail=b"3 0 obj\n<< /AA << /O " + _JS_ACTION + b" >> >>\nendobj\n",
+        ),
+        # No endstream: the rest of the file is not a body.
+        b"%PDF-1.4\n1 0 obj\n<< /Length 3 >>\nstream\nxyz\n2 0 obj\n<< /OpenAction "
+        + _JS_ACTION
+        + b" >>\nendobj\n",
+        # Readers parse object-stream members, with or without /Type /ObjStm.
+        _objects_pdf(
+            b"<< /Type /ObjStm /N 1 /First 4 /Length 30 >>\nstream\n6 0 << /AA << /O "
+            + _JS_ACTION
+            + b" >> >>\nendstream"
+        ),
+        _objects_pdf(
+            b"<< /N 1 /Fir#73t 4 /Length 30 >>\nstream\n6 0 << /AA << /O "
+            + _JS_ACTION
+            + b" >> >>\nendstream"
+        ),
+        # A header or trailer inside a body is an entry point a reader can jump to.
+        _objects_pdf(
+            b"<< /Length 9 >>\nstream\n7 0 obj\n<< /OpenAction "
+            + _JS_ACTION
+            + b" >>\nendobj\nendstream"
+        ),
+        _objects_pdf(
+            b"<< /Length 9 >>\nstream\ntrailer\n<< /Root << /OpenAction "
+            + _JS_ACTION
+            + b" >> >>\nendstream"
+        ),
+        # A "stream" that a reader reads as a comment, a string, or a hex string.
+        _objects_pdf(
+            b"% 9 0 obj << /Length 9 >> stream\n<< /OpenAction " + _JS_ACTION + b" >>\n% endstream"
+        ),
+        _objects_pdf(
+            b"<< /X (\n9 0 obj << /Length 5 >> stream\n) /OpenAction "
+            + _JS_ACTION
+            + b" /Y (endstream) >>"
+        ),
+        b"%PDF-1.4\n(\n1 0 obj\n<< /Type /Catalog % ) << /Length 9 >> stream\n/OpenAction "
+        + _JS_ACTION
+        + b" >>\n% endstream\nendobj\n",
+        _objects_pdf(
+            b"<< /X <\n9 0 obj << /Length 5 >> stream\n/OpenAction "
+            + _JS_ACTION
+            + b" /Y (endstream) >>"
+        ),
+        # One stream per object, and CRLF or LF after the keyword.
+        _objects_pdf(_A85_IMAGE + b"\n<< /Length 7 >>\nstream\n/JS (x)\nendstream"),
+        _objects_pdf(b"<< /Length 9 >>\nstream\r/AA << >>\nendstream"),
+    ],
+)
+def test_pdf_names_outside_a_verified_body_still_block(data: bytes) -> None:
+    findings = pdf_findings(data)
+    assert findings
+    assert all(f.severity == Severity.block for f in findings)
+    assert _pdf_ids(data) & {"heuristic_pdf_JS", "heuristic_pdf_AA", "heuristic_pdf_OpenAction"}
+
+
 def test_harmless_autoopen_docm_blocks(tmp_path: Path) -> None:
     path = tmp_path / "macro.docm"
     data = docm_with_autoopen()
