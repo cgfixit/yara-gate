@@ -182,6 +182,26 @@ def test_flate_view_reads_the_stream_dictionary_by_tokens(dictionary: bytes) -> 
     assert _JS_CATALOG in views["pdf-flate"]
 
 
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        b"/Predictor 12 /Columns 99999999999",
+        b"/Predictor 12 /Colors 33 /Columns 2",
+        b"/Predictor 5",
+        b"/Predictor 12 /Columns 16",  # the data starts with an unknown PNG row type
+    ],
+)
+def test_predictor_parameters_never_drop_an_inflated_stream(parameters: bytes) -> None:
+    body = b"\x09" + _JS_CATALOG if parameters.endswith(b"16") else _JS_CATALOG
+    stream = zlib.compress(body)
+    data = (
+        b"%%PDF-1.5\n7 0 obj\n<< /Filter /FlateDecode /DecodeParms << %s >> >>\nstream\n%s"
+        b"\nendstream\nendobj\n" % (parameters, stream)
+    )
+    views = dict(pdf_views(data, Budget(time.monotonic() + 30)))
+    assert _JS_CATALOG in views["pdf-flate"]
+
+
 def test_an_escaped_objstm_name_still_counts_against_a_page_open() -> None:
     action = b"<< /S /URI /URI (https://example.invalid/) >>"
     header = b"5 0\n"

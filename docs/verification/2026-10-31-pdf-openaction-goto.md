@@ -52,7 +52,7 @@ Image streams (`/Subtype /Image`, unless `/Type` is `/ObjStm`) are inflated as o
 | Catalog and `5 0 R` both in an object stream, object 5 a destination or GoTo; a raw catalog pointing into a stream | advisory / block / advisory | goto note |
 | Object 5 in a stream is a URI action; or a page open in the stream but redefined raw as a URI action; or a Launch copy in a second stream | block | `heuristic_pdf_OpenAction` |
 | Object stream with a broken header, a generation-1 reference, a missing object, or a reference to a reference | block | `heuristic_pdf_OpenAction` |
-| Object stream declaring `/Predictor 12` over bytes that are not PNG rows | clean: no row decodes, as in a viewer | none |
+| Object stream declaring `/Predictor 12` over bytes that are not PNG rows | advisory / block / advisory: the inflated bytes are scanned as they are | goto note in `pdf-flate` |
 | `/S /Launch`, `/S /JavaScript`, `/S /Java#53cript` | block | `heuristic_pdf_OpenAction` plus the action's own name |
 | `/S /URI`, `/S /GoToR`, `/S /SubmitForm` | block | `heuristic_pdf_OpenAction` |
 | No `/S`; `/S (/GoTo)` as a string; `/S /GoTo /S /URI` | block | `heuristic_pdf_OpenAction` |
@@ -94,7 +94,7 @@ All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3
 ## Limits
 
 - An object stream with a filter other than FlateDecode is not indexed, so a reference into it blocks.
-- A stream whose `/DecodeParms` names a predictor other than PNG (10 to 15) or 8-bit TIFF (2), or whose PNG rows use an unknown filter type, is left out of the view. A viewer applying that predictor gets the same bytes the scanner would reject.
+- A stream whose `/DecodeParms` names a predictor other than PNG (10 to 15) or 8-bit TIFF (2), parameters out of range, or PNG rows with an unknown filter type, is scanned as inflated, without predictor reversal. No stream that inflates is dropped from the view.
 - A GoTo action is trusted to stay inside the document. The destination is not checked against the page tree.
 
 ## Codex review of `df17a8f`, and the fixes
@@ -120,3 +120,9 @@ Codex reported five findings. Each was reproduced on `df17a8f` through the real 
 **Regression tests.** `tests/test_heuristics.py` covers each finding: the three dictionary forms, the escaped object-stream name, the definition cap, and the in-row deadline. All 86 cases in that file were run by direct call.
 
 **Unchanged outcomes.** The OpenAction matrix (31 cases), the object-stream matrix (11), and the flate-bypass matrix (11) give the same results as before. The 1,469-file consumer sweep gives the same outcome for every file. The 16 consumer PDFs take 5.52 s in total, against 4.57 s on `main`.
+
+### Follow-up: a stream must never drop out of the view
+
+A cross-check against #129 found one more hole on `59ce8a7`. `_decoded_stream` returned None, which dropped the stream from the view, whenever it declined to reverse a predictor. A `/Columns` above 1 MiB triggered that, so an object stream holding a JavaScript open action as one 8 MiB PNG row scanned **clean**. The same held for `/Colors 33`, an unknown predictor, and an unknown PNG row type.
+
+Now any parameters the decoder will not apply leave the inflated bytes to the text rules. An oversized `/Columns` is clamped to the data length, which decodes the same bytes with a bounded allocation. All four forms, and a 2 MiB-wide PNG Up row, block in direct scans, and `test_predictor_parameters_never_drop_an_inflated_stream` covers them. Every earlier matrix and the consumer sweep give the same outcomes as before.

@@ -608,7 +608,9 @@ def _decoded_stream(
     budget: Budget,
     info: PdfStreamInfo | None = None,
 ) -> bytes | None:
-    """Inflate one FlateDecode stream and undo a PNG or TIFF predictor, or return None.
+    """Inflate one FlateDecode stream and undo a PNG or TIFF predictor where it can.
+
+    It returns None only for a stream that is not FlateDecode, or that does not inflate.
 
     The stream's own dictionary decides (``pdf_stream_info``). When no dictionary parses, as
     for one longer than the window, the stream is inflated without a predictor if
@@ -636,14 +638,19 @@ def _decoded_stream(
     columns = parameters.get(b"/Columns", 1)
     colors = parameters.get(b"/Colors", 1)
     bits = parameters.get(b"/BitsPerComponent", 8)
-    if not (0 < columns <= 1 << 20 and 0 < colors <= 32 and bits in (1, 2, 4, 8, 16)):
-        return None
+    # Never drop an inflated stream: parameters this decoder will not apply (out of range, an
+    # unknown predictor, an unknown PNG row type) leave the inflated bytes to the text rules,
+    # so a stream cannot hide by naming parameters the scanner refuses. A row is never longer
+    # than the data, so an oversized /Columns is clamped, which decodes the same bytes.
+    if not (0 < columns and 0 < colors <= 32 and bits in (1, 2, 4, 8, 16)):
+        return inflated
+    columns = min(columns, max(1, len(inflated) * 8 // (colors * bits)))
+    decoded: bytes | None = None
     if predictor >= 10:
-        return _png_unpredict(inflated, columns, colors, bits, budget)
-    if predictor == 2 and bits == 8:
-        return _tiff_unpredict(inflated, columns, colors, budget)
-    # A predictor the reader would not apply either: the stream is not text it shows.
-    return None
+        decoded = _png_unpredict(inflated, columns, colors, bits, budget)
+    elif predictor == 2 and bits == 8:
+        decoded = _tiff_unpredict(inflated, columns, colors, budget)
+    return inflated if decoded is None else decoded
 
 
 def _png_unpredict(
