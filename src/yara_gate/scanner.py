@@ -27,6 +27,7 @@ from yara_gate.content import (
     text_views,
 )
 from yara_gate.filetype import (
+    RASTER_KINDS,
     double_extension,
     is_document_name,
     is_executable_kind,
@@ -418,10 +419,15 @@ def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
+    kind = sniff(data)
     blob, exe = base64_run_signals(data)
+    if kind in RASTER_KINDS:
+        # Image samples, not text a reader sees: a flat or grainy area in the base64 alphabet
+        # reads as a long run. An executable header at a run's start still blocks.
+        blob = False
     for name, value in (
         ("yara_gate_ext", ext),
-        ("yara_gate_text", sniff(data) == "text"),
+        ("yara_gate_text", kind == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
     ):

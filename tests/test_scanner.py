@@ -553,6 +553,24 @@ def test_decoy_parent_directory_does_not_block(tmp_path: Path, rules_copy: Path)
     assert result.verdict is Verdict.clean
 
 
+def test_raster_samples_are_not_base64_but_an_encoded_executable_is(rules_copy: Path) -> None:
+    import base64
+    import struct
+
+    def bmp(pixels: bytes) -> bytes:
+        info = struct.pack("<IiiHHIIiiII", 40, 100, 40, 1, 24, 0, len(pixels), 0, 0, 0, 0)
+        return b"BM" + struct.pack("<IHHI", 54 + len(pixels), 0, 0, 54) + info + pixels
+
+    flat = bmp(b"jpf" * 4000)
+    for policy in ("default", "agent-ingest", "agent-document"):
+        result = scan_bytes(flat, name="image1.bmp", rules_dir=rules_copy, policy=policy)
+        assert result.verdict is Verdict.clean, policy
+    pe = base64.b64encode(b"MZ" + b"\x90\x00" * 29 + b"\x80\x00\x00\x00" + bytes(600))
+    held = scan_bytes(bmp(b"x" * 300 + b" " + pe), name="image1.bmp", rules_dir=rules_copy)
+    assert "agent_base64_executable" in {f.rule_id for f in held.findings}
+    assert held.verdict is Verdict.block
+
+
 def _flate_pdf(stream: bytes, extra: bytes = b"", *, compress: bool = True) -> bytes:
     import zlib
 

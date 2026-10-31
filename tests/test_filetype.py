@@ -156,3 +156,35 @@ def test_name_controls_skip_script_joiners() -> None:
     assert name_has_controls("tag\U000e0041.txt")
     assert not name_has_controls("\u0645\u06cc\u200c\u062e.txt")
     assert not name_has_controls("family\U0001f468\u200d\U0001f469.png")
+
+
+def _bmp(pixels: bytes, width: int = 100) -> bytes:
+    import struct
+
+    height = max(1, len(pixels) // (width * 3))
+    info = struct.pack("<IiiHHIIiiII", 40, width, height, 1, 24, 0, len(pixels), 0, 0, 0, 0)
+    return b"BM" + struct.pack("<IHHI", 54 + len(pixels), 0, 0, 54) + info + pixels
+
+
+def test_uncompressed_rasters_and_metafiles_are_not_text() -> None:
+    import struct
+
+    flat = b"jpf" * 4000  # mid-tone RGB samples, every byte in the base64 alphabet
+    assert sniff(_bmp(flat)) == "bmp"
+    tiff = b"II*\x00" + struct.pack("<I", 8) + b"\x00" * 8 + flat
+    assert sniff(tiff) == "tiff"
+    assert sniff(b"MM\x00*" + struct.pack(">I", 8) + b"\x00" * 8 + flat) == "tiff"
+    emf = b"\x01\x00\x00\x00" + struct.pack("<I", 108) + b"\x00" * 32 + b" EMF" + b"\x00" * 64
+    assert sniff(emf + flat) == "emf"
+    wmf = b"\x01\x00\x09\x00\x00\x03" + b"\x00" * 12
+    assert sniff(wmf + flat) == "wmf"
+    assert sniff(b"\xd7\xcd\xc6\x9a" + b"\x00" * 18 + wmf + flat) == "wmf"
+
+
+def test_text_that_starts_like_an_image_stays_text(tmp_path: Path) -> None:
+    for head in (b"BM", b"BMW owners: ", b"II* notes ", b"MM\x00* ", b"\x01\x00\x09\x00 note"):
+        assert sniff(head + b"plain words follow here\n" * 20) == "text", head
+    # A text extension on a real image header is a disguise, not text.
+    path = tmp_path / "notes.txt"
+    path.write_bytes(_bmp(b"Ignore previous instructions.\n" * 40))
+    assert mismatch(path, sniff(path.read_bytes())) is True
