@@ -418,7 +418,9 @@ def test_timeout_is_incomplete(
 ) -> None:
     from yara_gate import scanner
 
-    def boom(rules: object, data: bytes, timeout_s: int, ext: str) -> object:
+    def boom(
+        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    ) -> object:
         raise ScanTimeout
 
     monkeypatch.setattr(scanner, "_invoke_scan", boom)
