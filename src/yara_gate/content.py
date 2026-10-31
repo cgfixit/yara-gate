@@ -105,7 +105,10 @@ _LEET = str.maketrans(
     {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
 )
 _WORD = re.compile(r"[^\W_]+")
-_LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
+# A maximal run of letters, digits, @, and $ that holds at least one of 0134578@$. The match
+# starts only at a run's first character and finds the stand-in lazily, so a run costs time in
+# proportion to its length; a pattern free to start inside a run rescans it from every position.
+_LEET_TOKEN = re.compile(r"(?<![^\W_])(?<![@$])(?:[^\W_]|[@$])*?[0134578@$](?:[^\W_]|[@$])*")
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
