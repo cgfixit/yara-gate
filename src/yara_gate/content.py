@@ -17,13 +17,19 @@ import unicodedata
 import zipfile
 import zlib
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
-from yara_gate.heuristics import _PDF_LEX, MAX_PDF_DEFINITIONS, PdfRawObjects, _decode_pdf_name
+from yara_gate.heuristics import (
+    _PDF_LEX,
+    _PDF_VALUE_WINDOW,
+    MAX_PDF_DEFINITIONS,
+    PdfRawObjects,
+    _decode_pdf_name,
+)
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -146,6 +152,9 @@ _PDF_OBJ_END = frozenset((b"endobj", b"stream"))
 _PDF_MAX_NESTING = 64
 _PDF_INT = re.compile(rb"[+-]?[0-9]+")
 MAX_OBJSTM_OBJECTS = 100_000
+# Filter names, including the inline-image abbreviations readers also accept in a stream.
+_PDF_FLATE_NAMES = frozenset({b"/FlateDecode", b"/Fl"})
+_PDF_ASCII_STAGES = frozenset({b"/ASCIIHexDecode", b"/AHx", b"/ASCII85Decode", b"/A85"})
 # The deadline is checked after this many bytes of predictor work, inside rows as well.
 _PREDICTOR_CHECK = 1 << 16
 # Stream filters this view decodes, by full name and by the abbreviation readers also accept.
@@ -538,7 +547,9 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         yield "ooxml-text", _derived("".join(parts), budget)
 
 
-def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
+def pdf_views(
+    data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
+) -> Iterator[tuple[str, bytes]]:
     """Inflate FlateDecode streams that hold text and return them as one ``pdf-flate`` view.
 
     The filter is read from the stream's own dictionary, the one value between the object
@@ -553,6 +564,8 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     checks can read them. Fonts, images, and other binary streams are dropped after inflation.
     Each stream is capped at the file limit, the total at the shared expansion budget, and the
     deadline is checked between chunks, so a decompression bomb ends the scan as incomplete.
+    ``decoded`` holds object streams that were already inflated, by stream offset; they are
+    reused so the same bytes are not inflated or charged twice.
     """
     if not data.startswith(b"%PDF"):
         return
@@ -564,7 +577,11 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         budget.check()
         if data[max(0, start.start() - 3) : start.start()] == b"end":
             continue
-        inflated = _pdf_stream_bytes(data, start, budget, objects)
+        if decoded is not None and start.start() in decoded:
+            # An object stream the /OpenAction lookup already inflated and charged.
+            inflated = decoded[start.start()]
+        else:
+            inflated = _pdf_stream_bytes(data, start, budget, objects)
         if inflated and sniff(inflated) == "text":
             parts.append(inflated)
     if parts:
@@ -626,9 +643,19 @@ class PdfObjects:
     def __init__(self, data: bytes, budget: Budget) -> None:
         self._data = data
         self._budget = budget
-        self._raw = PdfRawObjects(data)
-        self._streams: list[bytes] = []
+        self._raw = PdfRawObjects(data, budget.check)
+        # Inflated bytes, or a view into ``data`` for an unfiltered stream, so overlapping
+        # unfiltered declarations share the file's buffer instead of each holding a copy.
+        self._streams: list[bytes | memoryview] = []
         self._members: dict[int, list[tuple[int, int, int]]] | None = None
+        # Inflated object streams by the offset of their ``stream`` keyword, for ``pdf_views``
+        # to reuse: the same bytes are neither inflated nor charged to the budget twice.
+        self.decoded: dict[int, bytes | None] = {}
+        # True when an object stream could not be read, so an object may be defined in it.
+        self._opaque = False
+
+    def prime(self, keys: Iterable[tuple[int, int]]) -> None:
+        self._raw.prime(keys)
 
     def __call__(self, number: int, generation: int) -> list[bytes]:
         found = list(self._raw(number, generation))
@@ -636,7 +663,13 @@ class PdfObjects:
             if self._members is None:
                 self._members = self._index()
             for stream, begin, stop in self._members.get(number, []):
-                found.append(self._streams[stream][begin:stop])
+                # Only the window is ever parsed, as for a raw definition, so a lookup copies at
+                # most that much of each member however many declarations reach one tail.
+                window = min(stop, begin + _PDF_VALUE_WINDOW)
+                found.append(bytes(self._streams[stream][begin:window]))
+        if self._opaque:
+            # An unreadable object stream may redefine this object as any action.
+            found.append(b"")
         if len(found) > MAX_PDF_DEFINITIONS:
             return [b""]
         return found
@@ -656,26 +689,11 @@ class PdfObjects:
             stream_dict = _pdf_stream_dict(data, start.start())
             if stream_dict is None or stream_dict.get(b"/Type") != b"/ObjStm":
                 continue
-            total, first = stream_dict.get(b"/N"), stream_dict.get(b"/First")
-            if not (isinstance(total, bytes) and total.isdigit()):
+            member = self._read_objstm(start, stream_dict, objects)
+            if member is None:
+                self._opaque = True
                 continue
-            if not (isinstance(first, bytes) and first.isdigit()):
-                continue
-            pairs, origin = 2 * int(total), int(first)
-            if pairs > 2 * MAX_OBJSTM_OBJECTS:
-                continue
-            decoded = _pdf_stream_bytes(data, start, self._budget, objects)
-            if not decoded or origin > len(decoded):
-                continue
-            header = decoded[:origin].split()
-            if len(header) < pairs or not all(item.isdigit() for item in header[:pairs]):
-                continue
-            numbers = [int(item) for item in header[0:pairs:2]]
-            offsets = [int(item) for item in header[1:pairs:2]]
-            if any(b < a for a, b in zip(offsets, offsets[1:], strict=False)):
-                continue
-            if offsets and origin + offsets[-1] > len(decoded):
-                continue
+            decoded, numbers, offsets, origin = member
             self._streams.append(decoded)
             stream = len(self._streams) - 1
             bounds = [*offsets[1:], len(decoded) - origin]
@@ -684,6 +702,54 @@ class PdfObjects:
                 if len(slot) <= MAX_PDF_DEFINITIONS:
                     slot.append((stream, origin + offset, origin + stop))
         return members
+
+    def _read_objstm(
+        self,
+        start: re.Match[bytes],
+        stream_dict: dict[bytes, PdfValue],
+        objects: dict[tuple[int, int], PdfValue | None],
+    ) -> tuple[bytes | memoryview, list[int], list[int], int] | None:
+        """Decoded bytes, object numbers, offsets and /First of one object stream, or None."""
+        total, first = stream_dict.get(b"/N"), stream_dict.get(b"/First")
+        if not (isinstance(total, bytes) and total.isdigit()):
+            return None
+        if not (isinstance(first, bytes) and first.isdigit()):
+            return None
+        pairs, origin = 2 * int(total), int(first)
+        if pairs > 2 * MAX_OBJSTM_OBJECTS:
+            return None
+        data = self._data
+        filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+        if isinstance(filters, list) and len(filters) > 1:
+            # Decoding stops at the first FlateDecode, so a filter after it (ASCIIHexDecode, a
+            # second Flate pass) is still encoded and the objects inside are not the ones a
+            # reader sees. Only ASCII stages may come before it, as the last filter.
+            names = [_pdf_resolve(data, item, objects) for item in filters]
+            if names[-1] not in _PDF_FLATE_NAMES or not all(
+                name in _PDF_ASCII_STAGES for name in names[:-1]
+            ):
+                return None
+        if start.start() not in self.decoded:
+            self.decoded[start.start()] = _pdf_stream_bytes(data, start, self._budget, objects)
+        decoded: bytes | memoryview | None = self.decoded[start.start()]
+        if decoded is None and b"/Filter" not in stream_dict:
+            # No filter: the stream is its own bytes, which a reader parses as they are. These
+            # stay out of ``decoded``, which feeds the inflated view. A view, not a copy: nothing
+            # is expanded, and declarations that share one ``endstream`` share one buffer.
+            end = _PDF_END.search(data, start.end())
+            decoded = memoryview(data)[start.end() : end.start() if end else len(data)]
+        if not decoded or origin > len(decoded):
+            return None
+        header = bytes(decoded[:origin]).split()
+        if len(header) < pairs or not all(item.isdigit() for item in header[:pairs]):
+            return None
+        numbers = [int(item) for item in header[0:pairs:2]]
+        offsets = [int(item) for item in header[1:pairs:2]]
+        if any(b < a for a, b in zip(offsets, offsets[1:], strict=False)):
+            return None
+        if offsets and origin + offsets[-1] > len(decoded):
+            return None
+        return decoded, numbers, offsets, origin
 
 
 def _pdf_tokens(
