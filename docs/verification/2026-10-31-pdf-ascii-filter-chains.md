@@ -59,6 +59,13 @@ Every "after" block carries `heuristic_pdf_JS`, `heuristic_pdf_JavaScript`, and
   reference. That lone `>` can be the ASCIIHex end marker or a 0x3E byte in a following stream.
   This bug is in the baseline: an indirect `/Filter 7 0 R` to `[/FlateDecode]` followed by a
   3-byte stream holding `a>b` gave no `pdf-flate` view on `main` and does now.
+  The stop is lexical: `_pdf_tokens` ends at an `endobj` or `stream` keyword token. The first
+  version searched for the substrings and was cut short by `% upstream metadata` in a comment
+  before the value (Codex review on `b93da81`, reproduced: no view). A comment, string, or name
+  holding either word no longer ends the object. `test_flate_view_resolves_an_indirect_filter_object`
+  (4 cases) covers the comment, a string after the value, a `#xx` name, and the lone `>`. It fails
+  on `3c4931a` for the comment case and passes on the fix. Probe, rule pairs, added-rule checks,
+  precision, the real-PDF views, and the 21-run CLI reproduction are unchanged by the fix.
 
 LZW and RunLength are out of scope. The standard library has no decoder for either. A
 pure-Python decoder over a 100 MB stream would end most real files at the deadline instead of

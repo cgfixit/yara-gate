@@ -192,6 +192,31 @@ def test_flate_view_reads_every_stream_dictionary_form(
     assert text in views["pdf-flate"]
 
 
+@pytest.mark.parametrize(
+    "filter_object",
+    [
+        # Keywords inside a comment, string, or name do not end the referenced object.
+        b"8 0 obj\n% upstream metadata\n[/FlateDecode]\nendobj\n",
+        b"8 0 obj\n[/FlateDecode] % (endobj stream)\nendobj\n",
+        b"8 0 obj\n[/Fl#61teDecode]\nendobj\n",
+        # A lone ``>`` after the object, here in a short stream, does not void the reference.
+        b"8 0 obj\n[/FlateDecode]\nendobj\n"
+        b"9 0 obj\n<< /Length 3 >>\nstream\na>b\nendstream\nendobj\n",
+    ],
+)
+def test_flate_view_resolves_an_indirect_filter_object(filter_object: bytes) -> None:
+    text = b"1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+    data = (
+        b"%PDF-1.5\n"
+        + filter_object
+        + b"7 0 obj\n<< /Filter 8 0 R >>\nstream\n"
+        + zlib.compress(text)
+        + b"\nendstream\nendobj\n"
+    )
+    views = dict(pdf_views(data, Budget(time.monotonic() + 30)))
+    assert text in views["pdf-flate"]
+
+
 _JS_CATALOG = b"1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
 
 

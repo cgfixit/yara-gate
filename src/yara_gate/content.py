@@ -136,7 +136,8 @@ _PDF_OBJ = re.compile(
     rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj(?![^\x00\t\n\f\r /<>\[\]()%{}])"
 )
 _PDF_DICT_WINDOW = 4096
-_PDF_OBJ_END = re.compile(rb"endobj|stream")
+# Keywords that end an object; matched as whole tokens, never inside a comment, string, or name.
+_PDF_OBJ_END = frozenset((b"endobj", b"stream"))
 _PDF_MAX_NESTING = 64
 _PDF_INT = re.compile(rb"[+-]?[0-9]+")
 MAX_OBJSTM_OBJECTS = 100_000
@@ -680,11 +681,14 @@ class PdfObjects:
         return members
 
 
-def _pdf_tokens(data: bytes, position: int, stop: int) -> list[bytes] | None:
+def _pdf_tokens(
+    data: bytes, position: int, stop: int, until: frozenset[bytes] = frozenset()
+) -> list[bytes] | None:
     """Tokens in ``data[position:stop]``, or None when a string crosses ``stop``.
 
     Whitespace and comments are dropped, a literal string becomes ``()``, a hex string ``<>``,
-    and names are #xx-decoded.
+    and names are #xx-decoded. A keyword token in ``until`` ends the list early, before any
+    bytes after it are lexed.
     """
     tokens: list[bytes] = []
     while position < stop:
@@ -705,6 +709,8 @@ def _pdf_tokens(data: bytes, position: int, stop: int) -> list[bytes] | None:
             tokens.append(b"<>")
         elif first == b"/":
             tokens.append(_decode_pdf_name(token))
+        elif token in until:
+            return tokens
         else:
             tokens.append(token)
     return tokens
@@ -798,11 +804,11 @@ def _pdf_resolve(
         header = _last_match(pattern, data, 0, len(data))
         resolved: PdfValue | None = None
         if header is not None:
-            # Stop at the object's end: a lone ``>`` after it, such as an ASCIIHex stream's end
-            # marker or a byte in a binary stream, has no token and would void the whole window.
+            # Stop at the object's ``endobj`` or ``stream`` token: a lone ``>`` after it, such as
+            # an ASCIIHex stream's end marker or a byte in a binary stream, has no token and
+            # would void the whole window.
             stop = min(len(data), header.end() + 4096)
-            found = _PDF_OBJ_END.search(data, header.end(), stop)
-            tokens = _pdf_tokens(data, header.end(), found.start() if found else stop)
+            tokens = _pdf_tokens(data, header.end(), stop, _PDF_OBJ_END)
             try:
                 resolved = _pdf_value(tokens, 0)[0] if tokens else None
             except (IndexError, ValueError):
