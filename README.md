@@ -108,9 +108,10 @@ A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) 
 | --- | --- |
 | `inbox/` | Drop files here |
 | `quarantine/<sha256>/` | Being scanned, or the scan did not finish |
-| `clean/<sha256>/` | Clean, or advisory under the default policy, or notes only under `agent-document` |
+| `clean/<sha256>/` | Clean, or advisory under the default policy, or notes only under `agent-document`, or an `agent-document` hold released by review |
 | `blocked/<sha256>/` | A block finding, any advisory or note under `agent-ingest`, or an advisory under `agent-document` |
 | `reports/<sha256>.{sarif,json}` | Written for every scan, before the file moves |
+| `releases/log.jsonl` | Reviewed releases: an append-only, hash-chained log |
 
 ```mermaid
 flowchart LR
@@ -121,6 +122,8 @@ flowchart LR
     report -->|block| blocked["blocked/"]
     report -->|clean| clean["clean/"]
 ```
+
+**Reviewed release.** `yara-gate release SHA256 --reason TEXT` releases an `agent-document` hold after a person has read the report. It rescans the held copy with the current rules, refuses a block-severity finding or an incomplete scan, and appends the release to `releases/log.jsonl`, with the OS user as reviewer and no file content. The release binds the bytes, the ruleset digest, and the rule ids: a rule update or a new finding holds the file again. A message held under `agent-ingest` is never released, and `scan_bytes` and `scan -` ignore releases. `--path FILE` releases a file scanned in place under `--home`. `yara-gate release --verify-log` checks the chain and prints its head hash; a log that does not verify voids every release. The reason is stored as typed, so do not paste file content into it.
 
 Intake accepts only a regular file with one link and opens it without following links. Symlinks, hardlinks, junctions, and cloud placeholders are rejected unread into `quarantine/_rejected/`. Paths outside the inbox are scanned in place and never moved. Never make a sync client's folder the inbox: intake removes the inbox copy, and the client would propagate that deletion. Copy files out instead, as [docs/examples/sync_folder_gate.py](docs/examples/sync_folder_gate.py) does on all three operating systems. On macOS, `install-agent` writes a launchd plist that runs `watch`. It does not load the plist.
 

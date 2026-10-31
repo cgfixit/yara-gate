@@ -99,7 +99,12 @@ crash, or a timeout all mean "not scanned, do not read". A caller must not turn
 Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
 releases a held file. Release is a human review of the report, not a filename or
-repository-wide allowlist.
+repository-wide allowlist: `yara-gate release SHA256 --reason TEXT` releases an
+`agent-document` hold by its bytes, ruleset, and rule ids (see the README's drop-folder
+section). A released record has `verdict == "advisory"` and `policy_reason` set to
+`agent-document hold released by review`; the read rule above does not accept it, so a
+caller reads a released file from `clean/<sha256>/` in the inbox flow, or decides
+explicitly to accept that record. Messages scanned under `agent-ingest` are never released.
 
 ## Synced folders (Dropbox, OneDrive, iCloud Drive)
 
@@ -365,5 +370,6 @@ Persistent-instruction and textual tool-result rules are advisory by design;
 `agent-ingest` is what holds those findings. Legitimate security documentation can
 match; for a corpus of such documents, `agent-document` releases a file whose
 only findings are notes and still holds the rest. Release other held files
-through explicit review rather than a filename or repository-wide allowlist. These are integration requirements, not a claim that
+through `yara-gate release` after reading the report, never through a filename or
+repository-wide allowlist. These are integration requirements, not a claim that
 either consumer now calls yara-gate automatically.

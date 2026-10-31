@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from yara_gate.models import ScanPolicy, ScanResult, Verdict
+from yara_gate.release import apply_release, release_log
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_file
 
@@ -128,6 +129,7 @@ def process_inbox_file(
     except IntakeRejected as exc:
         return _reject_entry(home, src, exc.reason, policy)
     result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
+    result = apply_release(result, release_log(home.root))
     write_reports(home.reports, result)
     _relocate(home, result)
     return result
@@ -144,8 +146,27 @@ def scan_in_place(
     """Scan a path that did not come from the inbox. The file stays where it is."""
     home.ensure()
     result = scan_file(src, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
+    result = apply_release(result, release_log(home.root))
     write_reports(home.reports, result)
     return result
+
+
+def stored_copy(home: GatePaths, digest: str) -> Path | None:
+    """The gate's copy of ``digest`` in clean/, blocked/, or quarantine/, if it has one."""
+    return _existing_slot(home, digest)
+
+
+def release_stored_copy(home: GatePaths, digest: str) -> None:
+    """Move a released copy from blocked/ to clean/; a copy elsewhere stays where it is."""
+    src = home.blocked / digest
+    dest = home.clean / digest
+    if not src.is_dir():
+        return
+    home.clean.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        shutil.rmtree(src, ignore_errors=True)
+        return
+    os.replace(src, dest)
 
 
 def watch(

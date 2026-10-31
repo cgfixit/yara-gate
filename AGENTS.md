@@ -6,7 +6,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 
 - `src/yara_gate/cli.py`: Typer commands, recursive path scans, exit aggregation.
 - `scanner.py`, `content.py`, `filetype.py`, `heuristics.py` in that package: scan orchestration, bounded member/text views, type checks, PDF/Office indicators.
-- `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.
+- `models.py`, `quarantine.py`, `report.py`, `release.py`: verdict/policy contracts, intake and relocation, JSON/SARIF, reviewed release.
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
 - `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is only a limited JavaScript illustration.
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
@@ -25,6 +25,7 @@ Establish behavior from these callers and models before relying on README exampl
 - `rules install` downloads the locked packs. `rules update` resolves new pins. Both swap the vendor tree only after the staged rules compile, and a failure leaves the previous vendor tree and lock unchanged. `GITHUB_TOKEN`, then `GH_TOKEN`, is sent only to `api.github.com` and is stripped on a redirect to another host. Download failures raise `RuleDownloadError` and the CLI prints that message. An installed copy uses the packaged `rules.lock` when the rules root has none, then writes a copy of the lock beside `vendor/`. Vendor bodies stay unpackaged. A scan writes its compiled cache under the user cache directory and does not modify the rules tree. `vendor/SKIPPED.md` is written only by `rules install` and `rules update`.
 - Reports must not contain matched bytes or secrets. Path redaction only abbreviates the user's home prefix; inspect reports before publication rather than assuming every filename is anonymized.
 - Successful rule installs/updates record `installed_vendor_files` in the root lock. Missing recorded files make scans incomplete before cache reuse and keep inbox files quarantined. Locks without an inventory still support bundled-only scans; scans never enroll or repair vendor state.
+- `yara-gate release` (`release.py`) is the only path that turns a hold into a pass. It releases only an `agent-document` hold whose fresh rescan is complete and has no block-severity finding, binds the bytes, ruleset digest, policy, and rule ids, and records the OS user and reason in the hash-chained `releases/log.jsonl` without file content. `apply_release` runs only after gate-home scans (`process_inbox_file`, `scan_in_place`), never in `scan_bytes` or `scan -`, and a log that does not verify voids every release. Widening any of these is an owner decision.
 - Keep the live demo loopback-only, with bounded requests and its CSP. Vendor downloads require explicit task scope and the CLI's `--allow-network`; a scan or demo must not initiate them. Candidate promotion changes blocking behavior and must be within the requested task.
 
 ## Local verification
