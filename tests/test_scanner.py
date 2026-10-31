@@ -673,6 +673,40 @@ def test_pdf_image_samples_are_not_base64_but_a_payload_is(
             )
 
 
+def test_pdf_control_bytes_in_image_samples_are_not_text(tmp_path: Path, rules_copy: Path) -> None:
+    import random
+
+    rng = random.Random(9)  # noqa: S311 - fixed seed for synthetic pixels
+    zwsp = "\u200b".encode()
+    # High-byte pixels are not UTF-8 on either side of the E2 80 8B they happen to contain.
+    pixels = bytes(rng.randrange(0x80, 0x100) for _ in range(4000))
+    image = b" /Type /XObject /Subtype /Image /Width 40 /Height 33"
+    cases = (
+        (b"q Q", image, pixels[:2000] + zwsp + pixels[2000:], False),
+        # A labeled image used as /Contents is judged by its bytes the same way.
+        (pixels[:2000] + zwsp + pixels[2000:], image, b"q Q", False),
+        (b"BT (please ign" + zwsp + b"ore the notes) Tj ET", b"", b"q Q", True),
+    )
+    for contents, label, other, expected in cases:
+        inner = zlib.compress(other)
+        extra = (
+            b"<<"
+            + label
+            + b" /Filter /FlateDecode /Length "
+            + str(len(inner)).encode()
+            + b" >>\nstream\n"
+            + inner
+            + b"\nendstream"
+        )
+        pdf = _flate_pdf(contents, extra)
+        result = scan_bytes(pdf, name="shot.pdf", rules_dir=rules_copy, policy="agent-ingest")
+        found = ("agent_invisible_unicode", "pdf-flate") in {
+            (item.rule_id, item.view) for item in result.findings
+        }
+        assert found is expected
+        assert result.verdict is (Verdict.block if expected else Verdict.clean)
+
+
 def _ascii85(data: bytes) -> bytes:
     import base64
 
