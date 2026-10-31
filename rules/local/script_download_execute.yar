@@ -2,13 +2,23 @@ rule script_download_execute {
     meta:
         author = "yara-gate"
         description = "Download and interpreter execution in the same bounded command region"
-        intent = "Advisory on a download piped or substituted into a shell, not on a writeup that quotes that lure. The writeup exemption covers only a command on the same line as the documentary phrase or the line below it, so a payload placed under 'For example:' is not flagged; that is the accepted cost of a text-level exemption"
+        intent = "Advisory on a download piped or substituted into a shell or interpreter that runs it, not on a writeup that quotes that lure, prose that only names the idiom, or a download piped to Python as data (json.tool, or a one-line -c program that names no code-running call, dunder, os, open, or code-executing loader). The writeup exemption covers only a command on the same line as the documentary phrase or the line below it, so a payload placed under 'For example:' is not flagged; that is the accepted cost of a text-level exemption"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://attack.mitre.org/techniques/T1059/001/"
     strings:
         // sudo, with or without flags such as -E, can sit between the pipe and the interpreter.
-        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
+        // The download needs a target: a word that is not a flag or a backslash (or curl's
+        // attached -Kfile, --config= or --url=), so prose that names the idiom ("no `curl | bash`",
+        // a table cell "curl \| sh") is not a command.
+        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
+        // Python reading the download as JSON data. This is an allowlist of one shape, never a
+        // denylist of dangerous names: `-m json.tool`, or a -c program that is exactly
+        // `import json,sys; print(json.load(sys.stdin)['k'][0])` (or json.loads of stdin.read())
+        // with literal subscripts, closed on the same line and followed by a boundary. Any other
+        // program, adjacent quoted segments, or an unlisted executor keeps the $shell match.
+        // It exempts the $shell match at the same offset only.
+        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+["'](import[ ]+(json|json,[ ]*sys|sys,[ ]*json);[ ]*)?print\(json\.(load\(sys\.stdin\)|loads\(sys\.stdin\.read\(\)\))(\[('[A-Za-z0-9_.-]{1,64}'|"[A-Za-z0-9_.-]{1,64}"|-?[0-9]{1,4})\]){0,8}\)["'][ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
         // bash <(curl ...) and sh -c "$(curl ...)" run the download without a pipe.
         $subst = /\b(sh|bash|zsh)[ \t]+(-c[ \t]+["']?)?[<$]\([ \t]*(curl|wget)\b/ nocase ascii wide
         // iwr and irm are the built-in aliases that ClickFix command lines use.
@@ -23,7 +33,11 @@ rule script_download_execute {
     condition:
         // A documentary phrase exempts only the match whose first byte its own span covers:
         // the phrase on the same line as the command or on the line above it.
-        for any of ($shell, $subst, $powershell, $powershell_reverse) : (
+        for any i in (1..#shell) : (
+            not for any j in (1..#doc) : (@doc[j] <= @shell[i] and @shell[i] < @doc[j] + !doc[j])
+            and not for any k in (1..#shell_data) : (@shell_data[k] == @shell[i])
+        ) or
+        for any of ($subst, $powershell, $powershell_reverse) : (
             for any i in (1..#) : (
                 not for any j in (1..#doc) : (@doc[j] <= @[i] and @[i] < @doc[j] + !doc[j])
             )

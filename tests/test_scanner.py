@@ -604,6 +604,45 @@ def test_flate_object_stream_action_blocks_with_view(tmp_path: Path, rules_copy:
     )
 
 
+def _png_up(data: bytes, columns: int) -> bytes:
+    """PNG Up-predicted rows, as a writer with /Predictor 12 emits them."""
+    out, previous = bytearray(), bytes(columns)
+    for start in range(0, len(data), columns):
+        row = data[start : start + columns].ljust(columns, b" ")
+        out += b"\x02" + bytes((a - b) & 0xFF for a, b in zip(row, previous, strict=True))
+        previous = row
+    return bytes(out)
+
+
+@pytest.mark.parametrize(
+    ("parms", "encode"),
+    [
+        (b"/Filter /FlateDecode /DecodeParms << /Columns 1 >>", None),
+        (b"/Filter [/FlateDecode] /DecodeParms [<< /Columns 1 >>]", None),
+        (b"/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 8 >>", 8),
+    ],
+)
+def test_flate_object_stream_with_decode_parms_is_inflated(
+    tmp_path: Path, rules_copy: Path, parms: bytes, encode: int | None
+) -> None:
+    text = b"1 0 << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+    inner = zlib.compress(_png_up(text, encode) if encode else text)
+    objstm = (
+        b"<< /Type /ObjStm /N 1 /First 4 "
+        + parms
+        + b" /Length "
+        + str(len(inner)).encode()
+        + b" >>\nstream\n"
+        + inner
+        + b"\nendstream"
+    )
+    result = _scan(tmp_path, rules_copy, "form.pdf", _flate_pdf(b"BT (hello) Tj ET", objstm))
+    assert result.verdict is Verdict.block
+    assert ("heuristic_pdf_JS", "pdf-flate") in {
+        (item.rule_id, item.view) for item in result.findings
+    }
+
+
 def test_flate_binary_stream_and_corrupt_stream_stay_clean(
     tmp_path: Path, rules_copy: Path
 ) -> None:
