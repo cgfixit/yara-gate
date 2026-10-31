@@ -32,6 +32,7 @@ from yara_gate.filetype import (
     is_executable_kind,
     mismatch,
     name_has_controls,
+    raster_image,
     sniff,
     utf16_encoding,
 )
@@ -157,15 +158,18 @@ def _scan_file(
     scanned_bytes = 0
     yara_time = 0.0
 
-    def yara(rules: object, payload: bytes, ext: str, view: str | None) -> list[Finding]:
+    def yara(
+        rules: object, payload: bytes, ext: str, view: str | None, *, samples: bool = False
+    ) -> list[Finding]:
         nonlocal scanned_bytes, yara_time
         if view is not None:
             views[view] = views.get(view, 0) + 1
         seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
         begun = time.monotonic()
         try:
-            # Decoded PDF streams can be image samples, whose flat areas read as base64.
-            samples = view == "pdf-flate"
+            # Decoded PDF streams can be image samples, whose flat areas read as base64; a
+            # validated raster's views say so through ``samples``.
+            samples = samples or view == "pdf-flate"
             return _yara_findings(rules, payload, ext, seconds, samples=samples)
         finally:
             scanned_bytes += len(payload)
@@ -269,7 +273,13 @@ def _scan_file(
                         )
                     )
             ext = path.suffix.lower().removeprefix(".")
-            extra.extend(yara(rules, unit.data, ext, None))
+            # A .bmp, .tif, .emf, or .wmf whose header validates holds image samples. Its raw
+            # bytes and every text view are still scanned, in the same samples mode as the
+            # pdf-flate view: a base64 run must hold data beyond repeats and grain, and a
+            # Unicode control must sit in UTF-8 text. Text a reader or interpreter would see
+            # (a script, a phrase, a real payload) is checked as in any other unit.
+            image = raster_image(path.suffix, unit.data)
+            extra.extend(yara(rules, unit.data, ext, None, samples=image))
             # Object streams are indexed on first use, for an /OpenAction reference only.
             pdf_objects = PdfObjects(unit.data, budget)
             heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
@@ -287,7 +297,7 @@ def _scan_file(
                 return finish(office_error)
             for view, derived in text_views(unit.data, budget):
                 budget.check()
-                view_findings = yara(rules, derived, ext, view)
+                view_findings = yara(rules, derived, ext, view, samples=image)
                 if view == "text-folded":
                     # Folding rewrites digits inside base64 (0 to o), which breaks the media
                     # exemptions; the raw bytes already carry the base64 verdict, and folding

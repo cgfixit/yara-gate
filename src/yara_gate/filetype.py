@@ -167,6 +167,71 @@ def sniff(data: bytes) -> str:
     return "unknown"
 
 
+# Uncompressed images and Windows metafiles that Office embeds (word/media, ppt/media). Their
+# pixels are raw sample values: a flat or grainy area in the base64 alphabet, or a run of
+# bytes that spells a UTF-8 control, would otherwise read as text.
+_RASTER_SUFFIXES = {
+    ".bmp": "bmp",
+    ".dib": "bmp",
+    ".tif": "tiff",
+    ".tiff": "tiff",
+    ".emf": "emf",
+    ".wmf": "wmf",
+}
+_BMP_DIB_SIZES = frozenset({12, 40, 52, 56, 64, 108, 124})
+
+
+def raster_image(suffix: str, data: bytes) -> bool:
+    """True when both the name and the bytes say uncompressed raster or metafile image.
+
+    The name decides how a reader opens the file: a PHP or Python interpreter runs a script
+    that starts with a valid BMP header, and a text editor shows it as text, so a raster
+    header under any other suffix keeps every text and source check. ``sniff`` does not use
+    this; the type it reports comes from the bytes alone.
+    """
+    expected = _RASTER_SUFFIXES.get(suffix.lower())
+    return expected is not None and _raster_kind(data) == expected
+
+
+def _raster_kind(data: bytes) -> str | None:
+    """The image kind from a validated header, or None.
+
+    Each check needs fields that ordinary text cannot hold (NUL bytes and small binary
+    integers), so a text file that merely starts with ``BM`` or ``II*`` stays text.
+    """
+    if len(data) >= 30 and data.startswith(b"BM"):
+        offset = int.from_bytes(data[10:14], "little")
+        dib = int.from_bytes(data[14:18], "little")
+        planes = data[22:24] if dib == 12 else data[26:28]
+        if dib in _BMP_DIB_SIZES and 14 + dib <= offset <= len(data) and planes == b"\x01\x00":
+            return "bmp"
+    if len(data) >= 16 and data[:4] in (b"II*\x00", b"MM\x00*"):
+        order: Literal["little", "big"] = "little" if data[0] == 0x49 else "big"
+        if 8 <= int.from_bytes(data[4:8], order) < len(data):
+            return "tiff"
+    if len(data) >= 16 and data[:4] in (b"II+\x00", b"MM\x00+"):
+        order = "little" if data[0] == 0x49 else "big"
+        if int.from_bytes(data[4:6], order) == 8 and int.from_bytes(data[6:8], order) == 0:
+            return "tiff"
+    if (
+        len(data) >= 88
+        and data[:4] == b"\x01\x00\x00\x00"
+        and data[40:44] == b" EMF"
+        and 88 <= int.from_bytes(data[4:8], "little") <= len(data)
+    ):
+        return "emf"
+    # A placeable WMF is a 22-byte header before the standard one.
+    start = 22 if data.startswith(b"\xd7\xcd\xc6\x9a") else 0
+    if (
+        len(data) >= start + 18
+        and data[start : start + 2] in (b"\x01\x00", b"\x02\x00")
+        and data[start + 2 : start + 4] == b"\x09\x00"
+        and data[start + 4 : start + 6] in (b"\x00\x01", b"\x00\x03")
+    ):
+        return "wmf"
+    return None
+
+
 def utf16_encoding(data: bytes) -> str | None:
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return "utf-16"
