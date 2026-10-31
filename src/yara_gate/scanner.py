@@ -20,6 +20,7 @@ from yara_gate.content import (
     Budget,
     ContentLimit,
     ContentUnit,
+    PdfObjects,
     content_units,
     ooxml_text_views,
     pdf_views,
@@ -265,7 +266,9 @@ def _scan_file(
                     )
             ext = path.suffix.lower().removeprefix(".")
             extra.extend(yara(rules, unit.data, ext, None))
-            heuristic, office_error = heuristic_findings(path, unit.data)
+            # Object streams are indexed on first use, for an /OpenAction reference only.
+            pdf_objects = PdfObjects(unit.data, budget)
+            heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
             extra.extend(heuristic)
             decoded = _decoded_text(unit.data)
             if decoded is not None:
@@ -300,7 +303,7 @@ def _scan_file(
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
                 # An action dictionary inside an object stream is invisible to the raw check.
-                view_findings.extend(pdf_token_findings(derived))
+                view_findings.extend(pdf_token_findings(derived, pdf_objects))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view

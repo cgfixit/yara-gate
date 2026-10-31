@@ -144,14 +144,29 @@ uv run pytest -q tests/test_scanner.py -k "flate or decode_parms or ascii or pdf
   source and pass on the change; the 21 selected PDF tests pass. The broad pytest and selftest
   suites are left to hosted CI.
 
-## Overlap with #133
+## Merged with #133
 
-Draft #133 (`claude/pdf-openaction-goto-v2`) moves the per-stream body into `_pdf_stream_bytes`,
-which calls `_pdf_flate_parms`. A trial merge conflicts in three hunks of `content.py`: the
-constants, the `pdf_views` docstring, and the loop body. The resolution is mechanical:
-`_pdf_stream_bytes` calls `_pdf_flate_plan`, runs the returned ASCII stages on `body` before
-`_inflate`, and passes `plan[1]` to `_pdf_predictor`. `PdfObjects._index` then indexes ASCII85
-and ASCIIHex object streams too.
+#133 merged first (`main` `03e2404`) and this branch merges it. `pdf_views` keeps #133's single
+`_pdf_stream_bytes` call. `_pdf_stream_bytes` now calls `_pdf_flate_plan`, runs the ASCII stages
+on the body before `_inflate`, and keeps #133's rule that a predictor this view will not apply
+leaves the inflated bytes as they are. So `[/A85 /Fl]` with `/DecodeParms [null << /Predictor 5
+>>]` now reaches the view, where the pre-merge branch dropped it. The wrong-slot and lone-dictionary
+predictor cases still give no view: the stream inflates, but the predicted bytes are not text.
+
+`PdfObjects._index` decodes object streams through `_pdf_stream_bytes` as well, so an
+`/OpenAction 5 0 R` whose target is in an ASCII85- or ASCIIHex-wrapped object stream now
+resolves. On `main` `03e2404`, a URI action there scanned **clean** (`default`); on the merge
+it blocks with `heuristic_pdf_OpenAction` on `pdf-flate`, and a page-open `[3 0 R /Fit]` gives
+the `heuristic_pdf_OpenAction_goto` advisory, matching the plain-Flate control in each case.
+`test_openaction_reference_into_an_ascii_wrapped_object_stream` in `tests/test_heuristics.py`
+(4 cases) fails on `main` and passes on the merge.
+
+Re-run on the merge: the CLI reproduction (all 21 block); ruff, format, and strict mypy are clean; 180
+scanner and heuristics tests pass. The probe passes with 531 library, 55 CLI, and 109 benign
+observations, 80 rules, 0 skipped. Rule pairs pass (105 rules), added-rule checks pass (74), and
+the text control check passes. Precision is 310 files, 0 incomplete, with a table identical to
+`main` `03e2404`. The real-PDF rescan against `03e2404` gives the same six verdict changes as above
+and byte-identical views for every file without an ASCII stage, with no incompletes.
 
 ## Limits
 

