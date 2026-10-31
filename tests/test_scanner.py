@@ -5,6 +5,7 @@ import tarfile
 import time
 import zipfile
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -659,6 +660,64 @@ def test_flate_object_stream_with_decode_parms_is_inflated(
     assert ("heuristic_pdf_JS", "pdf-flate") in {
         (item.rule_id, item.view) for item in result.findings
     }
+
+
+def _ascii85(data: bytes) -> bytes:
+    import base64
+
+    return b"<~" + base64.a85encode(data, wrapcol=40) + b"~>"
+
+
+def _ascii85_bare(data: bytes) -> bytes:
+    import base64
+
+    return base64.a85encode(data) + b"~>"
+
+
+def _ascii_hex(data: bytes) -> bytes:
+    encoded = data.hex().upper().encode()
+    return b"\n".join(encoded[i : i + 16] for i in range(0, len(encoded), 16)) + b">"
+
+
+@pytest.mark.parametrize(
+    ("filters", "encode", "predict"),
+    [
+        (b"/Filter [/ASCII85Decode /FlateDecode]", _ascii85, False),
+        (b"/Filter [/ASCIIHexDecode /FlateDecode]", _ascii_hex, False),
+        (b"/Filter [/A85 /Fl]", _ascii85_bare, False),
+        (b"/Filter [/AHx /A85 /Fl]", lambda data: _ascii_hex(_ascii85(data)), False),
+        (
+            b"/Filter [/A85 /FlateDecode] /DecodeParms [null << /Predictor 12 /Columns 8 >>]",
+            _ascii85,
+            True,
+        ),
+    ],
+)
+def test_ascii_encoded_flate_object_stream_is_decoded(
+    tmp_path: Path,
+    rules_copy: Path,
+    filters: bytes,
+    encode: Callable[[bytes], bytes],
+    predict: bool,
+) -> None:
+    text = b"1 0 << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+    inner = encode(zlib.compress(_png_up(text, 8) if predict else text))
+    objstm = (
+        b"<< /Type /ObjStm /N 1 /First 4 "
+        + filters
+        + b" /Length "
+        + str(len(inner)).encode()
+        + b" >>\nstream\n"
+        + inner
+        + b"\nendstream"
+    )
+    pdf = _flate_pdf(b"BT (hello) Tj ET", objstm)
+    for policy in ("default", "agent-ingest", "agent-document"):
+        result = scan_bytes(pdf, name="form.pdf", rules_dir=rules_copy, policy=policy)
+        assert result.verdict is Verdict.block
+        assert ("heuristic_pdf_JS", "pdf-flate") in {
+            (item.rule_id, item.view) for item in result.findings
+        }
 
 
 def test_flate_binary_stream_and_corrupt_stream_stay_clean(
