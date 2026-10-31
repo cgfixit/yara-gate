@@ -44,9 +44,7 @@ were linear for every shape.
 ## Change
 
 ```python
-_LEET_TOKEN = re.compile(
-    r"(?<![^\W_])(?<![@$])(?:[^\W_]|[@$])*?[0134578@$](?:[^\W_]|[@$])*"
-)
+_LEET_TOKEN = re.compile(r"(?<![^\W_])(?<![@$])(?:[^\W_]|[@$])*?[0134578@$](?:[^\W_]|[@$])*")
 ```
 
 The match may start only where the previous character is not a letter, digit, `@`, or `$`, which
