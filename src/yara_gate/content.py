@@ -113,7 +113,12 @@ _LEET = str.maketrans(
     {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
 )
 _WORD = re.compile(r"[^\W_]+")
-_LEET_TOKEN = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
+# A maximal run of letters, digits, @, and $ that holds at least one of 0134578@$. The match
+# starts only at a run's first character, so a run is read from one start and not rescanned from
+# every position inside it. Every repeat is a single character class: the regex engine runs
+# those in constant memory, whereas a repeated group with an alternation saves backtracking state
+# per character (about 114 bytes each, over 7 GB for a 67-million-character token).
+_LEET_TOKEN = re.compile(r"(?<![^\W_])[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
