@@ -44,6 +44,9 @@ from yara_gate.heuristics import (
     tag_findings,
 )
 from yara_gate.models import (
+    DOCUMENT_HOLD,
+    DOCUMENT_NOTES,
+    INGEST_HOLD,
     Finding,
     FindingSource,
     ScanPolicy,
@@ -184,12 +187,12 @@ def _scan_file(
         if result.verdict is Verdict.advisory:
             if policy is ScanPolicy.agent_ingest:
                 result.verdict = Verdict.block
-                result.policy_reason = "agent-ingest holds advisory and note findings"
+                result.policy_reason = INGEST_HOLD
             elif policy is ScanPolicy.agent_document and result.advisory:
                 result.verdict = Verdict.block
-                result.policy_reason = "agent-document holds advisory findings"
+                result.policy_reason = DOCUMENT_HOLD
             elif policy is ScanPolicy.agent_document:
-                result.policy_reason = "agent-document records note findings"
+                result.policy_reason = DOCUMENT_NOTES
         return result
 
     if data is None:

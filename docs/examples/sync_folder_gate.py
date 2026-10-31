@@ -3,10 +3,13 @@
 The sync folder is never the gate's inbox: inbox intake removes its input, and a sync client
 would propagate that deletion to every other device. This script copies each new, settled,
 regular file into a gate-owned staging directory under a temporary name, renames it into
-place, scans the staged copy with ``yara-gate scan --json --policy agent-ingest``, and moves
-it to ``allowed/<sha256>/`` only for one complete clean record whose SHA-256 matches the
-staged bytes. Anything else goes to ``held/<sha256>/`` with the record beside it. A consumer
-reads ``allowed/`` only, never the sync folder, so a later change to the source cannot reach it.
+place, scans the staged copy with ``yara-gate scan --json --policy agent-document`` (synced
+files are documents; ``--policy agent-ingest`` makes it clean-only), and moves it to
+``allowed/<sha256>/`` only when the one record's SHA-256 matches the staged bytes and the
+record passes the document read rule: complete and ``clean``, or the exact notes-only
+``agent-document`` record from docs/integrations.md and nothing broader. Anything else
+goes to ``held/<sha256>/`` with the record beside it. A consumer reads ``allowed/`` only,
+never the sync folder, so a later change to the source cannot reach it.
 
 Skipped, and logged once: dotfiles and client metadata (``.dropbox``, ``.DS_Store``,
 ``desktop.ini``, ``Icon\\r``, ``~$`` Office locks, ``.tmp``, ``.part``, ``.crdownload``),
@@ -49,6 +52,12 @@ def main() -> int:
     parser.add_argument("--rules", type=Path, help="Rules root passed to yara-gate")
     parser.add_argument("--yara-gate", default=os.environ.get("YARA_GATE_BIN", "yara-gate"))
     parser.add_argument("--timeout", type=int, default=60, help="Seconds for one scan")
+    parser.add_argument(
+        "--policy",
+        choices=("agent-document", "agent-ingest"),
+        default="agent-document",
+        help="agent-document for documents (the default); agent-ingest reads clean records only",
+    )
     args = parser.parse_args()
 
     home = args.gate_home.resolve()
@@ -83,15 +92,7 @@ def main() -> int:
             continue
         digest = _sha256(staged)
         code, record = _scan(args, home, staged)
-        allowed = (
-            code == 0
-            and record is not None
-            and record.get("verdict") == "clean"
-            and record.get("exit_code") == 0
-            and record.get("incomplete_reason") is None
-            and record.get("policy") == "agent-ingest"
-            and record.get("sha256") == digest
-        )
+        allowed = code == 0 and record is not None and _readable(record, args.policy, digest)
         destination = home / ("allowed" if allowed else "held") / digest
         destination.mkdir(parents=True, exist_ok=True)
         os.replace(staged, destination / path.name)
@@ -103,6 +104,33 @@ def main() -> int:
         _log("allowed" if allowed else "held", relative, digest)
         worst = max(worst, code if record is not None else 2)
     return worst
+
+
+NOTES_ONLY = "agent-document records note findings"
+
+
+def _readable(record: dict, policy: str, digest: str) -> bool:
+    """One complete clean record, or the exact notes-only agent-document record; nothing else."""
+    complete = (
+        record.get("policy") == policy
+        and record.get("exit_code") == 0
+        and record.get("incomplete_reason") is None
+        and record.get("sha256") == digest
+    )
+    if not complete:
+        return False
+    if record.get("verdict") == "clean":
+        return True
+    findings = record.get("findings") or []
+    return (
+        policy == "agent-document"
+        and record.get("verdict") == "advisory"
+        and record.get("policy_reason") == NOTES_ONLY
+        and record.get("note") is True
+        and record.get("advisory") is False
+        and len(findings) > 0
+        and all(finding.get("severity") == "note" for finding in findings)
+    )
 
 
 def _entries(root: Path) -> list[Path]:
@@ -176,7 +204,7 @@ def _scan(args: argparse.Namespace, home: Path, staged: Path) -> tuple[int, dict
         str(staged),
         "--json",
         "--policy",
-        "agent-ingest",
+        args.policy,
         "--home",
         str(home / "reports"),
         "--timeout",
