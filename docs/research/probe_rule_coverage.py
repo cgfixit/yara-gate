@@ -636,6 +636,25 @@ def main() -> None:
                 ("agent-ingest", "block", "blocked"),
             )
         )
+        # agent-document: a note-only phrase is recorded and released; an advisory rule, or a
+        # note next to one, is held. The reason strings are the policy contract.
+        document_cli = {
+            "agent_quotation.txt": "agent-document records note findings",
+            "agent_override_guidance.txt": "agent-document records note findings",
+            "agent_relay.txt": "agent-document holds advisory findings",
+            "agent_config_bypass.json": "agent-document holds advisory findings",
+            "agent_override_relay.txt": "agent-document holds advisory findings",
+        }
+        cli_cases += tuple(
+            (name, cases[name], "agent-document", verdict, destination)
+            for name, (verdict, destination) in (
+                ("agent_quotation.txt", ("advisory", "clean")),
+                ("agent_override_guidance.txt", ("advisory", "clean")),
+                ("agent_relay.txt", ("block", "blocked")),
+                ("agent_config_bypass.json", ("block", "blocked")),
+                ("agent_override_relay.txt", ("block", "blocked")),
+            )
+        )
         for label, content, policy, verdict, destination in cli_cases:
             home = root / ("home-" + label)
             inbox = home / "inbox"
@@ -659,11 +678,18 @@ def main() -> None:
                 check=False,
             )
             compact = json.loads(next((home / "reports").glob("*.json")).read_text())
+            # The finding keeps the rule's own tier (note or advisory) under every policy.
             if label in delivery_cli and not any(
-                f["rule_id"] == delivery[label][1] and f["severity"] == "advisory"
+                f["rule_id"] == delivery[label][1] and f["severity"] in ("note", "advisory")
                 for f in compact["findings"]
             ):
                 failures.append(f"CLI {label}: missing delivery rule or original severity")
+            if (
+                policy == "agent-document"
+                and label in document_cli
+                and compact["policy_reason"] != document_cli[label]
+            ):
+                failures.append(f"CLI {label}/{policy}: unexpected policy reason")
             locations = [
                 folder
                 for folder in ("clean", "blocked", "quarantine")

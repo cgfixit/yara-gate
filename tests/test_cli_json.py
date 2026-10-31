@@ -76,7 +76,7 @@ def test_json_identical_intake_resubmissions(tmp_path: Path, rules_copy: Path) -
         assert report["verdict"] == verdict
         assert report["policy"] == policy
         assert report["exit_code"] == code
-        assert all(f["severity"] == "advisory" for f in report["findings"])
+        assert all(f["severity"] == "note" for f in report["findings"])
         assert not path.exists()
         assert (home / destination / report["sha256"] / path.name).is_file()
 

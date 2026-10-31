@@ -74,7 +74,9 @@ def scan(
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
     policy: ScanPolicy = typer.Option(
-        ScanPolicy.default, "--policy", help="agent-ingest blocks advisory findings."
+        ScanPolicy.default,
+        "--policy",
+        help="agent-ingest blocks advisory and note findings; agent-document blocks advisory only.",
     ),
     follow_symlinks: bool = typer.Option(
         False,
