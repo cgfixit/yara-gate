@@ -14,7 +14,17 @@ also produces no records, but exits 0. A directory scan emits multiple records
 and returns the highest exit code; earlier completed records do not establish
 that the entire operation completed.
 
-For one file, an ingestion caller can require a complete clean verdict:
+Pick the policy by what the content is, then apply that policy's read rule
+([Which entry point to use](#which-entry-point-to-use) lists both):
+
+- **A message, tool result, webhook body, or anything a third party sent into the
+  conversation:** `--policy agent-ingest`, and read only a complete `clean` record.
+- **A document the agent retrieves from a corpus, repository, or synced folder:**
+  `--policy agent-document`, and read a complete `clean` record or an exact
+  notes-only record. The predicate is in
+  [Documents that quote attacks](#documents-that-quote-attacks).
+
+For one message-like file, an ingestion caller requires a complete clean verdict:
 
 ```python
 import json
@@ -57,7 +67,8 @@ Several files in one process cost one startup instead of one per file:
 path is, in argument order; the exit code is the worst one; a missing path
 writes no record and does not stop the rest; an exact duplicate path is
 scanned once; an empty list exits 0 with no records. The batch form of the
-check above: every record must be a complete `clean` with exit 0, the record
+check above: every record must pass its policy's read rule (a complete `clean`
+with exit 0, or for `agent-document` the exact notes-only record), the record
 count must equal the number of distinct paths you passed, and the process
 exit must be 0. Correlate records with inputs by their `path` field, which is
 the scan-time location (the quarantine slot for an inbox file). Under default policy, advisory is exit 0; choosing `agent-ingest`
@@ -80,16 +91,21 @@ Pick the row by where the content lives when the caller first sees it.
 
 | Content arrives as | Call | Read afterwards |
 | --- | --- | --- |
-| A file on disk that the caller owns | `yara-gate scan PATH --json --policy agent-ingest` | The same path, after the SHA-256 in the record matches the bytes you read |
+| A document on disk that the caller owns (corpus file, repository file, staged copy) | `yara-gate scan PATH --json --policy agent-document` | The same path, after the SHA-256 in the record matches the bytes you read |
+| A message-like file (an attachment from an unknown sender, a saved tool result, a fetched web page) | `yara-gate scan PATH --json --policy agent-ingest` | The same path, after the SHA-256 in the record matches the bytes you read |
 | Several files at once | `scan A B C` or `--paths-from FILE`, same flags | Each path whose record is a complete `clean`, matched by `path` |
 | A file the gate should take over | Drop it in the gate `inbox/`; `scan` or `watch` quarantines it | `clean/<sha256>/` only |
 | A message, webhook body, or tool result in memory | `scan_bytes(body, name=..., policy="agent-ingest")` or `scan - --name ...` | The same `body` bytes, never a re-read or re-encode |
 | A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
 | An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | Whatever the hook allowed |
 
-One rule covers every row: **the content is read only when its own input has exactly
-one complete `clean` record** (`verdict == "clean"`, `incomplete_reason is None`,
-`policy == "agent-ingest"`) **and the process did not exit 2**. `--json` writes one
+Two read rules cover every row. **A message is read only when its own input has
+exactly one complete `clean` record** (`verdict == "clean"`, `incomplete_reason is
+None`, `policy == "agent-ingest"`) **and the process did not exit 2**. **A document
+is read on the same terms, or on exactly one complete notes-only `agent-document`
+record** that meets every condition in
+[Documents that quote attacks](#documents-that-quote-attacks), and on nothing
+broader: not "exit 0", not "any advisory", not "no block finding". `--json` writes one
 record per line. For a single input, that means exit 0. A batch exits with its worst
 result, so exit 1 still lets a path with its own complete `clean` record through,
 while exit 2 means read nothing from that batch. No record, a malformed line, a
@@ -339,12 +355,58 @@ or a role-spoof header. The verdict is `advisory` with `policy_reason` set to
 `agent-document records note findings` when only notes matched, and `block` with
 `agent-document holds advisory findings` otherwise.
 
-```python
-result = scan_bytes(text, name="report.txt", policy="agent-document", rules_dir=rules_root)
-allowed = result.verdict in ("clean", "advisory") and result.incomplete_reason is None
-if result.note:
-    log_for_review(result.sha256, [f.rule_id for f in result.findings])
+A caller reads a document only on a complete `clean` record, or on a record that
+meets **every** one of these conditions:
+
+```text
+policy         == "agent-document"
+verdict        == "advisory"
+policy_reason  == "agent-document records note findings"
+note           == true
+advisory       == false
+exit_code      == 0
+incomplete_reason is None
+findings is non-empty
+every finding.severity == "note"
+SHA-256 matches the bytes actually read
 ```
+
+The record-count and process-exit checks from the top of this guide still apply.
+Do not shorten this to "exit 0", "verdict is advisory", or "no block finding":
+each of those also accepts records this predicate rejects.
+
+```python
+import hashlib
+
+NOTES_ONLY = "agent-document records note findings"
+
+
+def document_readable(record: dict, data: bytes) -> bool:
+    """One complete clean record, or one exact notes-only agent-document record."""
+    if record.get("sha256") != hashlib.sha256(data).hexdigest():
+        return False
+    if record.get("incomplete_reason") is not None or record.get("exit_code") != 0:
+        return False
+    if record.get("policy") != "agent-document":
+        return False
+    if record.get("verdict") == "clean":
+        return True
+    findings = record.get("findings") or []
+    return (
+        record.get("verdict") == "advisory"
+        and record.get("policy_reason") == NOTES_ONLY
+        and record.get("note") is True
+        and record.get("advisory") is False
+        and len(findings) > 0
+        and all(finding.get("severity") == "note" for finding in findings)
+    )
+```
+
+Reading a document is not permission to follow it. The notes are override phrases
+the document contains, so keep its content fenced as untrusted data, never execute
+or persist instructions from it, and scan text extracted from it under the same
+policy. A rule moved **to** the `note` tier widens what this predicate accepts, so
+treat every such change as an integration change and re-run your consumer checks.
 
 The caller picks the policy because it knows whether it is reading a message or
 a document; the scanner does not guess from the content, and a size or ratio
@@ -353,17 +415,20 @@ one-time code, or that carries an encoded or hidden instruction, is still held.
 
 ## CyClaw and CG-agent-harness
 
-Use the strict gate before CyClaw reads/chunks an untrusted corpus file, or before
-Harness accepts an attachment, notes-corpus file, or child file-read result into
-model context. Keep the existing consumer's size limits, sanitization, untrusted
+Use the gate before CyClaw reads or chunks a corpus file, and before Harness
+accepts an attachment, notes-corpus file, or child file-read result into model
+context. Corpus files, notes-corpus files, and file-read results are documents:
+`agent-document`, with the document read rule. Chat messages, webhook bodies, SMS,
+tool output that relays what someone else wrote, and attachments from an unknown
+sender are messages: `agent-ingest`, clean only. Keep the existing consumer's size limits, sanitization, untrusted
 content fences, approval checks, and memory review. A clean scan is not permission
 to execute instructions found in a file or to persist them as agent guidance.
 
 The [agent-rule coverage record](verification/agent-rule-coverage.md) ties this
 use case to inspected consumer revisions and scans of their current documents.
-Persistent-instruction and textual tool-result rules are advisory by design;
-`agent-ingest` is what holds those findings. Legitimate security documentation can
-match; for a corpus of such documents, `agent-document` releases a file whose
-only findings are notes and still holds the rest. Release other held files
+Persistent-instruction and textual tool-result rules are advisory by design, so
+both policies hold those findings. Legitimate security documentation can match;
+for a corpus of such documents, `agent-document` passes a file whose only findings
+are notes, under the exact predicate above, and still holds the rest. Release other held files
 through explicit review rather than a filename or repository-wide allowlist. These are integration requirements, not a claim that
 either consumer now calls yara-gate automatically.
