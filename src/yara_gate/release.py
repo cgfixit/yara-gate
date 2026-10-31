@@ -1,19 +1,13 @@
-"""Reviewed release of an agent-document policy hold (#39).
+"""Building blocks for a reviewed release of a policy hold (#39).
+
+Nothing here is reachable from the CLI yet, and nothing moves a file. Two pieces are needed
+whatever the open #39 decisions turn out to be:
 
 - ``release_refusal`` decides, from a fresh ``ScanResult``, whether a hold may be released.
   The answer comes from the result's findings and policy reason, never from the folder the
   bytes sit in, so a real block or an incomplete scan cannot be released.
 - ``AuditLog`` is an append-only JSON Lines log whose lines are hash-chained, so an edited or
-  deleted line is detected. It records no file content, names, or paths. It is also the
-  release store: ``apply_release`` honours only entries in a log that verifies, so a
-  tampered log voids every release (fail closed).
-- ``apply_release`` runs after a gate-home scan (inbox intake and in-place scans under
-  ``--home``). ``scan_bytes`` and ``scan -`` never consult it.
-
-Conservative answers to the open #39 decisions, each easy to change: only agent-document
-holds are releasable (``RELEASABLE_POLICIES``), so a message held under agent-ingest never
-is; a release applies only to gate-home scans; a released result keeps its findings and is
-reported as advisory (exit 0), not clean, so the consumer read rule is unchanged.
+  deleted line is detected. It records no file content, names, or paths.
 """
 
 from __future__ import annotations
@@ -29,24 +23,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from yara_gate.models import (
-    DOCUMENT_HOLD,
-    INGEST_HOLD,
-    RELEASED_BY_REVIEW,
-    ScanPolicy,
-    ScanResult,
-    Severity,
-    Verdict,
-)
+from yara_gate.models import DOCUMENT_HOLD, INGEST_HOLD, ScanPolicy, ScanResult, Severity, Verdict
 
 # A block that exists only because a policy promoted advisory or note findings.
 _PROMOTION_REASONS = {
     ScanPolicy.agent_ingest: INGEST_HOLD,
     ScanPolicy.agent_document: DOCUMENT_HOLD,
 }
-# Which policy holds may be released. agent-ingest guards messages and tool results, so it is
-# left out: a message the gate held stays held.
-RELEASABLE_POLICIES: tuple[ScanPolicy, ...] = (ScanPolicy.agent_document,)
 _GENESIS = "0" * 64
 MAX_REASON = 500
 _FIELDS = ("time", "reviewer", "uid", "reason", "sha256", "ruleset_sha256", "policy", "rule_ids")
@@ -129,11 +112,8 @@ class AuditLog:
     Each line's ``prev`` is the SHA-256 of the line before it, so an edit or a deletion breaks
     the chain. The newest line has no successor, so an edit to it alone is not detected by
     ``verify``; ``head`` returns the hash to record elsewhere (the release command's output,
-    for example), and a later ``head`` that differs shows the tail changed. The chain is
-    tamper evidence, not authentication: anyone who can write the gate home can append a
-    correctly chained entry, as they could move a file from blocked/ to clean/ by hand, so the
-    gate home's permissions are the boundary. Appends are not locked: one operator at a time
-    is assumed.
+    for example), and a later ``head`` that differs shows the tail changed. Appends are not
+    locked: one operator at a time is assumed.
     """
 
     def __init__(self, path: Path) -> None:
@@ -192,13 +172,6 @@ class AuditLog:
             count += 1
         return count
 
-    def entries(self) -> list[dict[str, Any]]:
-        """Every entry, after a full ``verify``."""
-        self.verify()
-        if not self.path.exists():
-            return []
-        return [json.loads(line) for line in self.path.read_bytes().splitlines()]
-
     def head(self) -> str:
         """The SHA-256 of the newest line after a full ``verify``, or 64 zeros for no log."""
         return self._last_hash()
@@ -209,40 +182,3 @@ class AuditLog:
         self.verify()
         lines = self.path.read_bytes().splitlines(keepends=True)
         return hashlib.sha256(lines[-1]).hexdigest() if lines else _GENESIS
-
-
-def release_log(home_root: Path) -> AuditLog:
-    """The audit log, and release store, of one gate home."""
-    return AuditLog(home_root / "releases" / "log.jsonl")
-
-
-def released_keys(log: AuditLog) -> set[ReleaseKey]:
-    """Every release in ``log``, or none at all when the log does not verify."""
-    try:
-        entries = log.entries()
-    except (AuditLogError, OSError):
-        return set()
-    return {
-        ReleaseKey(
-            sha256=str(entry["sha256"]),
-            ruleset_sha256=str(entry["ruleset_sha256"]),
-            policy=str(entry["policy"]),
-            rule_ids=tuple(str(item) for item in entry["rule_ids"]),
-        )
-        for entry in entries
-    }
-
-
-def apply_release(result: ScanResult, log: AuditLog) -> ScanResult:
-    """Turn a released agent-document hold into an advisory result; leave anything else alone.
-
-    The release must match the bytes, the current ruleset digest, the policy, and the exact set
-    of rule ids, so a rule update or a new finding holds the file again.
-    """
-    if release_refusal(result, policies=RELEASABLE_POLICIES) is not None:
-        return result
-    if release_key(result) not in released_keys(log):
-        return result
-    result.verdict = Verdict.advisory
-    result.policy_reason = RELEASED_BY_REVIEW
-    return result

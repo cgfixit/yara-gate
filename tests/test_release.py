@@ -1,12 +1,8 @@
-import hashlib
-import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from yara_gate.models import RELEASED_BY_REVIEW, ScanPolicy, Verdict
+from yara_gate.models import ScanPolicy, Verdict
 from yara_gate.release import AuditLog, AuditLogError, ReleaseKey, release_key, release_refusal
 from yara_gate.samples import risky_pdf
 from yara_gate.scanner import scan_bytes
@@ -91,63 +87,3 @@ def test_audit_log_refuses_an_unusable_reason(tmp_path: Path, reason: str) -> No
     with pytest.raises(ValueError):
         log.append(KEY, reason=reason, reviewer=("tester", 1000))
     assert not log.path.exists()
-
-
-def _cli(*args: str) -> subprocess.CompletedProcess[str]:
-    exe = str(Path(sys.executable).parent / "yara-gate")
-    return subprocess.run(  # noqa: S603 - fixed argv, test fixtures only
-        [exe, *args], capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL
-    )
-
-
-def _drop(home: Path, rules: Path, name: str, data: bytes, policy: str) -> int:
-    inbox = home / "inbox"
-    inbox.mkdir(parents=True, exist_ok=True)
-    (inbox / name).write_bytes(data)
-    args = ("scan", str(inbox / name), "--home", str(home), "--rules", str(rules))
-    return _cli(*args, "--policy", policy).returncode
-
-
-def test_release_cycle_through_the_cli(tmp_path: Path, rules_copy: Path) -> None:
-    home = tmp_path / "gate"
-    digest = hashlib.sha256(GUIDE).hexdigest()
-    assert _drop(home, rules_copy, "setup.md", GUIDE, "agent-document") == 1
-    assert (home / "blocked" / digest).is_dir()
-    common = ("--home", str(home), "--rules", str(rules_copy), "--reason", "install guide reviewed")
-    # stdin is not a terminal here: a release needs an explicit --non-interactive.
-    assert _cli("release", digest, *common).returncode == 2
-    released = _cli("release", digest, *common, "--non-interactive")
-    assert released.returncode == 0, released.stderr
-    assert (home / "clean" / digest).is_dir()
-    # Identical bytes again: released under agent-document, still held as a message.
-    assert _drop(home, rules_copy, "setup.md", GUIDE, "agent-document") == 0
-    report = json.loads((home / "reports" / f"{digest}.json").read_text())
-    assert report["verdict"] == "advisory"
-    assert report["policy_reason"] == RELEASED_BY_REVIEW
-    assert _drop(home, rules_copy, "setup.md", GUIDE, "agent-ingest") == 1
-    # A broken chain voids every release: the next submission is held again.
-    log = home / "releases" / "log.jsonl"
-    log.write_text(log.read_text() * 2)
-    assert _drop(home, rules_copy, "setup.md", GUIDE, "agent-document") == 1
-    assert _cli("release", "--verify-log", "--home", str(home)).returncode == 2
-
-
-def test_release_refuses_a_real_block_through_the_cli(tmp_path: Path, rules_copy: Path) -> None:
-    home = tmp_path / "gate"
-    digest = hashlib.sha256(risky_pdf()).hexdigest()
-    assert _drop(home, rules_copy, "a.pdf", risky_pdf(), "agent-document") == 1
-    refused = _cli(
-        "release",
-        digest,
-        "--home",
-        str(home),
-        "--rules",
-        str(rules_copy),
-        "--reason",
-        "x",
-        "--non-interactive",
-    )
-    assert refused.returncode == 1
-    assert "refused" in refused.stderr
-    assert (home / "blocked" / digest).is_dir()
-    assert not (home / "releases" / "log.jsonl").exists()

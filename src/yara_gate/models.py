@@ -40,8 +40,6 @@ class ScanPolicy(StrEnum):
 INGEST_HOLD = "agent-ingest holds advisory and note findings"
 DOCUMENT_HOLD = "agent-document holds advisory findings"
 DOCUMENT_NOTES = "agent-document records note findings"
-# A policy hold that an operator released through `yara-gate release` (release.py).
-RELEASED_BY_REVIEW = "agent-document hold released by review"
 
 
 class FindingSource(StrEnum):
