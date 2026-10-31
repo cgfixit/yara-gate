@@ -670,6 +670,11 @@ class PdfObjects:
         if pairs > 2 * MAX_OBJSTM_OBJECTS:
             return None
         data = self._data
+        filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+        if isinstance(filters, list) and len(filters) > 1:
+            # Only the first filter is undone here, so what follows it (ASCIIHexDecode, a second
+            # Flate pass) is still encoded and the objects inside are not the ones a reader sees.
+            return None
         if start.start() not in self.decoded:
             self.decoded[start.start()] = _pdf_stream_bytes(data, start, self._budget, objects)
         decoded = self.decoded[start.start()]

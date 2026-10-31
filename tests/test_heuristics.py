@@ -273,6 +273,20 @@ def test_openaction_is_not_a_page_open_when_an_object_stream_may_redefine_it(
     assert "heuristic_pdf_OpenAction_goto" not in ids
 
 
+def test_a_second_filter_after_flate_leaves_the_object_stream_unread() -> None:
+    # Flate then ASCIIHex. The inflated text starts "35 20 30 20", which reads as a header for
+    # object 35, but a reader hex-decodes it to "5 0 " and sees object 5 as JavaScript.
+    action = b"<< /S /JavaScript /JS (app.alert(1)) >>"
+    text = b"35 20 30 20 " + action.hex().encode() + b">"
+    data = _objstm_pdf(b"/Filter [/FlateDecode /ASCIIHexDecode] ", zlib.compress(text)).replace(
+        b"/First 4", b"/First 12"
+    )
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
 def test_unfiltered_object_stream_with_a_page_open_is_still_a_page_open() -> None:
     data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]")
     objects = PdfObjects(data, Budget(time.monotonic() + 30))
