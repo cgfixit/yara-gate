@@ -20,6 +20,23 @@ A file gets the note `heuristic_pdf_OpenAction_goto` only when every occurrence 
 
 Everything else keeps `heuristic_pdf_OpenAction` at block. `/JavaScript`, `/JS`, `/Launch`, `/AA`, `/EmbeddedFile`, and `/RichMedia` are unchanged. The `pdf-flate` view goes through the same function.
 
+## Flate-view bypass found while testing, and fixed
+
+On `main` `1c3de50`, `pdf_views` looked for `/FlateDecode` only after the last `<<` before the `stream` keyword. That is the innermost dictionary, so a stream dictionary with a nested `/DecodeParms << /Columns 1 >>` after `/Filter` was never inflated. An object stream holding `<< /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>` with that dictionary scanned **clean** under every policy; without `/DecodeParms` it blocked. A `#xx`-encoded `/Fl#61teDecode`, which a reader decodes, was skipped the same way, and PNG predictors were listed as not covered.
+
+`_decoded_stream` (`content.py`) now serves the view and the object-stream index. It takes the stream's dictionary as the text after the last `N G obj` before the keyword, reads it with the PDF tokenizer through `pdf_stream_parameters` (`heuristics.py`), inflates when the first filter is FlateDecode, and reverses a PNG predictor (10 to 15) or 8-bit TIFF predictor 2 under the scan's deadline.
+
+| Stream dictionary of an object stream holding the JavaScript open action | main | branch |
+| --- | --- | --- |
+| `/Filter /FlateDecode` | block | block |
+| `/Filter /FlateDecode /DecodeParms << /Columns 1 >>` | **clean** | block |
+| `/DecodeParms << /Predictor 1 >> /Filter /FlateDecode` | **clean** | block |
+| `/Filter /Fl#61teDecode` | **clean** | block |
+| `/Filter [/FlateDecode]` | block | block |
+| `/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 16 >>`, PNG Up rows | **clean** | block |
+
+A content stream with an injection phrase behind a PNG Sub predictor (11) or TIFF predictor 2 now gives the phrase note in `pdf-flate`. A predictor-encoded object stream with a catalog and `5 0 R` gives the goto note for a page destination and blocks for a URI action.
+
 ## Direct scans
 
 `scan_bytes`, as default / agent-ingest / agent-document:
@@ -32,7 +49,8 @@ Everything else keeps `heuristic_pdf_OpenAction` at block. `/JavaScript`, `/JS`,
 | A catalog in a FlateDecode object stream with a destination array | advisory / block / advisory | goto note in `pdf-flate` |
 | Catalog and `5 0 R` both in an object stream, object 5 a destination or GoTo; a raw catalog pointing into a stream | advisory / block / advisory | goto note |
 | Object 5 in a stream is a URI action; or a page open in the stream but redefined raw as a URI action; or a Launch copy in a second stream | block | `heuristic_pdf_OpenAction` |
-| Object stream with `/DecodeParms`, a broken header, a generation-1 reference, a missing object, or a reference to a reference | block, or clean for `/DecodeParms` (see Limits) | `heuristic_pdf_OpenAction` |
+| Object stream with a broken header, a generation-1 reference, a missing object, or a reference to a reference | block | `heuristic_pdf_OpenAction` |
+| Object stream declaring `/Predictor 12` over bytes that are not PNG rows | clean: no row decodes, as in a viewer | none |
 | `/S /Launch`, `/S /JavaScript`, `/S /Java#53cript` | block | `heuristic_pdf_OpenAction` plus the action's own name |
 | `/S /URI`, `/S /GoToR`, `/S /SubmitForm` | block | `heuristic_pdf_OpenAction` |
 | No `/S`; `/S (/GoTo)` as a string; `/S /GoTo /S /URI` | block | `heuristic_pdf_OpenAction` |
@@ -53,7 +71,7 @@ The existing heuristic tests' inputs keep their ids, offsets, and severities, in
 uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src
 uv run python docs/verification/lint_rules.py
 uv run python docs/verification/check_rule_pairs.py      # 102 rules
-uv run python docs/verification/check_added_rules.py     # 66 cases
+uv run python docs/verification/check_added_rules.py     # 68 cases
 uv run python docs/verification/measure_precision.py --fail-over
 uv run python docs/verification/check_text_controls.py
 uv run python docs/verification/check_scan_only.py
@@ -73,6 +91,6 @@ All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3
 
 ## Limits
 
-- An object stream with `/DecodeParms` or a filter other than FlateDecode is not indexed, so a reference into it blocks.
-- Found while testing, present on `main` too, and not changed here: `pdf_views` checks for `/FlateDecode` only after the last `<<` before `stream`. A stream dictionary with a nested `/DecodeParms << … >>` is never inflated, so a JavaScript open action inside such an object stream scans clean. That is a detection bypass in the flate view and needs its own change.
+- An object stream with a filter other than FlateDecode is not indexed, so a reference into it blocks.
+- A stream whose `/DecodeParms` names a predictor other than PNG (10 to 15) or 8-bit TIFF (2), or whose PNG rows use an unknown filter type, is left out of the view. A viewer applying that predictor gets the same bytes the scanner would reject.
 - A GoTo action is trusted to stay inside the document. The destination is not checked against the page tree.

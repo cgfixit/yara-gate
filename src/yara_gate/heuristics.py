@@ -344,6 +344,28 @@ class PdfRawObjects:
         return self._index.get((number, generation), [])
 
 
+_PDF_STREAM_PARAMETERS = (b"/Predictor", b"/Columns", b"/Colors", b"/BitsPerComponent")
+
+
+def pdf_stream_parameters(head: bytes) -> tuple[bool, dict[bytes, int]]:
+    """Read a stream dictionary: whether its first filter is FlateDecode, and its predictor.
+
+    ``head`` is the dictionary text before ``stream``. Names are compared after ``#xx``
+    decoding, so ``/Fl#61teDecode`` is FlateDecode, and nested dictionaries such as
+    ``/DecodeParms << ... >>`` do not hide the filter.
+    """
+    tokens = _pdf_value_tokens(head)
+    flate = False
+    parameters: dict[bytes, int] = {}
+    for index, token in enumerate(tokens):
+        following = tokens[index + 1 : index + 3]
+        if token == b"/Filter":
+            flate = following[:1] == [b"/FlateDecode"] or following == [b"[", b"/FlateDecode"]
+        elif token in _PDF_STREAM_PARAMETERS and following[:1] and following[0].isdigit():
+            parameters[token] = int(following[0])
+    return flate, parameters
+
+
 def _pdf_reference(tokens: list[bytes]) -> bool:
     return len(tokens) == 3 and tokens[0].isdigit() and tokens[1].isdigit() and tokens[2] == b"R"
 

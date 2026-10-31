@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
-from yara_gate.heuristics import PdfRawObjects
+from yara_gate.heuristics import PdfRawObjects, pdf_stream_parameters
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -511,11 +511,7 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         if count >= MAX_PDF_STREAMS:
             raise ContentLimit("pdf streams exceed 2000")
         budget.check()
-        head = data[max(0, start.start() - 1024) : start.start()]
-        if b"/FlateDecode" not in head or b"/FlateDecode" not in head[head.rfind(b"<<") :]:
-            continue
-        end = _PDF_END.search(data, start.end())
-        inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+        inflated = _decoded_stream(data, start, budget)
         if inflated and sniff(inflated) == "text":
             parts.append(inflated)
     if parts:
@@ -523,7 +519,7 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
 
 
 _OBJSTM_TYPE = re.compile(rb"/Type\s*/ObjStm(?![^\x00\t\n\f\r /<>\[\]()%])")
-_OBJSTM_FLATE = re.compile(rb"/Filter\s*(?:\[\s*)?/FlateDecode\s*(?:\]|/|>>)")
+_PDF_OBJ_HEADER = re.compile(rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj\b")
 _OBJSTM_N = re.compile(rb"/N\s+(\d{1,6})(?!\d)")
 _OBJSTM_FIRST = re.compile(rb"/First\s+(\d{1,9})(?!\d)")
 MAX_OBJSTM_OBJECTS = 100_000
@@ -565,13 +561,8 @@ def _index_object_streams(data: bytes, budget: Budget) -> dict[int, list[bytes]]
         if count >= MAX_PDF_STREAMS:
             raise ContentLimit("pdf streams exceed 2000")
         budget.check()
-        head = data[max(0, start.start() - 1024) : start.start()]
-        head = head[head.rfind(b"obj") + 3 :] if b"obj" in head else head
-        if (
-            _OBJSTM_TYPE.search(head) is None
-            or _OBJSTM_FLATE.search(head) is None
-            or b"/DecodeParms" in head
-        ):
+        head = _stream_dictionary(data, start.start())
+        if _OBJSTM_TYPE.search(head) is None:
             continue
         count_match, first_match = _OBJSTM_N.search(head), _OBJSTM_FIRST.search(head)
         if count_match is None or first_match is None:
@@ -579,8 +570,7 @@ def _index_object_streams(data: bytes, budget: Budget) -> dict[int, list[bytes]]
         total, first = int(count_match.group(1)), int(first_match.group(1))
         if total > MAX_OBJSTM_OBJECTS:
             continue
-        end = _PDF_END.search(data, start.end())
-        decoded = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+        decoded = _decoded_stream(data, start, budget)
         if not decoded or first > len(decoded):
             continue
         header = decoded[:first].split()
@@ -596,6 +586,90 @@ def _index_object_streams(data: bytes, budget: Budget) -> dict[int, list[bytes]]
         for number, offset, stop in zip(numbers, offsets, bounds, strict=True):
             objects.setdefault(number, []).append(decoded[first + offset : first + stop])
     return objects
+
+
+def _stream_dictionary(data: bytes, stream_start: int) -> bytes:
+    """The dictionary of the stream whose keyword starts at ``stream_start``.
+
+    It is the text after the last ``N G obj`` in the 1 KiB before the keyword, so a nested
+    dictionary such as ``/DecodeParms << ... >>`` stays part of it and an earlier object's
+    dictionary does not.
+    """
+    head = data[max(0, stream_start - 1024) : stream_start]
+    ends = [match.end() for match in _PDF_OBJ_HEADER.finditer(head)]
+    return head[ends[-1] :] if ends else head
+
+
+def _decoded_stream(data: bytes, start: re.Match[bytes], budget: Budget) -> bytes | None:
+    """Inflate one FlateDecode stream and undo a PNG or TIFF predictor, or return None."""
+    flate, parameters = pdf_stream_parameters(_stream_dictionary(data, start.start()))
+    if not flate:
+        return None
+    end = _PDF_END.search(data, start.end())
+    inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+    predictor = parameters.get(b"/Predictor", 1)
+    if not inflated or predictor <= 1:
+        return inflated
+    columns = parameters.get(b"/Columns", 1)
+    colors = parameters.get(b"/Colors", 1)
+    bits = parameters.get(b"/BitsPerComponent", 8)
+    if not (0 < columns <= 1 << 20 and 0 < colors <= 32 and bits in (1, 2, 4, 8, 16)):
+        return None
+    if predictor >= 10:
+        return _png_unpredict(inflated, columns, colors, bits, budget)
+    if predictor == 2 and bits == 8:
+        return _tiff_unpredict(inflated, columns, colors, budget)
+    # A predictor the reader would not apply either: the stream is not text it shows.
+    return None
+
+
+def _png_unpredict(
+    data: bytes, columns: int, colors: int, bits: int, budget: Budget
+) -> bytes | None:
+    """Reverse PNG row filters (PDF predictors 10 to 15): each row starts with its filter type."""
+    row = (columns * colors * bits + 7) // 8
+    step = max(1, (colors * bits + 7) // 8)
+    output = bytearray()
+    previous = bytearray(row)
+    for count, position in enumerate(range(0, len(data), row + 1)):
+        if count % 1024 == 0:
+            budget.check()
+        kind = data[position]
+        current = bytearray(data[position + 1 : position + 1 + row])
+        size = len(current)
+        if kind == 2:
+            current = bytearray((x + y) & 0xFF for x, y in zip(current, previous, strict=False))
+        elif kind in (1, 3, 4):
+            for i in range(size):
+                left = current[i - step] if i >= step else 0
+                up = previous[i]
+                if kind == 1:
+                    current[i] = (current[i] + left) & 0xFF
+                elif kind == 3:
+                    current[i] = (current[i] + ((left + up) >> 1)) & 0xFF
+                else:
+                    corner = previous[i - step] if i >= step else 0
+                    guess = left + up - corner
+                    pa, pb, pc = abs(guess - left), abs(guess - up), abs(guess - corner)
+                    near = left if pa <= pb and pa <= pc else up if pb <= pc else corner
+                    current[i] = (current[i] + near) & 0xFF
+        elif kind != 0:
+            return None
+        output.extend(current)
+        previous = current + bytearray(row - size)
+    return bytes(output)
+
+
+def _tiff_unpredict(data: bytes, columns: int, colors: int, budget: Budget) -> bytes:
+    """Reverse TIFF predictor 2 for 8-bit components: each byte adds the one a pixel back."""
+    row = columns * colors
+    output = bytearray(data)
+    for count, start in enumerate(range(0, len(output), row)):
+        if count % 1024 == 0:
+            budget.check()
+        for i in range(start + colors, min(start + row, len(output))):
+            output[i] = (output[i] + output[i - colors]) & 0xFF
+    return bytes(output)
 
 
 def _inflate(raw: bytes, budget: Budget) -> bytes | None:

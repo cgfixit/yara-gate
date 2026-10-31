@@ -302,12 +302,15 @@ consumer's own approval checks on any tool or send action it proposes.
 A PDF verdict covers the file's raw bytes and the `pdf-flate` view: every
 `/FlateDecode` stream that inflates to text (content streams and object streams)
 is handed to the text rules and to the PDF name checks, so a prompt-injection
-phrase or a `/JavaScript` action inside compressed text is seen. A Word, Excel,
+phrase or a `/JavaScript` action inside compressed text is seen. The filter is
+read from the stream's own dictionary after `#xx` decoding, so `/Fl#61teDecode`
+or a nested `/DecodeParms << … >>` does not hide a stream, and a PNG predictor
+(10 to 15) or TIFF predictor 2 is undone before the text rules run. A Word, Excel,
 or PowerPoint verdict covers each XML member and an `ooxml-text` view that joins
 the text runs of the body, headers, footers, notes, comments, shared strings, and
 slides, so a sentence Word split across formatting runs (the usual case) is seen
 whole. Not covered: PDF text split across several `Tj` operators, other stream
-filters (LZW, ASCII85, PNG predictors), images, and Office parts a reader does
+filters (LZW, ASCII85), images, and Office parts a reader does
 not see (settings, styles). The PDF and Office structure checks still run on the
 raw file.
 

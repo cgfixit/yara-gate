@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import Budget, PdfObjects
+from yara_gate.content import Budget, PdfObjects, pdf_views
 from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings, pdf_token_findings
 from yara_gate.models import Severity
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
@@ -118,6 +118,35 @@ def test_openaction_reference_into_an_object_stream(
     ids = {f.rule_id for f in pdf_token_findings(view, objects)}
     assert rule_id in ids
     assert ids & {"heuristic_pdf_OpenAction", "heuristic_pdf_OpenAction_goto"} == {rule_id}
+
+
+def _png_up(data: bytes, columns: int) -> bytes:
+    rows = [data[i : i + columns].ljust(columns, b" ") for i in range(0, len(data), columns)]
+    encoded, previous = b"", bytes(columns)
+    for row in rows:
+        encoded += b"\x02" + bytes((a - b) & 0xFF for a, b in zip(row, previous, strict=True))
+        previous = row
+    return encoded
+
+
+@pytest.mark.parametrize(
+    ("dictionary", "packed"),
+    [
+        (b"/Filter /FlateDecode /DecodeParms << /Columns 1 >>", None),
+        (b"/DecodeParms << /Predictor 1 >> /Filter /FlateDecode", None),
+        (b"/Filter /Fl#61teDecode", None),
+        (b"/Filter [/FlateDecode]", None),
+        (b"/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 16 >>", 16),
+    ],
+)
+def test_flate_view_reads_every_stream_dictionary_form(
+    dictionary: bytes, packed: int | None
+) -> None:
+    text = b"1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+    stream = zlib.compress(_png_up(text, packed) if packed else text)
+    data = b"%%PDF-1.5\n7 0 obj\n<< %s >>\nstream\n%s\nendstream\nendobj\n" % (dictionary, stream)
+    views = dict(pdf_views(data, Budget(time.monotonic() + 30)))
+    assert text in views["pdf-flate"]
 
 
 def test_openaction_decoy_in_a_string_cannot_hide_an_action() -> None:

@@ -44,6 +44,20 @@ def _objstm_pdf(catalog: bytes, action: bytes) -> bytes:
     )
 
 
+def _flate_object(body: bytes, dictionary: bytes) -> bytes:
+    """One compressed object stream holding ``body`` under the given stream dictionary."""
+    packed = zlib.compress(body)
+    return (
+        b"%PDF-1.5\n7 0 obj\n<< "
+        + dictionary
+        + b" /Length "
+        + str(len(packed)).encode()
+        + b" >>\nstream\n"
+        + packed
+        + b"\nendstream\nendobj\n%%EOF\n"
+    )
+
+
 def _dangerous_pickle() -> bytes:
     def text(value: str) -> bytes:
         raw = value.encode("ascii")
@@ -274,6 +288,23 @@ def cases() -> list[tuple[str, bytes, str | None]]:
                 b"<< /S /URI /URI (https://example.invalid/) >>",
             ),
             "heuristic_pdf_OpenAction",
+        ),
+        # A nested /DecodeParms dictionary or a #xx-encoded filter name must not hide a stream.
+        (
+            "flate_decodeparms.pdf",
+            _flate_object(
+                b"1 0\n1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>",
+                b"/Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /DecodeParms << /Columns 1 >>",
+            ),
+            "heuristic_pdf_JavaScript",
+        ),
+        (
+            "flate_encoded_filter.pdf",
+            _flate_object(
+                b"1 0\n1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>",
+                b"/Type /ObjStm /N 1 /First 4 /Filter /Fl#61teDecode",
+            ),
+            "heuristic_pdf_JS",
         ),
         (
             "open_remote.pdf",
