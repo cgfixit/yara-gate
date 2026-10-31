@@ -146,3 +146,69 @@ uv run pytest -q tests/test_filetype.py tests/test_scanner.py tests/test_text_fa
   header, which decides how readers open the file. If the stack lands, rasters could use
   `samples=True` instead of turning the blob signal off, keeping base64 in pixels detectable at
   the cost of the grain walk.
+
+## Samples mode instead of skipping text (after #137)
+
+The `92e6f12` contract (suffix and header must agree) closed Codex's polyglot finding for `.php`
+and `.py`. It still turned the text checks off for a validated raster. So text that an
+interpreter or agent reads inside a real `.bmp` was no longer checked, though `main` checks it:
+a PHP webshell that a site `include`s from an upload, a caption with an injected instruction,
+or a payload appended after the pixels. With #136 and #137 in `main`, the record's last item
+above applies. A validated raster now uses `samples=True`, as the `pdf-flate` view does, and
+keeps every check.
+
+- `scanner`: `raster_image` is computed before the unit's raw YARA scan. The raw bytes and every
+  text view of a validated raster are scanned with `samples=True`. Decoded text, the text views,
+  and `yara_gate_text` are as on `main`, and the blob override in `_invoke_scan` is gone.
+- Samples mode only narrows two signals, and decides both from the bytes:
+  - A base64 run must keep 400 characters after the repeat cut (#136) and the grain test (#137).
+  - A Unicode-control match must sit in UTF-8 text (#137).
+
+  Nothing else is skipped, and the label cannot hide a payload that is itself text or data.
+
+Direct runtime, `scan_bytes` under default / agent-ingest / agent-document, with a disposable
+rules copy. Compared: `main` `1bdbe07`, this branch at `93f7705` (before), and the change.
+
+- **Inputs.** 14 sources: the 12 repository screenshots plus an 800x600 flat image and a ±2-grain
+  mid-tone image, all saved by Pillow 12.3.0.
+  - Each as BMP 24-bit, 8-bit gray, and 32-bit RGBA, and as TIFF raw and LZW: 70 files.
+  - EMF and WMF of 4 of them (LibreOffice 24.2): 8 files.
+  - 28 DOCX files (python-docx 1.2.0, 24-bit BMP and raw TIFF of each source).
+
+| Files clean under all three policies | `main` | `93f7705` | Change |
+| --- | --- | --- | --- |
+| 78 bare rasters and metafiles | 30 | 78 | 78 |
+| 28 DOCX with a BMP or TIFF | 0 | 28 | 28 |
+
+Adversarial files with a valid BMP header (default / agent-ingest / agent-document):
+
+| File | `main` | `93f7705` | Change |
+| --- | --- | --- | --- |
+| `php-webshell.bmp` (PHP with an RLO in a comment) | advisory / block / advisory | **clean** | advisory / block / advisory |
+| `src-bidi.bmp` (Python with an RLO) | advisory / block / advisory | **clean** | advisory / block / advisory |
+| `zwsp-text.bmp` (ZWSP inside a word) | advisory / block / advisory | **clean** | advisory / block / advisory |
+| `pixels+b64-english.bmp` (base64 after real pixels) | advisory / block / block | **clean** | advisory / block / block |
+| `pixels+php-trailer.bmp` | advisory / block / block | **clean** | advisory / block / advisory |
+| `pixels+inject-trailer.bmp` | advisory / block / block | advisory / block / advisory | advisory / block / advisory |
+| `inject-text.bmp`, `inject-body+bmp.docx` | advisory / block | advisory / block | advisory / block |
+| `pixels+b64-pe.bmp` | block | block | block |
+| `poly-src.py`, `poly-src.php` | block | block | block |
+| `poly-src.txt`, `text-starting-BM.txt` | as `main` | as `main` | as `main` |
+
+- **Findings against `main`.** Across all 119 files and three policies, every finding `main` has
+  and the change drops is `agent_base64_blob` or `agent_invisible_unicode` on pixels. The change
+  adds no finding `main` lacks.
+- **The agent-document rows.** Where a cell reads block on `main` and advisory here, `main`'s
+  block came from a pixel `agent_base64_blob`. The real finding (the phrase or the bidi override)
+  is present in both.
+- **Real images.** All 106 bare and DOCX files have the same verdicts as `93f7705`.
+- **Cost.** Text views run on rasters again, so time returns to `main`'s level: the slowest file
+  (a 7 MB 32-bit screenshot) takes 3.3 s, against 3.0 s on `main` and 0.1 s on `93f7705`. Of
+  that, 0.36 s is YARA. About 1.7 s is the per-character format-control filtering in
+  `text_views` and `folded_text`, which `main` spends on any large non-ASCII text. A DOCX holding
+  about 70 MB of uncompressed pixels would reach the 30 s deadline, as on `main`, and end
+  incomplete (fail closed). Speeding up that filtering is shared text code and is left to its
+  own change.
+- **Tests.** The new `test_text_inside_a_validated_raster_is_still_checked` covers the bidi
+  override, the injected phrase, the ZWSP, and the appended base64 inside a `.bmp`. It fails on
+  `93f7705` and passes here.
