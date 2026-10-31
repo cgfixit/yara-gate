@@ -1,5 +1,7 @@
 """Bounded in-memory content views. Member names are never extracted to disk."""
 
+import base64
+import binascii
 import email
 import email.errors
 import email.message
@@ -137,11 +139,33 @@ _PDF_OBJ = re.compile(
     rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj(?![^\x00\t\n\f\r /<>\[\]()%{}])"
 )
 _PDF_DICT_WINDOW = 4096
+# Keywords that end an object; matched as whole tokens, never inside a comment, string, or name.
+_PDF_OBJ_END = frozenset((b"endobj", b"stream"))
 _PDF_MAX_NESTING = 64
 _PDF_INT = re.compile(rb"[+-]?[0-9]+")
 MAX_OBJSTM_OBJECTS = 100_000
 # The deadline is checked after this many bytes of predictor work, inside rows as well.
 _PREDICTOR_CHECK = 1 << 16
+# Stream filters this view decodes, by full name and by the abbreviation readers also accept.
+# LZWDecode and RunLengthDecode are left out: no stdlib decoder, and a pure-Python one cannot
+# cover a 100 MB stream within the deadline. A chain that needs either stays out of the view.
+_PDF_FLATE = b"/FlateDecode"
+_PDF_HEX = b"/ASCIIHexDecode"
+_PDF_A85 = b"/ASCII85Decode"
+_PDF_FILTERS = {
+    _PDF_FLATE: _PDF_FLATE,
+    b"/Fl": _PDF_FLATE,
+    _PDF_HEX: _PDF_HEX,
+    b"/AHx": _PDF_HEX,
+    _PDF_A85: _PDF_A85,
+    b"/A85": _PDF_A85,
+}
+_PDF_WHITESPACE = b"\x00\t\n\f\r "
+_PDF_NOT_HEX = re.compile(rb"[^0-9A-Fa-f]+")
+# Whole ASCII85 groups, up to 64 KB of output: ``z`` where a group starts, otherwise five bytes.
+_PDF_A85_GROUPS = re.compile(rb"(?:z|[^z][\x00-\xff]{4}){1,16384}")
+_PDF_A85_DIGITS = re.compile(rb"[!-uz]*")
+_PDF_CHUNK = 64 * 1024
 # A parsed PDF object: a token, an array, a dictionary keyed by decoded name, or a reference.
 type PdfValue = bytes | list[PdfValue] | dict[bytes, PdfValue] | tuple[int, int]
 
@@ -519,8 +543,10 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     header and ``stream``, so nested dictionaries such as ``/DecodeParms`` do not hide it. A PNG
     or TIFF predictor is reversed after inflation; when it cannot be (parameters out of range,
     a predictor a reader rejects, an unknown PNG row type) the inflated bytes are kept as they
-    are, so no stream that inflates drops out of the view. When no dictionary parses, a stream
-    is inflated if ``/FlateDecode`` is in the 1 KB before it.
+    are, so no stream that inflates drops out of the view. ASCIIHexDecode and ASCII85Decode
+    stages before FlateDecode are decoded first, and the ``/DecodeParms`` entry at FlateDecode's
+    position in the chain selects the predictor. When no dictionary parses, a stream is
+    inflated if ``/FlateDecode`` is in the 1 KB before it.
     Content and object streams are text once inflated, so the lexical rules and PDF name
     checks can read them. Fonts, images, and other binary streams are dropped after inflation.
     Each stream is capped at the file limit, the total at the shared expansion budget, and the
@@ -551,9 +577,10 @@ def _pdf_stream_bytes(
 ) -> bytes | None:
     """The decoded bytes of the stream whose keyword ``start`` matched, or None.
 
-    None means the stream is not FlateDecode first, or does not inflate. A stream that inflates
-    is never dropped over its predictor: parameters this view will not apply leave the inflated
-    bytes as they are, for ``sniff`` and the text rules to judge.
+    None means the chain does not reach FlateDecode through ASCIIHexDecode and ASCII85Decode
+    stages alone, or the stream does not inflate. A stream that inflates is never dropped over
+    its predictor: parameters this view will not apply leave the inflated bytes as they are, for
+    ``sniff`` and the text rules to judge.
     """
     stream_dict = _pdf_stream_dict(data, start.start())
     end = _PDF_END.search(data, start.end())
@@ -563,9 +590,12 @@ def _pdf_stream_bytes(
         if b"/FlateDecode" not in data[max(0, start.start() - 1024) : start.start()]:
             return None
         return _inflate(body, budget)
-    parms = _pdf_flate_parms(data, stream_dict, objects)
-    if parms is None:
+    plan = _pdf_flate_plan(data, stream_dict, objects)
+    if plan is None:
         return None
+    stages, parms = plan
+    for stage in stages:
+        body = _ascii_hex(body, budget) if stage == _PDF_HEX else _ascii85(body, budget)
     inflated = _inflate(body, budget)
     if not inflated:
         return inflated
@@ -654,11 +684,14 @@ class PdfObjects:
         return members
 
 
-def _pdf_tokens(data: bytes, position: int, stop: int) -> list[bytes] | None:
+def _pdf_tokens(
+    data: bytes, position: int, stop: int, until: frozenset[bytes] = frozenset()
+) -> list[bytes] | None:
     """Tokens in ``data[position:stop]``, or None when a string crosses ``stop``.
 
     Whitespace and comments are dropped, a literal string becomes ``()``, a hex string ``<>``,
-    and names are #xx-decoded.
+    and names are #xx-decoded. A keyword token in ``until`` ends the list early, before any
+    bytes after it are lexed.
     """
     tokens: list[bytes] = []
     while position < stop:
@@ -679,6 +712,8 @@ def _pdf_tokens(data: bytes, position: int, stop: int) -> list[bytes] | None:
             tokens.append(b"<>")
         elif first == b"/":
             tokens.append(_decode_pdf_name(token))
+        elif token in until:
+            return tokens
         else:
             tokens.append(token)
     return tokens
@@ -772,7 +807,11 @@ def _pdf_resolve(
         header = _last_match(pattern, data, 0, len(data))
         resolved: PdfValue | None = None
         if header is not None:
-            tokens = _pdf_tokens(data, header.end(), min(len(data), header.end() + 4096))
+            # Stop at the object's ``endobj`` or ``stream`` token: a lone ``>`` after it, such as
+            # an ASCIIHex stream's end marker or a byte in a binary stream, has no token and
+            # would void the whole window.
+            stop = min(len(data), header.end() + 4096)
+            tokens = _pdf_tokens(data, header.end(), stop, _PDF_OBJ_END)
             try:
                 resolved = _pdf_value(tokens, 0)[0] if tokens else None
             except (IndexError, ValueError):
@@ -781,21 +820,33 @@ def _pdf_resolve(
     return objects[value]
 
 
-def _pdf_flate_parms(
+def _pdf_flate_plan(
     data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
-) -> dict[bytes, PdfValue] | None:
-    """The FlateDecode parameters when the first filter is FlateDecode, otherwise None."""
+) -> tuple[tuple[bytes, ...], dict[bytes, PdfValue]] | None:
+    """The ASCII stages before FlateDecode and FlateDecode's parameters, or None.
+
+    None when the chain does not reach FlateDecode through ASCIIHexDecode and ASCII85Decode
+    alone. With a ``/DecodeParms`` array, the entry at FlateDecode's index applies, as in pdf.js
+    and MuPDF. A lone dictionary applies when FlateDecode is the first filter.
+    """
     filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
-    if isinstance(filters, list):
-        first = _pdf_resolve(data, filters[0], objects) if filters else None
-    else:
-        first = filters
-    if first != b"/FlateDecode":
-        return None
-    parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects)
-    if isinstance(parms, list):
-        parms = _pdf_resolve(data, parms[0], objects) if parms else None
-    return parms if isinstance(parms, dict) else {}
+    chain = filters if isinstance(filters, list) else [filters]
+    stages: list[bytes] = []
+    for index, item in enumerate(chain):
+        name = _pdf_resolve(data, item, objects)
+        kind = _PDF_FILTERS.get(name) if isinstance(name, bytes) else None
+        if kind is None:
+            return None
+        if kind != _PDF_FLATE:
+            stages.append(kind)
+            continue
+        parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects)
+        if isinstance(parms, list):
+            parms = _pdf_resolve(data, parms[index], objects) if index < len(parms) else None
+        elif index:
+            parms = None
+        return tuple(stages), parms if isinstance(parms, dict) else {}
+    return None
 
 
 def _pdf_predictor(parms: dict[bytes, PdfValue]) -> tuple[int, int, int, int] | None:
@@ -914,6 +965,94 @@ def _png_rows(data: bytes, row: int, pixel: int, budget: Budget, limit: int | No
         output += line
         previous[:size] = line
     return bytes(output)
+
+
+def _pdf_grow(output: bytearray, piece: bytes, budget: Budget) -> None:
+    """Append one decoded piece within the per-stream cap and the shared expansion budget."""
+    budget.expanded += len(piece)
+    if budget.expanded > MAX_EXTRACT_BYTES:
+        raise ContentLimit("extracted size exceeds 500MB")
+    output += piece
+    if len(output) > MAX_FILE_BYTES:
+        raise ContentLimit("pdf stream exceeds 100MB")
+
+
+def _ascii_hex(raw: bytes, budget: Budget) -> bytes:
+    """ASCIIHexDecode as pdf.js reads it: ``>`` ends the data, other non-hex bytes are skipped,
+    and an odd final digit is followed by 0."""
+    end = raw.find(b">")
+    if end >= 0:
+        raw = raw[:end]
+    output = bytearray()
+    carry = b""
+    for start in range(0, len(raw), _PDF_CHUNK):
+        budget.check()
+        digits = carry + _PDF_NOT_HEX.sub(b"", raw[start : start + _PDF_CHUNK])
+        even = len(digits) & ~1
+        _pdf_grow(output, binascii.unhexlify(digits[:even]), budget)
+        carry = digits[even:]
+    if carry:
+        _pdf_grow(output, binascii.unhexlify(carry + b"0"), budget)
+    return bytes(output)
+
+
+def _ascii85(raw: bytes, budget: Budget) -> bytes:
+    """ASCII85Decode with an optional ``<~`` prefix; ``~`` ends the data, whitespace is skipped.
+
+    ``z`` where a group starts is four zero bytes. As in pdf.js, any other byte in a group is a
+    digit and a group's value wraps at 32 bits, so a malformed group does not hide what follows.
+    A final group of n digits gives n - 1 bytes. ``z`` expands 5:4 against the encoded size, so
+    output is capped like inflation.
+    """
+    budget.check()
+    text = raw.translate(None, _PDF_WHITESPACE)
+    if text.startswith(b"<~"):
+        text = text[2:]
+    end = text.find(b"~")
+    if end >= 0:
+        text = text[:end]
+    output = bytearray()
+    position = 0
+    while True:
+        budget.check()
+        match = _PDF_A85_GROUPS.match(text, position)
+        if match is None:
+            break
+        groups = match.group()
+        position = match.end()
+        piece = None
+        if _PDF_A85_DIGITS.fullmatch(groups):
+            try:
+                piece = base64.a85decode(groups)
+            except ValueError:
+                piece = None
+        _pdf_grow(output, _a85_groups(groups) if piece is None else piece, budget)
+    tail = text[position:]
+    if len(tail) > 1:
+        value = _a85_value(tail.ljust(5, b"u"))
+        _pdf_grow(output, value[: len(tail) - 1], budget)
+    return bytes(output)
+
+
+def _a85_groups(groups: bytes) -> bytes:
+    """Whole groups, one at a time: the path for overflow, ``z`` inside a group, or odd bytes."""
+    output = bytearray()
+    index = 0
+    while index < len(groups):
+        if groups[index] == 0x7A:
+            output += bytes(4)
+            index += 1
+        else:
+            output += _a85_value(groups[index : index + 5])
+            index += 5
+    return bytes(output)
+
+
+def _a85_value(group: bytes) -> bytes:
+    value = 0
+    for digit in group:
+        value = value * 85 + digit - 0x21
+    return (value & 0xFFFFFFFF).to_bytes(4, "big")
 
 
 def _inflate(raw: bytes, budget: Budget) -> bytes | None:

@@ -165,7 +165,7 @@ def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
     )
 
 
-def base64_run_signals(data: bytes) -> tuple[bool, bool]:
+def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, bool]:
     """Return (blob, executable) for base64 runs of 400 or more characters in ``data``.
 
     ``blob`` is a run that is not media, a font, a PEM body, or an SSH key: its first characters
@@ -173,6 +173,11 @@ def base64_run_signals(data: bytes) -> tuple[bool, bool]:
     a PEM header, or an SSH key type. ``executable`` is a run whose decoded head is MZ, ELF, or
     Mach-O. Each exemption covers its own run. The YARA rules agent_base64_blob and
     agent_base64_executable read these as globals and keep their ids and verdict_on_match.
+
+    ``samples`` marks a buffer that can hold raw sample values, such as decoded PDF streams,
+    where a flat run of image pixels reads as base64. There a run is a blob only when it still
+    has 400 characters after each repeat is cut to one copy (see ``_b64_holds_data``). The
+    executable check is unchanged.
     """
     blob = exe = False
     for match in _B64_RUN.finditer(data):
@@ -183,9 +188,42 @@ def base64_run_signals(data: bytes) -> tuple[bool, bool]:
         if not blob and _B64_MEDIA.match(head) is None:
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
+            if blob and samples:
+                blob = _b64_holds_data(data, start, match.end())
         if blob and exe:
             break
     return blob, exe
+
+
+def _b64_holds_data(data: bytes, position: int, stop: int) -> bool:
+    """True when ``data[position:stop]`` keeps 400 characters once repeats are cut to one copy.
+
+    A repeat is a unit of 1 to 12 characters that occurs four or more times in a row: a flat
+    area of 8-bit gray, RGB, or CMYK pixels, a two-pixel dither, or 16-bit samples. What is cut
+    can be rebuilt from the copy that stays, so a run below 400 carries no more than a shorter
+    run the rule already ignores. The walk reads about 450 characters at a time and stops at
+    400. A repeat cut short at the end of a window is counted as kept, never as cut.
+    """
+    kept = 0
+    while position < stop and kept < _B64_MIN:
+        # A repeat is at most 48 characters before it has four copies, so one that starts in a
+        # window's last 48 characters is left for the next window.
+        end = min(stop, position + _B64_MIN - kept + 48)
+        match = _B64_REPEAT.search(data, position, end)
+        if match is None:
+            step = end if end == stop else end - 48
+            kept += step - position
+            position = step
+            continue
+        unit = match.group(1)
+        kept += match.start() - position + len(unit)
+        position = match.end()
+        block = unit * max(1, 4096 // len(unit))
+        while data.startswith(block, position) and position + len(block) <= stop:
+            position += len(block)
+        while data.startswith(unit, position) and position + len(unit) <= stop:
+            position += len(unit)
+    return kept >= _B64_MIN
 
 
 def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
@@ -664,6 +702,9 @@ def _script_letter(char: str) -> bool:
 
 # A run starts where the previous byte is not in the alphabet, so each run is visited once.
 _B64_RUN = re.compile(rb"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{400,}")
+_B64_MIN = 400
+# The shortest unit first, then as many further copies as follow.
+_B64_REPEAT = re.compile(rb"([A-Za-z0-9+/]{1,12}?)\1{3,}")
 # PNG, JPEG, GIF, WebP, ISO-BMFF (AVIF, HEIC, MP4), MP3, Ogg, WOFF, WOFF2, OpenType, TrueType: only
 # the characters the magic bytes fix, since the next one depends on the following byte.
 _B64_MEDIA = re.compile(

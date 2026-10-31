@@ -5,6 +5,7 @@ import tarfile
 import time
 import zipfile
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -417,7 +418,9 @@ def test_timeout_is_incomplete(
 ) -> None:
     from yara_gate import scanner
 
-    def boom(rules: object, data: bytes, timeout_s: int, ext: str) -> object:
+    def boom(
+        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    ) -> object:
         raise ScanTimeout
 
     monkeypatch.setattr(scanner, "_invoke_scan", boom)
@@ -641,6 +644,91 @@ def test_flate_object_stream_with_decode_parms_is_inflated(
     assert ("heuristic_pdf_JS", "pdf-flate") in {
         (item.rule_id, item.view) for item in result.findings
     }
+
+
+@pytest.mark.parametrize("subtype", [b"", b" /Type /XObject /Subtype /Image /Width 10 /Height 10"])
+def test_pdf_image_samples_are_not_base64_but_a_payload_is(
+    tmp_path: Path, rules_copy: Path, subtype: bytes
+) -> None:
+    import base64
+
+    flat = b"+G9" * 2000
+    payload = base64.b64encode(bytes(range(256)) * 2)
+    image = b"<<" + subtype + b" /Filter /FlateDecode /Length "
+    for body, expected in ((flat, set()), (b"(" + flat + payload + flat + b") Tj", {"pdf-flate"})):
+        inner = zlib.compress(body)
+        extra = image + str(len(inner)).encode() + b" >>\nstream\n" + inner + b"\nendstream"
+        # The image-labeled stream is also the page's /Contents in the second object.
+        pdf = _flate_pdf(b"BT (hello) Tj ET", extra).replace(
+            b"/Contents 4 0 R", b"/Contents [4 0 R 5 0 R]"
+        )
+        for policy in ("default", "agent-ingest", "agent-document"):
+            result = scan_bytes(pdf, name="shot.pdf", rules_dir=rules_copy, policy=policy)
+            views = {f.view for f in result.findings if f.rule_id == "agent_base64_blob"}
+            assert views == expected, (policy, subtype)
+            assert result.verdict is (
+                Verdict.clean
+                if not expected
+                else (Verdict.advisory if policy == "default" else Verdict.block)
+            )
+
+
+def _ascii85(data: bytes) -> bytes:
+    import base64
+
+    return b"<~" + base64.a85encode(data, wrapcol=40) + b"~>"
+
+
+def _ascii85_bare(data: bytes) -> bytes:
+    import base64
+
+    return base64.a85encode(data) + b"~>"
+
+
+def _ascii_hex(data: bytes) -> bytes:
+    encoded = data.hex().upper().encode()
+    return b"\n".join(encoded[i : i + 16] for i in range(0, len(encoded), 16)) + b">"
+
+
+@pytest.mark.parametrize(
+    ("filters", "encode", "predict"),
+    [
+        (b"/Filter [/ASCII85Decode /FlateDecode]", _ascii85, False),
+        (b"/Filter [/ASCIIHexDecode /FlateDecode]", _ascii_hex, False),
+        (b"/Filter [/A85 /Fl]", _ascii85_bare, False),
+        (b"/Filter [/AHx /A85 /Fl]", lambda data: _ascii_hex(_ascii85(data)), False),
+        (
+            b"/Filter [/A85 /FlateDecode] /DecodeParms [null << /Predictor 12 /Columns 8 >>]",
+            _ascii85,
+            True,
+        ),
+    ],
+)
+def test_ascii_encoded_flate_object_stream_is_decoded(
+    tmp_path: Path,
+    rules_copy: Path,
+    filters: bytes,
+    encode: Callable[[bytes], bytes],
+    predict: bool,
+) -> None:
+    text = b"1 0 << /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+    inner = encode(zlib.compress(_png_up(text, 8) if predict else text))
+    objstm = (
+        b"<< /Type /ObjStm /N 1 /First 4 "
+        + filters
+        + b" /Length "
+        + str(len(inner)).encode()
+        + b" >>\nstream\n"
+        + inner
+        + b"\nendstream"
+    )
+    pdf = _flate_pdf(b"BT (hello) Tj ET", objstm)
+    for policy in ("default", "agent-ingest", "agent-document"):
+        result = scan_bytes(pdf, name="form.pdf", rules_dir=rules_copy, policy=policy)
+        assert result.verdict is Verdict.block
+        assert ("heuristic_pdf_JS", "pdf-flate") in {
+            (item.rule_id, item.view) for item in result.findings
+        }
 
 
 def test_flate_binary_stream_and_corrupt_stream_stay_clean(
