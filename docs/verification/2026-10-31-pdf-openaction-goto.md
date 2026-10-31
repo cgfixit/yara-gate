@@ -35,7 +35,9 @@ On `main` `1c3de50`, `pdf_views` looked for `/FlateDecode` only after the last `
 | `/Filter [/FlateDecode]` | block | block |
 | `/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 16 >>`, PNG Up rows | **clean** | block |
 
-A content stream with an injection phrase behind a PNG Sub predictor (11) or TIFF predictor 2 now gives the phrase note in `pdf-flate`. A predictor-encoded object stream with a catalog and `5 0 R` gives the goto note for a page destination and blocks for a URI action.
+A content stream with an injection phrase behind a PNG Sub predictor (11) or TIFF predictor 2 now gives the phrase note in `pdf-flate`.
+
+Image streams (`/Subtype /Image`, unless `/Type` is `/ObjStm`) are inflated as on `main` but their predictor is not reversed. Reversing a Paeth-filtered 1000 by 1200 RGB image in Python took a 3.6 MB PDF from 0.24 s on `main` to 1.33 s; with the exemption it takes 0.33 s, and an object stream that also claims `/Subtype /Image` is still decoded. Across the 16 consumer PDFs, total scan time was 4.57 s on `main` and 4.97 s on the branch, and the only verdict changes are the two files below. A predictor-encoded object stream with a catalog and `5 0 R` gives the goto note for a page destination and blocks for a URI action.
 
 ## Direct scans
 

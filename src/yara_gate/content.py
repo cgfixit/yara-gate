@@ -602,13 +602,14 @@ def _stream_dictionary(data: bytes, stream_start: int) -> bytes:
 
 def _decoded_stream(data: bytes, start: re.Match[bytes], budget: Budget) -> bytes | None:
     """Inflate one FlateDecode stream and undo a PNG or TIFF predictor, or return None."""
-    flate, parameters = pdf_stream_parameters(_stream_dictionary(data, start.start()))
+    flate, parameters, image = pdf_stream_parameters(_stream_dictionary(data, start.start()))
     if not flate:
         return None
     end = _PDF_END.search(data, start.end())
     inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
     predictor = parameters.get(b"/Predictor", 1)
-    if not inflated or predictor <= 1:
+    # Image samples are not text or objects; reversing their predictor would only cost time.
+    if not inflated or predictor <= 1 or image:
         return inflated
     columns = parameters.get(b"/Columns", 1)
     colors = parameters.get(b"/Colors", 1)

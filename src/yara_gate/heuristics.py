@@ -425,8 +425,11 @@ class PdfRawObjects:
 _PDF_STREAM_PARAMETERS = (b"/Predictor", b"/Columns", b"/Colors", b"/BitsPerComponent")
 
 
-def pdf_stream_parameters(head: bytes) -> tuple[bool, dict[bytes, int]]:
-    """Read a stream dictionary: whether its first filter is FlateDecode, and its predictor.
+def pdf_stream_parameters(head: bytes) -> tuple[bool, dict[bytes, int], bool]:
+    """Read a stream dictionary: FlateDecode first, its predictor, and whether it is an image.
+
+    The third value is True for ``/Subtype /Image`` unless ``/Type`` is ``/ObjStm``: a reader
+    neither shows an image's bytes as text nor parses them as objects.
 
     ``head`` is the dictionary text before ``stream``. Names are compared after ``#xx``
     decoding, so ``/Fl#61teDecode`` is FlateDecode, and nested dictionaries such as
@@ -435,13 +438,18 @@ def pdf_stream_parameters(head: bytes) -> tuple[bool, dict[bytes, int]]:
     tokens = _pdf_value_tokens(head)
     flate = False
     parameters: dict[bytes, int] = {}
+    image = object_stream = False
     for index, token in enumerate(tokens):
         following = tokens[index + 1 : index + 3]
-        if token == b"/Filter":
+        if token == b"/Subtype" and following[:1] == [b"/Image"]:
+            image = True
+        elif token == b"/Type" and following[:1] == [b"/ObjStm"]:
+            object_stream = True
+        elif token == b"/Filter":
             flate = following[:1] == [b"/FlateDecode"] or following == [b"[", b"/FlateDecode"]
         elif token in _PDF_STREAM_PARAMETERS and following[:1] and following[0].isdigit():
             parameters[token] = int(following[0])
-    return flate, parameters
+    return flate, parameters, image and not object_stream
 
 
 def _pdf_reference(tokens: list[bytes]) -> bool:

@@ -137,6 +137,12 @@ def _png_up(data: bytes, columns: int) -> bytes:
         (b"/Filter /Fl#61teDecode", None),
         (b"/Filter [/FlateDecode]", None),
         (b"/Filter /FlateDecode /DecodeParms << /Predictor 12 /Columns 16 >>", 16),
+        # An object stream that also claims to be an image is still decoded as objects.
+        (
+            b"/Type /ObjStm /Subtype /Image /Filter /FlateDecode "
+            b"/DecodeParms << /Predictor 12 /Columns 16 >>",
+            16,
+        ),
     ],
 )
 def test_flate_view_reads_every_stream_dictionary_form(
