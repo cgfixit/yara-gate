@@ -96,6 +96,12 @@ uv run pytest -q tests/test_scanner.py -k decode_parms
 - The three new parametrized regression cases fail on the baseline source and pass on the
   change. The broad pytest and selftest suites are left to hosted CI.
 
+Rebased onto `main` `693bca1` (#127, which changed `heuristics.py`, the probe, and the rule
+pair check). On the rebased head: the reproduction table, the direct edge cases, ruff, format and
+strict mypy are unchanged; the probe passes with 80 rules compiled, 0 skipped, and 529 library,
+55 CLI and 109 benign observations; rule pairs pass (104 rules); precision is 310 files, 0
+incomplete, exit 0; the eight `flate`/`decode_parms` scanner tests pass.
+
 ## Limits
 
 This is still a bounded lexical view, not a PDF parser. Streams whose dictionary is more than
