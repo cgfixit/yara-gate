@@ -16,6 +16,7 @@ from yara_gate.samples import (
     eicar_bytes,
     injection_markdown,
     risky_pdf,
+    tag_smuggled_markdown,
     zip_named_pdf,
 )
 from yara_gate.scanner import MAX_FILE_BYTES, ScanTimeout, scan_file
@@ -35,7 +36,9 @@ def run_selftest() -> int:
             ("docm", "macro.docm", docm_with_autoopen(), Verdict.block),
             ("pdf", "open.pdf", risky_pdf(), Verdict.block),
             ("mismatch", "not-a.pdf", zip_named_pdf(), Verdict.advisory),
-            ("bidi", "hidden.md", bidi_markdown(), Verdict.block),
+            ("hidden-tags", "hidden.md", tag_smuggled_markdown(), Verdict.block),
+            # A lone zero-width or bidi control is a note: recorded, verdict advisory.
+            ("bidi", "names.md", bidi_markdown(), Verdict.advisory),
             ("injection", "note.md", injection_markdown(), Verdict.advisory),
             ("clean", "notes.txt", clean_text(), Verdict.clean),
         ]

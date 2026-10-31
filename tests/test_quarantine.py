@@ -5,7 +5,13 @@ from pathlib import Path
 
 from yara_gate.models import ScanPolicy, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, _InboxHandler, drain_inbox, process_inbox_file
-from yara_gate.samples import EICAR, bidi_markdown, clean_text, eicar_bytes, injection_markdown
+from yara_gate.samples import (
+    EICAR,
+    clean_text,
+    eicar_bytes,
+    injection_markdown,
+    tag_smuggled_markdown,
+)
 
 
 def _home(tmp_path: Path) -> GatePaths:
@@ -55,10 +61,10 @@ def test_block_lands_in_blocked_and_advisory_in_clean(tmp_path: Path, rules_copy
     assert (home.clean / noted.sha256).is_dir()
 
 
-def test_bidi_blocks(tmp_path: Path, rules_copy: Path) -> None:
+def test_hidden_tags_block(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     src = home.inbox / "hidden.md"
-    src.write_bytes(bidi_markdown())
+    src.write_bytes(tag_smuggled_markdown())
     result = process_inbox_file(home, src, rules_dir=rules_copy)
     assert result.verdict is Verdict.block
     assert (home.blocked / result.sha256).is_dir()

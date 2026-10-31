@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
@@ -55,7 +55,11 @@ def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | No
 
 
 def joiner_findings(text: str) -> list[Finding]:
-    """Block a ZWNJ or ZWJ that is not holding an emoji or a joining script together."""
+    """Note a ZWNJ or ZWJ that is not holding an emoji or a joining script together.
+
+    One stray joiner is a paste artifact as often as a hiding trick, so it is a note; the
+    conjunction with a lexical note in the same member is ``control_conjunction``.
+    """
     if "\u200c" not in text and "\u200d" not in text:
         return []
     findings: list[Finding] = []
@@ -69,12 +73,86 @@ def joiner_findings(text: str) -> list[Finding]:
                     rule_id="heuristic_invisible_joiner",
                     offset=offset,
                     length=size,
-                    severity=Severity.block,
+                    severity=Severity.note,
                     source=FindingSource.heuristic,
                 )
             )
         offset += size
     return findings
+
+
+# UTS #51 emoji tag sequence for a subdivision flag: U+1F3F4, then tag letters or digits, then
+# CANCEL TAG. CLDR subdivision codes are a region (2 letters or 3 digits) plus 1 to 3 more.
+_EMOJI_TAG_SEQUENCE = re.compile(
+    "\U0001f3f4[\U000e0030-\U000e0039\U000e0061-\U000e007a]{3,6}\U000e007f"
+)
+_TAG = re.compile("[\U000e0000-\U000e007f]")
+
+
+def tag_findings(text: str) -> list[Finding]:
+    """Block a Unicode tag character outside an emoji subdivision-flag sequence.
+
+    Tag characters render as nothing and map one to one onto ASCII, which is how instructions
+    are smuggled past a human reader (ASCII smuggling). Unicode deprecates them for every use
+    but emoji tag sequences, so one outside a flag has no ordinary meaning. The offset is the
+    first such character in the UTF-8 encoding of ``text``.
+    """
+    if _TAG.search(text) is None:
+        return []
+    remainder = _EMOJI_TAG_SEQUENCE.sub(lambda match: "\0" * len(match.group()), text)
+    found = _TAG.search(remainder)
+    if found is None:
+        return []
+    return [
+        Finding(
+            rule_id="heuristic_unicode_tag",
+            offset=len(text[: found.start()].encode("utf-8")),
+            length=4,
+            severity=Severity.block,
+            source=FindingSource.heuristic,
+        )
+    ]
+
+
+# The Unicode-control signals that are notes on their own.
+UNICODE_CONTROL_RULES = frozenset(
+    {
+        "agent_invisible_unicode",
+        "agent_bidi_override",
+        "agent_bidi_formatting",
+        "heuristic_invisible_joiner",
+    }
+)
+
+
+def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
+    """Return an advisory finding when one member has a control note and a second note.
+
+    ``findings`` are one content unit's findings across all of its views. A lone control is a
+    note; a control together with another note in the same member, which is how a phrase split
+    by a zero-width character shows up (the phrase matches in format-controls-removed), is two
+    independent hits. The finding takes the view of the other note.
+    """
+    if not any(
+        f.rule_id in UNICODE_CONTROL_RULES and f.severity is Severity.note for f in findings
+    ):
+        return None
+    other = next(
+        (
+            f
+            for f in findings
+            if f.severity is Severity.note and f.rule_id not in UNICODE_CONTROL_RULES
+        ),
+        None,
+    )
+    if other is None:
+        return None
+    return Finding(
+        rule_id="heuristic_unicode_control_conjunction",
+        severity=Severity.advisory,
+        source=FindingSource.heuristic,
+        view=other.view,
+    )
 
 
 def base64_run_signals(data: bytes) -> tuple[bool, bool]:

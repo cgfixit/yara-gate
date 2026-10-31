@@ -431,13 +431,14 @@ def test_wheel_install_end_to_end(tmp_path: Path) -> None:
         result = run(["scan", str(path), "--home", str(gate)])
         return result.returncode
 
-    assert scan_bytes("zero.md", "\u200b".encode()) == 1
-    assert scan_bytes("bidi.md", "\u202e".encode()) == 1
+    # A lone control in prose is a note (exit 0); the same override in source code blocks.
+    assert scan_bytes("zero.md", "\u200b".encode()) == 0
+    assert scan_bytes("bidi.py", "\u202e".encode()) == 1
     assert scan_bytes("eicar.com", payload) == 1
     assert scan_bytes("clean.txt", b"ordinary notes\n") == 0
     promoted = run(["rules", "promote", sha[:12]])
     assert promoted.returncode == 0, promoted.stderr
-    assert scan_bytes("zero-again.md", "\u200b".encode()) == 1
+    assert scan_bytes("bidi-again.py", "\u202e".encode()) == 1
     copy_scan = run(["scan", str(scope / "copy.com"), "--home", str(gate)])
     assert copy_scan.returncode == 1, copy_scan.stdout
     report = json.loads((gate / "reports" / f"{sha}.json").read_text(encoding="utf-8"))
@@ -468,7 +469,7 @@ def test_installed_root_always_loads_bundled_rules(
     zero_width = tmp_path / "zero.md"
     zero_width.write_text("\u200b", encoding="utf-8")
     blocked = scan_file(zero_width, rules_dir=root)
-    assert blocked.verdict is Verdict.block
+    assert blocked.verdict is Verdict.advisory
     assert any(item.rule_id == "agent_invisible_unicode" for item in blocked.findings)
 
     relocated = tmp_path / "relocated"
@@ -478,7 +479,7 @@ def test_installed_root_always_loads_bundled_rules(
     moved = tmp_path / "moved.md"
     moved.write_text("\u200b", encoding="utf-8")
     via_env = scan_file(moved)
-    assert via_env.verdict is Verdict.block
+    assert via_env.verdict is Verdict.advisory
     assert any(item.rule_id == "agent_invisible_unicode" for item in via_env.findings)
 
 
@@ -507,7 +508,8 @@ def test_user_local_rule_layers_on_top(tmp_path: Path, monkeypatch: pytest.Monke
     bundled_result = scan_file(zero_width, rules_dir=root)
     assert any(item.rule_id == "operator_layer" for item in operator_result.findings)
     assert any(item.rule_id == "vendor_layer" for item in vendor_result.findings)
-    assert bundled_result.verdict is Verdict.block
+    assert bundled_result.verdict is Verdict.advisory
+    assert any(item.rule_id == "agent_invisible_unicode" for item in bundled_result.findings)
 
 
 def test_cache_without_skip_list_recompiles(
@@ -545,7 +547,9 @@ def test_user_file_cannot_shadow_bundled(tmp_path: Path, monkeypatch: pytest.Mon
     zero_width = tmp_path / "zero.md"
     zero_width.write_text("\u200b", encoding="utf-8")
     blocked = scan_file(zero_width, rules_dir=root)
-    assert blocked.verdict is Verdict.block
+    # The bundled rule, not the shadowing `condition: false` copy, recorded the control.
+    assert blocked.verdict is Verdict.advisory
+    assert any(item.rule_id == "agent_invisible_unicode" for item in blocked.findings)
     assert blocked.skipped_rule_files == 1
 
     def _no_download(rules_dir: Path, transport: object = None) -> RulesLock:
