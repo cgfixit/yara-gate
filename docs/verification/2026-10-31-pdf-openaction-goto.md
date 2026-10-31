@@ -76,3 +76,19 @@ Two CyClaw PDFs move from block to the goto note, `CyClaw Glossary.pdf` and the 
 - **Only the first filter is decoded**, and references are followed one level for filters, as in #129.
 - **A GoTo action is trusted to stay inside the document.** Its destination is not checked against the page tree.
 - **A file with more than 64 definitions of its open-action object blocks.** That is the conservative reading.
+
+## Codex review follow-up (f1cbe8f)
+
+Three findings on the code review, each reproduced on f1cbe8f with an inert file before the fix:
+
+- **P1, unfiltered object stream.** `/OpenAction 5 0 R`, a benign raw object 5, and an unfiltered `/ObjStm` redefining object 5 as a `/URI` action gave only the note, because `_pdf_stream_bytes` returns None without a `/Filter` and the index skipped the stream. The index now reads an unfiltered stream as its own bytes, and any `/ObjStm` it cannot read (a filter it cannot undo, a header that does not parse, offsets outside the data, a dictionary without a usable /N or /First) marks the index opaque, so every reference then carries one extra empty definition and is not a page open. The finding stays a block. Reproduced result: note before, block after.
+- **P2, deadline.** 64 distinct `/OpenAction` references on an 8 MiB file took 9.3 s against a 1 s budget, one full-file regex per reference. `PdfRawObjects.prime` now finds every referenced object in one pass over the headers (about 0.4 to 0.7 s on the same input), keeps only offsets for the wanted keys, and calls the budget check every 4096 matches and before each search. An expired budget raises `ContentLimit`, so the scan ends incomplete. Header digit runs are matched up to 32 digits so leading zeros still count.
+- **P2, double inflate.** Three 84 MiB object streams in a 257 KB file inflated once for the lookup and again for `pdf_views`, so a file the parent scanned at 252 MiB expanded now stopped at "extracted size exceeds 500MB". `PdfObjects.decoded` keeps what the lookup inflated, by stream offset, and `pdf_views` reuses it without charging again. Reproduced result: incomplete before, advisory after. The unfiltered fallback bytes stay out of that cache, so the `pdf-flate` view is unchanged.
+
+Tests (all fail on f1cbe8f's source and pass now): three unreadable or redefining object streams (unfiltered URI, ASCIIHexDecode, bad header), an unfiltered object stream that is a real page open, 40 references with an expired deadline, and a charge-once check on `budget.expanded`. Consumer sweep over 1,469 files: identical to f1cbe8f. Full suite, ruff, mypy --strict, lint_rules, check_rule_pairs, check_added_rules, measure_precision --fail-over, check_text_controls, check_scan_only, the probe with --verify --benign-stdlib and selftest pass.
+
+### Security review follow-up (f1cbe8f)
+
+Codex's security review (P2) reported that a stale raw definition makes an object lookup non-empty even when a hidden object stream, read through a filter this reader does not undo, redefines the same object as an action. The opaque-index rule above covers a stream whose only filter is not FlateDecode (for example ASCIIHexDecode). Tracing it also found a gap the report did not name: `_pdf_flate_parms` checks only the first filter, so `[/FlateDecode /ASCIIHexDecode]` inflated once and the hex text was read as the stream's own bytes. Text that starts `35 20 30 20` then parses as a header for object 35, while a reader hex-decodes it to `5 0 ` and sees object 5. An object stream whose `/Filter` array has more than one entry is now unreadable, so the index is opaque and the reference is not a page open. The new test builds exactly that stream; it fails without the check and passes with it.
+
+This follow-up is a separate change because #133 was merged at f1cbe8f before these fixes were pushed. Consumer sweep over 1,469 files: identical to main.
