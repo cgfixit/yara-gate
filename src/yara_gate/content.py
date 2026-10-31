@@ -14,12 +14,14 @@ import time
 import unicodedata
 import zipfile
 import zlib
+from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
+from yara_gate.heuristics import _PDF_LEX, _decode_pdf_name
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -127,6 +129,15 @@ _OOXML_TOKEN = re.compile(
 
 _PDF_STREAM = re.compile(rb"stream\r?\n")
 _PDF_END = re.compile(rb"\r?\n?endstream")
+# An indirect object header. The stream dictionary is the one value between it and ``stream``.
+_PDF_OBJ = re.compile(
+    rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj(?![^\x00\t\n\f\r /<>\[\]()%{}])"
+)
+_PDF_DICT_WINDOW = 4096
+_PDF_MAX_NESTING = 64
+_PDF_INT = re.compile(rb"[+-]?[0-9]+")
+# A parsed PDF object: a token, an array, a dictionary keyed by decoded name, or a reference.
+type PdfValue = bytes | list[PdfValue] | dict[bytes, PdfValue] | tuple[int, int]
 
 # A mail message with a MIME body: header lines, a Content-Type, one more message header, and
 # either a multipart body or an encoded single part. A reader's mail client shows the decoded
@@ -498,6 +509,10 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
 def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     """Inflate FlateDecode streams that hold text and return them as one ``pdf-flate`` view.
 
+    The filter is read from the stream's own dictionary, the one value between the object
+    header and ``stream``, so nested dictionaries such as ``/DecodeParms`` do not hide it. A PNG
+    or TIFF predictor is reversed after inflation; one a reader rejects keeps the stream out.
+    When no dictionary parses, a stream is inflated if ``/FlateDecode`` is in the 1 KB before it.
     Content and object streams are text once inflated, so the lexical rules and PDF name
     checks can read them. Fonts, images, and other binary streams are dropped after inflation.
     Each stream is capped at the file limit, the total at the shared expansion budget, and the
@@ -506,19 +521,275 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if not data.startswith(b"%PDF"):
         return
     parts: list[bytes] = []
+    objects: dict[tuple[int, int], PdfValue | None] = {}
     for count, start in enumerate(_PDF_STREAM.finditer(data)):
         if count >= MAX_PDF_STREAMS:
             raise ContentLimit("pdf streams exceed 2000")
         budget.check()
-        head = data[max(0, start.start() - 1024) : start.start()]
-        if b"/FlateDecode" not in head or b"/FlateDecode" not in head[head.rfind(b"<<") :]:
+        if data[max(0, start.start() - 3) : start.start()] == b"end":
             continue
+        stream_dict = _pdf_stream_dict(data, start.start())
+        if stream_dict is None:
+            # No parsable dictionary ends at this keyword: inflate when FlateDecode is near.
+            if b"/FlateDecode" not in data[max(0, start.start() - 1024) : start.start()]:
+                continue
+            predictor = (1, 1, 8, 1)
+        else:
+            parms = _pdf_flate_parms(data, stream_dict, objects)
+            found = None if parms is None else _pdf_predictor(parms)
+            if found is None:
+                # Not FlateDecode first, or a predictor a reader rejects or this view cannot decode.
+                continue
+            predictor = found
         end = _PDF_END.search(data, start.end())
         inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+        if inflated:
+            inflated = _unpredict(inflated, predictor, budget)
         if inflated and sniff(inflated) == "text":
             parts.append(inflated)
     if parts:
         yield "pdf-flate", b"\n".join(parts)
+
+
+def _pdf_tokens(data: bytes, position: int, stop: int) -> list[bytes] | None:
+    """Tokens in ``data[position:stop]``, or None when a string crosses ``stop``.
+
+    Whitespace and comments are dropped, a literal string becomes ``()``, a hex string ``<>``,
+    and names are #xx-decoded.
+    """
+    tokens: list[bytes] = []
+    while position < stop:
+        match = _PDF_LEX.match(data, position, stop)
+        if match is None:
+            return None
+        token = match.group()
+        position = match.end()
+        first = token[:1]
+        if first in b"\x00\t\n\f\r " or first == b"%":
+            continue
+        if token == b"(":
+            position = _pdf_string_end(data, position, stop)
+            if position < 0:
+                return None
+            tokens.append(b"()")
+        elif first == b"<" and token != b"<<":
+            tokens.append(b"<>")
+        elif first == b"/":
+            tokens.append(_decode_pdf_name(token))
+        else:
+            tokens.append(token)
+    return tokens
+
+
+def _pdf_string_end(data: bytes, position: int, stop: int) -> int:
+    """The index after the ``)`` closing a literal string, or -1 when none comes before ``stop``."""
+    depth = 1
+    while position < stop:
+        char = data[position]
+        if char == 0x5C:
+            position += 2
+            continue
+        position += 1
+        if char == 0x28:
+            depth += 1
+        elif char == 0x29:
+            depth -= 1
+            if not depth:
+                return position
+    return -1
+
+
+def _pdf_value(tokens: list[bytes], index: int, nesting: int = 0) -> tuple[PdfValue, int]:
+    """Parse one object at ``tokens[index]``. Raises IndexError or ValueError when malformed."""
+    if nesting > _PDF_MAX_NESTING:
+        raise ValueError("nesting")
+    token = tokens[index]
+    if token == b"<<":
+        entries: dict[bytes, PdfValue] = {}
+        index += 1
+        while tokens[index] != b">>":
+            key = tokens[index]
+            if not key.startswith(b"/"):
+                raise ValueError("key")
+            entries[key], index = _pdf_value(tokens, index + 1, nesting + 1)
+        return entries, index + 1
+    if token == b"[":
+        items: list[PdfValue] = []
+        index += 1
+        while tokens[index] != b"]":
+            item, index = _pdf_value(tokens, index, nesting + 1)
+            items.append(item)
+        return items, index + 1
+    if token in (b">>", b"]"):
+        raise ValueError("close")
+    following = tokens[index + 1 : index + 3]
+    if token.isdigit() and len(following) == 2 and following[0].isdigit() and following[1] == b"R":
+        return (int(token), int(following[0])), index + 3
+    return token, index + 1
+
+
+def _pdf_stream_dict(data: bytes, stream_at: int) -> dict[bytes, PdfValue] | None:
+    """The dictionary between the nearest object header and the ``stream`` keyword."""
+    header = _last_match(_PDF_OBJ, data, max(0, stream_at - _PDF_DICT_WINDOW), stream_at)
+    if header is None:
+        return None
+    tokens = _pdf_tokens(data, header.end(), stream_at)
+    if not tokens or tokens[0] != b"<<":
+        return None
+    try:
+        value, used = _pdf_value(tokens, 0)
+    except (IndexError, ValueError):
+        return None
+    return value if isinstance(value, dict) and used == len(tokens) else None
+
+
+def _last_match(
+    pattern: re.Pattern[bytes], data: bytes, start: int, stop: int
+) -> re.Match[bytes] | None:
+    found = deque(pattern.finditer(data, start, stop), maxlen=1)
+    return found[0] if found else None
+
+
+def _pdf_resolve(
+    data: bytes, value: PdfValue | None, objects: dict[tuple[int, int], PdfValue | None]
+) -> PdfValue | None:
+    """Follow one indirect reference to a top-level object; anything else is returned as is."""
+    if not isinstance(value, tuple):
+        return value
+    if value not in objects:
+        number, generation = value
+        pattern = re.compile(
+            rb"(?<![0-9])%d[\x00\t\n\f\r ]+%d[\x00\t\n\f\r ]+obj" % (number, generation)
+        )
+        header = _last_match(pattern, data, 0, len(data))
+        resolved: PdfValue | None = None
+        if header is not None:
+            tokens = _pdf_tokens(data, header.end(), min(len(data), header.end() + 4096))
+            try:
+                resolved = _pdf_value(tokens, 0)[0] if tokens else None
+            except (IndexError, ValueError):
+                resolved = None
+        objects[value] = None if isinstance(resolved, tuple) else resolved
+    return objects[value]
+
+
+def _pdf_flate_parms(
+    data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
+) -> dict[bytes, PdfValue] | None:
+    """The FlateDecode parameters when the first filter is FlateDecode, otherwise None."""
+    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+    if isinstance(filters, list):
+        first = _pdf_resolve(data, filters[0], objects) if filters else None
+    else:
+        first = filters
+    if first != b"/FlateDecode":
+        return None
+    parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects)
+    if isinstance(parms, list):
+        parms = _pdf_resolve(data, parms[0], objects) if parms else None
+    return parms if isinstance(parms, dict) else {}
+
+
+def _pdf_predictor(parms: dict[bytes, PdfValue]) -> tuple[int, int, int, int] | None:
+    """(Predictor, Colors, BitsPerComponent, Columns), or None for one a reader rejects.
+
+    A missing or non-integer Predictor means none, as in pdf.js. TIFF is decoded at 8 bits per
+    component; other TIFF depths return None and keep the stream out of the view.
+    """
+
+    def number(key: bytes, default: int) -> int:
+        value = parms.get(key)
+        if isinstance(value, bytes) and _PDF_INT.fullmatch(value):
+            return int(value)
+        return default
+
+    predictor = number(b"/Predictor", 1)
+    if predictor <= 1:
+        return (1, 1, 8, 1)
+    colors = number(b"/Colors", 1)
+    bits = number(b"/BitsPerComponent", 8)
+    columns = number(b"/Columns", 1)
+    if not (1 <= colors <= 32 and bits in (1, 2, 4, 8, 16) and 1 <= columns <= MAX_FILE_BYTES):
+        return None
+    if predictor == 2:
+        return (2, colors, bits, columns) if bits == 8 else None
+    if 10 <= predictor <= 15:
+        return (predictor, colors, bits, columns)
+    return None
+
+
+def _unpredict(data: bytes, predictor: tuple[int, int, int, int], budget: Budget) -> bytes | None:
+    """Reverse a TIFF or PNG predictor. Only the first 4096 bytes are decoded unless they are text.
+
+    ``sniff`` reads no further than that prefix, so a binary image costs one short pass.
+    """
+    kind, colors, bits, columns = predictor
+    if kind == 1:
+        return data
+    pixel = max(1, (colors * bits + 7) // 8)
+    row = (colors * bits * columns + 7) // 8
+    decode = _tiff_rows if kind == 2 else _png_rows
+    head = decode(data, row, pixel, budget, 4096)
+    if head is None or sniff(head) != "text":
+        return None
+    return decode(data, row, pixel, budget, None)
+
+
+def _tiff_rows(data: bytes, row: int, pixel: int, budget: Budget, limit: int | None) -> bytes:
+    output = bytearray()
+    for start in range(0, len(data), row):
+        if limit is not None and len(output) >= limit:
+            break
+        budget.check()
+        line = bytearray(data[start : start + row])
+        for index in range(pixel, len(line)):
+            line[index] = (line[index] + line[index - pixel]) & 0xFF
+        output += line
+    return bytes(output)
+
+
+def _png_rows(data: bytes, row: int, pixel: int, budget: Budget, limit: int | None) -> bytes | None:
+    """PNG row filters (None, Sub, Up, Average, Paeth); an unknown filter type returns None."""
+    output = bytearray()
+    previous = bytearray(row)
+    position = 0
+    while position < len(data):
+        if limit is not None and len(output) >= limit:
+            break
+        budget.check()
+        kind = data[position]
+        line = bytearray(data[position + 1 : position + 1 + row])
+        position += 1 + row
+        size = len(line)
+        if kind == 1:
+            for index in range(pixel, size):
+                line[index] = (line[index] + line[index - pixel]) & 0xFF
+        elif kind == 2:
+            line = bytearray((a + b) & 0xFF for a, b in zip(line, previous, strict=False))
+        elif kind == 3:
+            for index in range(size):
+                left = line[index - pixel] if index >= pixel else 0
+                line[index] = (line[index] + ((left + previous[index]) >> 1)) & 0xFF
+        elif kind == 4:
+            for index in range(size):
+                left = line[index - pixel] if index >= pixel else 0
+                up = previous[index]
+                corner = previous[index - pixel] if index >= pixel else 0
+                estimate = left + up - corner
+                near_left, near_up = abs(estimate - left), abs(estimate - up)
+                near_corner = abs(estimate - corner)
+                if near_left <= near_up and near_left <= near_corner:
+                    best = left
+                elif near_up <= near_corner:
+                    best = up
+                else:
+                    best = corner
+                line[index] = (line[index] + best) & 0xFF
+        elif kind != 0:
+            return None
+        output += line
+        previous[:size] = line
+    return bytes(output)
 
 
 def _inflate(raw: bytes, budget: Budget) -> bytes | None:
