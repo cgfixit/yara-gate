@@ -43,6 +43,7 @@ HEURISTICS = {
     "heuristic_pdf_JavaScript",
     "heuristic_pdf_JS",
     "heuristic_pdf_OpenAction",
+    "heuristic_pdf_OpenAction_goto",
     "heuristic_pdf_Launch",
     "heuristic_pdf_EmbeddedFile",
     "heuristic_pdf_AA",
@@ -533,6 +534,17 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("heuristic_pdf_JavaScript", _pdf(b"/JavaScript (1)"), _clean_pdf()),
         ("heuristic_pdf_JS", _pdf(b"/JS (1)"), _clean_pdf()),
         ("heuristic_pdf_OpenAction", _pdf(b"/OpenAction 2 0 R"), _clean_pdf()),
+        # A URI action on open blocks; a page destination is only the goto note.
+        (
+            "heuristic_pdf_OpenAction",
+            _pdf(b"/OpenAction << /S /URI /URI (https://example.invalid/) >>"),
+            _pdf(b"/OpenAction [3 0 R /Fit]"),
+        ),
+        (
+            "heuristic_pdf_OpenAction_goto",
+            _pdf(b"/OpenAction << /S /GoTo /D [3 0 R /XYZ 0 792 null] >>"),
+            _pdf(b"/OpenAction << /S /GoTo /D [3 0 R /Fit] /Next 9 0 R >>"),
+        ),
         ("heuristic_pdf_AA", _pdf(b"/AA <<>>"), _clean_pdf()),
         ("heuristic_pdf_Launch", _pdf(b"/Launch <<>>"), _clean_pdf()),
         ("heuristic_pdf_EmbeddedFile", _pdf(b"/EmbeddedFile <<>>"), _clean_pdf()),

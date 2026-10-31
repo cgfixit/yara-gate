@@ -1,0 +1,78 @@
+# PDF /OpenAction: a page open is a note (#106), on #129's stream reader
+
+Base: `main` `67446d0`, after #129 merged. YARA-X `1.22.1`, Python 3.12, Linux container, disposable rules roots. This replaces #128, which carried its own copy of the stream reader that #129 now provides. Nothing was executed, rendered, or downloaded.
+
+## Root cause
+
+`pdf_token_findings` emitted `Severity.block` for any `/OpenAction` name and never read its value. A PDF that opens on page 3 (`/OpenAction [3 0 R /Fit]`) blocked like one that runs JavaScript on open, under every policy.
+
+## What changed
+
+**`heuristics.py`:**
+- `/OpenAction` is the note `heuristic_pdf_OpenAction_goto` only when every occurrence the name scanner finds is a page open. A page open is a destination array, a `/GoTo` dictionary with no `/Next` and no duplicate key, or a reference whose every definition is one of those.
+- Each occurrence is read from its own position with the PDF tokenizer, which skips strings and comments and decodes `#xx` escapes.
+- `PdfRawObjects` searches per object and keeps offsets.
+- More than 64 definitions of one object, or more than 64 `/OpenAction` names, are not a page open.
+- Every other action type, a missing or string `/S`, a chained `/Next`, and an unresolved reference still block as `heuristic_pdf_OpenAction`.
+
+**`content.py`, on #129's parser:**
+- **`PdfObjects`** resolves a reference through raw definitions and through FlateDecode object-stream members (ISO 32000-1 7.5.7). It is indexed on first use, with members kept as offsets into budgeted buffers, and `/Type /ObjStm` is read as a decoded name. pdfTeX-style PDFs, whose catalog and `/GoTo` action sit in an object stream, get the note. A raw redefinition counts against a stream copy.
+- **`_pdf_stream_bytes`** is now shared by the flate view and the object-stream index. It never drops a stream that inflates. When predictor parameters are out of range, the predictor is one a reader rejects, a PNG row type is unknown, or the 4 KB prefix is not text, the inflated bytes are kept for `sniff` and the text rules.
+- **`_pdf_stream_dict`** tries the object headers in its window from the nearest back, and accepts the first one followed by exactly one dictionary. A `(2 0 obj)` string inside a dictionary no longer costs the stream its real dictionary and predictor.
+- **`_unpredict`** clamps the row to the data length, so `/Columns` near the file limit times 32 colors at 16 bits cannot allocate gigabytes. `_png_rows` and `_tiff_rows` check the deadline every 64 KiB inside rows.
+
+`scanner.py` passes `PdfObjects` to the raw and `pdf-flate` PDF name checks.
+
+## Bypasses on `main` `67446d0` closed here
+
+A compressed object stream holding `<< /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>`:
+
+| Stream dictionary | `67446d0` | this branch |
+| --- | --- | --- |
+| `/DecodeParms << /Predictor 12 /Columns 16 >>`, PNG Up rows, plus `/Note (2 0 obj)` | clean | block |
+| `/Predictor 12 /Columns 99999999999` | clean | block |
+| `/Predictor 12 /Colors 33 /Columns 2` | clean | block |
+| `/Predictor 5` | clean | block |
+| `/Predictor 12 /Columns 16` over data with an unknown PNG row type | clean | block |
+| `/DecodeParms << /Predictor 5 >> /Filter /FlateDecode` | clean (blocked on `693bca1`) | block |
+
+Codex's five findings on #128's own reader (`df17a8f`) were reproduced against this branch. All stay fixed:
+- an escaped `/Obj#53tm` blocks;
+- stray predictor keys and a `(2 0 obj)` string no longer hide content;
+- the object-lookup peak is about 0 MB for 4,096 headers;
+- a 4 MiB Paeth row stops at a 20 ms deadline.
+
+## Direct scans
+
+- **OpenAction.** The 31-case matrix is unchanged from #128: destination arrays, GoTo forms, `/G#6FTo`, and resolvable references are notes, and every other action type, decoy, redefinition, and malformed value blocks.
+- **Object streams.** The 11-case matrix gives a note for a catalog and page open in a stream. A URI action in a stream, a raw URI redefinition of a stream page open, or a Launch copy in a second stream blocks. A broken header, generation 1, a missing object, or a reference to a reference blocks.
+- **Real PDFs.** CyClaw's `CyClaw_SandboxWss_v1.8.0_Validation_Report_Combined.pdf`, a pdfTeX file whose `/OpenAction 1 0 R` resolves to `<< /S /GoTo /D [3 0 R /Fit] >>` inside an object stream, scans advisory with the goto note as its only finding.
+
+## Checks
+
+These all passed:
+- ruff check and format, `mypy --strict src`;
+- `lint_rules.py`, `check_rules_lock.py`, `check_rule_pairs.py` (105), and `check_added_rules.py` (72);
+- `measure_precision.py --fail-over`, `check_text_controls.py`, `check_scan_only.py`, and `check_intake.py`;
+- `probe_rule_coverage.py --verify --benign-stdlib`, with `navigation.pdf` now advisory and `goto_open.pdf` and `uri_open.pdf` added;
+- `yara-gate selftest`.
+
+All 91 cases in `tests/test_heuristics.py`, and #129's three tests in `tests/test_scanner.py`, were run by calling the test functions directly.
+
+## Consumer trees
+
+All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3a`, compared with `main` `67446d0`:
+
+| Policy | main: clean / advisory / block | branch |
+| --- | --- | --- |
+| default | 1347 / 116 / 6 | 1347 / 118 / 4 |
+| agent-ingest | 1347 / 0 / 122 | 1347 / 0 / 122 |
+| agent-document | 1347 / 75 / 47 | 1347 / 77 / 45 |
+
+Two CyClaw PDFs move from block to the goto note, `CyClaw Glossary.pdf` and the validation report above, and nothing becomes stricter. The 16 consumer PDFs take 4.70 s in total, against 4.53 s on `main`.
+
+## Limits
+
+- **Only the first filter is decoded**, and references are followed one level for filters, as in #129.
+- **A GoTo action is trusted to stay inside the document.** Its destination is not checked against the page tree.
+- **A file with more than 64 definitions of its open-action object blocks.** That is the conservative reading.

@@ -394,6 +394,9 @@ def main() -> None:
                 b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
                 b"trailer\n<< /Size 3 /Root 1 0 R /Encrypt 2 0 R >>\n%%EOF\n"
             ),
+            # Opening on a page is a note; an action that leaves the page still blocks.
+            "goto_open.pdf": pdf(b"<< /S /GoTo /D [3 0 R /Fit] >>"),
+            "uri_open.pdf": pdf(b"<< /S /URI /URI (https://example.invalid/) >>"),
             "escape_tar.tar": escape_buffer.getvalue(),
             "macro_zip.zip": zipped("macro.docm", docm_with_autoopen()),
             "depth.zip": nested_zip(4),
@@ -421,8 +424,8 @@ def main() -> None:
     ):
         expected[name] = "clean"
     for name in (
-        "navigation.pdf",
         "script.pdf",
+        "uri_open.pdf",
         "script_zip.zip",
         "pdf_tar.tar",
         "pdf_tgz.tgz",
