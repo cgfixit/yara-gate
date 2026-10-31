@@ -1,5 +1,6 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import codecs
 import io
 import json
 import re
@@ -124,6 +125,8 @@ def tag_findings(text: str) -> list[Finding]:
     ]
 
 
+_CONTEXT = 16
+
 # The Unicode-control signals that are notes on their own.
 UNICODE_CONTROL_RULES = frozenset(
     {
@@ -133,6 +136,33 @@ UNICODE_CONTROL_RULES = frozenset(
         "heuristic_invisible_joiner",
     }
 )
+
+
+def control_in_text(data: bytes, offset: int, length: int) -> bool:
+    """True when the bytes on either side of a control match read as UTF-8 text.
+
+    The control rules match UTF-8 byte sequences such as E2 80 8B (a zero-width space). In a
+    buffer that can hold raw sample values, such as decoded PDF streams, those bytes also occur
+    in image pixels, where they are not a character. A match is text when the 16 bytes before
+    it or the 16 bytes after it decode as UTF-8, allowing a sequence cut at the window's far
+    edge; an empty side is text. Hiding a real control between invalid bytes on both sides
+    means a UTF-8 reader shows replacement characters next to it.
+    """
+    before = data[max(0, offset - _CONTEXT) : offset]
+    after = data[offset + length : offset + length + _CONTEXT]
+    # Up to three continuation bytes at the far edge belong to a character that starts outside.
+    trimmed = before.lstrip(bytes(range(0x80, 0xC0)))
+    if len(before) - len(trimmed) <= 3 and _utf8(trimmed, final=True):
+        return True
+    return _utf8(after, final=False)
+
+
+def _utf8(data: bytes, *, final: bool) -> bool:
+    try:
+        codecs.getincrementaldecoder("utf-8")("strict").decode(data, final=final)
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
@@ -175,9 +205,10 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
     agent_base64_executable read these as globals and keep their ids and verdict_on_match.
 
     ``samples`` marks a buffer that can hold raw sample values, such as decoded PDF streams,
-    where a flat run of image pixels reads as base64. There a run is a blob only when it still
-    has 400 characters after each repeat is cut to one copy (see ``_b64_holds_data``). The
-    executable check is unchanged.
+    where a run of image pixels reads as base64. There a run is a blob only when it still has
+    400 characters after each repeat is cut to one copy (``_b64_holds_data``, flat areas) and
+    400 characters outside windows that read as neighboring pixels (``_b64_unsampled``, grainy
+    areas). Content a payload carries counts in both. The executable check is unchanged.
     """
     blob = exe = False
     for match in _B64_RUN.finditer(data):
@@ -189,7 +220,8 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
             if blob and samples:
-                blob = _b64_holds_data(data, start, match.end())
+                end = match.end()
+                blob = _b64_holds_data(data, start, end) and _b64_unsampled(data, start, end)
         if blob and exe:
             break
     return blob, exe
@@ -224,6 +256,62 @@ def _b64_holds_data(data: bytes, position: int, stop: int) -> bool:
         while data.startswith(unit, position) and position + len(unit) <= stop:
             position += len(unit)
     return kept >= _B64_MIN
+
+
+def _b64_unsampled(data: bytes, position: int, stop: int) -> bool:
+    """True when ``data[position:stop]`` has 400 characters outside sample-like windows.
+
+    The run is read in 64-character windows from its start. A window is sample-like when, at
+    one lag of 1, 2, 3, 4, 6, or 8 bytes (a gray, gray+alpha, RGB, RGBA or CMYK, 16-bit RGB, or
+    16-bit CMYK pixel), at least 58 of its 64 characters are near the character that lag
+    before: within 4 of it, and at most 7. Neighboring pixels of a photo or a noisy gradient
+    differ by a few levels; base64 of text, UTF-16LE or UTF-32LE text, JSON, compressed data,
+    or random bytes reached at most 52 of 64 when measured, and base64 of hex text 55. A
+    window is kept or cut whole, and a partial last window is kept, so a payload between
+    sample-like stretches loses at most the characters that share a cut window with them.
+    The near test runs in C: the bytes are bucketed by 8 on two grids offset by 4, two bytes
+    within 4 share a bucket on one grid, and a big-integer XOR marks the positions where
+    neither grid matches.
+    """
+    kept = 0
+    while position < stop and kept < _B64_MIN:
+        windows = min(stop - position, _B64_CHUNK) // _B64_WINDOW
+        if windows == 0:
+            kept += stop - position
+            break
+        # Each window's first characters are compared with the bytes just before it.
+        lead = max(0, position - _B64_LAGS[-1])
+        end = position + windows * _B64_WINDOW
+        grids = [data[lead:end].translate(table) for table in _B64_GRIDS]
+        far = [_b64_far(grids, lag, position - lead) for lag in _B64_LAGS]
+        for begin in range(0, windows * _B64_WINDOW, _B64_WINDOW):
+            # Not sample-like: more than 64 - 58 far characters at every lag.
+            if all(
+                mask.count(1, begin, begin + _B64_WINDOW) > _B64_WINDOW - _B64_NEAR for mask in far
+            ):
+                kept += _B64_WINDOW
+                if kept >= _B64_MIN:
+                    return True
+        position = end
+    return kept >= _B64_MIN
+
+
+def _b64_far(grids: list[bytes], lag: int, offset: int) -> bytes:
+    """One byte per position from ``offset`` on, 1 where no grid matches the byte ``lag`` back.
+
+    A position with nothing ``lag`` before it counts as far.
+    """
+    start = max(offset, lag)
+    head = b"\x01" * (start - offset)
+    count = len(grids[0]) - start
+    if count <= 0:
+        return head
+    found = -1
+    for grid in grids:
+        now = int.from_bytes(grid[start:], "big")
+        back = int.from_bytes(grid[start - lag : start - lag + count], "big")
+        found &= int.from_bytes((now ^ back).to_bytes(count, "big").translate(_B64_NONZERO), "big")
+    return head + found.to_bytes(count, "big")
 
 
 def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
@@ -737,6 +825,16 @@ _B64_RUN = re.compile(rb"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{400,}")
 _B64_MIN = 400
 # The shortest unit first, then as many further copies as follow.
 _B64_REPEAT = re.compile(rb"([A-Za-z0-9+/]{1,12}?)\1{3,}")
+# _b64_unsampled: 64-character windows, a sample-like one has 58 near neighbors at one lag.
+_B64_WINDOW = 64
+_B64_NEAR = 58
+_B64_LAGS = (1, 2, 3, 4, 6, 8)
+_B64_CHUNK = 64 * 1024
+_B64_GRIDS = (
+    bytes(value >> 3 for value in range(256)),
+    bytes((value + 4) >> 3 for value in range(256)),
+)
+_B64_NONZERO = bytes([0]) + bytes([1]) * 255
 # PNG, JPEG, GIF, WebP, ISO-BMFF (AVIF, HEIC, MP4), MP3, Ogg, WOFF, WOFF2, OpenType, TrueType: only
 # the characters the magic bytes fix, since the next one depends on the following byte.
 _B64_MEDIA = re.compile(
