@@ -35,6 +35,13 @@ class ScanPolicy(StrEnum):
     agent_document = "agent-document"
 
 
+# policy_reason values. A policy hold is a block that comes only from promoting advisory or note
+# findings; the reviewed-release check (release.py) reads these, so keep the strings in one place.
+INGEST_HOLD = "agent-ingest holds advisory and note findings"
+DOCUMENT_HOLD = "agent-document holds advisory findings"
+DOCUMENT_NOTES = "agent-document records note findings"
+
+
 class FindingSource(StrEnum):
     yara = "yara"
     heuristic = "heuristic"
