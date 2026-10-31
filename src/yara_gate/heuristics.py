@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -357,17 +357,20 @@ def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) ->
     missing /S, a value that does not parse, or a reference that resolves to nothing.
     """
     lookup = objects if objects is not None else PdfRawObjects(data)
-    found = 0
+    values: list[list[bytes]] = []
     for match in _PDF_NAME.finditer(data):
         if _decode_pdf_name(match.group()) != b"/OpenAction":
             continue
-        found += 1
-        if found > MAX_PDF_DEFINITIONS:
+        if len(values) >= MAX_PDF_DEFINITIONS:
             return False
-        tokens = _pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW])
-        if not _pdf_goto_value(tokens, 0, objects=lookup):
-            return False
-    return found > 0
+        values.append(_pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW]))
+    # Every referenced object is found in one pass over the file, not one pass per reference.
+    prime = getattr(lookup, "prime", None)
+    if callable(prime):
+        prime(
+            {(int(v[0]), int(v[1])) for v in values if _pdf_reference(v[:3])},
+        )
+    return bool(values) and all(_pdf_goto_value(v, 0, objects=lookup) for v in values)
 
 
 # A page destination or a GoTo dictionary is a few dozen bytes; a value longer than this
@@ -408,31 +411,48 @@ _PDF_OBJ = re.compile(rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x0
 MAX_PDF_DEFINITIONS = 64
 
 
-class PdfRawObjects:
-    """Bodies of the ``N G obj`` definitions written directly in ``data``, found per lookup.
+# A definition header: object number, generation, and the obj keyword. The digit runs are
+# capped well past any real file so leading zeros still match, and int() drops them.
+_PDF_HEADER = re.compile(
+    rb"(?<![0-9])([0-9]{1,32})[\x00\t\n\f\r ]+([0-9]{1,32})[\x00\t\n\f\r ]+obj\b"
+)
+_PDF_HEADER_CHECK_EVERY = 4096
 
-    Each lookup searches for one object number and generation and keeps only offsets; a body is
-    sliced, at most ``_PDF_VALUE_WINDOW`` bytes, when returned. A match inside a string or
-    stream is kept too: an extra definition can only make a reference harder to accept. More
-    than ``MAX_PDF_DEFINITIONS`` definitions return one empty body, which is not a page open.
+
+class PdfRawObjects:
+    """Bodies of the ``N G obj`` definitions written directly in ``data``.
+
+    ``prime`` finds every wanted object in one pass over the file and keeps only offsets, so a
+    file with many /OpenAction references costs one scan, not one per reference. A lookup that
+    was not primed searches for its own object. A body is sliced, at most ``_PDF_VALUE_WINDOW``
+    bytes, when returned. A match inside a string or stream is kept too: an extra definition
+    can only make a reference harder to accept. More than ``MAX_PDF_DEFINITIONS`` definitions
+    return one empty body, which is not a page open. ``check`` is called between matches and
+    before each search, so the scan deadline ends the work.
     """
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, check: Callable[[], None] | None = None) -> None:
         self._data = data
+        self._check = check
         self._offsets: dict[tuple[int, int], list[int]] = {}
+
+    def prime(self, keys: Iterable[tuple[int, int]]) -> None:
+        wanted = {key for key in keys if key not in self._offsets}
+        if not wanted:
+            return
+        found: dict[tuple[int, int], list[int]] = {key: [] for key in wanted}
+        for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
+            if self._check is not None and count % _PDF_HEADER_CHECK_EVERY == 0:
+                self._check()
+            slot = found.get((int(match.group(1)), int(match.group(2))))
+            if slot is not None and len(slot) <= MAX_PDF_DEFINITIONS:
+                slot.append(match.end())
+        self._offsets.update(found)
 
     def __call__(self, number: int, generation: int) -> list[bytes]:
         key = (number, generation)
         if key not in self._offsets:
-            header = re.compile(
-                rb"(?<![0-9])0*%d[\x00\t\n\f\r ]+0*%d[\x00\t\n\f\r ]+obj\b" % (number, generation)
-            )
-            found: list[int] = []
-            for match in header.finditer(self._data):
-                found.append(match.end())
-                if len(found) > MAX_PDF_DEFINITIONS:
-                    break
-            self._offsets[key] = found
+            self.prime([key])
         offsets = self._offsets[key]
         if len(offsets) > MAX_PDF_DEFINITIONS:
             return [b""]
