@@ -87,7 +87,7 @@ All passed. Each new test in `tests/test_heuristics.py` was also run by calling 
 All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3a`, 12 of them PDFs. Two files changed findings, and none became stricter under any policy.
 
 - `CyClaw Glossary.pdf` went from block to the goto note: held by `agent-ingest`, released by `agent-document`.
-- `CyClaw_SandboxWss_v1.8.0_Validation_Report_Combined.pdf`, a pdfTeX file, keeps its catalog in an object stream with `/OpenAction 1 0 R`; object 1 is `<< /S /GoTo /D [3 0 R /Fit] >>` in the same stream. Its open action is now the goto note. The file still blocks on this branch through `agent_invisible_unicode` matching chance bytes, which #127 removes.
+- `CyClaw_SandboxWss_v1.8.0_Validation_Report_Combined.pdf`, a pdfTeX file, keeps its catalog in an object stream with `/OpenAction 1 0 R`; object 1 is `<< /S /GoTo /D [3 0 R /Fit] >>` in the same stream. Its open action is now the goto note. Before #127 merged, the file also blocked through `agent_invisible_unicode` matching chance bytes; with #127 on `main` (`693bca1`) it scans advisory, with the goto note as its only finding.
 
 ## Limits
 
