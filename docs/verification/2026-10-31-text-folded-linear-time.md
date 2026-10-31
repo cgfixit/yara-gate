@@ -102,3 +102,53 @@ uv run pytest -q tests/test_text_fast_paths.py
   way, and the deadline is checked only between calls. A per-view time test over long
   single-class runs would catch the next one. The sweep script used here is not in the
   repository.
+
+## Memory follow-up: single-class repeats only
+
+The lazy pattern above, `(?<![^\W_])(?<![@$])(?:[^\W_]|[@$])*?[0134578@$](?:[^\W_]|[@$])*`, fixed the
+quadratic rescan but repeats a group that holds an alternation. Python's `re` runs a repeat of
+one character class (`[^\W_]*`) without saving state, and saves backtracking state for every
+iteration of a repeated group. Measured on the pattern alone, one process per size (hex token,
+`finditer`, peak RSS above the text itself):
+
+| Token | `main` | lazy pattern |
+| --- | --- | --- |
+| 8.4 M characters | 0.12 s, +0 MB | 4.8 s, +954 MB |
+| 33.6 M characters | 0.54 s, +0 MB | 15.1 s, +3.8 GB |
+| 67.1 M characters | 0.82 s, +0 MB | 28.6 s, +7.7 GB |
+
+That is about 114 bytes per character. A file near the 100 MB limit that is one alphanumeric
+token would need over 10 GB, so the scanner process can be killed or fail with `MemoryError`
+instead of ending `incomplete`. End to end, a 23 MB hex file took 16.5 s against 1.5 s on
+`main`, so about 40 MB of hex would reach the 30 s timeout that `main` does not.
+
+The pattern is now `main`'s own, with only the start anchor added:
+
+```python
+_LEET_TOKEN = re.compile(r"(?<![^\W_])[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
+```
+
+Every repeat is a single character class, and the match can start only at the first character
+of a run, so a letters-only run is backtracked once, not once per position.
+
+Evidence, direct runtime on this head:
+
+- Spans from `finditer` equal `main`'s pattern on 200,000 fuzzed strings of up to 14 characters
+  (letters, digits, `@`, `$`, `_`, `-`, space, `.`, `,`, Cyrillic, an Arabic-Indic digit, a
+  ZWSP, `é`). The lazy pattern also matched all 200,000.
+- Pattern alone, 67 M characters: hex 1.09 s, +0 MB (lazy pattern 46.7 s, +7.7 GB); letters run
+  ending in one stand-in 0.56 s, +0 MB (lazy 42.6 s, +7.6 GB). 8 M letters-only: 0.29 s, +0 MB
+  (lazy 6.2 s, +899 MB; `main` did not finish in 150 s).
+- End to end through `scan_bytes`, default policy: a 23.1 MB hex token 1.94 s; an 8.4 MB
+  letters-only token 0.56 s; 200,000 letters followed by `1gn0r3 previous instructions` 0.02 s
+  with `agent_prompt_injection_phrases` on the `text-folded` view.
+- `test_leet_token_matches_the_unanchored_pattern_and_uses_constant_memory` compares spans with
+  the earlier pattern on 15 shapes and bounds `tracemalloc` growth on a 1 M-character hex
+  token to 10 MB. On the lazy pattern it fails (122 MB of growth); on this head it passes.
+- Full suite 369 passed, 1 skipped. Ruff check and format, `mypy --strict src`, `lint_rules`,
+  `check_rules_lock`, `check_rule_pairs`, `check_added_rules`, `measure_precision --fail-over`,
+  `check_text_controls`, `check_scan_only`, the probe with `--verify --benign-stdlib`, and
+  selftest pass.
+
+The same limit as above applies: `re` cannot be preempted, and a memory test only catches the
+shapes it builds.
