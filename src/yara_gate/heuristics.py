@@ -170,8 +170,12 @@ def _pdf_dict_encrypts(window: list[bytes], root_kind: bytes) -> bool:
     return False
 
 
-def _pdf_top_tokens(data: bytes) -> Iterator[bytes]:
-    """Yield PDF tokens outside strings, comments, and stream bodies."""
+def _pdf_top_tokens(data: bytes, *, mark_strings: bool = False) -> Iterator[bytes]:
+    """Yield PDF tokens outside strings, comments, and stream bodies.
+
+    With ``mark_strings``, a literal or hex string yields ``()`` in its place, so a parser can
+    tell that a value was present without reading it.
+    """
     position = 0
     size = len(data)
     while position < size:
@@ -186,8 +190,12 @@ def _pdf_top_tokens(data: bytes) -> Iterator[bytes]:
             continue
         if token == b"(":
             position = _skip_pdf_string(data, position)
+            if mark_strings:
+                yield b"()"
             continue
         if first == b"<" and token != b"<<":
+            if mark_strings:
+                yield b"()"
             continue
         if token == b"stream":
             end = data.find(b"endstream", position)
@@ -213,24 +221,136 @@ def _skip_pdf_string(data: bytes, position: int) -> int:
 
 
 def pdf_token_findings(data: bytes) -> list[Finding]:
-    """PDF action and embedding names in ``data``, which may be an inflated stream view."""
+    """PDF action and embedding names in ``data``, which may be an inflated stream view.
+
+    Every name blocks except an /OpenAction whose every occurrence opens a page: a direct
+    destination array, or a /GoTo action dictionary with no /Next. That one is the note
+    ``heuristic_pdf_OpenAction_goto``.
+    """
     findings: list[Finding] = []
     for token in PDF_TOKENS:
         found = _pdf_name_span(data, token)
         if found is None:
             continue
         offset, length = found
-        name = token.decode("ascii").removeprefix("/")
+        rule_id = "heuristic_pdf_" + token.decode("ascii").removeprefix("/")
+        severity = Severity.block
+        if token == b"/OpenAction" and _open_action_is_goto(data):
+            rule_id, severity = "heuristic_pdf_OpenAction_goto", Severity.note
         findings.append(
             Finding(
-                rule_id=f"heuristic_pdf_{name}",
+                rule_id=rule_id,
                 offset=offset,
                 length=length,
-                severity=Severity.block,
+                severity=severity,
                 source=FindingSource.heuristic,
             )
         )
     return findings
+
+
+_PDF_DESTINATIONS = frozenset(
+    {b"/XYZ", b"/Fit", b"/FitH", b"/FitV", b"/FitR", b"/FitB", b"/FitBH", b"/FitBV"}
+)
+_PDF_NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)")
+
+
+def _open_action_is_goto(data: bytes) -> bool:
+    """True when every /OpenAction in ``data`` only opens a page.
+
+    Each occurrence must be a direct destination array, a /GoTo action dictionary without a
+    /Next chain, or an indirect reference to an object defined in ``data`` that is one of those.
+    Anything else is not a page open: another action type (/JavaScript, /Launch, /URI, /GoToR,
+    /GoToE, /SubmitForm, /ImportData, /Rendition), a missing /S, a value that does not parse,
+    or a reference that does not resolve here, such as one into an object stream. A name that
+    the tokenizer does not reach (inside a string, a comment, or a stream body) also counts as
+    not a page open, so a decoy can only add notes and never hide an action.
+    """
+    names = sum(
+        1 for match in _PDF_NAME.finditer(data) if _decode_pdf_name(match.group()) == b"/OpenAction"
+    )
+    tokens = [
+        _decode_pdf_name(token) if token.startswith(b"/") else token
+        for token in _pdf_top_tokens(data, mark_strings=True)
+    ]
+    starts = [index + 1 for index, token in enumerate(tokens) if token == b"/OpenAction"]
+    if not starts or len(starts) != names:
+        return False
+    return all(_pdf_goto_value(tokens, start, resolve=True) for start in starts)
+
+
+def _pdf_goto_value(tokens: list[bytes], start: int, *, resolve: bool) -> bool:
+    head = tokens[start : start + 3]
+    if head[:1] == [b"["]:
+        return _pdf_destination(tokens[start : _pdf_value_end(tokens, start)])
+    if head[:1] == [b"<<"]:
+        entries = _pdf_dictionary(tokens[start : _pdf_value_end(tokens, start)])
+        return entries is not None and entries.get(b"/S") == [b"/GoTo"] and b"/Next" not in entries
+    if resolve and _pdf_reference(head):
+        bodies = [
+            index + 3
+            for index in range(len(tokens) - 2)
+            if tokens[index : index + 3] == [head[0], head[1], b"obj"]
+        ]
+        # Every definition counts: an incremental update can redefine the object.
+        return bool(bodies) and all(_pdf_goto_value(tokens, body, resolve=False) for body in bodies)
+    return False
+
+
+def _pdf_reference(tokens: list[bytes]) -> bool:
+    return len(tokens) == 3 and tokens[0].isdigit() and tokens[1].isdigit() and tokens[2] == b"R"
+
+
+def _pdf_value_end(tokens: list[bytes], start: int) -> int:
+    """Index just past the value that begins at ``start``."""
+    if start >= len(tokens):
+        return start
+    if tokens[start] in (b"<<", b"["):
+        depth = 0
+        for index in range(start, len(tokens)):
+            if tokens[index] in (b"<<", b"["):
+                depth += 1
+            elif tokens[index] in (b">>", b"]"):
+                depth -= 1
+                if depth == 0:
+                    return index + 1
+        return len(tokens)
+    if _pdf_reference(tokens[start : start + 3]):
+        return start + 3
+    return start + 1
+
+
+def _pdf_destination(array: list[bytes]) -> bool:
+    """A closed explicit destination: a page reference or number, a fit type, and numbers."""
+    if len(array) < 3 or array[-1] != b"]":
+        return False
+    items = array[1:-1]
+    if not any(item in _PDF_DESTINATIONS for item in items):
+        return False
+    return all(
+        item in _PDF_DESTINATIONS
+        or item in (b"R", b"null")
+        or _PDF_NUMBER.fullmatch(item) is not None
+        for item in items
+    )
+
+
+def _pdf_dictionary(value: list[bytes]) -> dict[bytes, list[bytes]] | None:
+    """The direct entries of one closed dictionary, or None when it does not parse."""
+    if len(value) < 2 or value[0] != b"<<" or value[-1] != b">>":
+        return None
+    entries: dict[bytes, list[bytes]] = {}
+    index = 1
+    while index < len(value) - 1:
+        key = value[index]
+        if not key.startswith(b"/") or key in entries:
+            return None
+        end = _pdf_value_end(value, index + 1)
+        if end <= index + 1 or end > len(value) - 1:
+            return None
+        entries[key] = value[index + 1 : end]
+        index = end
+    return entries
 
 
 def embedded_findings(data: bytes) -> list[Finding]:

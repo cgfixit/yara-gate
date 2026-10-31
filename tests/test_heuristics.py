@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings
+from yara_gate.models import Severity
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
 
 
@@ -45,6 +46,41 @@ def test_openaction_pdf_blocks(tmp_path: Path) -> None:
     ids = {item.rule_id for item in findings}
     assert "heuristic_pdf_OpenAction" in ids
     assert "heuristic_pdf_JavaScript" in ids
+
+
+@pytest.mark.parametrize(
+    ("action", "rule_id", "severity"),
+    [
+        (b"[3 0 R /Fit]", "heuristic_pdf_OpenAction_goto", Severity.note),
+        (b"<< /S /GoTo /D (chapter1) >>", "heuristic_pdf_OpenAction_goto", Severity.note),
+        (
+            b"<< /S /G#6FTo /D [0 /XYZ 0 792 null] >>",
+            "heuristic_pdf_OpenAction_goto",
+            Severity.note,
+        ),
+        (
+            b"<< /S /URI /URI (https://example.invalid/) >>",
+            "heuristic_pdf_OpenAction",
+            Severity.block,
+        ),
+        (b"<< /S /GoToR /F (a.pdf) /D [0 /Fit] >>", "heuristic_pdf_OpenAction", Severity.block),
+        (b"<< /S /GoTo /D [0 /Fit] /Next 9 0 R >>", "heuristic_pdf_OpenAction", Severity.block),
+        (b"<< /S (/GoTo) /D [0 /Fit] >>", "heuristic_pdf_OpenAction", Severity.block),
+        (b"9 0 R", "heuristic_pdf_OpenAction", Severity.block),
+    ],
+)
+def test_openaction_page_open_is_a_note(action: bytes, rule_id: str, severity: Severity) -> None:
+    data = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction " + action + b" >>\nendobj\n%%EOF\n"
+    findings = [f for f in pdf_findings(data) if f.rule_id.startswith("heuristic_pdf_OpenAction")]
+    assert [(f.rule_id, f.severity) for f in findings] == [(rule_id, severity)]
+
+
+def test_openaction_decoy_in_a_string_cannot_hide_an_action() -> None:
+    data = (
+        b"%PDF-1.4\n1 0 obj\n<< /Title (/OpenAction [3 0 R /Fit]) "
+        b"/OpenAction << /S /URI /URI (https://example.invalid/) >> >>\nendobj\n%%EOF\n"
+    )
+    assert "heuristic_pdf_OpenAction" in {f.rule_id for f in pdf_findings(data)}
 
 
 def test_pdf_names_keep_first_physical_span_and_token_boundaries() -> None:
