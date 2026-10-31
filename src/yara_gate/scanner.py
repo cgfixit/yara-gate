@@ -162,7 +162,9 @@ def _scan_file(
         seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
         begun = time.monotonic()
         try:
-            return _yara_findings(rules, payload, ext, seconds)
+            # Decoded PDF streams can be image samples, whose flat areas read as base64.
+            samples = view == "pdf-flate"
+            return _yara_findings(rules, payload, ext, seconds, samples=samples)
         finally:
             scanned_bytes += len(payload)
             yara_time += time.monotonic() - begun
@@ -383,8 +385,10 @@ def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = Non
     return None
 
 
-def _yara_findings(rules: object, data: bytes, ext: str, timeout_s: int) -> list[Finding]:
-    result = _invoke_scan(rules, data, timeout_s, ext)
+def _yara_findings(
+    rules: object, data: bytes, ext: str, timeout_s: int, *, samples: bool = False
+) -> list[Finding]:
+    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples)
     findings: list[Finding] = []
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
@@ -413,12 +417,14 @@ def _yara_findings(rules: object, data: bytes, ext: str, timeout_s: int) -> list
     return findings
 
 
-def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
+def _invoke_scan(
+    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+) -> object:
     import yara_x
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
-    blob, exe = base64_run_signals(data)
+    blob, exe = base64_run_signals(data, samples=samples)
     for name, value in (
         ("yara_gate_ext", ext),
         ("yara_gate_text", sniff(data) == "text"),
