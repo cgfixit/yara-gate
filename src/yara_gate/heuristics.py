@@ -266,11 +266,12 @@ def _b64_unsampled(data: bytes, position: int, stop: int) -> bool:
     16-bit CMYK pixel), at least 58 of its 64 characters are near the character that lag
     before: within 4 of it, and at most 7. Neighboring pixels of a photo or a noisy gradient
     differ by a few levels; base64 of text, UTF-16LE or UTF-32LE text, JSON, compressed data,
-    or random bytes stays at or below about 51 of 64. A window is kept or cut whole, and a
-    partial last window is kept, so a payload between sample-like stretches loses at most the
-    characters that share a cut window with them. The near test runs in C: the bytes are
-    bucketed by 8 on two grids offset by 4, two bytes within 4 share a bucket on one grid,
-    and a big-integer XOR marks the positions where neither grid matches.
+    or random bytes reached at most 52 of 64 when measured, and base64 of hex text 55. A
+    window is kept or cut whole, and a partial last window is kept, so a payload between
+    sample-like stretches loses at most the characters that share a cut window with them.
+    The near test runs in C: the bytes are bucketed by 8 on two grids offset by 4, two bytes
+    within 4 share a bucket on one grid, and a big-integer XOR marks the positions where
+    neither grid matches.
     """
     kept = 0
     while position < stop and kept < _B64_MIN:
