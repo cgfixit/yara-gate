@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
+from yara_gate.heuristics import PdfRawObjects
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -519,6 +520,82 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
             parts.append(inflated)
     if parts:
         yield "pdf-flate", b"\n".join(parts)
+
+
+_OBJSTM_TYPE = re.compile(rb"/Type\s*/ObjStm(?![^\x00\t\n\f\r /<>\[\]()%])")
+_OBJSTM_FLATE = re.compile(rb"/Filter\s*(?:\[\s*)?/FlateDecode\s*(?:\]|/|>>)")
+_OBJSTM_N = re.compile(rb"/N\s+(\d{1,6})(?!\d)")
+_OBJSTM_FIRST = re.compile(rb"/First\s+(\d{1,9})(?!\d)")
+MAX_OBJSTM_OBJECTS = 100_000
+
+
+class PdfObjects:
+    """Every definition of a PDF object in one file: raw ``N G obj`` and object-stream members.
+
+    Object streams are indexed on first use, so a file pays for the extra inflation only when
+    a reference does not settle without it.
+
+    ISO 32000-1 7.5.7: an object stream's dictionary has /Type /ObjStm, /N, and /First; its
+    decoded data starts with /N pairs of object number and offset, and the objects follow at
+    /First. Objects in a stream have generation 0. A stream with another filter, decode
+    parameters, a header that does not parse, or offsets that leave the data is skipped, so
+    its objects stay unresolved. Inflation shares the scan's budget and limits.
+    """
+
+    def __init__(self, data: bytes, budget: Budget) -> None:
+        self._data = data
+        self._budget = budget
+        self._raw = PdfRawObjects(data)
+        self._objects: dict[int, list[bytes]] | None = None
+
+    def __call__(self, number: int, generation: int) -> list[bytes]:
+        found = list(self._raw(number, generation))
+        if generation == 0:
+            if self._objects is None:
+                self._objects = _index_object_streams(self._data, self._budget)
+            found.extend(self._objects.get(number, []))
+        return found
+
+
+def _index_object_streams(data: bytes, budget: Budget) -> dict[int, list[bytes]]:
+    objects: dict[int, list[bytes]] = {}
+    if not data.startswith(b"%PDF") or b"/ObjStm" not in data:
+        return objects
+    for count, start in enumerate(_PDF_STREAM.finditer(data)):
+        if count >= MAX_PDF_STREAMS:
+            raise ContentLimit("pdf streams exceed 2000")
+        budget.check()
+        head = data[max(0, start.start() - 1024) : start.start()]
+        head = head[head.rfind(b"obj") + 3 :] if b"obj" in head else head
+        if (
+            _OBJSTM_TYPE.search(head) is None
+            or _OBJSTM_FLATE.search(head) is None
+            or b"/DecodeParms" in head
+        ):
+            continue
+        count_match, first_match = _OBJSTM_N.search(head), _OBJSTM_FIRST.search(head)
+        if count_match is None or first_match is None:
+            continue
+        total, first = int(count_match.group(1)), int(first_match.group(1))
+        if total > MAX_OBJSTM_OBJECTS:
+            continue
+        end = _PDF_END.search(data, start.end())
+        decoded = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+        if not decoded or first > len(decoded):
+            continue
+        header = decoded[:first].split()
+        if len(header) < 2 * total or not all(item.isdigit() for item in header[: 2 * total]):
+            continue
+        numbers = [int(item) for item in header[0 : 2 * total : 2]]
+        offsets = [int(item) for item in header[1 : 2 * total : 2]]
+        if any(b < a for a, b in zip(offsets, offsets[1:], strict=False)):
+            continue
+        if offsets and first + offsets[-1] > len(decoded):
+            continue
+        bounds = [*offsets[1:], len(decoded) - first]
+        for number, offset, stop in zip(numbers, offsets, bounds, strict=True):
+            objects.setdefault(number, []).append(decoded[first + offset : first + stop])
+    return objects
 
 
 def _inflate(raw: bytes, budget: Budget) -> bytes | None:

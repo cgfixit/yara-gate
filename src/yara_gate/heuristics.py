@@ -7,9 +7,17 @@ import unicodedata
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Protocol
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
 from yara_gate.models import Finding, FindingSource, Severity
+
+
+class PdfObjectLookup(Protocol):
+    """Every definition's bytes after ``obj`` for an object number and generation."""
+
+    def __call__(self, number: int, generation: int, /) -> list[bytes]: ...
+
 
 PDF_TOKENS = (
     b"/JavaScript",
@@ -39,8 +47,10 @@ _LETTER_PREFIXES = (
 _VARIATION = frozenset({0xFE0E, 0xFE0F})
 
 
-def heuristic_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
-    findings = pdf_findings(data)
+def heuristic_findings(
+    path: Path, data: bytes, objects: PdfObjectLookup | None = None
+) -> tuple[list[Finding], str | None]:
+    findings = pdf_findings(data, objects)
     findings.extend(embedded_findings(data))
     findings.extend(pickle_reduce_findings(path, data))
     findings.extend(model_header_findings(path, data))
@@ -100,10 +110,10 @@ def base64_run_signals(data: bytes) -> tuple[bool, bool]:
     return blob, exe
 
 
-def pdf_findings(data: bytes) -> list[Finding]:
+def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
     if sniff(data) != "pdf":
         return []
-    return pdf_token_findings(data)
+    return pdf_token_findings(data, objects)
 
 
 def pdf_encrypted(data: bytes) -> bool:
@@ -220,12 +230,14 @@ def _skip_pdf_string(data: bytes, position: int) -> int:
     return position
 
 
-def pdf_token_findings(data: bytes) -> list[Finding]:
+def pdf_token_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
     """PDF action and embedding names in ``data``, which may be an inflated stream view.
 
     Every name blocks except an /OpenAction whose every occurrence opens a page: a direct
     destination array, or a /GoTo action dictionary with no /Next. That one is the note
-    ``heuristic_pdf_OpenAction_goto``.
+    ``heuristic_pdf_OpenAction_goto``. ``objects`` returns every definition of an object
+    number and generation in the whole file, raw or in an object stream, so a reference read
+    from an inflated view resolves against the file it came from.
     """
     findings: list[Finding] = []
     for token in PDF_TOKENS:
@@ -235,7 +247,7 @@ def pdf_token_findings(data: bytes) -> list[Finding]:
         offset, length = found
         rule_id = "heuristic_pdf_" + token.decode("ascii").removeprefix("/")
         severity = Severity.block
-        if token == b"/OpenAction" and _open_action_is_goto(data):
+        if token == b"/OpenAction" and _open_action_is_goto(data, objects):
             rule_id, severity = "heuristic_pdf_OpenAction_goto", Severity.note
         findings.append(
             Finding(
@@ -255,46 +267,81 @@ _PDF_DESTINATIONS = frozenset(
 _PDF_NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)")
 
 
-def _open_action_is_goto(data: bytes) -> bool:
+def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) -> bool:
     """True when every /OpenAction in ``data`` only opens a page.
 
-    Each occurrence must be a direct destination array, a /GoTo action dictionary without a
-    /Next chain, or an indirect reference to an object defined in ``data`` that is one of those.
-    Anything else is not a page open: another action type (/JavaScript, /Launch, /URI, /GoToR,
-    /GoToE, /SubmitForm, /ImportData, /Rendition), a missing /S, a value that does not parse,
-    or a reference that does not resolve here, such as one into an object stream. A name that
-    the tokenizer does not reach (inside a string, a comment, or a stream body) also counts as
-    not a page open, so a decoy can only add notes and never hide an action.
+    Every occurrence the name scanner finds is read from its own position, so a malformed
+    stream earlier in a joined view cannot hide one, and a decoy in a string or comment is only
+    one more value that must pass. Each must be a direct destination array, a /GoTo action
+    dictionary without a /Next chain, or an indirect reference whose every definition, raw or
+    in an object stream, is one of those. Anything else is not a page open: another action
+    type (/JavaScript, /Launch, /URI, /GoToR, /GoToE, /SubmitForm, /ImportData, /Rendition), a
+    missing /S, a value that does not parse, or a reference that resolves to nothing.
     """
-    names = sum(
-        1 for match in _PDF_NAME.finditer(data) if _decode_pdf_name(match.group()) == b"/OpenAction"
-    )
-    tokens = [
-        _decode_pdf_name(token) if token.startswith(b"/") else token
-        for token in _pdf_top_tokens(data, mark_strings=True)
-    ]
-    starts = [index + 1 for index, token in enumerate(tokens) if token == b"/OpenAction"]
-    if not starts or len(starts) != names:
-        return False
-    return all(_pdf_goto_value(tokens, start, resolve=True) for start in starts)
+    lookup = objects if objects is not None else PdfRawObjects(data)
+    found = False
+    for match in _PDF_NAME.finditer(data):
+        if _decode_pdf_name(match.group()) != b"/OpenAction":
+            continue
+        found = True
+        tokens = _pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW])
+        if not _pdf_goto_value(tokens, 0, objects=lookup):
+            return False
+    return found
 
 
-def _pdf_goto_value(tokens: list[bytes], start: int, *, resolve: bool) -> bool:
+# A page destination or a GoTo dictionary is a few dozen bytes; a value longer than this
+# does not close inside the window and so does not parse as a page open.
+_PDF_VALUE_WINDOW = 4096
+
+
+def _pdf_goto_value(tokens: list[bytes], start: int, *, objects: PdfObjectLookup | None) -> bool:
     head = tokens[start : start + 3]
     if head[:1] == [b"["]:
         return _pdf_destination(tokens[start : _pdf_value_end(tokens, start)])
     if head[:1] == [b"<<"]:
         entries = _pdf_dictionary(tokens[start : _pdf_value_end(tokens, start)])
         return entries is not None and entries.get(b"/S") == [b"/GoTo"] and b"/Next" not in entries
-    if resolve and _pdf_reference(head):
-        bodies = [
-            index + 3
-            for index in range(len(tokens) - 2)
-            if tokens[index : index + 3] == [head[0], head[1], b"obj"]
-        ]
-        # Every definition counts: an incremental update can redefine the object.
-        return bool(bodies) and all(_pdf_goto_value(tokens, body, resolve=False) for body in bodies)
+    if objects is not None and _pdf_reference(head):
+        # Every definition counts: an incremental update can redefine the object, and the same
+        # number can also sit in an object stream. A reference to a reference does not resolve.
+        bodies = objects(int(head[0]), int(head[1]))
+        return bool(bodies) and all(
+            _pdf_goto_value(_pdf_value_tokens(body[:_PDF_VALUE_WINDOW]), 0, objects=None)
+            for body in bodies
+        )
     return False
+
+
+def _pdf_value_tokens(data: bytes) -> list[bytes]:
+    return [
+        _decode_pdf_name(token) if token.startswith(b"/") else token
+        for token in _pdf_top_tokens(data, mark_strings=True)
+    ]
+
+
+_PDF_OBJ = re.compile(rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj\b")
+
+
+class PdfRawObjects:
+    """Bodies of every ``N G obj`` definition written directly in ``data``, indexed on first use.
+
+    A definition is the bytes after ``obj``. A match inside a string or stream is kept too:
+    an extra definition can only make a reference harder to accept.
+    """
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._index: dict[tuple[int, int], list[bytes]] | None = None
+
+    def __call__(self, number: int, generation: int) -> list[bytes]:
+        if self._index is None:
+            self._index = {}
+            for match in _PDF_OBJ.finditer(self._data):
+                key = (int(match.group(1)), int(match.group(2)))
+                body = self._data[match.end() : match.end() + _PDF_VALUE_WINDOW]
+                self._index.setdefault(key, []).append(body)
+        return self._index.get((number, generation), [])
 
 
 def _pdf_reference(tokens: list[bytes]) -> bool:

@@ -8,13 +8,15 @@ Base: `main` `1c3de50`. YARA-X `1.22.1`, Python 3.12, Linux container. Shipped l
 
 ## What changed
 
-`pdf_token_findings` now asks `_open_action_is_goto` before it reports `/OpenAction`. That check reads the value with the existing top-level tokenizer, which skips strings, comments, and stream bodies and decodes `#xx` escapes. The tokenizer gained an opt-in marker for skipped strings, so a string where a name belongs is visible to the parser. The encryption check calls the tokenizer without the marker and is unchanged.
+`pdf_token_findings` now asks `_open_action_is_goto` before it reports `/OpenAction`. For every occurrence the name scanner finds, that check reads the value from the occurrence's own position with the existing tokenizer, which skips strings and comments and decodes `#xx` escapes. Reading per occurrence matters: the `pdf-flate` view joins every inflated stream, and an unbalanced parenthesis in an earlier content stream swallowed the catalog when the whole view was tokenized at once. The tokenizer gained an opt-in marker for skipped strings, so a string where a name belongs is visible to the parser. The encryption check calls the tokenizer without the marker and is unchanged.
 
-A file gets the note `heuristic_pdf_OpenAction_goto` only when every `/OpenAction` the tokenizer reaches opens a page, and the tokenizer reaches every occurrence the name scanner finds. A page open is one of these:
+References resolve through `PdfObjects` (`content.py`). It returns every definition of an object number and generation in the file: each raw `N G obj`, and at generation 0 each member of a FlateDecode object stream, read from the stream's `/N` pairs and `/First` offset (ISO 32000-1 7.5.7). Object streams are indexed only when a reference is looked up, under the scan's expansion budget and deadline. A stream with `/DecodeParms`, another filter, a header that does not parse, or offsets outside its data is skipped.
+
+A file gets the note `heuristic_pdf_OpenAction_goto` only when every occurrence opens a page. A page open is one of these:
 
 - a direct destination array of numbers, `R`, `null`, and a fit type (`/XYZ`, `/Fit`, `/FitH`, `/FitV`, `/FitR`, `/FitB`, `/FitBH`, `/FitBV`);
 - a dictionary whose `/S` is the name `/GoTo` and that has no `/Next` and no duplicate key;
-- a reference `N G R` whose every `N G obj` definition in the same data is one of those two.
+- a reference `N G R` with at least one definition, every one of which, raw or in an object stream, is one of those two.
 
 Everything else keeps `heuristic_pdf_OpenAction` at block. `/JavaScript`, `/JS`, `/Launch`, `/AA`, `/EmbeddedFile`, and `/RichMedia` are unchanged. The `pdf-flate` view goes through the same function.
 
@@ -28,13 +30,17 @@ Everything else keeps `heuristic_pdf_OpenAction` at block. `/JavaScript`, `/JS`,
 | `<< /S /GoTo /D [3 0 R /Fit] >>`, `/D (chapter1)`, `/S /G#6FTo` | advisory / block / advisory | goto note |
 | `5 0 R`, object 5 a destination array or a GoTo dictionary | advisory / block / advisory | goto note |
 | A catalog in a FlateDecode object stream with a destination array | advisory / block / advisory | goto note in `pdf-flate` |
+| Catalog and `5 0 R` both in an object stream, object 5 a destination or GoTo; a raw catalog pointing into a stream | advisory / block / advisory | goto note |
+| Object 5 in a stream is a URI action; or a page open in the stream but redefined raw as a URI action; or a Launch copy in a second stream | block | `heuristic_pdf_OpenAction` |
+| Object stream with `/DecodeParms`, a broken header, a generation-1 reference, a missing object, or a reference to a reference | block, or clean for `/DecodeParms` (see Limits) | `heuristic_pdf_OpenAction` |
 | `/S /Launch`, `/S /JavaScript`, `/S /Java#53cript` | block | `heuristic_pdf_OpenAction` plus the action's own name |
 | `/S /URI`, `/S /GoToR`, `/S /SubmitForm` | block | `heuristic_pdf_OpenAction` |
 | No `/S`; `/S (/GoTo)` as a string; `/S /GoTo /S /URI` | block | `heuristic_pdf_OpenAction` |
 | GoTo with `/Next << /S /URI … >>` | block | `heuristic_pdf_OpenAction` |
 | `5 0 R` with no object 5; object 5 a URI action; object 5 defined twice, once as a URI action; object 5 itself a reference | block | `heuristic_pdf_OpenAction` |
 | A value that is a name (`/JavaScript`), or an array holding a dictionary | block | `heuristic_pdf_OpenAction` |
-| A `(/OpenAction [3 0 R /Fit])` string decoy beside a real URI action; the decoy alone | block | `heuristic_pdf_OpenAction` |
+| A `(/OpenAction [3 0 R /Fit])` string decoy beside a real URI action | block | `heuristic_pdf_OpenAction` |
+| The same decoy with no real open action | advisory / block / advisory | goto note: the only value present opens a page |
 | A page open, then an incremental update that sets a URI action | block | `heuristic_pdf_OpenAction` |
 | A page open plus `/AA` | block | `heuristic_pdf_AA`, goto note |
 | Truncated before the closing bracket | block | `heuristic_pdf_OpenAction` |
@@ -47,7 +53,7 @@ The existing heuristic tests' inputs keep their ids, offsets, and severities, in
 uv run ruff check . && uv run ruff format --check . && uv run mypy --strict src
 uv run python docs/verification/lint_rules.py
 uv run python docs/verification/check_rule_pairs.py      # 102 rules
-uv run python docs/verification/check_added_rules.py     # 64 cases
+uv run python docs/verification/check_added_rules.py     # 66 cases
 uv run python docs/verification/measure_precision.py --fail-over
 uv run python docs/verification/check_text_controls.py
 uv run python docs/verification/check_scan_only.py
@@ -56,16 +62,17 @@ uv run python docs/research/probe_rule_coverage.py --verify --benign-stdlib
 uv run yara-gate selftest
 ```
 
-All passed. The probe's `navigation.pdf` moved from block to advisory. The probe gained `goto_open.pdf` (advisory) and `uri_open.pdf` (block). The pairs gained a URI-versus-destination pair for `heuristic_pdf_OpenAction` and a GoTo-versus-`/Next` pair for the note.
+All passed. Each new test in `tests/test_heuristics.py` was also run by calling the test function directly; that run caught a `%`-format bug in the object-stream helper before it reached CI. The probe's `navigation.pdf` moved from block to advisory. The probe gained `goto_open.pdf` (advisory) and `uri_open.pdf` (block). The pairs gained a URI-versus-destination pair for `heuristic_pdf_OpenAction` and a GoTo-versus-`/Next` pair for the note.
 
 ## Consumer trees
 
-All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3a`, 12 of them PDFs. One file changed outcome, and none became stricter.
+All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3a`, 12 of them PDFs. Two files changed findings, and none became stricter under any policy.
 
 - `CyClaw Glossary.pdf` went from block to the goto note: held by `agent-ingest`, released by `agent-document`.
-- `CyClaw_SandboxWss_v1.8.0_Validation_Report_Combined.pdf` still blocks. Its catalog sits in a compressed object stream and says `/OpenAction 1 0 R`, and object 1 is in that stream too, so the reference does not resolve.
+- `CyClaw_SandboxWss_v1.8.0_Validation_Report_Combined.pdf`, a pdfTeX file, keeps its catalog in an object stream with `/OpenAction 1 0 R`; object 1 is `<< /S /GoTo /D [3 0 R /Fit] >>` in the same stream. Its open action is now the goto note. The file still blocks on this branch through `agent_invisible_unicode` matching chance bytes, which #127 removes.
 
 ## Limits
 
-- A reference into an object stream does not resolve. LaTeX and other PDF 1.5 writers often store the catalog and its open action that way, so those files still block. Resolving them means parsing each object stream's offset table; that is a separate change.
+- An object stream with `/DecodeParms` or a filter other than FlateDecode is not indexed, so a reference into it blocks.
+- Found while testing, present on `main` too, and not changed here: `pdf_views` checks for `/FlateDecode` only after the last `<<` before `stream`. A stream dictionary with a nested `/DecodeParms << … >>` is never inflated, so a JavaScript open action inside such an object stream scans clean. That is a detection bypass in the flate view and needs its own change.
 - A GoTo action is trusted to stay inside the document. The destination is not checked against the page tree.

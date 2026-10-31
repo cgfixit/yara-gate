@@ -1,8 +1,11 @@
+import time
+import zlib
 from pathlib import Path
 
 import pytest
 
-from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings
+from yara_gate.content import Budget, PdfObjects
+from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings, pdf_token_findings
 from yara_gate.models import Severity
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
 
@@ -73,6 +76,48 @@ def test_openaction_page_open_is_a_note(action: bytes, rule_id: str, severity: S
     data = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /OpenAction " + action + b" >>\nendobj\n%%EOF\n"
     findings = [f for f in pdf_findings(data) if f.rule_id.startswith("heuristic_pdf_OpenAction")]
     assert [(f.rule_id, f.severity) for f in findings] == [(rule_id, severity)]
+
+
+def _objstm(objects: list[tuple[int, bytes]]) -> bytes:
+    header = (
+        b" ".join(
+            b"%d %d" % (number, sum(len(body) + 1 for _, body in objects[:index]))
+            for index, (number, _) in enumerate(objects)
+        )
+        + b"\n"
+    )
+    packed = zlib.compress(header + b"".join(body + b"\n" for _, body in objects))
+    return (
+        b"%%PDF-1.5\n7 0 obj\n<< /Type /ObjStm /N %d /First %d /Filter /FlateDecode >>\nstream\n"
+        % (len(objects), len(header))
+        + packed
+        + b"\nendstream\nendobj\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "raw_tail", "rule_id"),
+    [
+        (b"[3 0 R /Fit]", b"", "heuristic_pdf_OpenAction_goto"),
+        (b"<< /S /URI /URI (https://example.invalid/) >>", b"", "heuristic_pdf_OpenAction"),
+        # A raw redefinition of object 5 counts as well as the object-stream copy.
+        (
+            b"[3 0 R /Fit]",
+            b"5 0 obj\n<< /S /URI /URI (https://example.invalid/) >>\nendobj\n",
+            "heuristic_pdf_OpenAction",
+        ),
+    ],
+)
+def test_openaction_reference_into_an_object_stream(
+    action: bytes, raw_tail: bytes, rule_id: str
+) -> None:
+    catalog = b"<< /Type /Catalog /OpenAction 5 0 R >>"
+    data = _objstm([(1, catalog), (5, action)]) + raw_tail + b"%%EOF\n"
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    view = zlib.decompress(data.split(b"stream\n", 1)[1].split(b"\nendstream", 1)[0])
+    ids = {f.rule_id for f in pdf_token_findings(view, objects)}
+    assert rule_id in ids
+    assert ids & {"heuristic_pdf_OpenAction", "heuristic_pdf_OpenAction_goto"} == {rule_id}
 
 
 def test_openaction_decoy_in_a_string_cannot_hide_an_action() -> None:
