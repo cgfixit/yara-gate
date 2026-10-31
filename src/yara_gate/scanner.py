@@ -303,7 +303,7 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            for view, derived in pdf_views(unit.data, budget):
+            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
                 # An action dictionary inside an object stream is invisible to the raw check.

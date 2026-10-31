@@ -295,6 +295,99 @@ def test_raw_object_lookup_is_bounded() -> None:
     assert len(one) == 1 and one[0].startswith(b"\n[3 0 R /Fit]")
 
 
+def _objstm_pdf(objstm_dict: bytes, body: bytes, raw_action: bytes = b"[3 0 R /Fit]") -> bytes:
+    return (
+        b"%PDF-1.5\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n5 0 obj\n"
+        + raw_action
+        + b"\nendobj\n7 0 obj\n<< /Type /ObjStm /N 1 /First 4 "
+        + objstm_dict
+        + b">>\nstream\n"
+        + body
+        + b"\nendstream\nendobj\n%%EOF\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("objstm_dict", "body"),
+    [
+        # No filter: the stream is its own bytes, and a reader redefines object 5 from it.
+        (b"", b"5 0 << /S /URI /URI (https://example.invalid/) >>"),
+        # A filter this view cannot undo: object 5 may be anything, so the page open is not proven.
+        (b"/Filter /ASCIIHexDecode ", b"35203020 3C3C202F53202F555249203E3E>"),
+        # A header that does not parse leaves the stream unread, with the same effect.
+        (b"", b"not a header"),
+    ],
+)
+def test_openaction_is_not_a_page_open_when_an_object_stream_may_redefine_it(
+    objstm_dict: bytes, body: bytes
+) -> None:
+    data = _objstm_pdf(objstm_dict, body)
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
+@pytest.mark.parametrize(
+    ("filters", "ascii85"),
+    [
+        (b"/Filter [/FlateDecode /ASCIIHexDecode] ", False),
+        # ASCII85 before Flate is decoded once #134 lands; the filter after Flate still is not.
+        (b"/Filter [/ASCII85Decode /FlateDecode /ASCIIHexDecode] ", True),
+    ],
+)
+def test_a_second_filter_after_flate_leaves_the_object_stream_unread(
+    filters: bytes, ascii85: bool
+) -> None:
+    # Flate then ASCIIHex. The inflated text starts "35 20 30 20", which reads as a header for
+    # object 35, but a reader hex-decodes it to "5 0 " and sees object 5 as JavaScript.
+    action = b"<< /S /JavaScript /JS (app.alert(1)) >>"
+    text = b"35 20 30 20 " + action.hex().encode() + b">"
+    body = zlib.compress(text)
+    if ascii85:
+        body = base64.a85encode(body) + b"~>"
+    data = _objstm_pdf(filters, body).replace(b"/First 4", b"/First 12")
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
+def test_unfiltered_object_stream_with_a_page_open_is_still_a_page_open() -> None:
+    data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]")
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction_goto" in ids
+    assert "heuristic_pdf_OpenAction" not in ids
+
+
+def test_many_openaction_references_cost_one_pass_and_honor_the_deadline() -> None:
+    count = 40
+    heads = b"".join(b"%d 0 obj\n[1 0 R /Fit]\nendobj\n" % (index + 10) for index in range(count))
+    refs = b"".join(b"<< /OpenAction %d 0 R >>\n" % (index + 10) for index in range(count))
+    data = b"%PDF-1.7\n" + heads + refs + b"A" * (1 << 20)
+    ids = {f.rule_id for f in pdf_findings(data, PdfObjects(data, Budget(time.monotonic() + 30)))}
+    assert ids == {"heuristic_pdf_OpenAction_goto"}
+    with pytest.raises(ContentLimit):
+        pdf_findings(data, PdfObjects(data, Budget(time.monotonic() - 1)))
+
+
+def test_object_streams_read_for_an_openaction_are_not_inflated_twice() -> None:
+    catalog = b"<< /Type /Catalog /OpenAction 5 0 R >>"
+    data = _objstm([(1, catalog), (5, b"[3 0 R /Fit]")]) + b"%%EOF\n"
+    budget = Budget(time.monotonic() + 30)
+    objects = PdfObjects(data, budget)
+    view = zlib.decompress(data.split(b"stream\n", 1)[1].split(b"\nendstream", 1)[0])
+    assert {f.rule_id for f in pdf_token_findings(view, objects)} == {
+        "heuristic_pdf_OpenAction_goto"
+    }
+    charged = budget.expanded
+    assert charged > 0
+    views = dict(pdf_views(data, budget, objects.decoded))
+    assert b"OpenAction" in views["pdf-flate"]
+    assert budget.expanded == charged
+
+
 def test_png_predictor_checks_the_deadline_inside_a_row() -> None:
     expired = Budget(time.monotonic() - 1)
     with pytest.raises(ContentLimit):
@@ -374,3 +467,39 @@ def test_mcp_tool_poisoning_vocabulary(payload: bytes, hidden: bool) -> None:
 
     found = {item.rule_id for item in mcp_tool_findings(Path("tools.json"), payload)}
     assert ("heuristic_mcp_hidden_instruction" in found) is hidden
+
+
+@pytest.mark.parametrize(
+    "header",
+    [b"0" * 33 + b"5 0 obj", b"5 " + b"0" * 40 + b" obj", b"0" * 200 + b"5 00 obj"],
+)
+def test_a_zero_padded_redefinition_still_counts(header: bytes) -> None:
+    # Readers accept any number of leading zeros, so this redefines object 5 as a URI action.
+    data = (
+        b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n"
+        b"5 0 obj\n[3 0 R /Fit]\nendobj\n"
+        + header
+        + b"\n<< /S /URI /URI (https://example.invalid/) >>\nendobj\n%%EOF\n"
+    )
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
+def test_overlapping_unfiltered_object_streams_share_the_file_buffer() -> None:
+    import tracemalloc
+
+    decl = b"9 0 obj\n<< /Type /ObjStm /N 1 /First 4 >>\nstream\n6 0 [3 0 R /Fit]\n"
+    data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]") + decl * 64 + b"x" * 1_000_000 + b"\nendstream\n"
+    budget = Budget(time.monotonic() + 30)
+    objects = PdfObjects(data, budget)
+    tracemalloc.start()
+    try:
+        assert objects(6, 0)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    # 64 declarations each reaching the same 1 MB tail: one view each, not one copy each.
+    assert peak < 8 * 1_000_000
+    assert budget.expanded == 0

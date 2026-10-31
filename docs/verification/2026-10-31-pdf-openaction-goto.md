@@ -76,3 +76,82 @@ Two CyClaw PDFs move from block to the goto note, `CyClaw Glossary.pdf` and the 
 - **Only the first filter is decoded**, and references are followed one level for filters, as in #129.
 - **A GoTo action is trusted to stay inside the document.** Its destination is not checked against the page tree.
 - **A file with more than 64 definitions of its open-action object blocks.** That is the conservative reading.
+
+## Codex review follow-up (f1cbe8f)
+
+Three findings on the code review, each reproduced on f1cbe8f with an inert file before the fix:
+
+- **P1, unfiltered object stream.** `/OpenAction 5 0 R`, a benign raw object 5, and an unfiltered `/ObjStm` redefining object 5 as a `/URI` action gave only the note, because `_pdf_stream_bytes` returns None without a `/Filter` and the index skipped the stream. The index now reads an unfiltered stream as its own bytes, and any `/ObjStm` it cannot read (a filter it cannot undo, a header that does not parse, offsets outside the data, a dictionary without a usable /N or /First) marks the index opaque, so every reference then carries one extra empty definition and is not a page open. The finding stays a block. Reproduced result: note before, block after.
+- **P2, deadline.** 64 distinct `/OpenAction` references on an 8 MiB file took 9.3 s against a 1 s budget, one full-file regex per reference. `PdfRawObjects.prime` now finds every referenced object in one pass over the headers (about 0.4 to 0.7 s on the same input), keeps only offsets for the wanted keys, and calls the budget check every 4096 matches and before each search. An expired budget raises `ContentLimit`, so the scan ends incomplete. Header digit runs are matched up to 32 digits so leading zeros still count.
+- **P2, double inflate.** Three 84 MiB object streams in a 257 KB file inflated once for the lookup and again for `pdf_views`, so a file the parent scanned at 252 MiB expanded now stopped at "extracted size exceeds 500MB". `PdfObjects.decoded` keeps what the lookup inflated, by stream offset, and `pdf_views` reuses it without charging again. Reproduced result: incomplete before, advisory after. The unfiltered fallback bytes stay out of that cache, so the `pdf-flate` view is unchanged.
+
+Tests (all fail on f1cbe8f's source and pass now): three unreadable or redefining object streams (unfiltered URI, ASCIIHexDecode, bad header), an unfiltered object stream that is a real page open, 40 references with an expired deadline, and a charge-once check on `budget.expanded`. Consumer sweep over 1,469 files: identical to f1cbe8f. Full suite, ruff, mypy --strict, lint_rules, check_rule_pairs, check_added_rules, measure_precision --fail-over, check_text_controls, check_scan_only, the probe with --verify --benign-stdlib and selftest pass.
+
+### Security review follow-up (f1cbe8f)
+
+Codex's security review (P2) reported that a stale raw definition makes an object lookup non-empty even when a hidden object stream, read through a filter this reader does not undo, redefines the same object as an action. The opaque-index rule above covers a stream whose only filter is not FlateDecode (for example ASCIIHexDecode). Tracing it also found a gap the report did not name: `_pdf_flate_parms` checks only the first filter, so `[/FlateDecode /ASCIIHexDecode]` inflated once and the hex text was read as the stream's own bytes. Text that starts `35 20 30 20` then parses as a header for object 35, while a reader hex-decodes it to `5 0 ` and sees object 5. An object stream whose `/Filter` array has more than one entry is now unreadable, so the index is opaque and the reference is not a page open. The new test builds exactly that stream; it fails without the check and passes with it.
+
+This follow-up is a separate change because #133 was merged at f1cbe8f before these fixes were pushed. Consumer sweep over 1,469 files: identical to main.
+
+### Interaction with #134 (ASCII stages before Flate)
+
+Merging this branch with draft #134 failed two of #134's tests,
+`test_openaction_reference_into_an_ascii_wrapped_object_stream` with `[/ASCII85Decode /FlateDecode]`
+and with `[/AHx /Fl]`. Both expected the page-open note and got a block. The cause is the rule
+above: it made every object stream with more than one filter unreadable. #134's
+`_pdf_flate_plan` undoes any number of leading ASCIIHex/ASCII85 stages and then FlateDecode, and
+nothing after it. So the danger is a filter after FlateDecode, not the number of filters. The rule
+is now that a `/Filter` array is readable only when its last entry is FlateDecode (`/Fl`) and
+every earlier entry is an ASCII stage (`/AHx`, `/ASCIIHexDecode`, `/A85`, `/ASCII85Decode`). That
+is exactly the chain #134 decodes in full.
+
+- On this branch alone the change is behavior-neutral. `main`'s `_pdf_flate_parms` still rejects
+  a chain that does not start with FlateDecode, so an ASCII-led object stream stays unreadable.
+- `[/FlateDecode /ASCIIHexDecode]` and `[/FlateDecode /FlateDecode]` stay unreadable.
+- The Codex test gains `[/ASCII85Decode /FlateDecode /ASCIIHexDecode]`. That is the same trailing
+  filter behind an ASCII stage, and once #134 decodes the A85 stage only this check stops it.
+
+Trial merge of this branch with #134 at `0ffb339`, CLI under `default`, `agent-ingest` and
+`agent-document`, disposable home and rules copy. The baseline is #134 merged with this branch's
+previous head, `5d53152`.
+
+| Object stream holding object 5 | Merge with `5d53152` | Merge with this change |
+| --- | --- | --- |
+| `/FlateDecode`, page open | note (`_goto`) | note (`_goto`) |
+| `[/ASCII85Decode /FlateDecode]`, page open | block | note (`_goto`) |
+| `[/AHx /Fl]`, page open | block | note (`_goto`) |
+| `[/FlateDecode /FlateDecode]`, page open | block | block |
+| `[/FlateDecode /ASCIIHexDecode]`, Codex JavaScript | block | block |
+| `[/ASCII85Decode /FlateDecode /ASCIIHexDecode]`, Codex JavaScript | block | block |
+
+In the merged tree, restoring the previous `len(filters) > 1` rule fails #134's two cases. Removing
+the check fails both Codex cases. With this change the 111 selected PDF tests pass, and the merge
+has no textual conflict.
+
+### Codex review of f209761
+
+Two code-review findings, both reproduced on `f209761` with inert files.
+
+- **P2, zero-padded headers.** `_PDF_HEADER` capped each digit run at 32 and had a lookbehind,
+  so `000…0005 0 obj` with 33 or more digits never matched. A URI redefinition of object 5
+  written that way was skipped, and `/OpenAction 5 0 R` read as the note instead of a block.
+  Readers accept any number of leading zeros.
+  - Digit runs are now matched whole with a possessive `[0-9]++`, then stripped of zeros.
+  - A header with more than 32 significant digits is skipped. No reference resolves to it, and a
+    reference with that many digits does not resolve, which already blocks.
+  - On 50 MB worst-case inputs (one zero run, digit/space runs, 40-digit runs, real headers,
+    near-misses) the new pattern stays linear and is as fast as the old one or faster: 0.65 s
+    against 0.63 s for the zero run.
+- **P1, unfiltered object streams copied per declaration.** 64 overlapping declarations ahead of
+  one 1 MB tail retained 64 copies: 61 MiB peak for a 0.96 MiB file, with nothing charged to the
+  budget.
+  - The fallback now keeps a `memoryview` into the file, with no copy and no expansion.
+  - A lookup copies at most `_PDF_VALUE_WINDOW` (4 KB) of each member, the same window a raw
+    definition gets and the only part any caller parses. Lookups of every member then peak at
+    1 MiB.
+
+Tests: the three zero-padding cases and the shared-buffer check fail on `f209761` and pass here.
+The full pytest suite (363 passed, 1 skipped), ruff, mypy --strict, check_text_controls,
+check_rule_pairs, measure_precision --fail-over (310 files, 0 incomplete) and the probe with
+--verify --benign-stdlib pass. A trial merge with `main` at `72cb0f4` (#134) is clean, and its
+200 heuristics and scanner tests pass.
