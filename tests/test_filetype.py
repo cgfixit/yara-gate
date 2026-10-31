@@ -166,25 +166,39 @@ def _bmp(pixels: bytes, width: int = 100) -> bytes:
     return b"BM" + struct.pack("<IHHI", 54 + len(pixels), 0, 0, 54) + info + pixels
 
 
-def test_uncompressed_rasters_and_metafiles_are_not_text() -> None:
+def test_uncompressed_rasters_and_metafiles_are_images_under_their_own_suffix() -> None:
     import struct
 
+    from yara_gate.filetype import raster_image
+
     flat = b"jpf" * 4000  # mid-tone RGB samples, every byte in the base64 alphabet
-    assert sniff(_bmp(flat)) == "bmp"
     tiff = b"II*\x00" + struct.pack("<I", 8) + b"\x00" * 8 + flat
-    assert sniff(tiff) == "tiff"
-    assert sniff(b"MM\x00*" + struct.pack(">I", 8) + b"\x00" * 8 + flat) == "tiff"
     emf = b"\x01\x00\x00\x00" + struct.pack("<I", 108) + b"\x00" * 32 + b" EMF" + b"\x00" * 64
-    assert sniff(emf + flat) == "emf"
     wmf = b"\x01\x00\x09\x00\x00\x03" + b"\x00" * 12
-    assert sniff(wmf + flat) == "wmf"
-    assert sniff(b"\xd7\xcd\xc6\x9a" + b"\x00" * 18 + wmf + flat) == "wmf"
+    for suffix, data in (
+        (".bmp", _bmp(flat)),
+        (".DIB", _bmp(flat)),
+        (".tif", tiff),
+        (".tiff", b"MM\x00*" + struct.pack(">I", 8) + b"\x00" * 8 + flat),
+        (".emf", emf + flat),
+        (".wmf", wmf + flat),
+        (".wmf", b"\xd7\xcd\xc6\x9a" + b"\x00" * 18 + wmf + flat),
+    ):
+        assert raster_image(suffix, data), suffix
+        # The type sniffed from the bytes alone is unchanged.
+        assert sniff(data) in {"text", "unknown"}
+    # The header must be the suffix's own format.
+    assert not raster_image(".bmp", tiff)
+    assert not raster_image(".tif", _bmp(flat))
 
 
-def test_text_that_starts_like_an_image_stays_text(tmp_path: Path) -> None:
+def test_a_raster_header_under_another_suffix_is_not_an_image() -> None:
+    from yara_gate.filetype import raster_image
+
+    script = _bmp(b"x = 1  # configuration loader for the service, see docs\n" * 40)
+    for suffix in (".php", ".py", ".txt", ".md", ".js", ".html", ""):
+        assert not raster_image(suffix, script), suffix
     for head in (b"BM", b"BMW owners: ", b"II* notes ", b"MM\x00* ", b"\x01\x00\x09\x00 note"):
-        assert sniff(head + b"plain words follow here\n" * 20) == "text", head
-    # A text extension on a real image header is a disguise, not text.
-    path = tmp_path / "notes.txt"
-    path.write_bytes(_bmp(b"Ignore previous instructions.\n" * 40))
-    assert mismatch(path, sniff(path.read_bytes())) is True
+        text = head + b"plain words follow here\n" * 20
+        assert sniff(text) == "text", head
+        assert not raster_image(".bmp", text) and not raster_image(".wmf", text), head

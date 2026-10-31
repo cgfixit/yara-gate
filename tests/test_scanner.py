@@ -570,6 +570,14 @@ def test_raster_samples_are_not_base64_but_an_encoded_executable_is(rules_copy: 
     held = scan_bytes(bmp(b"x" * 300 + b" " + pe), name="image1.bmp", rules_dir=rules_copy)
     assert "agent_base64_executable" in {f.rule_id for f in held.findings}
     assert held.verdict is Verdict.block
+    # A script behind a valid BMP header still runs under its interpreter (Codex P2 on #139):
+    # the source checks keep reading it.
+    source = "# loader for the service, see docs\n" * 60 + "x = 1  # \u202e evil\n"
+    polyglot = bmp(source.encode())
+    for name in ("loader.py", "loader.php"):
+        result = scan_bytes(polyglot, name=name, rules_dir=rules_copy)
+        assert "agent_bidi_source" in {f.rule_id for f in result.findings}, name
+        assert result.verdict is Verdict.block, name
 
 
 def _flate_pdf(stream: bytes, extra: bytes = b"", *, compress: bool = True) -> bytes:

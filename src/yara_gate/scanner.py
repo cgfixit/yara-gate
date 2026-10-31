@@ -27,12 +27,12 @@ from yara_gate.content import (
     text_views,
 )
 from yara_gate.filetype import (
-    RASTER_KINDS,
     double_extension,
     is_document_name,
     is_executable_kind,
     mismatch,
     name_has_controls,
+    raster_image,
     sniff,
     utf16_encoding,
 )
@@ -271,7 +271,9 @@ def _scan_file(
             pdf_objects = PdfObjects(unit.data, budget)
             heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
             extra.extend(heuristic)
-            decoded = _decoded_text(unit.data)
+            # Raster pixels are not text: no decoded text, and no derived views below.
+            image = raster_image(path.suffix, unit.data)
+            decoded = None if image else _decoded_text(unit.data)
             if decoded is not None:
                 text, view = decoded
                 for finding in [*joiner_findings(text), *tag_findings(text)]:
@@ -282,7 +284,7 @@ def _scan_file(
             findings.extend(extra)
             if office_error:
                 return finish(office_error)
-            for view, derived in text_views(unit.data, budget):
+            for view, derived in () if image else text_views(unit.data, budget):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
                 if view == "text-folded":
@@ -419,15 +421,16 @@ def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
-    kind = sniff(data)
+    # A .bmp, .tif, .emf, or .wmf whose header validates is image samples, not text a reader
+    # sees: mid-tone pixels are mostly printable, and a flat or grainy area in the base64
+    # alphabet reads as a long run. An executable header at a run's start still blocks.
+    image = raster_image(f".{ext}", data)
     blob, exe = base64_run_signals(data)
-    if kind in RASTER_KINDS:
-        # Image samples, not text a reader sees: a flat or grainy area in the base64 alphabet
-        # reads as a long run. An executable header at a run's start still blocks.
+    if image:
         blob = False
     for name, value in (
         ("yara_gate_ext", ext),
-        ("yara_gate_text", kind == "text"),
+        ("yara_gate_text", not image and sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
     ):

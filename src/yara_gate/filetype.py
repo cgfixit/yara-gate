@@ -162,9 +162,6 @@ def sniff(data: bytes) -> str:
         return "macho"
     if data.startswith(b"\x1f\x8b"):
         return "gzip"
-    raster = _raster_kind(data)
-    if raster is not None:
-        return raster
     if _mostly_text(data) or utf16_encoding(data) is not None:
         return "text"
     return "unknown"
@@ -173,8 +170,27 @@ def sniff(data: bytes) -> str:
 # Uncompressed images and Windows metafiles that Office embeds (word/media, ppt/media). Their
 # pixels are raw sample values: a flat or grainy area in the base64 alphabet, or a run of
 # bytes that spells a UTF-8 control, would otherwise read as text.
-RASTER_KINDS = frozenset({"bmp", "tiff", "emf", "wmf"})
+_RASTER_SUFFIXES = {
+    ".bmp": "bmp",
+    ".dib": "bmp",
+    ".tif": "tiff",
+    ".tiff": "tiff",
+    ".emf": "emf",
+    ".wmf": "wmf",
+}
 _BMP_DIB_SIZES = frozenset({12, 40, 52, 56, 64, 108, 124})
+
+
+def raster_image(suffix: str, data: bytes) -> bool:
+    """True when both the name and the bytes say uncompressed raster or metafile image.
+
+    The name decides how a reader opens the file: a PHP or Python interpreter runs a script
+    that starts with a valid BMP header, and a text editor shows it as text, so a raster
+    header under any other suffix keeps every text and source check. ``sniff`` does not use
+    this; the type it reports comes from the bytes alone.
+    """
+    expected = _RASTER_SUFFIXES.get(suffix.lower())
+    return expected is not None and _raster_kind(data) == expected
 
 
 def _raster_kind(data: bytes) -> str | None:
