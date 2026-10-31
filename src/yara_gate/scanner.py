@@ -37,9 +37,11 @@ from yara_gate.filetype import (
 )
 from yara_gate.heuristics import (
     base64_run_signals,
+    control_conjunction,
     heuristic_findings,
     joiner_findings,
     pdf_token_findings,
+    tag_findings,
 )
 from yara_gate.models import (
     Finding,
@@ -216,6 +218,7 @@ def _scan_file(
         for unit in content_units(ContentUnit(file_path.name, data), budget):
             budget.check()
             units += 1
+            unit_start = len(findings)
             path = Path(unit.name)
             kind = sniff(unit.data)
             extra: list[Finding] = []
@@ -267,7 +270,7 @@ def _scan_file(
             decoded = _decoded_text(unit.data)
             if decoded is not None:
                 text, view = decoded
-                for finding in joiner_findings(text):
+                for finding in [*joiner_findings(text), *tag_findings(text)]:
                     finding.view = view
                     extra.append(finding)
             for finding in extra:
@@ -286,6 +289,9 @@ def _scan_file(
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
+                if view in {"html-unescaped", "json-unescaped"}:
+                    # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold.
+                    view_findings.extend(tag_findings(derived.decode("utf-8")))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
@@ -306,6 +312,10 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
+            conjunction = control_conjunction(findings[unit_start:])
+            if conjunction is not None:
+                conjunction.member_path = list(unit.member_path)
+                findings.append(conjunction)
             budget.check()
     except ContentLimit as exc:
         return finish(str(exc))
@@ -408,6 +418,7 @@ def _invoke_scan(rules: Any, data: bytes, timeout_s: int, ext: str) -> object:
     blob, exe = base64_run_signals(data)
     for name, value in (
         ("yara_gate_ext", ext),
+        ("yara_gate_text", sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
     ):

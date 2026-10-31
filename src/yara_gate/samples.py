@@ -29,6 +29,12 @@ def bidi_markdown() -> bytes:
     return "See the\u200bhidden\u202eword.\n".encode()
 
 
+def tag_smuggled_markdown() -> bytes:
+    """Unicode tag characters spelling text a reader cannot see (ASCII smuggling); blocks."""
+    hidden = "".join(chr(0xE0000 + ord(char)) for char in "hidden word")
+    return f"See the{hidden}.\n".encode()
+
+
 def base64_text() -> bytes:
     blob = b"A" * 200 + b"B" * 200 + b"="
     return b"payload:\n" + blob + b"\n"

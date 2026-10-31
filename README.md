@@ -126,7 +126,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 ## What this catches, and what it does not
 
-**Shipped:** 78 YARA rules in 54 files, grouped into these families:
+**Shipped:** 80 YARA rules in 56 files, grouped into these families:
 - **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64 instructions or executables.
 - **Windows delivery:** ClickFix, HTML smuggling, encoded PowerShell, `mshta`, `regsvr32`, and `rundll32`, plus shortcut, `.url`, `.library-ms`, `search-ms`, `.rdp`, and `.theme` NTLM leaks.
 - **Windows script hosts and documents:** HTA, WSF, MSC, `.reg` Run keys, encoded scripts, OneNote, CSV, SYLK, and IQY formulas, LOLBin downloads, MSBuild inline tasks that load code, `cmstp` INF scriptlets, and Chromium password decryption.

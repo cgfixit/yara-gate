@@ -852,6 +852,9 @@ def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
 def define_scan_globals(compiler: Any) -> None:
     """Declare the globals the scanner sets per buffer; their values here are compile defaults."""
     compiler.define_global("yara_gate_ext", "bin")
+    # True when the buffer sniffs as text. The Unicode-control rules read it: their byte
+    # sequences occur by chance in compressed or random data, where they mean nothing.
+    compiler.define_global("yara_gate_text", True)
     # Base64 runs are found by the scanner with a linear regex and passed in: a 400-character
     # class pattern has no atom, so YARA-X verified it at every offset (about 5 s per MB).
     compiler.define_global("yara_gate_b64_blob", False)
