@@ -72,3 +72,11 @@ Two findings reproduced against 831819a and fixed:
 - P2: `curl -Kcfg | sh` lost its finding because the target-word requirement did not see an attached option value. The target may now also be `-<flags>K<value>` (capital K only, so `-ks` stays prose), `--config=` or `--url=`.
 
 Evidence (direct runs): the 30-case matrix plus 8 new cases (3 adjacent-segment variants, 4 attached-option variants, `-ks` prose) show 0 mismatches. Consumer sweep over 1,469 files shows no change from the previous branch head (a first, narrower boundary made verify-deps/SKILL.md stricter via a trailing period; widening the boundary fixed it). lint_rules, check_rule_pairs (two new pairs), check_added_rules, measure_precision --fail-over, check_text_controls and the probe with --verify --benign-stdlib all pass.
+
+### Security review follow-up: allowlist instead of denylist (3fd8873)
+
+Codex's security review pointed out that the `$py_danger` denylist cannot be complete (`timeit.timeit(stmt)` executes a string and is not listed) and that adjacent quoted segments (`'im''port sys;ex''ec(...)'`) split the names the denylist looks for. Fixed by replacing the denylist: `$shell_data` now exempts only `-m json.tool` or a `-c` program that is exactly `[import json,sys; ]print(json.load(sys.stdin)[literal subscripts])` (or `json.loads(sys.stdin.read())`), on one line, followed by a boundary. Anything else keeps the finding. `$py_danger` is removed.
+
+Cost, measured on the 1,469-file consumer sweep: `cyclaw/.claude/skills/cyclaw-gotchas/driver.sh` (`print({k: d.get(k) for k in (...)})`) is held again. It was also held on main, so #132 now clears five of the six files it first cleared, and nothing is stricter than main. Widening the allowlist to arbitrary expressions would reintroduce the unlisted-executor hole, so this stays an accepted cost.
+
+Also fixed: a ruff E501 in `check_rule_pairs.py` that failed the macOS job on 3fd8873 (I had not run ruff on the new pairs).

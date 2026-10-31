@@ -8,17 +8,17 @@ rule script_download_execute {
         reference = "https://attack.mitre.org/techniques/T1059/001/"
     strings:
         // sudo, with or without flags such as -E, can sit between the pipe and the interpreter.
-        // The download needs a target: a word that is not a flag or a backslash (or curl's attached -Kfile / --config= / --url=), so prose that
-        // names the idiom ("no `curl | bash`", a table cell "curl \| sh") is not a command.
+        // The download needs a target: a word that is not a flag or a backslash (or curl's
+        // attached -Kfile, --config= or --url=), so prose that names the idiom ("no `curl | bash`",
+        // a table cell "curl \| sh") is not a command.
         $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
-        // Python reading the download as data: json.tool, or a one-line -c program closed on the
-        // same line and followed by a boundary (end of line, space, ; & | ) < > . , or a closing backtick), so adjacent quoted segments ('a;''exec(...)') end no exemption. It exempts the $shell match at the same offset only when the program holds
-        // no code-execution call ($py_danger), so `| python3 -c "exec(sys.stdin.read())"` still
-        // matches, and a -c program that runs onto the next line is never exempt.
-        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+("[^"$`\r\n]{1,512}"|'[^'\r\n]{1,512}')[ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
-        // A denylist: names that run, load, or write code, any dunder (getattr(__builtins__, ...)
-        // tricks), and loaders that execute what they parse. Any hit keeps the $shell match.
-        $py_danger = /\b(exec|execfile|eval|compile|getattr|setattr|globals|locals|vars|open|os|subprocess|ctypes|importlib|runpy|code|builtins|yaml|pickle|jsonpickle|dill|shelve|marshal|joblib)\b|__[A-Za-z]+__|sys\.modules/ ascii wide
+        // Python reading the download as JSON data. This is an allowlist of one shape, never a
+        // denylist of dangerous names: `-m json.tool`, or a -c program that is exactly
+        // `import json,sys; print(json.load(sys.stdin)['k'][0])` (or json.loads of stdin.read())
+        // with literal subscripts, closed on the same line and followed by a boundary. Any other
+        // program, adjacent quoted segments, or an unlisted executor keeps the $shell match.
+        // It exempts the $shell match at the same offset only.
+        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+["'](import[ ]+(json|json,[ ]*sys|sys,[ ]*json);[ ]*)?print\(json\.(load\(sys\.stdin\)|loads\(sys\.stdin\.read\(\)\))(\[('[A-Za-z0-9_.-]{1,64}'|"[A-Za-z0-9_.-]{1,64}"|-?[0-9]{1,4})\]){0,8}\)["'][ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
         // bash <(curl ...) and sh -c "$(curl ...)" run the download without a pipe.
         $subst = /\b(sh|bash|zsh)[ \t]+(-c[ \t]+["']?)?[<$]\([ \t]*(curl|wget)\b/ nocase ascii wide
         // iwr and irm are the built-in aliases that ClickFix command lines use.
@@ -35,10 +35,7 @@ rule script_download_execute {
         // the phrase on the same line as the command or on the line above it.
         for any i in (1..#shell) : (
             not for any j in (1..#doc) : (@doc[j] <= @shell[i] and @shell[i] < @doc[j] + !doc[j])
-            and not for any k in (1..#shell_data) : (
-                @shell_data[k] == @shell[i]
-                and not $py_danger in (@shell_data[k]..@shell_data[k] + !shell_data[k] - 1)
-            )
+            and not for any k in (1..#shell_data) : (@shell_data[k] == @shell[i])
         ) or
         for any of ($subst, $powershell, $powershell_reverse) : (
             for any i in (1..#) : (

