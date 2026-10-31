@@ -8,14 +8,14 @@ rule script_download_execute {
         reference = "https://attack.mitre.org/techniques/T1059/001/"
     strings:
         // sudo, with or without flags such as -E, can sit between the pipe and the interpreter.
-        // The download needs a target: a word that is not a flag or a backslash, so prose that
+        // The download needs a target: a word that is not a flag or a backslash (or curl's attached -Kfile / --config= / --url=), so prose that
         // names the idiom ("no `curl | bash`", a table cell "curl \| sh") is not a command.
-        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t]["']?[A-Za-z0-9$\/~.(@{][^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
+        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
         // Python reading the download as data: json.tool, or a one-line -c program closed on the
-        // same line. It exempts the $shell match at the same offset only when the program holds
+        // same line and followed by a boundary (end of line, space, ; & | ) < > . , or a closing backtick), so adjacent quoted segments ('a;''exec(...)') end no exemption. It exempts the $shell match at the same offset only when the program holds
         // no code-execution call ($py_danger), so `| python3 -c "exec(sys.stdin.read())"` still
         // matches, and a -c program that runs onto the next line is never exempt.
-        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+("[^"\r\n]{1,512}"|'[^'\r\n]{1,512}'))/ nocase ascii wide
+        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+("[^"$`\r\n]{1,512}"|'[^'\r\n]{1,512}')[ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
         // A denylist: names that run, load, or write code, any dunder (getattr(__builtins__, ...)
         // tricks), and loaders that execute what they parse. Any hit keeps the $shell match.
         $py_danger = /\b(exec|execfile|eval|compile|getattr|setattr|globals|locals|vars|open|os|subprocess|ctypes|importlib|runpy|code|builtins|yaml|pickle|jsonpickle|dill|shelve|marshal|joblib)\b|__[A-Za-z]+__|sys\.modules/ ascii wide

