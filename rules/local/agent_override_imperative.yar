@@ -1,8 +1,8 @@
 rule agent_override_imperative {
     meta:
         author = "yara-gate"
-        description = "Second-person override, restriction-removal, persona-swap, authority-spoof, memory-poisoning, or tool-hijack instruction to an agent"
-        intent = "Note on the instruction shapes in the CyClaw injection red-team corpus that agent_prompt_injection_phrases does not cover: override synonyms (guidance, directives), disable or bypass your filters, a persona with no rules, a message from your creators or the IT department that orders compliance, a request to store a standing instruction in memory, and a decode-and-execute or invoke-tool-to-send order. Each needs the object it acts on, so a README that says run this command, enable developer mode, or act as a reviewer stays clean"
+        description = "Second-person override, restriction-removal, persona-swap, authority-spoof, or memory-poisoning instruction to an agent"
+        intent = "Note on the instruction shapes in the CyClaw injection red-team corpus that agent_prompt_injection_phrases does not cover: override synonyms (guidance, directives), disable or bypass your filters, a persona with no rules, a message from your creators or the IT department that orders compliance, and a request to store a standing instruction in memory. The invoke-tool-to-send and decode-and-execute orders are agent_tool_hijack_directive and stay advisory. Each needs the object it acts on, so a README that says run this command, enable developer mode, or act as a reviewer stays clean"
         severity = "note"
         verdict_on_match = "note"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
@@ -26,8 +26,6 @@ rule agent_override_imperative {
         // A standing instruction planted in memory. A remembered preference stays clean, and a remembered
         // bypass is agent_persistent_instruction.
         $memory = /\bremember[ \t]+(this[ \t]+)?for[ \t]+(the[ \t]+)?future([ \t]+(sessions|conversations|chats))?[ \t]*:[ \t]*(always|never)[ \t]+(trust|obey|follow|accept|run|execute|share|send)\b|\b(save|store|keep|write)[ \t]+(this|that|the[ \t]+following)[ \t]+(in|to|into)[ \t]+your[ \t]+(long-term[ \t]+)?(memory|knowledge[ \t]+base)\b|\bstore[ \t]+this[ \t]+as[ \t]+(a[ \t]+)?(core[ \t]+instruction|permanent[ \t]+rule|standing[ \t]+order|rule)\b|\badd[ \t]+(this[ \t]+)?to[ \t]+your[ \t]+(knowledge|memory)([ \t]+base)?[ \t]*:|\bupdate[ \t]+your[ \t]+(soul|system[ \t]+prompt|core[ \t]+instructions|memory|persona)[ \t]+to[ \t]+(remove|disable|skip|ignore|bypass|always|never|trust)\b|\bpersist[ \t]+this[^\r\n]{0,24}\bacross[ \t]+sessions[ \t]*:/ nocase ascii wide
-        // Tool and execution orders aimed at the agent.
-        $tool = /\binvoke[ \t]+(the[ \t]+|a[ \t]+|your[ \t]+)?tools?[ \t]+to[ \t]+(email|send|upload|post|exfiltrate|forward|transfer)\b|\b(base64[ \t]+)?decode[ \t]+(it[ \t]+|this[ \t]+)?(and|then)[ \t]+(execute|run|eval)[ \t]+(the[ \t]+following|this|it)\b/ nocase ascii wide
         $system_order = /\b(system[ \t]+prompt|new[ \t]+instructions?)[ \t]*:[^\r\n]{0,64}\b(you[ \t]+must[ \t]+comply|comply[ \t]+with[ \t]+all|obey|reveal|disclose|disable|bypass|skip[ \t]+the)\b/ nocase ascii wide
     condition:
         any of them

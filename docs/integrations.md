@@ -333,8 +333,9 @@ right for a message and wrong for a document a person wrote about attacks. The
 `agent_prompt_injection_phrases`, its multilingual and base64-encoded forms, and
 `agent_override_imperative`) without changing the verdict, and still holds every
 `advisory` finding: a settings file that turns off approvals, a code-relay
-request, a request to send the system prompt, a hidden-text run, or a role-spoof
-header. The verdict is `advisory` with `policy_reason` set to
+request, a request to send the system prompt, an order to exfiltrate or to call a
+tool and hide it from the user (`agent_tool_hijack_directive`), a hidden-text run,
+or a role-spoof header. The verdict is `advisory` with `policy_reason` set to
 `agent-document records note findings` when only notes matched, and `block` with
 `agent-document holds advisory findings` otherwise.
 

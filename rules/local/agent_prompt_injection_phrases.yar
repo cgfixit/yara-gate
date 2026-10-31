@@ -2,7 +2,7 @@ rule agent_prompt_injection_phrases {
     meta:
         author = "yara-gate"
         description = "Phrases that try to override an agent prompt"
-        intent = "Note on an instruction to the model, not on a paper that quotes one"
+        intent = "Note on an instruction to the model, not on a paper that quotes one. Orders aimed at the agent's tools (exfiltrate, a concealed tool call) are agent_tool_hijack_directive and stay advisory"
         severity = "note"
         verdict_on_match = "note"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
@@ -27,11 +27,8 @@ rule agent_prompt_injection_phrases {
         $e_disclose = /\b(reveal|show|print|output|display|disclose|tell[ \t]+me)[ \t]+(me[ \t]+)?your[ \t]+(system[ \t]+prompt|(hidden|initial|original)[ \t]+instructions)\b/ nocase ascii wide
         // "New instructions:" followed by standing-order language on the same line.
         $new_instr = /\bnew[ \t]+instructions?[ \t]*:[^\r\n]{0,80}\b(from[ \t]+now[ \t]+on|respond[ \t]+only|you[ \t]+are[ \t]+now|ignore)\b/ nocase ascii wide
-        $f = /\b(please |to )exfiltrate\b|\bexfiltrate (the |this |secrets|data|files|credentials)\b/ nocase
-        $g = /do not tell the user[\s\S]{0,160}\b(tool_call|run_command|execute_command|function call)\b/ nocase
-        $g_rev = /\b(tool_call|run_command|execute_command|function call)\b[\s\S]{0,160}do not tell the user/ nocase
     condition:
-        $d or $d_dan or $e or $e_verbatim or $e_disclose or $new_instr or $f or $g or $g_rev or
+        $d or $d_dan or $e or $e_verbatim or $e_disclose or $new_instr or
         for any of ($a, $b, $c) : (
             for any i in (1..#) : (
                 // Exempt only the occurrence ending at the nearest documentary match.
