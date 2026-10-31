@@ -68,6 +68,46 @@ def test_a_long_letters_only_token_folds_in_linear_time(tmp_path: Path, rules_co
     )
 
 
+def test_leet_token_matches_the_unanchored_pattern_and_uses_constant_memory() -> None:
+    import re
+    import tracemalloc
+
+    from yara_gate import content
+
+    # The pattern before the linear-time change. The anchored form must pick the same spans.
+    reference = re.compile(r"[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][^\W_@$]*)*")
+    samples = [
+        "abc@def",
+        "@@",
+        "a_b1",
+        "\u00e91",
+        "\u0663a",
+        "x$y z",
+        "1gn0r3",
+        "plain words only",
+        "a@",
+        "@a",
+        "$$$",
+        "ab12_cd34",
+        "\u0416\u04160",
+        "q" * 50 + "7" + "q" * 50,
+        "",
+    ]
+    for text in samples:
+        assert [m.span() for m in content._LEET_TOKEN.finditer(text)] == [
+            m.span() for m in reference.finditer(text)
+        ], text
+    # A repeated group with an alternation made the engine save state per character: about
+    # 114 bytes each, 7.7 GB for a 67-million-character hex token. One class repeat costs none.
+    token = ("0123456789abcdef" * 62_500)[:1_000_000]  # one 1M-character hex token
+    tracemalloc.start()
+    before = tracemalloc.get_traced_memory()[0]
+    assert sum(1 for _ in content._LEET_TOKEN.finditer(token)) == 1
+    grown = tracemalloc.get_traced_memory()[1] - before
+    tracemalloc.stop()
+    assert grown < 10_000_000, grown
+
+
 def test_base64_media_passes_and_encoded_executable_blocks(
     tmp_path: Path, rules_copy: Path
 ) -> None:
