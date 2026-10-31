@@ -173,7 +173,9 @@ def _forced_timeout(root: Path, rules: Path) -> bool:
     target.write_text("hello\n", encoding="utf-8")
     original = scanner._invoke_scan
 
-    def boom(rules: object, data: bytes, timeout_s: int, ext: str) -> object:
+    def boom(
+        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    ) -> object:
         raise ScanTimeout
 
     scanner._invoke_scan = boom

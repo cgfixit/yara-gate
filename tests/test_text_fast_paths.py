@@ -86,6 +86,25 @@ def test_base64_run_signals_scope_exemptions_to_each_run() -> None:
     assert base64_run_signals(b"A" * 399) == (False, False)
 
 
+def test_repeated_samples_are_not_a_blob_in_decoded_pdf_streams() -> None:
+    import base64
+
+    from yara_gate.heuristics import base64_run_signals
+
+    plain = base64.b64encode(bytes(range(256)) * 2)
+    flat = b"+G9" * 2000  # RGB (0x2B, 0x47, 0x39), a flat image area
+    pe = base64.b64encode(b"MZ\x90\x00" + bytes(600))
+    # Other views keep the current behavior.
+    assert base64_run_signals(flat) == (True, False)
+    assert base64_run_signals(flat, samples=True) == (False, False)
+    # 3 + 392 + 3 characters remain after the cut; 3 + 396 + 3 reaches 400.
+    assert base64_run_signals(b"srm" * 100 + plain[:392] + b"xyz" * 30, samples=True)[0] is False
+    assert base64_run_signals(b"srm" * 100 + plain[:396] + b"xyz" * 30, samples=True)[0] is True
+    # Padding cannot hide a payload, and the executable check is unchanged.
+    assert base64_run_signals(flat + plain + flat, samples=True) == (True, False)
+    assert base64_run_signals(b"x " + pe, samples=True)[1] is True
+
+
 def test_a_400_character_elf_run_blocks_behind_a_media_prefix(
     tmp_path: Path, rules_copy: Path
 ) -> None:

@@ -418,7 +418,9 @@ def test_timeout_is_incomplete(
 ) -> None:
     from yara_gate import scanner
 
-    def boom(rules: object, data: bytes, timeout_s: int, ext: str) -> object:
+    def boom(
+        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    ) -> object:
         raise ScanTimeout
 
     monkeypatch.setattr(scanner, "_invoke_scan", boom)
@@ -668,6 +670,33 @@ def test_flate_object_stream_with_decode_parms_is_inflated(
     assert ("heuristic_pdf_JS", "pdf-flate") in {
         (item.rule_id, item.view) for item in result.findings
     }
+
+
+@pytest.mark.parametrize("subtype", [b"", b" /Type /XObject /Subtype /Image /Width 10 /Height 10"])
+def test_pdf_image_samples_are_not_base64_but_a_payload_is(
+    tmp_path: Path, rules_copy: Path, subtype: bytes
+) -> None:
+    import base64
+
+    flat = b"+G9" * 2000
+    payload = base64.b64encode(bytes(range(256)) * 2)
+    image = b"<<" + subtype + b" /Filter /FlateDecode /Length "
+    for body, expected in ((flat, set()), (b"(" + flat + payload + flat + b") Tj", {"pdf-flate"})):
+        inner = zlib.compress(body)
+        extra = image + str(len(inner)).encode() + b" >>\nstream\n" + inner + b"\nendstream"
+        # The image-labeled stream is also the page's /Contents in the second object.
+        pdf = _flate_pdf(b"BT (hello) Tj ET", extra).replace(
+            b"/Contents 4 0 R", b"/Contents [4 0 R 5 0 R]"
+        )
+        for policy in ("default", "agent-ingest", "agent-document"):
+            result = scan_bytes(pdf, name="shot.pdf", rules_dir=rules_copy, policy=policy)
+            views = {f.view for f in result.findings if f.rule_id == "agent_base64_blob"}
+            assert views == expected, (policy, subtype)
+            assert result.verdict is (
+                Verdict.clean
+                if not expected
+                else (Verdict.advisory if policy == "default" else Verdict.block)
+            )
 
 
 def _ascii85(data: bytes) -> bytes:
