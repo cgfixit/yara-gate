@@ -1,11 +1,12 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import codecs
 import io
 import json
 import re
 import unicodedata
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -124,6 +125,8 @@ def tag_findings(text: str) -> list[Finding]:
     ]
 
 
+_CONTEXT = 16
+
 # The Unicode-control signals that are notes on their own.
 UNICODE_CONTROL_RULES = frozenset(
     {
@@ -133,6 +136,33 @@ UNICODE_CONTROL_RULES = frozenset(
         "heuristic_invisible_joiner",
     }
 )
+
+
+def control_in_text(data: bytes, offset: int, length: int) -> bool:
+    """True when the bytes on either side of a control match read as UTF-8 text.
+
+    The control rules match UTF-8 byte sequences such as E2 80 8B (a zero-width space). In a
+    buffer that can hold raw sample values, such as decoded PDF streams, those bytes also occur
+    in image pixels, where they are not a character. A match is text when the 16 bytes before
+    it or the 16 bytes after it decode as UTF-8, allowing a sequence cut at the window's far
+    edge; an empty side is text. Hiding a real control between invalid bytes on both sides
+    means a UTF-8 reader shows replacement characters next to it.
+    """
+    before = data[max(0, offset - _CONTEXT) : offset]
+    after = data[offset + length : offset + length + _CONTEXT]
+    # Up to three continuation bytes at the far edge belong to a character that starts outside.
+    trimmed = before.lstrip(bytes(range(0x80, 0xC0)))
+    if len(before) - len(trimmed) <= 3 and _utf8(trimmed, final=True):
+        return True
+    return _utf8(after, final=False)
+
+
+def _utf8(data: bytes, *, final: bool) -> bool:
+    try:
+        codecs.getincrementaldecoder("utf-8")("strict").decode(data, final=final)
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
@@ -175,9 +205,10 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
     agent_base64_executable read these as globals and keep their ids and verdict_on_match.
 
     ``samples`` marks a buffer that can hold raw sample values, such as decoded PDF streams,
-    where a flat run of image pixels reads as base64. There a run is a blob only when it still
-    has 400 characters after each repeat is cut to one copy (see ``_b64_holds_data``). The
-    executable check is unchanged.
+    where a run of image pixels reads as base64. There a run is a blob only when it still has
+    400 characters after each repeat is cut to one copy (``_b64_holds_data``, flat areas) and
+    400 characters outside windows that read as neighboring pixels (``_b64_unsampled``, grainy
+    areas). Content a payload carries counts in both. The executable check is unchanged.
     """
     blob = exe = False
     for match in _B64_RUN.finditer(data):
@@ -189,7 +220,8 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
             if blob and samples:
-                blob = _b64_holds_data(data, start, match.end())
+                end = match.end()
+                blob = _b64_holds_data(data, start, end) and _b64_unsampled(data, start, end)
         if blob and exe:
             break
     return blob, exe
@@ -224,6 +256,62 @@ def _b64_holds_data(data: bytes, position: int, stop: int) -> bool:
         while data.startswith(unit, position) and position + len(unit) <= stop:
             position += len(unit)
     return kept >= _B64_MIN
+
+
+def _b64_unsampled(data: bytes, position: int, stop: int) -> bool:
+    """True when ``data[position:stop]`` has 400 characters outside sample-like windows.
+
+    The run is read in 64-character windows from its start. A window is sample-like when, at
+    one lag of 1, 2, 3, 4, 6, or 8 bytes (a gray, gray+alpha, RGB, RGBA or CMYK, 16-bit RGB, or
+    16-bit CMYK pixel), at least 58 of its 64 characters are near the character that lag
+    before: within 4 of it, and at most 7. Neighboring pixels of a photo or a noisy gradient
+    differ by a few levels; base64 of text, UTF-16LE or UTF-32LE text, JSON, compressed data,
+    or random bytes reached at most 52 of 64 when measured, and base64 of hex text 55. A
+    window is kept or cut whole, and a partial last window is kept, so a payload between
+    sample-like stretches loses at most the characters that share a cut window with them.
+    The near test runs in C: the bytes are bucketed by 8 on two grids offset by 4, two bytes
+    within 4 share a bucket on one grid, and a big-integer XOR marks the positions where
+    neither grid matches.
+    """
+    kept = 0
+    while position < stop and kept < _B64_MIN:
+        windows = min(stop - position, _B64_CHUNK) // _B64_WINDOW
+        if windows == 0:
+            kept += stop - position
+            break
+        # Each window's first characters are compared with the bytes just before it.
+        lead = max(0, position - _B64_LAGS[-1])
+        end = position + windows * _B64_WINDOW
+        grids = [data[lead:end].translate(table) for table in _B64_GRIDS]
+        far = [_b64_far(grids, lag, position - lead) for lag in _B64_LAGS]
+        for begin in range(0, windows * _B64_WINDOW, _B64_WINDOW):
+            # Not sample-like: more than 64 - 58 far characters at every lag.
+            if all(
+                mask.count(1, begin, begin + _B64_WINDOW) > _B64_WINDOW - _B64_NEAR for mask in far
+            ):
+                kept += _B64_WINDOW
+                if kept >= _B64_MIN:
+                    return True
+        position = end
+    return kept >= _B64_MIN
+
+
+def _b64_far(grids: list[bytes], lag: int, offset: int) -> bytes:
+    """One byte per position from ``offset`` on, 1 where no grid matches the byte ``lag`` back.
+
+    A position with nothing ``lag`` before it counts as far.
+    """
+    start = max(offset, lag)
+    head = b"\x01" * (start - offset)
+    count = len(grids[0]) - start
+    if count <= 0:
+        return head
+    found = -1
+    for grid in grids:
+        now = int.from_bytes(grid[start:], "big")
+        back = int.from_bytes(grid[start - lag : start - lag + count], "big")
+        found &= int.from_bytes((now ^ back).to_bytes(count, "big").translate(_B64_NONZERO), "big")
+    return head + found.to_bytes(count, "big")
 
 
 def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
@@ -395,17 +483,20 @@ def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) ->
     missing /S, a value that does not parse, or a reference that resolves to nothing.
     """
     lookup = objects if objects is not None else PdfRawObjects(data)
-    found = 0
+    values: list[list[bytes]] = []
     for match in _PDF_NAME.finditer(data):
         if _decode_pdf_name(match.group()) != b"/OpenAction":
             continue
-        found += 1
-        if found > MAX_PDF_DEFINITIONS:
+        if len(values) >= MAX_PDF_DEFINITIONS:
             return False
-        tokens = _pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW])
-        if not _pdf_goto_value(tokens, 0, objects=lookup):
-            return False
-    return found > 0
+        values.append(_pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW]))
+    # Every referenced object is found in one pass over the file, not one pass per reference.
+    prime = getattr(lookup, "prime", None)
+    if callable(prime):
+        prime(
+            {(int(v[0]), int(v[1])) for v in values if _pdf_reference(v[:3])},
+        )
+    return bool(values) and all(_pdf_goto_value(v, 0, objects=lookup) for v in values)
 
 
 # A page destination or a GoTo dictionary is a few dozen bytes; a value longer than this
@@ -446,31 +537,60 @@ _PDF_OBJ = re.compile(rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x0
 MAX_PDF_DEFINITIONS = 64
 
 
-class PdfRawObjects:
-    """Bodies of the ``N G obj`` definitions written directly in ``data``, found per lookup.
+# A definition header: object number, generation, and the obj keyword. A digit run is matched
+# whole however long it is, since readers accept any number of leading zeros. The lookbehind
+# allows one attempt per run and the possessive ``++`` never gives digits back (a digit always
+# follows the split), so matching stays linear. ``_pdf_header_key`` drops the zeros.
+_PDF_HEADER = re.compile(rb"(?<![0-9])([0-9]++)[\x00\t\n\f\r ]+([0-9]++)[\x00\t\n\f\r ]+obj\b")
+# Significant digits past this cannot name an object any reference resolves to.
+_PDF_HEADER_DIGITS = 32
+_PDF_HEADER_CHECK_EVERY = 4096
 
-    Each lookup searches for one object number and generation and keeps only offsets; a body is
-    sliced, at most ``_PDF_VALUE_WINDOW`` bytes, when returned. A match inside a string or
-    stream is kept too: an extra definition can only make a reference harder to accept. More
-    than ``MAX_PDF_DEFINITIONS`` definitions return one empty body, which is not a page open.
+
+def _pdf_header_key(number: bytes, generation: bytes) -> tuple[int, int] | None:
+    """(number, generation) without leading zeros, or None when either is too long to be real."""
+    number = number.lstrip(b"0") or b"0"
+    generation = generation.lstrip(b"0") or b"0"
+    if len(number) > _PDF_HEADER_DIGITS or len(generation) > _PDF_HEADER_DIGITS:
+        return None
+    return int(number), int(generation)
+
+
+class PdfRawObjects:
+    """Bodies of the ``N G obj`` definitions written directly in ``data``.
+
+    ``prime`` finds every wanted object in one pass over the file and keeps only offsets, so a
+    file with many /OpenAction references costs one scan, not one per reference. A lookup that
+    was not primed searches for its own object. A body is sliced, at most ``_PDF_VALUE_WINDOW``
+    bytes, when returned. A match inside a string or stream is kept too: an extra definition
+    can only make a reference harder to accept. More than ``MAX_PDF_DEFINITIONS`` definitions
+    return one empty body, which is not a page open. ``check`` is called between matches and
+    before each search, so the scan deadline ends the work.
     """
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, check: Callable[[], None] | None = None) -> None:
         self._data = data
+        self._check = check
         self._offsets: dict[tuple[int, int], list[int]] = {}
+
+    def prime(self, keys: Iterable[tuple[int, int]]) -> None:
+        wanted = {key for key in keys if key not in self._offsets}
+        if not wanted:
+            return
+        found: dict[tuple[int, int], list[int]] = {key: [] for key in wanted}
+        for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
+            if self._check is not None and count % _PDF_HEADER_CHECK_EVERY == 0:
+                self._check()
+            key = _pdf_header_key(match.group(1), match.group(2))
+            slot = None if key is None else found.get(key)
+            if slot is not None and len(slot) <= MAX_PDF_DEFINITIONS:
+                slot.append(match.end())
+        self._offsets.update(found)
 
     def __call__(self, number: int, generation: int) -> list[bytes]:
         key = (number, generation)
         if key not in self._offsets:
-            header = re.compile(
-                rb"(?<![0-9])0*%d[\x00\t\n\f\r ]+0*%d[\x00\t\n\f\r ]+obj\b" % (number, generation)
-            )
-            found: list[int] = []
-            for match in header.finditer(self._data):
-                found.append(match.end())
-                if len(found) > MAX_PDF_DEFINITIONS:
-                    break
-            self._offsets[key] = found
+            self.prime([key])
         offsets = self._offsets[key]
         if len(offsets) > MAX_PDF_DEFINITIONS:
             return [b""]
@@ -705,6 +825,16 @@ _B64_RUN = re.compile(rb"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{400,}")
 _B64_MIN = 400
 # The shortest unit first, then as many further copies as follow.
 _B64_REPEAT = re.compile(rb"([A-Za-z0-9+/]{1,12}?)\1{3,}")
+# _b64_unsampled: 64-character windows, a sample-like one has 58 near neighbors at one lag.
+_B64_WINDOW = 64
+_B64_NEAR = 58
+_B64_LAGS = (1, 2, 3, 4, 6, 8)
+_B64_CHUNK = 64 * 1024
+_B64_GRIDS = (
+    bytes(value >> 3 for value in range(256)),
+    bytes((value + 4) >> 3 for value in range(256)),
+)
+_B64_NONZERO = bytes([0]) + bytes([1]) * 255
 # PNG, JPEG, GIF, WebP, ISO-BMFF (AVIF, HEIC, MP4), MP3, Ogg, WOFF, WOFF2, OpenType, TrueType: only
 # the characters the magic bytes fix, since the next one depends on the following byte.
 _B64_MEDIA = re.compile(

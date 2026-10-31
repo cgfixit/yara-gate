@@ -37,8 +37,10 @@ from yara_gate.filetype import (
     utf16_encoding,
 )
 from yara_gate.heuristics import (
+    UNICODE_CONTROL_RULES,
     base64_run_signals,
     control_conjunction,
+    control_in_text,
     heuristic_findings,
     joiner_findings,
     pdf_token_findings,
@@ -304,7 +306,7 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            for view, derived in pdf_views(unit.data, budget):
+            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
                 # An action dictionary inside an object stream is invisible to the raw check.
@@ -398,18 +400,15 @@ def _yara_findings(
         mode = meta.get("verdict_on_match", "block")
         if mode not in ("note", "advisory", "block"):
             mode = "block"
-        offset: int | None = None
-        length: int | None = None
-        for pattern in getattr(rule, "patterns", ()):
-            matches = getattr(pattern, "matches", ())
-            if not matches:
-                continue
-            offset = int(matches[0].offset)
-            length = int(matches[0].length)
-            break
+        rule_id = str(getattr(rule, "identifier", "rule"))
+        located = _first_match(rule, data, text_only=samples and rule_id in UNICODE_CONTROL_RULES)
+        if located is None:
+            # Every match of a control rule sits in bytes that are not UTF-8 text.
+            continue
+        offset, length = located
         findings.append(
             Finding(
-                rule_id=str(getattr(rule, "identifier", "rule")),
+                rule_id=rule_id,
                 offset=offset,
                 length=length,
                 severity=Severity(str(mode)),
@@ -418,6 +417,25 @@ def _yara_findings(
             )
         )
     return findings
+
+
+def _first_match(
+    rule: object, data: bytes, *, text_only: bool
+) -> tuple[int | None, int | None] | None:
+    """The first match's offset and length, or (None, None) when the rule has no match data.
+
+    With ``text_only``, the first match whose surroundings read as UTF-8 text, and None when
+    there are matches and none does: decoded PDF streams can hold image samples whose bytes
+    spell a control character.
+    """
+    matched = False
+    for pattern in getattr(rule, "patterns", ()):
+        for match in getattr(pattern, "matches", ()):
+            offset, length = int(match.offset), int(match.length)
+            if not text_only or control_in_text(data, offset, length):
+                return offset, length
+            matched = True
+    return None if matched else (None, None)
 
 
 def _invoke_scan(
