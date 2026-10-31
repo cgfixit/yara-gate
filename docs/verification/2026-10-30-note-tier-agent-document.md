@@ -97,23 +97,32 @@ rule is advisory.
 ## Consumer trees under both policies
 
 The CyClaw (`a5b5212`) and CG-agent-harness (`ff5df3a`) trees at HEAD, 1,469
-files up to 1 MB, scanned with this branch's rules:
+files up to 1 MB, scanned with this branch's rules (re-measured at `551bb57`,
+after the split below):
 
 | | CyClaw | CG-agent-harness |
 | --- | ---: | ---: |
 | Clean under `agent-ingest` | 812 | 526 |
-| Held under `agent-ingest`, released under `agent-document` | 56 | 17 |
-| Held under both | 42 | 16 |
+| Held under `agent-ingest`, released under `agent-document` | 54 | 17 |
+| Held under both | 44 | 16 |
 
 Every released file's only findings are notes: CyClaw's test suite, audit
 reports, NeMo guardrail configuration, sandbox smoke scripts, `config.yaml`,
 and groundedness test corpora, and CG-agent-harness's injection detector
-source, its tests, and its fixture corpora. The 58 files still held carry an
+source, its tests, and its fixture corpora. The 60 files still held carry an
 advisory or block finding: `script_download_execute` 15, `agent_invisible_unicode`
 14, `agent_role_spoof_action` 9, `macos_keychain_dump` 6, `script_credential_upload`
-3, `agent_bidi_formatting` 3, and a tail of PDF, SVG, DDE, MCP, LaunchAgent, and
-reverse-shell shapes; 22 of them have a block finding and are held under every
-policy. This is the intended split for a repository that writes about attacks,
+3, `agent_bidi_formatting` 3, `agent_tool_hijack_directive` alone 2, and a tail of
+PDF, SVG, DDE, MCP, LaunchAgent, and reverse-shell shapes; 22 of them have a block
+finding and are held under every policy. At `f2b7170` the split was 73 released
+and 58 held; the split moved two CyClaw files to held, both on the `exfiltrate`
+arm alone: `data/corpus/AI-insights-.md` (prose: "can hijack actions,
+exfiltrate data, or compromise credentials") and `tests/test_sequence_detect.py`
+(a test string). That arm is the weakest of the four as a directive signal. If
+those two holds are the wrong trade, the follow-up is to leave `$f` in the
+note-tier phrase rule and keep the concealed-call and invoke-tool arms advisory.
+The other two files that hit the new rule (`probes.yaml`, `test_sanitizer.py`)
+were already held on a block-tier finding. This is the intended split for a repository that writes about attacks,
 not a measurement of either consumer's production inputs.
 
 Hosted CI (Ubuntu, macOS, Windows) and CodeQL results belong to the pull request
