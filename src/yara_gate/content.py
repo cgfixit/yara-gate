@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
-from yara_gate.heuristics import PdfRawObjects, pdf_stream_parameters
+from yara_gate.heuristics import (
+    MAX_PDF_DEFINITIONS,
+    PdfRawObjects,
+    PdfStreamInfo,
+    pdf_stream_info,
+)
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -518,98 +523,115 @@ def pdf_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         yield "pdf-flate", b"\n".join(parts)
 
 
-_OBJSTM_TYPE = re.compile(rb"/Type\s*/ObjStm(?![^\x00\t\n\f\r /<>\[\]()%])")
-_PDF_OBJ_HEADER = re.compile(rb"(?<![0-9])[0-9]+[\x00\t\n\f\r ]+[0-9]+[\x00\t\n\f\r ]+obj\b")
-_OBJSTM_N = re.compile(rb"/N\s+(\d{1,6})(?!\d)")
-_OBJSTM_FIRST = re.compile(rb"/First\s+(\d{1,9})(?!\d)")
 MAX_OBJSTM_OBJECTS = 100_000
+# The deadline is checked after this many bytes of predictor work.
+_PREDICTOR_CHECK = 1 << 16
 
 
 class PdfObjects:
     """Every definition of a PDF object in one file: raw ``N G obj`` and object-stream members.
 
     Object streams are indexed on first use, so a file pays for the extra inflation only when
-    a reference does not settle without it.
+    a reference does not settle without it. Members are kept as offsets into the decoded
+    streams, whose bytes the scan budget already counts.
 
     ISO 32000-1 7.5.7: an object stream's dictionary has /Type /ObjStm, /N, and /First; its
     decoded data starts with /N pairs of object number and offset, and the objects follow at
-    /First. Objects in a stream have generation 0. A stream with another filter, decode
-    parameters, a header that does not parse, or offsets that leave the data is skipped, so
-    its objects stay unresolved. Inflation shares the scan's budget and limits.
+    /First. Objects in a stream have generation 0. A stream whose dictionary does not parse,
+    with another filter, a header that does not parse, or offsets outside its data is
+    skipped, so its objects stay unresolved.
     """
 
     def __init__(self, data: bytes, budget: Budget) -> None:
         self._data = data
         self._budget = budget
         self._raw = PdfRawObjects(data)
-        self._objects: dict[int, list[bytes]] | None = None
+        self._streams: list[bytes] = []
+        self._members: dict[int, list[tuple[int, int, int]]] | None = None
 
     def __call__(self, number: int, generation: int) -> list[bytes]:
         found = list(self._raw(number, generation))
         if generation == 0:
-            if self._objects is None:
-                self._objects = _index_object_streams(self._data, self._budget)
-            found.extend(self._objects.get(number, []))
+            if self._members is None:
+                self._members = self._index()
+            for stream, begin, stop in self._members.get(number, []):
+                found.append(self._streams[stream][begin:stop])
+        if len(found) > MAX_PDF_DEFINITIONS:
+            return [b""]
         return found
 
+    def _index(self) -> dict[int, list[tuple[int, int, int]]]:
+        members: dict[int, list[tuple[int, int, int]]] = {}
+        data = self._data
+        if not data.startswith(b"%PDF") or b"Obj" not in data:
+            return members
+        for count, start in enumerate(_PDF_STREAM.finditer(data)):
+            if count >= MAX_PDF_STREAMS:
+                raise ContentLimit("pdf streams exceed 2000")
+            self._budget.check()
+            info = pdf_stream_info(_stream_head(data, start.start()))
+            if info is None or not info.object_stream or info.count is None or info.first is None:
+                continue
+            if info.count > MAX_OBJSTM_OBJECTS:
+                continue
+            decoded = _decoded_stream(data, start, self._budget, info)
+            if not decoded or info.first > len(decoded):
+                continue
+            header = decoded[: info.first].split()
+            pairs = 2 * info.count
+            if len(header) < pairs or not all(item.isdigit() for item in header[:pairs]):
+                continue
+            numbers = [int(item) for item in header[0:pairs:2]]
+            offsets = [int(item) for item in header[1:pairs:2]]
+            if any(b < a for a, b in zip(offsets, offsets[1:], strict=False)):
+                continue
+            if offsets and info.first + offsets[-1] > len(decoded):
+                continue
+            self._streams.append(decoded)
+            stream = len(self._streams) - 1
+            bounds = [*offsets[1:], len(decoded) - info.first]
+            for number, offset, stop in zip(numbers, offsets, bounds, strict=True):
+                slot = members.setdefault(number, [])
+                if len(slot) <= MAX_PDF_DEFINITIONS:
+                    slot.append((stream, info.first + offset, info.first + stop))
+        return members
 
-def _index_object_streams(data: bytes, budget: Budget) -> dict[int, list[bytes]]:
-    objects: dict[int, list[bytes]] = {}
-    if not data.startswith(b"%PDF") or b"/ObjStm" not in data:
-        return objects
-    for count, start in enumerate(_PDF_STREAM.finditer(data)):
-        if count >= MAX_PDF_STREAMS:
-            raise ContentLimit("pdf streams exceed 2000")
-        budget.check()
-        head = _stream_dictionary(data, start.start())
-        if _OBJSTM_TYPE.search(head) is None:
-            continue
-        count_match, first_match = _OBJSTM_N.search(head), _OBJSTM_FIRST.search(head)
-        if count_match is None or first_match is None:
-            continue
-        total, first = int(count_match.group(1)), int(first_match.group(1))
-        if total > MAX_OBJSTM_OBJECTS:
-            continue
-        decoded = _decoded_stream(data, start, budget)
-        if not decoded or first > len(decoded):
-            continue
-        header = decoded[:first].split()
-        if len(header) < 2 * total or not all(item.isdigit() for item in header[: 2 * total]):
-            continue
-        numbers = [int(item) for item in header[0 : 2 * total : 2]]
-        offsets = [int(item) for item in header[1 : 2 * total : 2]]
-        if any(b < a for a, b in zip(offsets, offsets[1:], strict=False)):
-            continue
-        if offsets and first + offsets[-1] > len(decoded):
-            continue
-        bounds = [*offsets[1:], len(decoded) - first]
-        for number, offset, stop in zip(numbers, offsets, bounds, strict=True):
-            objects.setdefault(number, []).append(decoded[first + offset : first + stop])
-    return objects
+
+def _stream_head(data: bytes, stream_start: int) -> bytes:
+    """The 4 KiB before the ``stream`` keyword, where its object header and dictionary sit."""
+    return data[max(0, stream_start - 4096) : stream_start]
 
 
-def _stream_dictionary(data: bytes, stream_start: int) -> bytes:
-    """The dictionary of the stream whose keyword starts at ``stream_start``.
+def _decoded_stream(
+    data: bytes,
+    start: re.Match[bytes],
+    budget: Budget,
+    info: PdfStreamInfo | None = None,
+) -> bytes | None:
+    """Inflate one FlateDecode stream and undo a PNG or TIFF predictor, or return None.
 
-    It is the text after the last ``N G obj`` in the 1 KiB before the keyword, so a nested
-    dictionary such as ``/DecodeParms << ... >>`` stays part of it and an earlier object's
-    dictionary does not.
+    The stream's own dictionary decides (``pdf_stream_info``). When no dictionary parses, as
+    for one longer than the window, the stream is inflated without a predictor if
+    ``/FlateDecode`` appears before it: the reading the scanner used before it parsed
+    dictionaries, so a malformed dictionary does not hide a stream.
     """
-    head = data[max(0, stream_start - 1024) : stream_start]
-    ends = [match.end() for match in _PDF_OBJ_HEADER.finditer(head)]
-    return head[ends[-1] :] if ends else head
-
-
-def _decoded_stream(data: bytes, start: re.Match[bytes], budget: Budget) -> bytes | None:
-    """Inflate one FlateDecode stream and undo a PNG or TIFF predictor, or return None."""
-    flate, parameters, image = pdf_stream_parameters(_stream_dictionary(data, start.start()))
-    if not flate:
-        return None
+    head = _stream_head(data, start.start())
+    if info is None:
+        info = pdf_stream_info(head)
     end = _PDF_END.search(data, start.end())
-    inflated = _inflate(data[start.end() : end.start() if end else len(data)], budget)
+    body = data[start.end() : end.start() if end else len(data)]
+    if info is None:
+        return _inflate(body, budget) if b"/FlateDecode" in head else None
+    if not info.flate:
+        return None
+    inflated = _inflate(body, budget)
+    parameters = info.parameters
+    # An indirect /DecodeParms leaves the predictor unknown: read the inflated bytes as they are.
+    if not inflated or parameters is None or info.image:
+        # Image samples are not text or objects; reversing their predictor would only cost time.
+        return inflated
     predictor = parameters.get(b"/Predictor", 1)
-    # Image samples are not text or objects; reversing their predictor would only cost time.
-    if not inflated or predictor <= 1 or image:
+    if predictor <= 1:
         return inflated
     columns = parameters.get(b"/Columns", 1)
     colors = parameters.get(b"/Colors", 1)
@@ -627,21 +649,32 @@ def _decoded_stream(data: bytes, start: re.Match[bytes], budget: Budget) -> byte
 def _png_unpredict(
     data: bytes, columns: int, colors: int, bits: int, budget: Budget
 ) -> bytes | None:
-    """Reverse PNG row filters (PDF predictors 10 to 15): each row starts with its filter type."""
+    """Reverse PNG row filters (PDF predictors 10 to 15): each row starts with its filter type.
+
+    The deadline is checked every ``_PREDICTOR_CHECK`` bytes, inside rows as well as between
+    them, so a single very long row cannot outrun it.
+    """
     row = (columns * colors * bits + 7) // 8
     step = max(1, (colors * bits + 7) // 8)
     output = bytearray()
     previous = bytearray(row)
-    for count, position in enumerate(range(0, len(data), row + 1)):
-        if count % 1024 == 0:
-            budget.check()
+    for position in range(0, len(data), row + 1):
+        budget.check()
         kind = data[position]
         current = bytearray(data[position + 1 : position + 1 + row])
         size = len(current)
         if kind == 2:
-            current = bytearray((x + y) & 0xFF for x, y in zip(current, previous, strict=False))
+            for chunk in range(0, size, _PREDICTOR_CHECK):
+                budget.check()
+                stop = min(size, chunk + _PREDICTOR_CHECK)
+                current[chunk:stop] = bytes(
+                    (x + y) & 0xFF
+                    for x, y in zip(current[chunk:stop], previous[chunk:stop], strict=True)
+                )
         elif kind in (1, 3, 4):
             for i in range(size):
+                if i % _PREDICTOR_CHECK == 0:
+                    budget.check()
                 left = current[i - step] if i >= step else 0
                 up = previous[i]
                 if kind == 1:
@@ -665,10 +698,11 @@ def _tiff_unpredict(data: bytes, columns: int, colors: int, budget: Budget) -> b
     """Reverse TIFF predictor 2 for 8-bit components: each byte adds the one a pixel back."""
     row = columns * colors
     output = bytearray(data)
-    for count, start in enumerate(range(0, len(output), row)):
-        if count % 1024 == 0:
-            budget.check()
+    for start in range(0, len(output), row):
+        budget.check()
         for i in range(start + colors, min(start + row, len(output))):
+            if (i - start) % _PREDICTOR_CHECK == 0:
+                budget.check()
             output[i] = (output[i] + output[i - colors]) & 0xFF
     return bytes(output)
 

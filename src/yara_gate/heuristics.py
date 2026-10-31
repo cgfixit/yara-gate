@@ -6,6 +6,7 @@ import re
 import unicodedata
 import zipfile
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -357,15 +358,17 @@ def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) ->
     missing /S, a value that does not parse, or a reference that resolves to nothing.
     """
     lookup = objects if objects is not None else PdfRawObjects(data)
-    found = False
+    found = 0
     for match in _PDF_NAME.finditer(data):
         if _decode_pdf_name(match.group()) != b"/OpenAction":
             continue
-        found = True
+        found += 1
+        if found > MAX_PDF_DEFINITIONS:
+            return False
         tokens = _pdf_value_tokens(data[match.end() : match.end() + _PDF_VALUE_WINDOW])
         if not _pdf_goto_value(tokens, 0, objects=lookup):
             return False
-    return found
+    return found > 0
 
 
 # A page destination or a GoTo dictionary is a few dozen bytes; a value longer than this
@@ -401,55 +404,115 @@ def _pdf_value_tokens(data: bytes) -> list[bytes]:
 _PDF_OBJ = re.compile(rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj\b")
 
 
-class PdfRawObjects:
-    """Bodies of every ``N G obj`` definition written directly in ``data``, indexed on first use.
+# More definitions of one object, or more /OpenAction names, than this does not resolve: the
+# file is treated as not a page open, so an attacker cannot buy work or memory with repeats.
+MAX_PDF_DEFINITIONS = 64
 
-    A definition is the bytes after ``obj``. A match inside a string or stream is kept too:
-    an extra definition can only make a reference harder to accept.
+
+class PdfRawObjects:
+    """Bodies of the ``N G obj`` definitions written directly in ``data``, found per lookup.
+
+    Each lookup searches for one object number and generation and keeps only offsets; a body is
+    sliced, at most ``_PDF_VALUE_WINDOW`` bytes, when returned. A match inside a string or
+    stream is kept too: an extra definition can only make a reference harder to accept. More
+    than ``MAX_PDF_DEFINITIONS`` definitions return one empty body, which is not a page open.
     """
 
     def __init__(self, data: bytes) -> None:
         self._data = data
-        self._index: dict[tuple[int, int], list[bytes]] | None = None
+        self._offsets: dict[tuple[int, int], list[int]] = {}
 
     def __call__(self, number: int, generation: int) -> list[bytes]:
-        if self._index is None:
-            self._index = {}
-            for match in _PDF_OBJ.finditer(self._data):
-                key = (int(match.group(1)), int(match.group(2)))
-                body = self._data[match.end() : match.end() + _PDF_VALUE_WINDOW]
-                self._index.setdefault(key, []).append(body)
-        return self._index.get((number, generation), [])
+        key = (number, generation)
+        if key not in self._offsets:
+            header = re.compile(
+                rb"(?<![0-9])0*%d[\x00\t\n\f\r ]+0*%d[\x00\t\n\f\r ]+obj\b" % (number, generation)
+            )
+            found: list[int] = []
+            for match in header.finditer(self._data):
+                found.append(match.end())
+                if len(found) > MAX_PDF_DEFINITIONS:
+                    break
+            self._offsets[key] = found
+        offsets = self._offsets[key]
+        if len(offsets) > MAX_PDF_DEFINITIONS:
+            return [b""]
+        return [self._data[start : start + _PDF_VALUE_WINDOW] for start in offsets]
 
 
 _PDF_STREAM_PARAMETERS = (b"/Predictor", b"/Columns", b"/Colors", b"/BitsPerComponent")
 
 
-def pdf_stream_parameters(head: bytes) -> tuple[bool, dict[bytes, int], bool]:
-    """Read a stream dictionary: FlateDecode first, its predictor, and whether it is an image.
+@dataclass(frozen=True)
+class PdfStreamInfo:
+    """What a stream's own dictionary says about decoding it.
 
-    The third value is True for ``/Subtype /Image`` unless ``/Type`` is ``/ObjStm``: a reader
-    neither shows an image's bytes as text nor parses them as objects.
-
-    ``head`` is the dictionary text before ``stream``. Names are compared after ``#xx``
-    decoding, so ``/Fl#61teDecode`` is FlateDecode, and nested dictionaries such as
-    ``/DecodeParms << ... >>`` do not hide the filter.
+    ``parameters`` is None when ``/DecodeParms`` is an indirect reference, so the predictor is
+    unknown; an empty dict means no predictor. ``image`` is True for ``/Subtype /Image``
+    unless ``/Type`` is ``/ObjStm``: a reader neither shows image samples as text nor parses
+    them as objects.
     """
-    tokens = _pdf_value_tokens(head)
-    flate = False
-    parameters: dict[bytes, int] = {}
-    image = object_stream = False
-    for index, token in enumerate(tokens):
-        following = tokens[index + 1 : index + 3]
-        if token == b"/Subtype" and following[:1] == [b"/Image"]:
-            image = True
-        elif token == b"/Type" and following[:1] == [b"/ObjStm"]:
-            object_stream = True
-        elif token == b"/Filter":
-            flate = following[:1] == [b"/FlateDecode"] or following == [b"[", b"/FlateDecode"]
-        elif token in _PDF_STREAM_PARAMETERS and following[:1] and following[0].isdigit():
-            parameters[token] = int(following[0])
-    return flate, parameters, image and not object_stream
+
+    flate: bool
+    parameters: dict[bytes, int] | None
+    image: bool
+    object_stream: bool
+    count: int | None
+    first: int | None
+
+
+def pdf_stream_info(head: bytes) -> PdfStreamInfo | None:
+    """Parse the dictionary of the stream whose keyword follows ``head``, or return None.
+
+    The dictionary is the text after an ``N G obj`` header that tokenizes, with strings and
+    comments skipped, into exactly one balanced dictionary; the last such header wins, so a
+    ``(2 0 obj)`` string inside the dictionary is not mistaken for one. Names are compared
+    after ``#xx`` decoding (``/Fl#61teDecode``, ``/Obj#53tm``). Predictor parameters come only
+    from the stream's own ``/DecodeParms`` (for a filter array, its first entry).
+    """
+    for match in reversed(list(_PDF_OBJ.finditer(head))):
+        tokens = _pdf_value_tokens(head[match.end() :])
+        if not tokens or tokens[0] != b"<<" or _pdf_value_end(tokens, 0) != len(tokens):
+            continue
+        entries = _pdf_dictionary(tokens)
+        if entries is None:
+            continue
+        return _stream_info(entries)
+    return None
+
+
+def _stream_info(entries: dict[bytes, list[bytes]]) -> PdfStreamInfo:
+    filters = entries.get(b"/Filter", [])
+    flate = filters == [b"/FlateDecode"] or (
+        filters[:1] == [b"["] and filters[1:2] == [b"/FlateDecode"]
+    )
+    parameters: dict[bytes, int] | None = {}
+    decode = entries.get(b"/DecodeParms", [])
+    if decode[:1] == [b"["]:
+        decode = decode[1 : _pdf_value_end(decode, 1)]
+    if _pdf_reference(decode):
+        parameters = None
+    elif decode[:1] == [b"<<"]:
+        inner = _pdf_dictionary(decode) or {}
+        parameters = {
+            key: int(value[0])
+            for key, value in inner.items()
+            if key in _PDF_STREAM_PARAMETERS and len(value) == 1 and value[0].isdigit()
+        }
+
+    def number(key: bytes) -> int | None:
+        value = entries.get(key, [])
+        return int(value[0]) if len(value) == 1 and value[0].isdigit() else None
+
+    object_stream = entries.get(b"/Type") == [b"/ObjStm"]
+    return PdfStreamInfo(
+        flate=flate,
+        parameters=parameters,
+        image=entries.get(b"/Subtype") == [b"/Image"] and not object_stream,
+        object_stream=object_stream,
+        count=number(b"/N"),
+        first=number(b"/First"),
+    )
 
 
 def _pdf_reference(tokens: list[bytes]) -> bool:

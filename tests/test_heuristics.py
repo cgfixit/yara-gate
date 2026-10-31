@@ -4,8 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import Budget, PdfObjects, pdf_views
-from yara_gate.heuristics import PDF_TOKENS, heuristic_findings, pdf_findings, pdf_token_findings
+from yara_gate.content import Budget, ContentLimit, PdfObjects, _png_unpredict, pdf_views
+from yara_gate.heuristics import (
+    MAX_PDF_DEFINITIONS,
+    PDF_TOKENS,
+    PdfRawObjects,
+    heuristic_findings,
+    pdf_findings,
+    pdf_token_findings,
+)
 from yara_gate.models import Severity
 from yara_gate.samples import docm_with_autoopen, risky_pdf, text_with_embedded_pe
 
@@ -153,6 +160,56 @@ def test_flate_view_reads_every_stream_dictionary_form(
     data = b"%%PDF-1.5\n7 0 obj\n<< %s >>\nstream\n%s\nendstream\nendobj\n" % (dictionary, stream)
     views = dict(pdf_views(data, Budget(time.monotonic() + 30)))
     assert text in views["pdf-flate"]
+
+
+_JS_CATALOG = b"1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"
+
+
+@pytest.mark.parametrize(
+    "dictionary",
+    [
+        # Predictor keys outside /DecodeParms do not configure the decoder.
+        b"/Filter /FlateDecode /Predictor 12 /Columns 16",
+        # A string that looks like an object header is not one.
+        b"/Filter /FlateDecode /Foo (2 0 obj)",
+        b"/Foo (9 0 obj) /Filter /FlateDecode % 3 0 obj\n",
+    ],
+)
+def test_flate_view_reads_the_stream_dictionary_by_tokens(dictionary: bytes) -> None:
+    stream = zlib.compress(_JS_CATALOG)
+    data = b"%%PDF-1.5\n7 0 obj\n<< %s >>\nstream\n%s\nendstream\nendobj\n" % (dictionary, stream)
+    views = dict(pdf_views(data, Budget(time.monotonic() + 30)))
+    assert _JS_CATALOG in views["pdf-flate"]
+
+
+def test_an_escaped_objstm_name_still_counts_against_a_page_open() -> None:
+    action = b"<< /S /URI /URI (https://example.invalid/) >>"
+    header = b"5 0\n"
+    packed = zlib.compress(header + action)
+    data = (
+        b"%PDF-1.5\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n"
+        b"5 0 obj\n[3 0 R /Fit]\nendobj\n"
+        b"7 0 obj\n<< /Type /Obj#53tm /N 1 /First 4 /Filter /FlateDecode >>\nstream\n"
+        + packed
+        + b"\nendstream\nendobj\n%%EOF\n"
+    )
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
+def test_raw_object_lookup_is_bounded() -> None:
+    many = b"".join(b"5 0 obj\n[3 0 R /Fit]\nendobj\n" for _ in range(MAX_PDF_DEFINITIONS + 1))
+    assert PdfRawObjects(b"%PDF-1.4\n" + many)(5, 0) == [b""]
+    one = PdfRawObjects(b"%PDF-1.4\n5 0 obj\n[3 0 R /Fit]\nendobj\n")(5, 0)
+    assert len(one) == 1 and one[0].startswith(b"\n[3 0 R /Fit]")
+
+
+def test_png_predictor_checks_the_deadline_inside_a_row() -> None:
+    expired = Budget(time.monotonic() - 1)
+    with pytest.raises(ContentLimit):
+        _png_unpredict(bytes([4]) + bytes(1 << 20), 1 << 20, 1, 8, expired)
 
 
 def test_openaction_decoy_in_a_string_cannot_hide_an_action() -> None:

@@ -96,3 +96,27 @@ All 1,469 files of 1 MB or less in CyClaw `a5b5212` and cg-agent-harness `ff5df3
 - An object stream with a filter other than FlateDecode is not indexed, so a reference into it blocks.
 - A stream whose `/DecodeParms` names a predictor other than PNG (10 to 15) or 8-bit TIFF (2), or whose PNG rows use an unknown filter type, is left out of the view. A viewer applying that predictor gets the same bytes the scanner would reject.
 - A GoTo action is trusted to stay inside the document. The destination is not checked against the page tree.
+
+## Codex review of `df17a8f`, and the fixes
+
+Codex reported five findings. Each was reproduced on `df17a8f` through the real functions before it was changed:
+
+| Finding | On `df17a8f` | After |
+| --- | --- | --- |
+| P1: `/Type /Obj#53tm`, an escaped name, hid an object stream from the index, so a compressed URI-action redefinition of a raw page open was downgraded | goto note | `heuristic_pdf_OpenAction` block |
+| P1: `/Predictor 12 /Columns 16` placed directly in the stream dictionary, not in `/DecodeParms`, was applied and suppressed a compressed JavaScript open action | no findings | JavaScript and OpenAction block |
+| P1: `/Foo (2 0 obj)` inside a stream dictionary was taken as an object header, so the filter was lost | no findings | JavaScript and OpenAction block |
+| P1: the raw-object index copied 4 KiB for every object header | 17.3 MB for an 81 KB input with 4,096 headers | about 0 MB |
+| P2: the predictor loops checked the deadline every 1,024 rows | a 4 MiB Paeth row ran 1.12 s past a 20 ms budget | stops at the deadline (0.03 s) |
+
+**Root cause and fix.** Stream dictionaries were read by byte patterns. Now `pdf_stream_info` (`heuristics.py`) takes the text after an `N G obj` header in the 4 KiB before `stream`. It accepts that text only if it tokenizes into exactly one balanced dictionary, with strings and comments skipped, and the last header that passes wins. The fields are read from that parsed dictionary: `/Filter`, `/Type`, `/Subtype`, `/N`, and `/First` as decoded names. Predictor parameters come only from the stream's own `/DecodeParms`, or for a filter array, its first entry. An indirect `/DecodeParms` leaves the predictor unknown, and the stream is read as inflated. When no dictionary parses, the stream is inflated without a predictor if `/FlateDecode` appears before it, which is the earlier reading, so a malformed dictionary does not hide a stream.
+
+**Memory and work bounds:**
+- `PdfRawObjects` searches per object number and keeps offsets only.
+- Object-stream members are kept as offsets into decoded streams that the budget already counts.
+- More than 64 definitions of one object, or more than 64 `/OpenAction` names, is not a page open.
+- The predictor loops check the deadline every 64 KiB, inside rows as well as between them.
+
+**Regression tests.** `tests/test_heuristics.py` covers each finding: the three dictionary forms, the escaped object-stream name, the definition cap, and the in-row deadline. All 86 cases in that file were run by direct call.
+
+**Unchanged outcomes.** The OpenAction matrix (31 cases), the object-stream matrix (11), and the flate-bypass matrix (11) give the same results as before. The 1,469-file consumer sweep gives the same outcome for every file. The 16 consumer PDFs take 5.52 s in total, against 4.57 s on `main`.
