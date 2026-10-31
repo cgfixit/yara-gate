@@ -92,3 +92,38 @@ Tests (all fail on f1cbe8f's source and pass now): three unreadable or redefinin
 Codex's security review (P2) reported that a stale raw definition makes an object lookup non-empty even when a hidden object stream, read through a filter this reader does not undo, redefines the same object as an action. The opaque-index rule above covers a stream whose only filter is not FlateDecode (for example ASCIIHexDecode). Tracing it also found a gap the report did not name: `_pdf_flate_parms` checks only the first filter, so `[/FlateDecode /ASCIIHexDecode]` inflated once and the hex text was read as the stream's own bytes. Text that starts `35 20 30 20` then parses as a header for object 35, while a reader hex-decodes it to `5 0 ` and sees object 5. An object stream whose `/Filter` array has more than one entry is now unreadable, so the index is opaque and the reference is not a page open. The new test builds exactly that stream; it fails without the check and passes with it.
 
 This follow-up is a separate change because #133 was merged at f1cbe8f before these fixes were pushed. Consumer sweep over 1,469 files: identical to main.
+
+### Interaction with #134 (ASCII stages before Flate)
+
+Merging this branch with draft #134 failed two of #134's tests,
+`test_openaction_reference_into_an_ascii_wrapped_object_stream` with `[/ASCII85Decode /FlateDecode]`
+and with `[/AHx /Fl]`. Both expected the page-open note and got a block. The cause is the rule
+above: it made every object stream with more than one filter unreadable. #134's
+`_pdf_flate_plan` undoes any number of leading ASCIIHex/ASCII85 stages and then FlateDecode, and
+nothing after it. So the danger is a filter after FlateDecode, not the number of filters. The rule
+is now that a `/Filter` array is readable only when its last entry is FlateDecode (`/Fl`) and
+every earlier entry is an ASCII stage (`/AHx`, `/ASCIIHexDecode`, `/A85`, `/ASCII85Decode`). That
+is exactly the chain #134 decodes in full.
+
+- On this branch alone the change is behavior-neutral. `main`'s `_pdf_flate_parms` still rejects
+  a chain that does not start with FlateDecode, so an ASCII-led object stream stays unreadable.
+- `[/FlateDecode /ASCIIHexDecode]` and `[/FlateDecode /FlateDecode]` stay unreadable.
+- The Codex test gains `[/ASCII85Decode /FlateDecode /ASCIIHexDecode]`. That is the same trailing
+  filter behind an ASCII stage, and once #134 decodes the A85 stage only this check stops it.
+
+Trial merge of this branch with #134 at `0ffb339`, CLI under `default`, `agent-ingest` and
+`agent-document`, disposable home and rules copy. The baseline is #134 merged with this branch's
+previous head, `5d53152`.
+
+| Object stream holding object 5 | Merge with `5d53152` | Merge with this change |
+| --- | --- | --- |
+| `/FlateDecode`, page open | note (`_goto`) | note (`_goto`) |
+| `[/ASCII85Decode /FlateDecode]`, page open | block | note (`_goto`) |
+| `[/AHx /Fl]`, page open | block | note (`_goto`) |
+| `[/FlateDecode /FlateDecode]`, page open | block | block |
+| `[/FlateDecode /ASCIIHexDecode]`, Codex JavaScript | block | block |
+| `[/ASCII85Decode /FlateDecode /ASCIIHexDecode]`, Codex JavaScript | block | block |
+
+In the merged tree, restoring the previous `len(filters) > 1` rule fails #134's two cases. Removing
+the check fails both Codex cases. With this change the 111 selected PDF tests pass, and the merge
+has no textual conflict.

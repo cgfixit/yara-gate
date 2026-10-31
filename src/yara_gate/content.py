@@ -137,6 +137,9 @@ _PDF_DICT_WINDOW = 4096
 _PDF_MAX_NESTING = 64
 _PDF_INT = re.compile(rb"[+-]?[0-9]+")
 MAX_OBJSTM_OBJECTS = 100_000
+# Filter names, including the inline-image abbreviations readers also accept in a stream.
+_PDF_FLATE_NAMES = frozenset({b"/FlateDecode", b"/Fl"})
+_PDF_ASCII_STAGES = frozenset({b"/ASCIIHexDecode", b"/AHx", b"/ASCII85Decode", b"/A85"})
 # The deadline is checked after this many bytes of predictor work, inside rows as well.
 _PREDICTOR_CHECK = 1 << 16
 # A parsed PDF object: a token, an array, a dictionary keyed by decoded name, or a reference.
@@ -672,9 +675,14 @@ class PdfObjects:
         data = self._data
         filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
         if isinstance(filters, list) and len(filters) > 1:
-            # Only the first filter is undone here, so what follows it (ASCIIHexDecode, a second
-            # Flate pass) is still encoded and the objects inside are not the ones a reader sees.
-            return None
+            # Decoding stops at the first FlateDecode, so a filter after it (ASCIIHexDecode, a
+            # second Flate pass) is still encoded and the objects inside are not the ones a
+            # reader sees. Only ASCII stages may come before it, as the last filter.
+            names = [_pdf_resolve(data, item, objects) for item in filters]
+            if names[-1] not in _PDF_FLATE_NAMES or not all(
+                name in _PDF_ASCII_STAGES for name in names[:-1]
+            ):
+                return None
         if start.start() not in self.decoded:
             self.decoded[start.start()] = _pdf_stream_bytes(data, start, self._budget, objects)
         decoded = self.decoded[start.start()]
