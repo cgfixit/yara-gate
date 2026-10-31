@@ -1,41 +1,61 @@
-# Reviewed release, first part: eligibility and the audit log (#39)
+# Reviewed release, building blocks: eligibility and the audit log (#39)
 
-Base: `main` `693bca1`. YARA-X `1.22.1`, Python 3.12, Linux container, disposable rules roots. Nothing is wired to the CLI, and nothing moves a file.
+Base: `main` `693bca1`. YARA-X `1.22.1`, Python 3.12, Linux container (root), disposable rules roots. Nothing here is reachable from the CLI, and nothing moves a file.
 
-## Why only these two pieces
+## Owner decisions this follows
 
-#39 has four open owner decisions:
+The owner recorded these on #39 on 2026-10-31:
 
-1. whether a release applies only to gate-home scans, or to every scan of those bytes;
-2. whether `agent-ingest` holds are releasable at all;
-3. whether the precision fixes for `script_download_execute` and `macos_keychain_dump` land first;
-4. how the consumer read rule treats a notes-only `agent-document` record.
+1. Releases are consulted only for file scans under the same explicit `--home`, never by `scan_bytes` or stdin.
+2. Only `agent-document` holds are releasable. Every `agent-ingest` result is refused.
+3. Precision work comes first and release activation second. The unreachable components can be reviewed in parallel.
+4. Documents are read on a complete `clean` record or on an exact notes-only `agent-document` record.
 
-Two parts are needed whatever those decisions are. Building them first keeps the security-sensitive logic small and reviewed on its own:
+Decision 3 is why this PR stops short of the command. The `release` command, `apply_release`, and the reviewed-release acceptance branch for decision 4 live on `claude/release-activation` and wait for the precision PRs.
 
-- **`release_refusal(result, policies=...)`** returns why a fresh `ScanResult` may not be released, or `None`. It reads the verdict, the policy, the `policy_reason`, and every finding's severity. It never reads the folder the bytes sit in. `policies` carries decision 2.
-- **`AuditLog`** is append-only JSON Lines under mode `0600`, each line hash-chained to the one before. It holds time, OS user and uid, reason, sha256, ruleset digest, policy, and rule ids. It holds no content, names, or paths. The reviewer comes from the operating system, not a flag.
+## What is here
 
-The `policy_reason` strings moved into constants in `models.py`. The scanner and the release check now share one definition, so a wording change cannot silently break eligibility.
+- **`release_refusal(result)`** returns why a fresh `ScanResult` may not be released, or `None`. It refuses a result that is incomplete, not under `agent-document`, not a block, a block with any other `policy_reason`, carrying a block-severity finding, without findings, or without a ruleset digest. It never reads the folder the bytes sit in. Decision 2 is a constant, `RELEASABLE_POLICY`, with no parameter to widen it.
+- **`release_key(result)`** returns `(sha256, ruleset_sha256, policy, sorted rule ids)`. Any change to any part holds the file again.
+- **`AuditLog`** has these properties:
+  - It is append-only JSON Lines, mode `0600`. Each line is hash-chained to the one before.
+  - `<log>.head` holds the newest line's hash, and every read checks it.
+  - Appends take an exclusive lock on `<log>.lock` (`flock`, or `msvcrt.locking` on Windows).
+  - Entries hold the uid, which is the identity anchor, and the OS user name for display, plus the reason, digests, policy, and rule ids. They hold no content, names, or paths.
+  - `verify(expected_head=...)` checks against a head recorded outside the gate home.
+- **Shared reason strings.** The `policy_reason` strings are constants in `models.py`, shared by the scanner and this module.
 
 ## Direct runs
 
-| Scan | Verdict | Refusal |
-| --- | --- | --- |
-| Ollama install guide, `agent-document` | block | none: releasable |
-| Lone override phrase, `agent-ingest` | block | none: releasable |
-| The same, with `policies=(agent-document,)` | block | policy is not releasable |
-| Lone override phrase, `agent-document` | advisory | not held |
-| Install guide, default policy | advisory | not held |
-| PDF with a JavaScript open action, `agent-ingest` | block | not a policy hold |
-| Encrypted PDF, `agent-ingest` | incomplete | incomplete scan |
+| Scan | Refusal |
+| --- | --- |
+| Ollama install guide, `agent-document` | none: releasable |
+| The same guide, `agent-ingest` | only an agent-document hold is releasable |
+| Lone override phrase, `agent-ingest` | only an agent-document hold is releasable |
+| Lone override phrase, `agent-document` | not held (notes are recorded, not held) |
+| Install guide, default policy | only an agent-document hold is releasable |
+| PDF with a JavaScript open action, `agent-document` | not a policy hold |
+| Encrypted PDF, `agent-document` | incomplete scan |
 
-- A rule edit changes the ruleset digest, so the release key changes and the bytes are held again. The sha256, policy, and rule ids stay the same.
-- The audit log detects an edited earlier line, a deleted line, and a truncated tail. An edit to the newest line alone passes `verify`, because nothing follows it. `head()` returns the hash to record elsewhere, and a changed head shows the edit.
-- A reason that is empty, longer than 500 characters, or holds a control or format character (`U+202E`, a newline) is refused before anything is written.
+**Rule edits.** A rule edit changes the ruleset digest, so the key changes. The sha256 and rule ids stay the same.
 
-`tests/test_release.py` holds these cases. Each test function was run by calling it directly, 15 calls in all. CI runs the suite.
+**Tampering.** The log catches all of these:
+- an edited earlier line, or an edited newest line;
+- a deleted first line, or a deleted newest line (a suffix);
+- a truncated tail;
+- a deleted head file, or a deleted log with its head left behind.
 
-## Not built yet
+A consistent rewrite of both files passes `verify()`, but fails `verify(expected_head=…)` against the head recorded before the rewrite.
 
-These wait on the decisions above: the `release` command, where releases are stored and consulted, `--list-stale`, `--verify-log`, the TTY and `watch` refusals, and the consumer read rule.
+**Concurrency.** Eight threads appending at once leave an eight-entry chain that verifies.
+
+**Reasons.** A reason that is empty, whitespace, longer than 500 characters, or contains U+202E or a newline is refused before anything is written.
+
+Each case in `tests/test_release.py` was run by calling the test function directly, with every parametrized case unrolled: 23 calls. CI runs the suite.
+
+## Limits
+
+- **Tamper evidence, not authentication.** Anyone who can write the gate home can rewrite the log and its head together, just as they could move a file from `blocked/` to `clean/` by hand. A head copied outside the gate home is what detects that.
+- **Policy selection is the caller's.** A caller that scans a message as `agent-document` makes it releasable, so decision 2 holds only while callers honour the classification contract.
+- **Windows identity.** There is no uid on Windows, so the user name is the only identity there.
+- **Not a review record.** The log records that an operation happened, not how good the review was.
