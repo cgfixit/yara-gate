@@ -21,7 +21,13 @@ from pathlib import Path
 from typing import IO
 
 from yara_gate.filetype import sniff, utf16_encoding
-from yara_gate.heuristics import _PDF_LEX, MAX_PDF_DEFINITIONS, PdfRawObjects, _decode_pdf_name
+from yara_gate.heuristics import (
+    _PDF_LEX,
+    _PDF_VALUE_WINDOW,
+    MAX_PDF_DEFINITIONS,
+    PdfRawObjects,
+    _decode_pdf_name,
+)
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -603,7 +609,9 @@ class PdfObjects:
         self._data = data
         self._budget = budget
         self._raw = PdfRawObjects(data, budget.check)
-        self._streams: list[bytes] = []
+        # Inflated bytes, or a view into ``data`` for an unfiltered stream, so overlapping
+        # unfiltered declarations share the file's buffer instead of each holding a copy.
+        self._streams: list[bytes | memoryview] = []
         self._members: dict[int, list[tuple[int, int, int]]] | None = None
         # Inflated object streams by the offset of their ``stream`` keyword, for ``pdf_views``
         # to reuse: the same bytes are neither inflated nor charged to the budget twice.
@@ -620,7 +628,10 @@ class PdfObjects:
             if self._members is None:
                 self._members = self._index()
             for stream, begin, stop in self._members.get(number, []):
-                found.append(self._streams[stream][begin:stop])
+                # Only the window is ever parsed, as for a raw definition, so a lookup copies at
+                # most that much of each member however many declarations reach one tail.
+                window = min(stop, begin + _PDF_VALUE_WINDOW)
+                found.append(bytes(self._streams[stream][begin:window]))
         if self._opaque:
             # An unreadable object stream may redefine this object as any action.
             found.append(b"")
@@ -662,7 +673,7 @@ class PdfObjects:
         start: re.Match[bytes],
         stream_dict: dict[bytes, PdfValue],
         objects: dict[tuple[int, int], PdfValue | None],
-    ) -> tuple[bytes, list[int], list[int], int] | None:
+    ) -> tuple[bytes | memoryview, list[int], list[int], int] | None:
         """Decoded bytes, object numbers, offsets and /First of one object stream, or None."""
         total, first = stream_dict.get(b"/N"), stream_dict.get(b"/First")
         if not (isinstance(total, bytes) and total.isdigit()):
@@ -685,15 +696,16 @@ class PdfObjects:
                 return None
         if start.start() not in self.decoded:
             self.decoded[start.start()] = _pdf_stream_bytes(data, start, self._budget, objects)
-        decoded = self.decoded[start.start()]
+        decoded: bytes | memoryview | None = self.decoded[start.start()]
         if decoded is None and b"/Filter" not in stream_dict:
             # No filter: the stream is its own bytes, which a reader parses as they are. These
-            # stay out of ``decoded``, which feeds the inflated view.
+            # stay out of ``decoded``, which feeds the inflated view. A view, not a copy: nothing
+            # is expanded, and declarations that share one ``endstream`` share one buffer.
             end = _PDF_END.search(data, start.end())
-            decoded = data[start.end() : end.start() if end else len(data)]
+            decoded = memoryview(data)[start.end() : end.start() if end else len(data)]
         if not decoded or origin > len(decoded):
             return None
-        header = decoded[:origin].split()
+        header = bytes(decoded[:origin]).split()
         if len(header) < pairs or not all(item.isdigit() for item in header[:pairs]):
             return None
         numbers = [int(item) for item in header[0:pairs:2]]

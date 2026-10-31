@@ -127,3 +127,31 @@ previous head, `5d53152`.
 In the merged tree, restoring the previous `len(filters) > 1` rule fails #134's two cases. Removing
 the check fails both Codex cases. With this change the 111 selected PDF tests pass, and the merge
 has no textual conflict.
+
+### Codex review of f209761
+
+Two code-review findings, both reproduced on `f209761` with inert files.
+
+- **P2, zero-padded headers.** `_PDF_HEADER` capped each digit run at 32 and had a lookbehind,
+  so `000…0005 0 obj` with 33 or more digits never matched. A URI redefinition of object 5
+  written that way was skipped, and `/OpenAction 5 0 R` read as the note instead of a block.
+  Readers accept any number of leading zeros.
+  - Digit runs are now matched whole with a possessive `[0-9]++`, then stripped of zeros.
+  - A header with more than 32 significant digits is skipped. No reference resolves to it, and a
+    reference with that many digits does not resolve, which already blocks.
+  - On 50 MB worst-case inputs (one zero run, digit/space runs, 40-digit runs, real headers,
+    near-misses) the new pattern stays linear and is as fast as the old one or faster: 0.65 s
+    against 0.63 s for the zero run.
+- **P1, unfiltered object streams copied per declaration.** 64 overlapping declarations ahead of
+  one 1 MB tail retained 64 copies: 61 MiB peak for a 0.96 MiB file, with nothing charged to the
+  budget.
+  - The fallback now keeps a `memoryview` into the file, with no copy and no expansion.
+  - A lookup copies at most `_PDF_VALUE_WINDOW` (4 KB) of each member, the same window a raw
+    definition gets and the only part any caller parses. Lookups of every member then peak at
+    1 MiB.
+
+Tests: the three zero-padding cases and the shared-buffer check fail on `f209761` and pass here.
+The full pytest suite (363 passed, 1 skipped), ruff, mypy --strict, check_text_controls,
+check_rule_pairs, measure_precision --fail-over (310 files, 0 incomplete) and the probe with
+--verify --benign-stdlib pass. A trial merge with `main` at `72cb0f4` (#134) is clean, and its
+200 heuristics and scanner tests pass.

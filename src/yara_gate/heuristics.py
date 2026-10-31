@@ -411,12 +411,23 @@ _PDF_OBJ = re.compile(rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x0
 MAX_PDF_DEFINITIONS = 64
 
 
-# A definition header: object number, generation, and the obj keyword. The digit runs are
-# capped well past any real file so leading zeros still match, and int() drops them.
-_PDF_HEADER = re.compile(
-    rb"(?<![0-9])([0-9]{1,32})[\x00\t\n\f\r ]+([0-9]{1,32})[\x00\t\n\f\r ]+obj\b"
-)
+# A definition header: object number, generation, and the obj keyword. A digit run is matched
+# whole however long it is, since readers accept any number of leading zeros. The lookbehind
+# allows one attempt per run and the possessive ``++`` never gives digits back (a digit always
+# follows the split), so matching stays linear. ``_pdf_header_key`` drops the zeros.
+_PDF_HEADER = re.compile(rb"(?<![0-9])([0-9]++)[\x00\t\n\f\r ]+([0-9]++)[\x00\t\n\f\r ]+obj\b")
+# Significant digits past this cannot name an object any reference resolves to.
+_PDF_HEADER_DIGITS = 32
 _PDF_HEADER_CHECK_EVERY = 4096
+
+
+def _pdf_header_key(number: bytes, generation: bytes) -> tuple[int, int] | None:
+    """(number, generation) without leading zeros, or None when either is too long to be real."""
+    number = number.lstrip(b"0") or b"0"
+    generation = generation.lstrip(b"0") or b"0"
+    if len(number) > _PDF_HEADER_DIGITS or len(generation) > _PDF_HEADER_DIGITS:
+        return None
+    return int(number), int(generation)
 
 
 class PdfRawObjects:
@@ -444,7 +455,8 @@ class PdfRawObjects:
         for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
             if self._check is not None and count % _PDF_HEADER_CHECK_EVERY == 0:
                 self._check()
-            slot = found.get((int(match.group(1)), int(match.group(2))))
+            key = _pdf_header_key(match.group(1), match.group(2))
+            slot = None if key is None else found.get(key)
             if slot is not None and len(slot) <= MAX_PDF_DEFINITIONS:
                 slot.append(match.end())
         self._offsets.update(found)

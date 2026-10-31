@@ -413,3 +413,39 @@ def test_mcp_tool_poisoning_vocabulary(payload: bytes, hidden: bool) -> None:
 
     found = {item.rule_id for item in mcp_tool_findings(Path("tools.json"), payload)}
     assert ("heuristic_mcp_hidden_instruction" in found) is hidden
+
+
+@pytest.mark.parametrize(
+    "header",
+    [b"0" * 33 + b"5 0 obj", b"5 " + b"0" * 40 + b" obj", b"0" * 200 + b"5 00 obj"],
+)
+def test_a_zero_padded_redefinition_still_counts(header: bytes) -> None:
+    # Readers accept any number of leading zeros, so this redefines object 5 as a URI action.
+    data = (
+        b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog /OpenAction 5 0 R >>\nendobj\n"
+        b"5 0 obj\n[3 0 R /Fit]\nendobj\n"
+        + header
+        + b"\n<< /S /URI /URI (https://example.invalid/) >>\nendobj\n%%EOF\n"
+    )
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction" in ids
+    assert "heuristic_pdf_OpenAction_goto" not in ids
+
+
+def test_overlapping_unfiltered_object_streams_share_the_file_buffer() -> None:
+    import tracemalloc
+
+    decl = b"9 0 obj\n<< /Type /ObjStm /N 1 /First 4 >>\nstream\n6 0 [3 0 R /Fit]\n"
+    data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]") + decl * 64 + b"x" * 1_000_000 + b"\nendstream\n"
+    budget = Budget(time.monotonic() + 30)
+    objects = PdfObjects(data, budget)
+    tracemalloc.start()
+    try:
+        assert objects(6, 0)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    # 64 declarations each reaching the same 1 MB tail: one view each, not one copy each.
+    assert peak < 8 * 1_000_000
+    assert budget.expanded == 0
