@@ -947,6 +947,7 @@ _HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 _KERAS_JSON_START = b'{"class_name"'
 _KERAS_MAX_NODES = 200_000
 _KERAS_MAX_DEPTH = 64
+_KERAS_END = object()
 _KERAS_H5_CONFIGS = 4
 _KERAS_H5_SPAN = 16 * 1024 * 1024
 
@@ -1002,13 +1003,16 @@ def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
 
 
 def _walk_keras(root: object, hits: set[str]) -> None:
-    stack: list[tuple[object, int]] = [(root, 0)]
+    # One lazy iterator per open container: the stack never holds more than the depth cap,
+    # however many elements a list has, and the node cap stops the walk itself.
+    stack: list[Iterator[object]] = [iter((root,))]
     seen = 0
     while stack and seen < _KERAS_MAX_NODES and len(hits) < 2:
-        node, depth = stack.pop()
-        seen += 1
-        if depth > _KERAS_MAX_DEPTH:
+        node = next(stack[-1], _KERAS_END)
+        if node is _KERAS_END:
+            stack.pop()
             continue
+        seen += 1
         if isinstance(node, dict):
             if _keras_unsafe(node):
                 hits.add("unsafe")
@@ -1017,9 +1021,10 @@ def _walk_keras(root: object, hits: set[str]) -> None:
                 node.get("function_type") == "lambda" and "function" in node
             ):
                 hits.add("lambda")
-            stack.extend((value, depth + 1) for value in node.values())
-        elif isinstance(node, list):
-            stack.extend((item, depth + 1) for item in node)
+            if len(stack) <= _KERAS_MAX_DEPTH:
+                stack.append(iter(node.values()))
+        elif isinstance(node, list) and len(stack) <= _KERAS_MAX_DEPTH:
+            stack.append(iter(node))
 
 
 def _keras_unsafe(node: dict[object, object]) -> bool:

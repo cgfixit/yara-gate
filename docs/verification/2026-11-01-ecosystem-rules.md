@@ -58,3 +58,7 @@ FACT. The 10 new benign corpus files (five workflows, five Keras files) produce 
 - AI-agent actions that receive issue text as a prompt (the "PromptPwnd" shape).
 - Keras configs inside HDF5 chunked or compressed storage, ONNX, TensorFlow SavedModel, and Jupyter notebooks.
 - Hosted CI has not run on this change at the time of writing.
+
+## Review follow-up: bounded Keras walk
+
+FACT. Codex security review on #142 reported that `_walk_keras` queued every child of a container before the 200,000-node cap applied. Reproduced on a 4,000,032-byte `model.json` holding a list of 2,000,000 inert values, measured with `tracemalloc`: `keras_config_findings` peaked at 142,842 KiB and took 4.29 s, against 20,634 KiB and 1.85 s for `mcp_tool_findings` on the same bytes (the `json.loads` both share). The walk now keeps one lazy iterator per open container. Its stack is bounded by the depth cap, and the node cap ends the walk. After the change, the Keras path peaks at 20,634 KiB and takes 2.09 s. All 18 direct fixtures still match their expectations.
