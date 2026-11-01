@@ -63,6 +63,7 @@ Python 3.12 and [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync --frozen
+uv run yara-gate setup             # once: downloads the pinned vendor packs; scans stay offline after
 uv run yara-gate selftest          # rebuilds the fixtures; exits 0 only if every verdict matches
 uv run yara-gate scan path/to/file_or_folder --policy agent-ingest --json
 printf '%s' "$BODY" | uv run yara-gate scan - --name sms.txt --policy agent-ingest --json
@@ -138,7 +139,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Structural checks without YARA:** Office macros and DDE, PDF actions (including those inside compressed object streams), executables embedded in documents or nested archives, double extensions, filename control characters, MCP tool poisoning, and pickle, safetensors, and GGUF model files.
 
-**Optional vendor packs**, installed only with `rules install --allow-network`: YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13.
+**Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13.
 
 **Precision:** on a generated corpus of 310 benign files, 76 of the 80 rules hit nothing. The other four are documented Windows collisions, each at 0.32%. This is a synthetic corpus, not a production false-positive rate.
 
@@ -156,8 +157,9 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 
 ## Rules and hunting
 
-- `rules install --allow-network` downloads the packs pinned in `rules/rules.lock` and checks each SHA-256. `rules update --allow-network` resolves new pins.
-- These are the only two commands that use the network, and each swaps the vendor tree only after the new rules compile.
+- `setup` is the first-run step: it downloads the packs pinned in `rules/rules.lock`, checks each SHA-256, and does nothing on later runs while every installed file is present (`--force` downloads again). Running it is the consent to use the network.
+- `rules install --allow-network` does the same download on demand. `rules update --allow-network` resolves new pins.
+- These are the only three commands that use the network, and each swaps the vendor tree only after the new rules compile. A scan never downloads; on a terminal it prints one line on stderr until `setup` has run.
 - A `GITHUB_TOKEN` (or `GH_TOKEN`) is sent only to `api.github.com`.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs.
 - If a shipped rule fails to compile, or recorded vendor files are missing, the scan exits 2.

@@ -108,6 +108,7 @@ def scan(
     """
     from yara_gate.quarantine import GatePaths
 
+    _setup_hint(rules)
     try:
         targets = _targets(paths or [], paths_from, null)
         if targets == ["-"]:
@@ -313,6 +314,71 @@ def rules_update(
     if error:
         typer.echo(error, err=True)
         raise typer.Exit(code=2)
+
+
+@app.command()
+def setup(
+    rules: Path | None = typer.Option(None, "--rules"),
+    force: bool = typer.Option(False, "--force", help="Download again even when installed."),
+) -> None:
+    """Run once: download the vendor packs pinned in rules.lock. Scans stay offline after.
+
+    Running this command is the consent to use the network. It shares ``rules install``'s path:
+    locked URLs only, sha256 per pack, and a swap only after the staged rules compile. With the
+    recorded vendor files present it does not touch the network unless ``--force`` is given.
+    """
+    from yara_gate.rules import compile_sources, default_rules_dir
+
+    root = rules or default_rules_dir()
+    if not force and _vendor_installed(root):
+        typer.echo(f"already set up: {root / 'vendor'} (pass --force to download again)")
+        return
+    typer.echo("downloading the vendor packs pinned in rules.lock")
+    try:
+        lock = install_packs(root)
+        _rules, skipped, error, compiled, skip_count = compile_sources(root)
+    except Exception as exc:
+        _echo_incomplete(exc)
+    for pack in lock.packs:
+        typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
+    _echo_shadows(skipped)
+    typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
+    if error:
+        typer.echo(error, err=True)
+        raise typer.Exit(code=2)
+    typer.echo("set up: scans now use bundled and vendor rules and stay offline")
+
+
+def _setup_hint(rules: Path | None) -> None:
+    """On a terminal, say once per scan that the vendor packs are not installed yet.
+
+    The scan itself never downloads. Pipes, hooks, and --json callers see no extra output.
+    """
+    if not sys.stderr.isatty():
+        return
+    from yara_gate.rules import default_rules_dir, load_lock
+
+    root = rules or default_rules_dir()
+    try:
+        if not load_lock(root).packs or _vendor_installed(root):
+            return
+    except (OSError, ValueError):
+        return
+    typer.echo("note: vendor packs not installed; run 'yara-gate setup' once", err=True)
+
+
+def _vendor_installed(root: Path) -> bool:
+    """True when the lock records a vendor inventory and every recorded file is present."""
+    from yara_gate.rules import load_lock
+
+    try:
+        installed = load_lock(root).installed_vendor_files
+    except (OSError, ValueError):
+        return False
+    if not installed:
+        return False
+    vendor = root / "vendor"
+    return all((vendor / name).is_file() for name in installed)
 
 
 @rules_app.command("promote")
