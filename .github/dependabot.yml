@@ -4,7 +4,34 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[deps] -"
+    groups:
+      dev-tools:
+        dependency-type: development
+        patterns: ["*"]
+      runtime-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "[ci] -"
+    groups:
+      actions:
+        patterns: ["*"]
