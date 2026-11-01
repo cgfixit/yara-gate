@@ -1,0 +1,642 @@
+{
+ "source": "docs/research/measure_injection_corpora.py",
+ "yara_x": "1.22.1",
+ "python": "3.12.3",
+ "compiled_rules": 82,
+ "skipped_files": 0,
+ "candidates": "docs/research/injection-candidates-2026-11-01.yar",
+ "inputs_sha256": {
+  "llmail/labelled_unique_submissions_phase2.json": "f89af984e345430c3b357903890e30867bf4676f4ef10c138cc7bad218e890b8",
+  "llmail/emails_for_fp_tests.json": "4ddd950b5dbaa8548f5597c886d8e09a051ba07f80a9291fdcca9c2397d22abe",
+  "deepset/deepset.jsonl": "07ee853fe2381e4607a102cfae64e33f27dffedd14bf8b9f7e487908c545eb99"
+ },
+ "sets": {
+  "llmail_api_triggered": {
+   "kind": "attack",
+   "n": 3165,
+   "tiers": {
+    "clean": 2962,
+    "note": 121,
+    "advisory": 18,
+    "block": 64
+   },
+   "held_agent_ingest_pct": 6.41,
+   "held_agent_document_pct": 2.59,
+   "shipped_rules": [
+    [
+     "agent_invisible_unicode",
+     109
+    ],
+    [
+     "heuristic_unicode_tag",
+     64
+    ],
+    [
+     "agent_fake_chat_marker",
+     17
+    ],
+    [
+     "agent_prompt_injection_phrases",
+     10
+    ],
+    [
+     "agent_role_spoof_action",
+     1
+    ],
+    [
+     "agent_override_imperative",
+     1
+    ],
+    [
+     "heuristic_invisible_joiner",
+     1
+    ]
+   ],
+   "candidate_any_pct": 48.56,
+   "union_any_pct": 53.81,
+   "candidate_rules": [
+    [
+     "cand_turn_marker_extended",
+     873
+    ],
+    [
+     "cand_send_to_address_with_content",
+     783
+    ],
+    [
+     "cand_context_boundary_spoof",
+     173
+    ],
+    [
+     "cand_task_override",
+     40
+    ],
+    [
+     "cand_tool_call_directive",
+     40
+    ],
+    [
+     "cand_ai_vocative",
+     26
+    ],
+    [
+     "cand_concealed_action",
+     1
+    ]
+   ]
+  },
+  "llmail_direct_instructions": {
+   "kind": "attack",
+   "n": 13169,
+   "tiers": {
+    "clean": 12464,
+    "block": 54,
+    "note": 625,
+    "advisory": 26
+   },
+   "held_agent_ingest_pct": 5.35,
+   "held_agent_document_pct": 0.61,
+   "shipped_rules": [
+    [
+     "agent_prompt_injection_phrases",
+     563
+    ],
+    [
+     "agent_invisible_unicode",
+     62
+    ],
+    [
+     "heuristic_unicode_tag",
+     53
+    ],
+    [
+     "agent_role_spoof_action",
+     11
+    ],
+    [
+     "agent_fake_chat_marker",
+     9
+    ],
+    [
+     "agent_base64_blob",
+     8
+    ],
+    [
+     "heuristic_invisible_joiner",
+     3
+    ],
+    [
+     "agent_prompt_injection_multilingual",
+     1
+    ],
+    [
+     "heuristic_unicode_control_conjunction",
+     1
+    ],
+    [
+     "agent_override_imperative",
+     1
+    ],
+    [
+     "agent_bidi_formatting",
+     1
+    ],
+    [
+     "agent_bidi_override",
+     1
+    ],
+    [
+     "doc_svg_active",
+     1
+    ]
+   ],
+   "candidate_any_pct": 38.9,
+   "union_any_pct": 40.21,
+   "candidate_rules": [
+    [
+     "cand_turn_marker_extended",
+     2963
+    ],
+    [
+     "cand_send_to_address_with_content",
+     2286
+    ],
+    [
+     "cand_task_override",
+     308
+    ],
+    [
+     "cand_tool_call_directive",
+     170
+    ],
+    [
+     "cand_context_boundary_spoof",
+     105
+    ],
+    [
+     "cand_ai_vocative",
+     65
+    ],
+    [
+     "cand_concealed_action",
+     1
+    ]
+   ]
+  },
+  "llmail_obfuscation": {
+   "kind": "attack",
+   "n": 4370,
+   "tiers": {
+    "clean": 4120,
+    "block": 38,
+    "advisory": 30,
+    "note": 182
+   },
+   "held_agent_ingest_pct": 5.72,
+   "held_agent_document_pct": 1.56,
+   "shipped_rules": [
+    [
+     "agent_invisible_unicode",
+     102
+    ],
+    [
+     "agent_prompt_injection_phrases",
+     68
+    ],
+    [
+     "heuristic_unicode_tag",
+     38
+    ],
+    [
+     "agent_base64_blob",
+     18
+    ],
+    [
+     "agent_fake_chat_marker",
+     9
+    ],
+    [
+     "heuristic_invisible_joiner",
+     6
+    ],
+    [
+     "agent_prompt_injection_multilingual",
+     6
+    ],
+    [
+     "agent_bidi_override",
+     5
+    ],
+    [
+     "heuristic_unicode_control_conjunction",
+     2
+    ],
+    [
+     "agent_role_spoof_action",
+     1
+    ]
+   ],
+   "candidate_any_pct": 39.31,
+   "union_any_pct": 43.18,
+   "candidate_rules": [
+    [
+     "cand_turn_marker_extended",
+     1499
+    ],
+    [
+     "cand_send_to_address_with_content",
+     168
+    ],
+    [
+     "cand_task_override",
+     129
+    ],
+    [
+     "cand_ai_vocative",
+     32
+    ],
+    [
+     "cand_tool_call_directive",
+     25
+    ],
+    [
+     "cand_context_boundary_spoof",
+     19
+    ]
+   ]
+  },
+  "llmail_social_engineering_unclear": {
+   "kind": "attack",
+   "n": 13660,
+   "tiers": {
+    "clean": 13453,
+    "block": 132,
+    "advisory": 69,
+    "note": 6
+   },
+   "held_agent_ingest_pct": 1.52,
+   "held_agent_document_pct": 1.47,
+   "shipped_rules": [
+    [
+     "heuristic_unicode_tag",
+     132
+    ],
+    [
+     "agent_fake_chat_marker",
+     68
+    ],
+    [
+     "agent_invisible_unicode",
+     6
+    ],
+    [
+     "agent_role_spoof_action",
+     1
+    ]
+   ],
+   "candidate_any_pct": 4.17,
+   "union_any_pct": 5.63,
+   "candidate_rules": [
+    [
+     "cand_send_to_address_with_content",
+     334
+    ],
+    [
+     "cand_turn_marker_extended",
+     203
+    ],
+    [
+     "cand_context_boundary_spoof",
+     73
+    ],
+    [
+     "cand_task_override",
+     7
+    ],
+    [
+     "cand_tool_call_directive",
+     4
+    ]
+   ]
+  },
+  "llmail_benign_fp_emails": {
+   "kind": "benign",
+   "n": 203,
+   "tiers": {
+    "clean": 203
+   },
+   "held_agent_ingest_pct": 0.0,
+   "held_agent_document_pct": 0.0,
+   "shipped_rules": [],
+   "candidate_any_pct": 0.0,
+   "union_any_pct": 0.0,
+   "candidate_rules": []
+  },
+  "deepset_injection": {
+   "kind": "attack",
+   "n": 263,
+   "tiers": {
+    "clean": 255,
+    "note": 8
+   },
+   "held_agent_ingest_pct": 3.04,
+   "held_agent_document_pct": 0.0,
+   "shipped_rules": [
+    [
+     "agent_prompt_injection_phrases",
+     5
+    ],
+    [
+     "agent_prompt_injection_multilingual",
+     1
+    ],
+    [
+     "agent_override_imperative",
+     1
+    ],
+    [
+     "agent_invisible_unicode",
+     1
+    ]
+   ],
+   "candidate_any_pct": 1.9,
+   "union_any_pct": 4.94,
+   "candidate_rules": [
+    [
+     "cand_task_override",
+     5
+    ]
+   ]
+  },
+  "deepset_benign": {
+   "kind": "benign",
+   "n": 399,
+   "tiers": {
+    "clean": 397,
+    "note": 2
+   },
+   "held_agent_ingest_pct": 0.5,
+   "held_agent_document_pct": 0.0,
+   "shipped_rules": [
+    [
+     "agent_invisible_unicode",
+     2
+    ]
+   ],
+   "candidate_any_pct": 0.0,
+   "union_any_pct": 0.5,
+   "candidate_rules": []
+  },
+  "benign_dir:python_stdlib": {
+   "kind": "benign",
+   "n": 573,
+   "tiers": {
+    "clean": 573
+   },
+   "held_agent_ingest_pct": 0.0,
+   "held_agent_document_pct": 0.0,
+   "shipped_rules": [],
+   "candidate_any_pct": 0.0,
+   "union_any_pct": 0.0,
+   "candidate_rules": []
+  },
+  "benign_dir:package_docs": {
+   "kind": "benign",
+   "n": 68,
+   "tiers": {
+    "clean": 65,
+    "advisory": 3
+   },
+   "held_agent_ingest_pct": 4.41,
+   "held_agent_document_pct": 4.41,
+   "shipped_rules": [
+    [
+     "script_download_execute",
+     2
+    ],
+    [
+     "agent_prompt_injection_phrases",
+     1
+    ],
+    [
+     "agent_secret_transfer_request",
+     1
+    ],
+    [
+     "agent_markdown_exfil",
+     1
+    ]
+   ],
+   "candidate_any_pct": 1.47,
+   "union_any_pct": 5.88,
+   "candidate_rules": [
+    [
+     "cand_ai_vocative",
+     1
+    ]
+   ]
+  },
+  "benign_dir:precision_corpus": {
+   "kind": "benign",
+   "n": 320,
+   "tiers": {
+    "clean": 316,
+    "advisory": 3,
+    "block": 1
+   },
+   "held_agent_ingest_pct": 1.25,
+   "held_agent_document_pct": 1.25,
+   "shipped_rules": [
+    [
+     "win_shortcut_remote_icon",
+     1
+    ],
+    [
+     "win_library_remote_location",
+     1
+    ],
+    [
+     "win_library_unc_location",
+     1
+    ],
+    [
+     "win_internet_shortcut_launch",
+     1
+    ]
+   ],
+   "candidate_any_pct": 0.0,
+   "union_any_pct": 1.25,
+   "candidate_rules": []
+  },
+  "benign_dir:repo_docs_documentary": {
+   "kind": "benign",
+   "n": 73,
+   "tiers": {
+    "advisory": 14,
+    "clean": 53,
+    "note": 5,
+    "block": 1
+   },
+   "held_agent_ingest_pct": 27.4,
+   "held_agent_document_pct": 20.55,
+   "shipped_rules": [
+    [
+     "agent_prompt_injection_phrases",
+     13
+    ],
+    [
+     "script_download_execute",
+     5
+    ],
+    [
+     "agent_secret_transfer_request",
+     5
+    ],
+    [
+     "agent_tool_hijack_directive",
+     4
+    ],
+    [
+     "win_lolbin_download",
+     3
+    ],
+    [
+     "agent_override_imperative",
+     3
+    ],
+    [
+     "win_hta_shell_object",
+     2
+    ],
+    [
+     "win_msc_console_remote",
+     2
+    ],
+    [
+     "script_chmod_execute",
+     2
+    ],
+    [
+     "web_ms_protocol_lure",
+     2
+    ],
+    [
+     "agent_message_code_relay",
+     2
+    ],
+    [
+     "macos_keychain_dump",
+     2
+    ],
+    [
+     "agent_bidi_override",
+     1
+    ],
+    [
+     "agent_markdown_exfil",
+     1
+    ],
+    [
+     "script_mshta_remote",
+     1
+    ],
+    [
+     "doc_spreadsheet_formula_exec",
+     1
+    ],
+    [
+     "win_wsf_remote_script",
+     1
+    ],
+    [
+     "unix_privilege_persistence",
+     1
+    ],
+    [
+     "macos_gatekeeper_disable",
+     1
+    ],
+    [
+     "win_browser_credential_decrypt",
+     1
+    ],
+    [
+     "script_reverse_shell",
+     1
+    ],
+    [
+     "agent_config_approval_bypass",
+     1
+    ],
+    [
+     "dev_vscode_autorun_task",
+     1
+    ],
+    [
+     "agent_cli_secret_sweep",
+     1
+    ],
+    [
+     "win_amsi_bypass",
+     1
+    ],
+    [
+     "macos_stealer_password_check",
+     1
+    ],
+    [
+     "script_osascript_shell",
+     1
+    ],
+    [
+     "win_defender_tamper",
+     1
+    ],
+    [
+     "macos_jxa_remote_exec",
+     1
+    ],
+    [
+     "win_recovery_inhibit",
+     1
+    ],
+    [
+     "win_script_host_fetch_run",
+     1
+    ],
+    [
+     "macos_password_prompt",
+     1
+    ],
+    [
+     "script_fetch_chmod_run",
+     1
+    ],
+    [
+     "script_credential_upload",
+     1
+    ],
+    [
+     "heuristic_unicode_tag",
+     1
+    ],
+    [
+     "agent_role_spoof_action",
+     1
+    ],
+    [
+     "web_clickfix_lure",
+     1
+    ]
+   ],
+   "candidate_any_pct": 1.37,
+   "union_any_pct": 27.4,
+   "candidate_rules": [
+    [
+     "cand_task_override",
+     1
+    ]
+   ]
+  }
+ }
+}

@@ -1,0 +1,1661 @@
+{
+ "source": "docs/research/probe_injection_gaps.py",
+ "yara_x": "1.22.1",
+ "python": "3.12.3",
+ "compiled_rules": 82,
+ "skipped_files": 0,
+ "policies": [
+  "default",
+  "agent-ingest",
+  "agent-document"
+ ],
+ "cases": [
+  {
+   "id": "ctl_plain_phrase",
+   "group": "control",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "ctl_benign_note",
+   "group": "control",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "ctl_secret_request",
+   "group": "control",
+   "name": "msg.txt",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_secret_transfer_request",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "lex_paraphrase_override",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_synonym_override",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_ai_addressed_seo",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_review_manipulation",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_hiring_manipulation",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_prompt_leak_repeat",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lex_many_shot_transcript",
+   "group": "lexical",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_override_imperative",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "lang_dutch",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_polish",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_turkish",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_korean",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_arabic",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_hindi",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_indonesian",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_vietnamese",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_ukrainian",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "lang_spanish_ctl",
+   "group": "multilingual",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_multilingual",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "enc_base64_paraphrase",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_base64_upper",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_base64_ctl",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_encoded_instruction",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "enc_hex",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_url_percent",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_rot13",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_reversed",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_syllable_hyphens",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_slash_split",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "enc_quoted_printable",
+   "group": "encoding",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "uni_zero_width_split",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_invisible_unicode",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "format-controls-removed"
+    },
+    {
+     "rule_id": "heuristic_unicode_control_conjunction",
+     "severity": "advisory",
+     "view": "format-controls-removed"
+    }
+   ]
+  },
+  {
+   "id": "uni_tag_smuggling",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "block",
+   "verdicts": {
+    "default": "block",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "heuristic_unicode_tag",
+     "severity": "block",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "uni_variation_selector_smuggling",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "uni_sneaky_bits",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_invisible_unicode",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "uni_zero_width_binary",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_invisible_unicode",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "heuristic_invisible_joiner",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "uni_homoglyph_cyrillic_ctl",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "uni_math_alnum",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "uni_dotless_i",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "uni_armenian_o",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "uni_fullwidth_ctl",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "uni_soft_hyphen_split",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "format-controls-removed"
+    }
+   ]
+  },
+  {
+   "id": "uni_combining_overlay",
+   "group": "unicode",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_md_inline_template_ctl",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_markdown_exfil",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "exf_md_reference_style",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_html_img_template",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_md_instruction_no_template",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_click_lure",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_dns_subdomain",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "exf_url_fragment_percent",
+   "group": "exfil",
+   "name": "msg.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "html_display_none_ctl",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_hidden_html",
+     "severity": "advisory",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_white_on_white",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_offscreen",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_opacity0",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_hidden_attr",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_aria_hidden_tiny",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "html_zero_height",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "html_comment_no_phrase",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "html_inline_split",
+   "group": "hidden-html",
+   "name": "page.html",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "md_details_collapsed",
+   "group": "hidden-html",
+   "name": "README.md",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "png_text_chunk",
+   "group": "media-metadata",
+   "name": "image.png",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "png_ztxt_chunk",
+   "group": "media-metadata",
+   "name": "image.png",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "png_itxt_compressed",
+   "group": "media-metadata",
+   "name": "image.png",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "jpeg_exif_description",
+   "group": "media-metadata",
+   "name": "photo.jpg",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "jpeg_exif_usercomment_utf16",
+   "group": "media-metadata",
+   "name": "photo.jpg",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "jpeg_xmp",
+   "group": "media-metadata",
+   "name": "photo.jpg",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "jpeg_comment",
+   "group": "media-metadata",
+   "name": "photo.jpg",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "svg_hidden_text",
+   "group": "media-metadata",
+   "name": "chart.svg",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "ics_plain_ctl",
+   "group": "calendar-mail",
+   "name": "invite.ics",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "ics_rfc5545_folded",
+   "group": "calendar-mail",
+   "name": "invite.ics",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "eml_rfc2047_subject_paraphrase",
+   "group": "calendar-mail",
+   "name": "mail.eml",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "eml_qp_soft_break",
+   "group": "calendar-mail",
+   "name": "mail.eml",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "docx_vanish_two_runs",
+   "group": "document",
+   "name": "memo.docx",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "ooxml-text"
+    }
+   ]
+  },
+  {
+   "id": "docx_white_tiny_run",
+   "group": "document",
+   "name": "memo.docx",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "ooxml-text"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "odt_span_split",
+   "group": "document",
+   "name": "memo.odt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "rtf_hidden_v",
+   "group": "document",
+   "name": "memo.rtf",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "text-folded"
+    }
+   ]
+  },
+  {
+   "id": "rtf_control_word_split",
+   "group": "document",
+   "name": "memo.rtf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "pdf_literal_ctl",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "pdf-flate"
+    }
+   ]
+  },
+  {
+   "id": "pdf_render_mode3",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "pdf-flate"
+    }
+   ]
+  },
+  {
+   "id": "pdf_tj_kerning",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "pdf_hex_string",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "pdf_octal_escape",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "pdf_cid_tounicode",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "pdf_info_literal",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "note",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "advisory"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_prompt_injection_phrases",
+     "severity": "note",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "pdf_info_utf16_hex",
+   "group": "document",
+   "name": "doc.pdf",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "mcp_json_description_ctl",
+   "group": "agent-ecosystem",
+   "name": "tools.json",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "heuristic_mcp_hidden_instruction",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "mcp_json_param_name",
+   "group": "agent-ecosystem",
+   "name": "tools.json",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "mcp_style_tool_result_text",
+   "group": "agent-ecosystem",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "mcp_python_docstring",
+   "group": "agent-ecosystem",
+   "name": "server.py",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "rules_file_script_injection",
+   "group": "agent-ecosystem",
+   "name": ".cursorrules",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "agents_md_curl_bash_ctl",
+   "group": "agent-ecosystem",
+   "name": "AGENTS.md",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "script_download_execute",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "agents_md_env_post",
+   "group": "agent-ecosystem",
+   "name": "AGENTS.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "issue_toxic_flow",
+   "group": "agent-ecosystem",
+   "name": "issue.md",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "tool_result_fake_human_turn",
+   "group": "agent-ecosystem",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "memory_poisoning",
+   "group": "agent-ecosystem",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "calendar_delayed_tool",
+   "group": "agent-ecosystem",
+   "name": "invite.ics",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "tool_send_email_exfil",
+   "group": "agent-ecosystem",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "system_override_banner",
+   "group": "agent-ecosystem",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "policy_puppetry",
+   "group": "agent-ecosystem",
+   "name": "msg.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "marker_llama2_inst",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "marker_llama3_header_ctl",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_role_spoof_action",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "marker_gemma_turn",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "marker_chatml_ctl",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "advisory",
+   "verdicts": {
+    "default": "advisory",
+    "agent-ingest": "block",
+    "agent-document": "block"
+   },
+   "incomplete_reason": null,
+   "findings": [
+    {
+     "rule_id": "agent_fake_chat_marker",
+     "severity": "advisory",
+     "view": "raw"
+    },
+    {
+     "rule_id": "agent_role_spoof_action",
+     "severity": "advisory",
+     "view": "raw"
+    }
+   ]
+  },
+  {
+   "id": "marker_harmony",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  },
+  {
+   "id": "marker_zephyr_system",
+   "group": "chat-markers",
+   "name": "tool_result.txt",
+   "tier": "miss",
+   "verdicts": {
+    "default": "clean",
+    "agent-ingest": "clean",
+    "agent-document": "clean"
+   },
+   "incomplete_reason": null,
+   "findings": []
+  }
+ ]
+}
