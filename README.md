@@ -139,7 +139,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Structural checks without YARA:** Office macros and DDE, PDF actions (including those inside compressed object streams), executables embedded in documents or nested archives, double extensions, filename control characters, MCP tool poisoning, and pickle, safetensors, and GGUF model files.
 
-**Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13.
+**Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
 **Precision:** on a generated corpus of 310 benign files, 76 of the 80 rules hit nothing. The other four are documented Windows collisions, each at 0.32%. This is a synthetic corpus, not a production false-positive rate.
 
@@ -162,9 +162,20 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 - These are the only three commands that use the network, and each swaps the vendor tree only after the new rules compile. A scan never downloads; on a terminal it prints one line on stderr until `setup` has run.
 - A `GITHUB_TOKEN` (or `GH_TOKEN`) is sent only to `api.github.com`.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs.
-- If a shipped rule fails to compile, or recorded vendor files are missing, the scan exits 2.
+- If a shipped rule fails to compile, or recorded vendor files are missing, the scan exits 2. The record of installed vendor files is `vendor.installed.json`, an untracked file beside `vendor/`, so `setup` in a checkout leaves `git status` clean.
 
 `yara-gate hunt --confirmed <sha256> --reason "…"` writes a candidate rule from a file already in `blocked/`. The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block.
+
+### How vendor matches are graded
+
+A vendor rule carries no `verdict_on_match`, so its match is a **block** unless [`rules/vendor-overrides.json`](rules/vendor-overrides.json) lists it. That file is a short, reviewed list in this repository. Each entry names one vendor rule, its pack, an action (`skip`, `note`, or `advisory`), the review date, and the reason. The scanner never derives a severity from a vendor rule's own metadata, such as signature-base's `score`; a person decides, and the list records the decision.
+
+| Vendor rule | Action | Why |
+| --- | --- | --- |
+| `Methodology_Contains_Shortcut_OtherURIhandlers` (signature-base) | skip | Its own description calls it noisy. It blocked ordinary `mailto:` and `steam://` `.url` shortcuts. Local rules still cover the risky `.url` shapes |
+| `Methodology_Suspicious_Shortcut_Local_URL` (signature-base) | advisory | A `.url` to a local `file:` URL. The local `win_internet_shortcut_launch` rule already grades this shape advisory |
+
+With the 2026-10-04 pins installed and this list applied, the generated benign corpus gets the same verdict under every policy as with the shipped rules alone. That corpus holds no benign executables, where most vendor rules apply. If a vendor rule holds a file you trust, add an entry with a reason and run `uv run python docs/verification/lint_rules.py`. If the list is missing, every vendor match blocks; if it is malformed, scans exit 2 with `invalid vendor-overrides.json`. With the packs installed, the list is part of the ruleset fingerprint in each report.
 
 ## Live demo
 
