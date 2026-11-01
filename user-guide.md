@@ -37,11 +37,15 @@ install or update to establish this record; scans do not enroll them automatical
 
 Scanning works offline with the shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
 
+Run this once, right after `uv sync`:
+
 ```bash
-uv run yara-gate rules install
+uv run yara-gate setup
 ```
 
-That exits 2 and prints `refusing: pass --allow-network`. The scan path itself never downloads anything. When you want the packs:
+`setup` downloads the packs pinned in `rules.lock`, checks each sha256, and compiles them before it replaces anything. Running it again prints `already set up` without touching the network while every recorded vendor file is present; `--force` downloads again. Until it has run, a scan on a terminal prints `note: vendor packs not installed; run 'yara-gate setup' once` on stderr and still scans with the shipped rules. Pipes, hooks, and `--json` callers do not see that line unless stderr is a terminal. The scan path itself never downloads anything.
+
+`rules install` does the same download on demand, but only with the flag; without it, it exits 2 and prints `refusing: pass --allow-network`:
 
 ```bash
 uv run yara-gate rules install --allow-network
