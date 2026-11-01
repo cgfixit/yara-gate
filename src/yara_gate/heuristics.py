@@ -919,8 +919,6 @@ def model_header_findings(path: Path, data: bytes) -> list[Finding]:
 # fetch a file or switch safe_mode off, so they are listed by name.
 _KERAS_UNSAFE_MODULES = frozenset(
     {
-        "__builtin__",
-        "builtins",
         "code",
         "codeop",
         "ctypes",
@@ -943,6 +941,31 @@ _KERAS_UNSAFE_MODULES = frozenset(
     }
 )
 _KERAS_UNSAFE_FUNCTIONS = frozenset({"enable_unsafe_deserialization", "get_file"})
+# Keras writes its own built-in losses, metrics, and activations as module "builtins" and
+# resolves the name in those Keras modules first; only a miss falls through to Python's builtins.
+# So a builtins reference blocks only when it names a Python builtin that runs code, imports,
+# opens files, or reaches into objects.
+_PYTHON_BUILTIN_MODULES = frozenset({"builtins", "__builtin__"})
+_KERAS_UNSAFE_BUILTINS = frozenset(
+    {
+        "__import__",
+        "breakpoint",
+        "compile",
+        "delattr",
+        "eval",
+        "exec",
+        "exit",
+        "getattr",
+        "globals",
+        "help",
+        "input",
+        "locals",
+        "open",
+        "quit",
+        "setattr",
+        "vars",
+    }
+)
 _HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 _KERAS_JSON_START = b'{"class_name"'
 _KERAS_MAX_NODES = 200_000
@@ -1031,7 +1054,12 @@ def _keras_unsafe(node: dict[object, object]) -> bool:
     module = node.get("module")
     if not isinstance(module, str):
         return False
-    if module.split(".", 1)[0] in _KERAS_UNSAFE_MODULES:
+    root = module.split(".", 1)[0]
+    if root in _PYTHON_BUILTIN_MODULES:
+        target = node.get("config") if node.get("class_name") == "function" else None
+        names = (target, node.get("class_name"), node.get("registered_name"))
+        return any(isinstance(name, str) and name in _KERAS_UNSAFE_BUILTINS for name in names)
+    if root in _KERAS_UNSAFE_MODULES:
         return True
     if not module.startswith("keras"):
         return False

@@ -156,6 +156,20 @@ def _workflow(kind: str) -> bytes:
             b"      - uses: example/secrets-to-env@v1\n"
             b"        with:\n          secrets: ${{ toJSON(secrets) }}\n"
         )
+    if kind == "env-after-block":
+        # The event text reaches the shell only through an environment variable.
+        return (
+            b"on: issue_comment\njobs:\n  build:\n    runs-on: self-hosted\n    steps:\n"
+            b'      - run: |\n          echo "$BODY"\n'
+            b"        env:\n          BODY: ${{ github.event.comment.body }}\n"
+        )
+    if kind == "other-job":
+        # The self-hosted runner belongs to a different job than the interpolating step.
+        return (
+            b"on: discussion\njobs:\n  test:\n    runs-on: self-hosted\n    steps:\n"
+            b"      - run: make test\n  echo:\n    runs-on: ubuntu-latest\n    steps:\n"
+            b"      - run: echo ${{ github.event.discussion.body }}\n"
+        )
     runner = b"self-hosted" if kind == "backdoor" else b"ubuntu-latest"
     return (
         b"on:\n  discussion:\njobs:\n  process:\n    runs-on: " + runner + b"\n"
@@ -171,6 +185,15 @@ def _keras(kind: str) -> bytes:
         "config": {"name": "dense", "units": 4, "activation": "relu"},
         "registered_name": None,
     }
+    if kind in {"builtin-loss", "builtin-eval"}:
+        # Keras writes its own losses as module "builtins"; a Python builtin like eval is unsafe.
+        name = "mean_squared_error" if kind == "builtin-loss" else "eval"
+        loss = {"module": "builtins", "class_name": "function", "config": name}
+        config = {"module": "keras", "class_name": "Sequential", "compile_config": {"loss": loss}}
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("config.json", json.dumps(config))
+        return output.getvalue()
     if kind == "unsafe":
         function: object = {
             "module": "os",
@@ -403,6 +426,10 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("unsafe.keras", _keras("unsafe"), "heuristic_keras_unsafe_call"),
         ("lambda.keras", _keras("lambda"), "heuristic_keras_lambda"),
         ("dense.keras", _keras("dense"), None),
+        ("builtin-loss.keras", _keras("builtin-loss"), None),
+        ("builtin-eval.keras", _keras("builtin-eval"), "heuristic_keras_unsafe_call"),
+        ("env-after-block.yml", _workflow("env-after-block"), None),
+        ("other-job.yml", _workflow("other-job"), None),
     ]
 
 

@@ -62,3 +62,15 @@ FACT. The 10 new benign corpus files (five workflows, five Keras files) produce 
 ## Review follow-up: bounded Keras walk
 
 FACT. Codex security review on #142 reported that `_walk_keras` queued every child of a container before the 200,000-node cap applied. Reproduced on a 4,000,032-byte `model.json` holding a list of 2,000,000 inert values, measured with `tracemalloc`: `keras_config_findings` peaked at 142,842 KiB and took 4.29 s, against 20,634 KiB and 1.85 s for `mcp_tool_findings` on the same bytes (the `json.loads` both share). The walk now keeps one lazy iterator per open container. Its stack is bounded by the depth cap, and the node cap ends the walk. After the change, the Keras path peaks at 20,634 KiB and takes 2.09 s. All 18 direct fixtures still match their expectations.
+
+## Review follow-up: Codex code review on #142
+
+FACT. Each of the three findings was reproduced before the fix with inert fixtures (`builtin-loss.keras`, `env-sibling.yml`, `other-job.yml`, and their variants). All three matched where they should not have.
+
+1. **Keras `builtins` functions.** In Keras 3.8.0's `keras/src/saving/serialization_lib.py`, Keras serializes its own built-in functions with `"module": "builtins"`. The deserializer resolves them in `activations`, `constraints`, `initializers`, `losses`, `metrics`, `optimizers`, and `regularizers` before it imports Python's `builtins`. A `builtins` reference now blocks only when it names a Python builtin that runs code, imports, opens files, or reflects (`eval`, `exec`, `compile`, `__import__`, `open`, `getattr`, `setattr`, `delattr`, `globals`, `locals`, `vars`, `input`, `breakpoint`, `exit`, `quit`, `help`). `mean_squared_error` is clean; `eval`, `exec`, and `os.system` still block.
+2. **Block-scalar dedent.** The `run: |` pattern accepted any indented following line, so a sibling `env:` that carried the event field matched. Ten strings now fix the `run` key's column (2 to 20, in dash or plain form) and require the following lines to be deeper or blank, as YAML does.
+3. **Runner evidence per job.** The condition now requires `runs-on: self-hosted` or `RUNNER_TRACKING_ID` before the step with no job header in between. A top-level `RUNNER_TRACKING_ID` before `jobs:` also counts. It tries the first 32 evidence lines, so the cost is linear in step matches.
+
+FACT. 13 targeted cases, the 18 original direct fixtures, `check_added_rules` (85, with 4 new boundary cases), `check_rule_pairs` (109), `measure_precision --fail-over` (320 files), `probe_rule_coverage --verify`, mypy, ruff, and `pytest tests/test_heuristics.py tests/test_scanner.py` (205) pass. A 364 KB workflow with 1,500 self-hosted jobs and 3,000 interpolating steps in other jobs scanned clean in 0.66 s. The same file with one interpolating self-hosted job appended matched in 0.57 s.
+
+ASSESSMENT. Remaining evasions: a `runs-on:` written after the job's steps, more than 32 decoy self-hosted lines before the real one, a header indent outside 2 to 4, and a `run` key column outside 2 to 20.
