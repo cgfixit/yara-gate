@@ -369,10 +369,10 @@ def _setup_hint(rules: Path | None) -> None:
 
 def _vendor_installed(root: Path) -> bool:
     """True when the lock records a vendor inventory and every recorded file is present."""
-    from yara_gate.rules import load_lock
+    from yara_gate.rules import installed_inventory
 
     try:
-        installed = load_lock(root).installed_vendor_files
+        installed = installed_inventory(root)
     except (OSError, ValueError):
         return False
     if not installed:
