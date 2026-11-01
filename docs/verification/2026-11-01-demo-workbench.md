@@ -89,10 +89,20 @@ The explicit GitHub documentation link is an outbound navigation when clicked.
 
 ## Original screenshot evidence
 
-Captured approximately 10:53–10:55 EST, America/New_York, November 1. JPEG bytes
+The first four were captured approximately 10:53–10:55 EST, America/New_York,
+November 1. JPEG bytes
 are saved directly from Computer Use without cropping or re-encoding. The
 desktop capture shows the actual advisory hold; the document and failure
 captures show the corresponding rendered outcomes, not just HTTP success.
+
+The fifth capture (expanded coverage) was taken at 11:01 EST on November 1
+against committed source `455b98ca6ab46c2f0f427ca3433c12da9419b7db`, with the
+same runtime hashes above. A fresh owned loopback process and copied 80-rule
+root scanned the inert PE-named-as-PDF example: block/exit 1,
+`filetype_mismatch_pe`, one unit, 128 bytes handed to YARA, zero skipped files.
+Computer Use expanded **Coverage & provenance** to show fingerprints, engine
+version, and counters. No executable was launched. The original four captures
+are unchanged.
 
 | Capture | Dimensions | SHA-256 |
 | --- | --- | --- |
@@ -100,6 +110,7 @@ captures show the corresponding rendered outcomes, not just HTTP success.
 | [Notes-only document](../../screenshots/yara-gate-workbench-document.jpg) | 375 × 812 | `0294854c9e2f0b221d9a8232e21190b5c532ec31d298a3a7132861a376cd16ca` |
 | [Incomplete hold](../../screenshots/yara-gate-workbench-incomplete.jpg) | 617 × 621 | `eaecf72c0c83a0c26558301ed82eba4949302b0077db5bbeab37d3c9f20d1624` |
 | [Connection failure](../../screenshots/yara-gate-workbench-offline.jpg) | 375 × 812 | `eaa24829caa20f440db24cd14dbc08af7e4055b3f7a60c6686f98c5a34c95b37` |
+| [Structural finding and expanded coverage](../../screenshots/yara-gate-workbench-coverage.jpg) | 1265 × 988 | `91d957b63091a2f110977d890b02b434c50b6ca9e481aa912233519f81031451` |
 
 ## Limits
 
