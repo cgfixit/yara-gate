@@ -51,7 +51,7 @@ URLs. Preserve active rules and the operator's gate home.
 | Intake | `quarantine.py`: regular single-link/no-follow input, quarantine before scan, reports before verdict relocation, incomplete retained, identical-byte resubmission rescanned. |
 | Content | `content.py`: in-memory extraction; shared byte/count/depth/deadline checks; original and derived views labeled; member ordinals conceal names. Third-party parsers are not hard-preempted. |
 | Rules | `rules.py`: candidates excluded, local failures fatal, bundled rules required for installed overlays, vendor skips retained on cold/warm cache paths, scans leave rules unchanged. |
-| Network | `cli.py`, `rules.py`: downloads require explicit task scope and `setup` or `--allow-network`; scans only hint on a terminal; staged compilation before swap; failure preserves vendor/lock; tokens only to API host and stripped across hosts. |
+| Network | `cli.py`, `rules.py`: downloads require explicit task scope and `--allow-network`; staged compilation before swap; failure preserves vendor/lock; tokens only to API host and stripped across hosts. |
 | Reports | `report.py`, `demo.py`: no matched bytes; derived/member offsets are not outer-file SARIF regions; home redaction is not full path anonymization. |
 | Demo | `demo.py`, `demo_page.html`: loopback binding, Host/Origin validation, bounded requests, nonce CSP, escaped text rendering, no target execution/downloads. |
 

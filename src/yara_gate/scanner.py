@@ -3,7 +3,7 @@
 import hashlib
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +58,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
-from yara_gate.rules import compile_ruleset, default_rules_dir, vendor_overrides, yara_x_version
+from yara_gate.rules import compile_ruleset, default_rules_dir, yara_x_version
 
 
 class ScanTimeout(Exception):
@@ -170,9 +170,7 @@ def _scan_file(
             # Decoded PDF streams can be image samples, whose flat areas read as base64; a
             # validated raster's views say so through ``samples``.
             samples = samples or view == "pdf-flate"
-            return _yara_findings(
-                rules, payload, ext, seconds, samples=samples, overrides=overrides
-            )
+            return _yara_findings(rules, payload, ext, seconds, samples=samples)
         finally:
             scanned_bytes += len(payload)
             yara_time += time.monotonic() - begun
@@ -225,10 +223,6 @@ def _scan_file(
         return finish(error or "yara-x missing")
     fingerprint = ruleset
     engine_version = yara_x_version()
-    try:
-        overrides = vendor_overrides()
-    except (OSError, ValueError):
-        return finish("invalid vendor-overrides.json")
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
     try:
@@ -404,28 +398,16 @@ def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = Non
 
 
 def _yara_findings(
-    rules: object,
-    data: bytes,
-    ext: str,
-    timeout_s: int,
-    *,
-    samples: bool = False,
-    overrides: Mapping[str, str] | None = None,
+    rules: object, data: bytes, ext: str, timeout_s: int, *, samples: bool = False
 ) -> list[Finding]:
     result = _invoke_scan(rules, data, timeout_s, ext, samples=samples)
     findings: list[Finding] = []
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
-        rule_id = str(getattr(rule, "identifier", "rule"))
-        mode = meta.get("verdict_on_match")
-        if mode is None:
-            # A rule without verdict_on_match is a vendor rule. Its severity comes from the
-            # reviewed rules/vendor-overrides.json list, and it blocks when the list omits it.
-            mode = (overrides or {}).get(rule_id, "block")
-            if mode == "skip":
-                continue
+        mode = meta.get("verdict_on_match", "block")
         if mode not in ("note", "advisory", "block"):
             mode = "block"
+        rule_id = str(getattr(rule, "identifier", "rule"))
         located = _first_match(rule, data, text_only=samples and rule_id in UNICODE_CONTROL_RULES)
         if located is None:
             # Every match of a control rule sits in bytes that are not UTF-8 text.

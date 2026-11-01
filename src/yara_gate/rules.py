@@ -52,10 +52,6 @@ class RuleDownloadError(Exception):
     """A rule download failed. The message is safe to print."""
 
 
-class RuleIntegrityError(RuleDownloadError, ValueError):
-    """A downloaded pack did not match its pinned sha256. The message names the pack."""
-
-
 @dataclass(kw_only=True, slots=True)
 class PackPin:
     name: str
@@ -389,10 +385,9 @@ def compile_ruleset(
     files = rule_files(rules_dir, overlay=use_overlay)
     shadows = shadowed_rule_lines(rules_dir, overlay=use_overlay)
     try:
-        installed = installed_inventory(rules_dir)
-    except (OSError, ValueError) as exc:
-        reason = str(exc) if str(exc) == "invalid vendor inventory" else "invalid rules.lock"
-        return None, shadows, reason, 0, _count_skipped(shadows), None
+        installed = load_lock(rules_dir).installed_vendor_files
+    except (OSError, ValueError):
+        return None, shadows, "invalid rules.lock", 0, _count_skipped(shadows), None
     if installed is not None:
         vendor = str(rules_dir / "vendor") + os.sep
         present = {
@@ -529,7 +524,7 @@ def install_packs(
             blob = _bytes(pack.url, transport=transport)
             digest = hashlib.sha256(blob).hexdigest()
             if digest != pack.sha256:
-                raise RuleIntegrityError(f"sha256 mismatch for {pack.name}")
+                raise ValueError("sha256 mismatch")
             _extract_locked(pack, blob, staging)
         _validate_staged(root, staging)
         _swap_vendor(root, staging, lock)
@@ -726,98 +721,6 @@ def _download_http_error(url: str, exc: urllib.error.HTTPError) -> RuleDownloadE
     return RuleDownloadError(f"HTTP {code} from {host}")
 
 
-# The installed vendor inventory lives beside vendor/, not in rules.lock: an install in a
-# checkout must not rewrite a tracked file. A lock that still carries the legacy field is read.
-INVENTORY_NAME = "vendor.installed.json"
-OVERRIDES_NAME = "vendor-overrides.json"
-_OVERRIDE_ACTIONS = frozenset({"skip", "note", "advisory"})
-_OVERRIDE_KEYS = frozenset({"rule", "pack", "action", "reviewed", "reason"})
-_OVERRIDES_MEMO: dict[tuple[str, int, int], dict[str, str]] = {}
-
-
-def installed_inventory(rules_dir: Path) -> list[str] | None:
-    """The vendor files the last successful install recorded, or None when none was recorded.
-
-    Raises ValueError when the inventory or the lock is malformed.
-    """
-    path = rules_dir / INVENTORY_NAME
-    try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        return load_lock(rules_dir).installed_vendor_files
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise ValueError("invalid vendor inventory") from None
-    files = data.get("installed_vendor_files") if isinstance(data, dict) else None
-    if not isinstance(files, list) or not all(isinstance(item, str) for item in files):
-        raise ValueError("invalid vendor inventory")
-    return files
-
-
-def _write_inventory(root: Path, files: list[str]) -> None:
-    path = root / INVENTORY_NAME
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
-    payload = json.dumps({"installed_vendor_files": files}, indent=2) + "\n"
-    temporary.write_text(payload, encoding="utf-8")
-    os.replace(temporary, path)
-
-
-def vendor_overrides_path() -> Path:
-    """The reviewed vendor-override list shipped in the wheel, else the checkout copy."""
-    packaged = Path(__file__).resolve().parent / "bundled_rules" / OVERRIDES_NAME
-    if packaged.is_file():
-        return packaged
-    return project_root() / "rules" / OVERRIDES_NAME
-
-
-def vendor_overrides() -> dict[str, str]:
-    """Map a vendor rule identifier to ``skip``, ``note``, or ``advisory``.
-
-    Only a match whose rule declares no ``verdict_on_match`` (every vendor rule, no local one)
-    is affected. A missing file means no override, so every vendor match stays ``block``.
-    Raises ValueError on a malformed file, which a scan reports as incomplete.
-    """
-    path = vendor_overrides_path()
-    try:
-        stat_result = path.stat()
-    except FileNotFoundError:
-        return {}
-    key = (str(path), stat_result.st_mtime_ns, stat_result.st_size)
-    cached = _OVERRIDES_MEMO.get(key)
-    if cached is not None:
-        return cached
-    parsed = parse_vendor_overrides(path.read_bytes())
-    _OVERRIDES_MEMO.clear()
-    _OVERRIDES_MEMO[key] = parsed
-    return parsed
-
-
-def parse_vendor_overrides(raw: bytes) -> dict[str, str]:
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise ValueError("invalid vendor-overrides.json") from None
-    entries = (
-        data.get("overrides") if isinstance(data, dict) and set(data) == {"overrides"} else None
-    )
-    if not isinstance(entries, list):
-        raise ValueError("invalid vendor-overrides.json")
-    actions: dict[str, str] = {}
-    for entry in entries:
-        if (
-            not isinstance(entry, dict)
-            or set(entry) != _OVERRIDE_KEYS
-            or not all(isinstance(entry[name], str) and entry[name] for name in _OVERRIDE_KEYS)
-            or entry["action"] not in _OVERRIDE_ACTIONS
-            or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", entry["rule"]) is None
-            or entry["rule"] in actions
-        ):
-            raise ValueError("invalid vendor-overrides.json")
-        actions[entry["rule"]] = entry["action"]
-    return actions
-
-
 def bundled_lock_path() -> Path | None:
     packaged = Path(__file__).resolve().parent / "bundled_rules" / "rules.lock"
     if packaged.is_file():
@@ -923,31 +826,19 @@ def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
     _collect_rules(staging, files)
     if not files:
         raise ValueError("no vendor rule files")
-    inventory = sorted(path.relative_to(staging).as_posix() for path in files)
-    # The lock keeps only the pins; the inventory goes to the untracked file beside vendor/.
-    lock.installed_vendor_files = None
-    inventory_path = root / INVENTORY_NAME
-    previous_inventory = inventory_path.read_bytes() if inventory_path.is_file() else None
+    lock.installed_vendor_files = sorted(path.relative_to(staging).as_posix() for path in files)
     vendor = root / "vendor"
     old = root / f".vendor-old-{secrets.token_hex(4)}"
     moved = False
     installed = False
-    recorded = False
     try:
         if vendor.exists():
             os.rename(vendor, old)
             moved = True
         os.rename(staging, vendor)
         installed = True
-        _write_inventory(root, inventory)
-        recorded = True
         save_lock(lock, root)
     except Exception:
-        if recorded:
-            if previous_inventory is None:
-                inventory_path.unlink(missing_ok=True)
-            else:
-                inventory_path.write_bytes(previous_inventory)
         if installed:
             shutil.rmtree(vendor, ignore_errors=True)
         if moved and old.exists() and not vendor.exists():
@@ -1062,12 +953,6 @@ def ruleset_digest(
     for line in shadow_lines:
         hasher.update(line.encode())
         hasher.update(b"\x00")
-    if any(rule_key.startswith("vendor/") for rule_key in keys):
-        # The override list changes vendor verdicts, so it is part of that ruleset's identity.
-        try:
-            hasher.update(b"overrides\x00" + vendor_overrides_path().read_bytes())
-        except OSError:
-            hasher.update(b"overrides\x00\x01missing")
     digest = hasher.hexdigest()
     _DIGEST_STAMP[key] = stamp
     _DIGEST_VALUE[key] = digest

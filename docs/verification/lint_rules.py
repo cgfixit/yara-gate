@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from yara_gate.rules import OVERRIDES_NAME, compile_sources, parse_vendor_overrides
+from yara_gate.rules import compile_sources
 
 REPO = Path(__file__).resolve().parents[2]
 _RULE = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)\s*\{")
@@ -57,25 +57,9 @@ def main() -> None:
                         failures.append(f"{path.name}:{name} severity {severity} is not {verdict}")
         if count != declared:
             failures.append(f"compiled {count} of {declared}")
-    # The reviewed vendor-override list must parse, and must not name a local rule: overrides
-    # apply only to rules without verdict_on_match, so a local name there would be dead or wrong.
-    overrides_path = REPO / "rules" / OVERRIDES_NAME
-    try:
-        overrides = parse_vendor_overrides(overrides_path.read_bytes())
-    except (OSError, ValueError) as exc:
-        failures.append(f"{OVERRIDES_NAME}: {exc}")
-        overrides = {}
-    local_names = {
-        name
-        for path in (REPO / "rules/local").iterdir()
-        if path.suffix in {".yar", ".yara"}
-        for name, _body in _blocks(path.read_text(encoding="utf-8"))
-    }
-    for name in sorted(set(overrides) & local_names):
-        failures.append(f"{OVERRIDES_NAME}: {name} is a local rule")
     if failures:
         raise SystemExit("\n".join(failures))
-    print(f"local rules compiled and linted ({declared}); vendor overrides ({len(overrides)})")
+    print(f"local rules compiled and linted ({declared})")
 
 
 if __name__ == "__main__":

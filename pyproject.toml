@@ -34,7 +34,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel.force-include]
 "rules/local" = "yara_gate/bundled_rules/local"
 "rules/rules.lock" = "yara_gate/bundled_rules/rules.lock"
-"rules/vendor-overrides.json" = "yara_gate/bundled_rules/vendor-overrides.json"
 "tests/fixtures/benign" = "yara_gate/bundled_rules/benign"
 
 [dependency-groups]
