@@ -28,10 +28,11 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-After a successful install or update with the current version, `rules.lock`
-records the installed vendor filenames. Losing any recorded file makes scans
-incomplete (exit 2) and keeps inbox files in quarantine. Run `rules install` with
-`--allow-network` again to restore the locked packs. Local-only offline scans
+After a successful install or update, `vendor.installed.json` beside `vendor/`
+records the installed vendor filenames. It is not tracked by git, so a checkout stays
+clean, and an older lock that holds the list is still read. Losing any recorded file
+makes scans incomplete (exit 2) and keeps inbox files in quarantine. Run `yara-gate
+setup` again to restore the locked packs. Local-only offline scans
 remain available before installation. Older installations need one successful
 install or update to establish this record; scans do not enroll them automatically.
 
@@ -52,6 +53,12 @@ uv run yara-gate rules install --allow-network
 ```
 
 `rules install` downloads the pins already recorded in `rules.lock` and checks each sha256, so you get the reviewed set. The command prints one line per pack (`pin` and `sha256`) and then `compiled_rules=... skipped_rules=...`. A `rules update` run on 2026-10-04 printed `compiled_rules=13535 skipped_rules=13`. The 13 names are in `rules/vendor/SKIPPED.md`. Most of those signature-base files need external variables that yara-x does not have here, so they are skipped instead of failing the whole scan.
+
+If the lock does not match a download, the command prints `incomplete: sha256 mismatch for <pack>`, exits 2, and keeps the previous vendor tree.
+
+### How vendor matches are graded
+
+Every vendor match blocks unless `rules/vendor-overrides.json` lists that rule. The list is reviewed and committed, and each entry gives one rule, its pack, an action (`skip`, `note`, or `advisory`), a review date, and the reason. yara-gate does not turn a vendor rule's own `score` into a severity. Today the list has two signature-base `.url` rules: one skipped as noisy (it blocked `mailto:` and `steam://` shortcuts), one lowered to advisory. With that list, the benign corpus gets the same verdicts as with the shipped rules alone. A vendor rule may still hold a file you trust. To change that, add an entry with a reason and check the list with `uv run python docs/verification/lint_rules.py`. Do not edit the vendor rule files: `setup --force` and `rules update` replace them. A missing list makes every vendor match block. A malformed list makes every scan exit 2 with `invalid vendor-overrides.json`.
 
 Run `uv run yara-gate rules update --allow-network` when you want newer pins. It resolves the current upstream release and commits, replaces the vendor files, and rewrites `rules/rules.lock`. Either command leaves the previous vendor tree and lock in place if anything fails.
 

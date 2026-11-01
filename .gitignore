@@ -22,6 +22,7 @@ dist/
 .env
 .env.*
 rules/.cache/
+rules/vendor.installed.json
 rules/vendor/**
 !rules/vendor/.gitkeep
 !rules/vendor/SKIPPED.md

@@ -1,0 +1,18 @@
+{
+  "overrides": [
+    {
+      "rule": "Methodology_Contains_Shortcut_OtherURIhandlers",
+      "pack": "signature-base",
+      "action": "skip",
+      "reviewed": "2026-11-01",
+      "reason": "Its own description says noisy (score 35). It blocked ordinary mailto: and steam:// .url shortcuts in the 320-file benign corpus. Local rules still cover the risky .url shapes: win_internet_shortcut_launch (file:, UNC, search-ms:, or a local program) and web_ms_protocol_lure (ms-msdt: and ms-appinstaller: lures)."
+    },
+    {
+      "rule": "Methodology_Suspicious_Shortcut_Local_URL",
+      "pack": "signature-base",
+      "action": "advisory",
+      "reviewed": "2026-11-01",
+      "reason": "A .url pointing at a local file: URL (score 50). It blocked a local handbook shortcut in the benign corpus. Advisory matches the local win_internet_shortcut_launch rule for the same shape; agent-ingest still holds it."
+    }
+  ]
+}

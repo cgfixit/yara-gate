@@ -406,6 +406,38 @@ def cases() -> list[tuple[str, bytes, str | None]]:
     ]
 
 
+_FAKE_VENDOR = """
+rule Methodology_Contains_Shortcut_OtherURIhandlers {
+    strings: $a = "inert-override-skip" condition: $a
+}
+rule Methodology_Suspicious_Shortcut_Local_URL { strings: $a = "inert-override-low" condition: $a }
+rule Vendor_Unlisted_Inert { strings: $a = "inert-override-keep" condition: $a }
+"""
+
+
+def _vendor_override_failures(root: Path) -> list[str]:
+    """Inert stand-ins for vendor rules, named as in rules/vendor-overrides.json."""
+    rules = root / "override-rules"
+    shutil.copytree(REPO / "rules/local", rules / "local")
+    shutil.copy2(REPO / "rules/rules.lock", rules / "rules.lock")
+    (rules / "vendor" / "inert").mkdir(parents=True)
+    (rules / "vendor" / "inert" / "fake.yar").write_text(_FAKE_VENDOR, encoding="utf-8")
+    expected = {
+        "inert-override-skip": None,
+        "inert-override-low": ("Methodology_Suspicious_Shortcut_Local_URL", "advisory"),
+        "inert-override-keep": ("Vendor_Unlisted_Inert", "block"),
+    }
+    failures: list[str] = []
+    for token, want in expected.items():
+        path = root / f"{token}.txt"
+        path.write_bytes(token.encode() + b"\n")
+        result = scan_file(path, rules_dir=rules)
+        got = {(item.rule_id, item.severity.value) for item in result.findings}
+        if result.incomplete_reason or (want is None and got) or (want and got != {want}):
+            failures.append(f"vendor override {token}: got {sorted(got)}")
+    return failures
+
+
 def main() -> None:
     failures: list[str] = []
     with tempfile.TemporaryDirectory(prefix="yara-gate-added-") as directory:
@@ -425,9 +457,10 @@ def main() -> None:
                 failures.append(f"{name}: unexpected {sorted(found)}")
             elif expected is not None and expected not in found:
                 failures.append(f"{name}: missing {expected}, got {sorted(found)}")
+        failures.extend(_vendor_override_failures(root))
     if failures:
         raise SystemExit("\n".join(failures))
-    print(f"added-rule checks passed ({len(cases())})")
+    print(f"added-rule checks passed ({len(cases())} plus 3 vendor-override cases)")
 
 
 if __name__ == "__main__":
