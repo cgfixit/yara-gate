@@ -183,15 +183,41 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 ## 9. Try a verdict in the browser
 
-Open `demo.html` for a limited JavaScript illustration, or run `yara-gate demo` to exercise the actual scanner and policy selector. Choose **Scan plain note**, **Scan base64 text**, or **Scan PE saved as PDF**, or paste text and choose **Scan paste**. The result shows the verdict and exit code without echoing matched bytes. Neither demo moves files into `~/YaraGate`. The standalone file does not implement the full current scanner.
-
-The full yara-x scan is still the loopback command.
+Run `yara-gate demo` for the local scan workbench backed by the real scanner.
+The root `demo.html` is a separate, limited JavaScript illustration.
 
 ```bash
 uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
 ```
 
 Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. The server refuses any bind other than `127.0.0.1`.
+
+1. Choose what the agent will read. **Message or tool result** selects
+   `agent-ingest` and holds notes and advisories. **Retrieved document** selects
+   `agent-document` and permits notes alone. **Manual inspection** uses default
+   policy, whose exit 0 can include advisories.
+2. Choose an inert example and **Scan sample**, or paste text and **Scan text**
+   (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
+   the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
+   with the original type/name for files, model inputs, and larger content.
+3. Read the decision and original finding severities. **View result** jumps to
+   the result on a small screen. **Coverage & provenance** shows the loaded-rule
+   count, skipped files, derived views, and fingerprints. A completed bundled-only
+   scan does not mean vendor packs were installed. **Demo response JSON** shows
+   preview fields without the input or matched bytes; it is not the full CLI
+   integration record.
+4. Changing input, example, or policy clears the old result. **Clear input &
+   result** removes the visible paste and response. Connection failures and
+   rejected requests leave no current verdict. A scan already running on the
+   server may finish after the page clears it.
+
+No input, scan reports, or history are saved by the app, and no file is moved or
+released. Compiled rules may be cached locally. The page has no external assets,
+analytics, browser storage, or cloud calls; its GitHub guide link is an explicit
+navigation out of the app. Clear does not erase the clipboard or guarantee memory
+erasure. Review fingerprints before sharing them. Use the
+[integration guide](docs/integrations.md#previewing-policies-in-the-local-workbench)
+for actual CyClaw/Harness callers; a preview never authorizes following content.
 
 Malformed JSON syntax or byte encoding returns HTTP 400 with `bad json`. Rejected
 requests are not scanned. The browser clears its previous verdict when a new

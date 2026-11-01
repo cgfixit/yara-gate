@@ -84,6 +84,36 @@ and validate the SHA-256 when handing bytes to another process.
 This is a CLI integration surface, not an installed CyClaw, Harness, RAG, or
 Windows integration. The command does not execute targets or fetch URLs.
 
+## Previewing policies in the local workbench
+
+Run `yara-gate demo --rules /path/to/rules` and open its printed loopback URL to
+compare the real scanner's policy outcomes before wiring a consumer. The UI
+starts on `agent-ingest`; its note and advisory examples make the difference
+between message, document, and default policies visible. Results show the
+original finding severities, policy reason, derived/member provenance, and
+coverage from the configured rules. A skipped-rule warning is reduced coverage,
+and an incomplete result is a hold even when partial findings exist.
+
+This preview does not connect to CyClaw or CG-agent-harness, read their folders,
+move/release files, or call an agent. Integrate at the owning caller: before a
+CyClaw message becomes a query or a staged corpus file is indexed, and before a
+Harness attachment, fetched page, or tool result enters prompt assembly. Keep
+their existing consent, write approvals, and untrusted-content fences.
+
+The demo's HTTP endpoint and reduced response are for the page. Production
+callers use the CLI/library contracts below, including record counts, policy,
+completeness, and byte identity. Never turn a displayed exit 0 or an earlier
+preview into permission to read changed content. The browser paste is always
+named `paste.txt`; use the original type/name when gating a real file.
+
+Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The app stores no
+scan history or content and sends scans only to its loopback server. The compiler
+may write its local rule cache. Clear removes the page's input/result, not the
+clipboard or all memory copies; an in-flight scan may still finish. Expanding
+JSON reveals hashes and metadata, which can identify known content even without
+matched bytes. The GitHub documentation link leaves the local app only when
+opened. This UI is neither an authenticated multi-user service nor a remote API.
+
 ## Which entry point to use
 
 CyClaw, CG-agent-harness, and any other caller use the same CLI or library call.

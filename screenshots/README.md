@@ -1,8 +1,27 @@
 # Verification screenshots
 
 This directory preserves Computer Use captures and the user-supplied demo image
-without editing or re-encoding. The README features the October 19 strict-policy
-result below. Earlier captures retain their original implementation provenance.
+without editing or re-encoding. The README features the November 1 workbench
+below. Earlier captures retain their original implementation provenance.
+
+## November 1 local scan workbench
+
+| Desktop advisory hold | Narrow document-policy result |
+| --- | --- |
+| ![Workbench holds an advisory before agent access](yara-gate-workbench-hold.jpg) | ![Document policy records notes only](yara-gate-workbench-document.jpg) |
+
+| Incomplete scan | Connection failure clears the result |
+| --- | --- |
+| ![Rule compile failure remains incomplete](yara-gate-workbench-incomplete.jpg) | ![Stopped server leaves no current verdict](yara-gate-workbench-offline.jpg) |
+
+These original Computer Use JPEG captures were taken November 1, 2026,
+approximately 10:53–10:55 EST (America/New_York), in the macOS in-app browser.
+The candidate was dirty `cx/demo-agent-workbench` on `68e27e7`; exact runtime
+hashes, image hashes/dimensions, scenarios, and limits are in the
+[workbench verification record](../docs/verification/2026-11-01-demo-workbench.md).
+All examples were inert. The normal scanner used 80 copied bundled rules and no
+vendor packs; the incomplete capture used a separate intentionally broken rules
+copy. None of these images verifies an installed consumer integration.
 
 ## Final combined acceptance
 
