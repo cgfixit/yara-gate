@@ -150,3 +150,15 @@ This is the one retained screenshot from that verification session. It shows the
 
 The [verification record](../docs/verification/agent-rule-coverage.md) separates
 this rendered result from CLI disposition and consumer-document scan evidence.
+
+## Pages recorded demo — November 1, 2026
+
+Five original Computer Use captures show the separate static Pages companion:
+policy comparison, a notes-only document on a narrow screen, an incomplete
+recording, decoded-view findings, and local-use/privacy guidance. These are
+replays of recorded scanner outputs, not live scans in the browser.
+
+See the [Pages verification record](../docs/verification/2026-11-01-pages-demo.md)
+for source/artifact provenance, capture times, image hashes, and verification
+limits. No sample content, credentials, private documents, or local paths appear
+in the captures. Images retain their original bytes.
