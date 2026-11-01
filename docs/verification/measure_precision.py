@@ -450,6 +450,93 @@ def _agent_files() -> list[tuple[str, bytes]]:
     return files
 
 
+def _ecosystem_files() -> list[tuple[str, bytes]]:
+    """Ordinary GitHub Actions workflows and Keras model files, none of them a planted shape."""
+    files: list[tuple[str, bytes]] = []
+    workflows = (
+        # A CI job on a self-hosted runner that reads event text only through env and if:.
+        b"on:\n  issue_comment:\njobs:\n  deploy:\n"
+        b"    if: contains(github.event.comment.body, '/deploy')\n"
+        b"    runs-on: [self-hosted, linux]\n    steps:\n"
+        b"      - uses: actions/checkout@v4\n"
+        b'      - run: echo "$TITLE"\n        env:\n'
+        b"          TITLE: ${{ github.event.issue.title }}\n",
+        # The secrets-to-env pattern: every secret goes to an action input, nothing is sent.
+        b"on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n"
+        b"      - uses: oNaiPs/secrets-to-env-action@v1\n"
+        b"        with:\n          secrets: ${{ toJSON(secrets) }}\n"
+        b"      - run: make build\n",
+        # One named secret in an API call.
+        b"on: release\njobs:\n  notify:\n    runs-on: ubuntu-latest\n    steps:\n"
+        b'      - run: curl -fsS -H "Authorization: Bearer ${{ secrets.SLACK_TOKEN }}" '
+        b"https://slack.example/api/chat.postMessage\n",
+        # Issue triage on a hosted runner that passes the title to an action input.
+        b"on:\n  issues:\n    types: [opened]\njobs:\n  label:\n"
+        b"    runs-on: ubuntu-latest\n    steps:\n"
+        b"      - uses: actions/github-script@v7\n        with:\n"
+        b"          script: core.info(${{ toJSON(github.event.issue.title) }})\n",
+        # A matrix test job.
+        b"on: [push, pull_request]\njobs:\n  test:\n    runs-on: ${{ matrix.os }}\n"
+        b"    strategy:\n      matrix:\n        os: [ubuntu-latest, macos-latest]\n"
+        b"    steps:\n      - uses: actions/checkout@v4\n      - run: uv run pytest -q\n",
+    )
+    for index, workflow in enumerate(workflows):
+        files.append((f"repo/.github/workflows/ci-{index:02d}.yml", workflow))
+
+    def layer(name: str, extra: dict[str, object]) -> dict[str, object]:
+        return {
+            "module": "keras.layers",
+            "class_name": "Dense",
+            "config": {"name": name, "units": 8, "activation": "relu", **extra},
+            "registered_name": None,
+        }
+
+    initializer = {
+        "module": "keras.initializers",
+        "class_name": "GlorotUniform",
+        "config": {"seed": None},
+        "registered_name": None,
+    }
+    loss = {
+        "module": "keras.losses",
+        "class_name": "function",
+        "config": "mean_squared_error",
+        "registered_name": "mean_squared_error",
+    }
+    custom = {
+        "module": "my_project.layers",
+        "class_name": "Gate",
+        "config": {"units": 2},
+        "registered_name": "MyProject>Gate",
+    }
+    configs = (
+        [layer("dense", {}), layer("out", {"kernel_initializer": initializer})],
+        [layer("dense", {}), custom],
+    )
+    for index, layers in enumerate(configs):
+        config = {
+            "module": "keras",
+            "class_name": "Sequential",
+            "config": {"name": "sequential", "layers": layers},
+            "compile_config": {"loss": loss},
+        }
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("metadata.json", json.dumps({"keras_version": "3.8.0"}))
+            archive.writestr("config.json", json.dumps(config))
+            archive.writestr("model.weights.h5", b"\x89HDF\r\n\x1a\n" + bytes(64))
+        files.append((f"models/model-{index:02d}.keras", output.getvalue()))
+        files.append((f"models/model-{index:02d}.json", json.dumps(config, indent=2).encode()))
+    legacy = {"class_name": "Sequential", "config": {"layers": [layer("dense_1", {})]}}
+    files.append(
+        (
+            "models/legacy.h5",
+            b"\x89HDF\r\n\x1a\n" + bytes(48) + json.dumps(legacy).encode() + bytes(32),
+        )
+    )
+    return files
+
+
 def build_corpus(root: Path) -> dict[str, str]:
     """Write benign files. Return name -> plant tag (empty when the file is ordinary)."""
     tags: dict[str, str] = {}
@@ -552,6 +639,8 @@ def build_corpus(root: Path) -> dict[str, str]:
     for name, data in _platform_files():
         add(name, data)
     for name, data in _agent_files():
+        add(name, data)
+    for name, data in _ecosystem_files():
         add(name, data)
 
     for index in range(8):

@@ -28,6 +28,8 @@ HEURISTICS = {
     "heuristic_pickle_reduce",
     "heuristic_safetensors_header",
     "heuristic_gguf_header",
+    "heuristic_keras_unsafe_call",
+    "heuristic_keras_lambda",
     "heuristic_ooxml_vba",
     "heuristic_ooxml_oleobject",
     "heuristic_ooxml_altchunk",
@@ -95,6 +97,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
     magic_tail = added._magic_tail
     safetensors = added._safetensors
     zipped = added._zip
+    workflow = added._workflow
+    keras = added._keras
     encoded = "VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA=="
     powershell = probe.shell_link(
         r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
@@ -512,6 +516,10 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         ("heuristic_safetensors_header", safetensors(False), safetensors(True)),
         ("heuristic_gguf_header", gguf(False), gguf(True)),
+        ("heuristic_keras_unsafe_call", keras("unsafe"), keras("dense")),
+        ("heuristic_keras_lambda", keras("lambda"), keras("dense")),
+        ("dev_github_workflow_secrets_dump", workflow("dump"), workflow("dump-input")),
+        ("dev_github_workflow_runner_backdoor", workflow("backdoor"), workflow("hosted")),
         (
             "heuristic_ooxml_vba",
             zipped("word/vbaProject.bin", b"not-a-macro"),
@@ -907,6 +915,8 @@ def main() -> None:
                 "heuristic_pickle_reduce": ("danger.pkl", "note.pkl"),
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
+                "heuristic_keras_unsafe_call": ("unsafe.keras", "dense.keras"),
+                "heuristic_keras_lambda": ("lambda.keras", "dense.keras"),
                 "heuristic_filename_control": ("invoice_\u202efdp.exe", "invoice_pdf.exe"),
                 "agent_bidi_source": ("access.py", "access.md"),
                 "dev_python_pth_exec": ("hook.pth", "venv.pth"),
