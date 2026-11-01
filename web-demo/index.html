@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore recorded yara-gate scan results and policies. This demo does not scan files or accept private content.">
+  <title>yara-gate · Recorded demo</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#content">Skip to examples</a>
+  <header><div class="shell bar"><strong class="brand"><span aria-hidden="true">YG</span> yara-gate</strong><span class="tag">Recorded demo · no live scan</span></div></header>
+  <main class="shell" id="content">
+    <div class="intro">
+      <p class="eyebrow">A gate before the context window</p>
+      <h1>See what reaches your agent.</h1>
+      <p>Explore real, recorded scanner results for six inert examples. Compare policies, inspect findings, and see why a failed scan stays held.</p>
+      <p class="notice"><strong>This website does not scan anything.</strong> It replays saved results. There is no paste box, file upload, or connection to a local scanner. Use the local app for your own content.</p>
+    </div>
+    <noscript><p class="notice">JavaScript is needed to view the recordings. The local scanner can be used from the command line without this website.</p></noscript>
+    <div class="workspace" id="workbench" hidden>
+      <section class="panel" aria-labelledby="choose-title">
+        <h2 id="choose-title"><span class="step">01</span> Explore an example</h2>
+        <label for="example">Recorded scenario</label>
+        <select id="example"></select>
+        <p id="example-description" class="help"></p>
+        <label for="policy">Where would the content be used?</label>
+        <select id="policy">
+          <option value="agent-ingest">Message or tool result · agent-ingest</option>
+          <option value="agent-document">Retrieved document · agent-document</option>
+          <option value="default">Manual inspection · default</option>
+        </select>
+        <p id="policy-help" class="policy-help"></p>
+        <a href="#result-title" class="result-link">View recorded result ↓</a>
+        <div class="divider">
+          <h3>One example, three policies</h3>
+          <p class="help">The finding keeps its severity. The policy determines whether the content is held.</p>
+          <table><caption class="sr-only">Recorded outcomes under each policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Verdict</th><th scope="col">Exit</th></tr></thead><tbody id="comparison"></tbody></table>
+        </div>
+        <details><summary>How these recordings were made</summary><p class="help">The real Python/YARA-X scanner inspected inert inputs with bundled rules, offline. No targets were executed. The failure example used a deliberately invalid rule in a disposable copy.</p><dl id="recording-source"></dl></details>
+      </section>
+      <section class="panel" aria-labelledby="result-title">
+        <div class="section-head"><h2 id="result-title" tabindex="-1"><span class="step">02</span> Recorded outcome</h2><span class="tag">Saved result</span></div>
+        <div id="decision" class="decision"><span id="verdict" class="badge"></span><span id="exit-policy" class="help"></span><h3 id="decision-title"></h3><p id="decision-help"></p></div>
+        <p id="policy-reason" class="help"></p>
+        <div class="metrics"><div><strong id="rule-count"></strong><span>compiled rules</span></div><div><strong id="units"></strong><span>content units</span></div><div><strong id="skips"></strong><span>skipped files</span></div></div>
+        <h3>Recorded findings</h3><ul id="findings"></ul><p id="no-findings" class="help"></p>
+        <details><summary>Coverage &amp; provenance</summary><p class="help">These are historical counts, not a live health check or a guarantee of safety. Offsets belong to the named view/member.</p><dl id="coverage"></dl></details>
+        <details><summary>Recorded response JSON</summary><p class="help">Curated fields with no input content, matched bytes, or file paths. This is demonstration evidence, never an authorization record for another file.</p><pre id="json" tabindex="0" aria-label="Recorded response JSON"></pre></details>
+      </section>
+    </div>
+    <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
+    <section class="panel guide" aria-labelledby="local-title">
+      <h2 id="local-title">Run the real scanner on your own machine</h2>
+      <p>From a yara-gate checkout with Python 3.12 and uv installed:</p>
+      <pre>uv sync --frozen
+uv run yara-gate demo --rules rules</pre>
+      <p class="help">Dependency installation uses the network. After installation, the loopback app scans locally with bundled rules. It can accept short pastes; this public page cannot. Vendor installation is a separate, explicit step.</p>
+      <div class="guide-grid">
+        <div><h3>Messages &amp; tool results</h3><p>Use <code>agent-ingest</code> before a CyClaw query or a Harness tool response reaches the model. Require a complete clean result.</p></div>
+        <div><h3>Retrieved documents</h3><p>Use <code>agent-document</code> for corpus files that may quote attacks. Accept only complete clean or the exact notes-only record.</p></div>
+        <div><h3>Keep the boundary</h3><p>Read the same bytes that were scanned. Keep content fenced as data and preserve the agent's approval controls. Neither demo installs a consumer integration.</p></div>
+      </div>
+      <p><a href="https://github.com/cgfixit/yara-gate/blob/main/README.md" rel="noopener noreferrer">Local setup guide</a> · <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/integrations.md" rel="noopener noreferrer">Full integration contract</a></p>
+    </section>
+    <section class="panel guide" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">Privacy and limits, plainly</h2>
+      <p>The demo has no analytics, cookies, browser storage, or content submission. Its scripts make no API calls and cannot connect to localhost. Only the static page and its assets load; documentation links navigate when you choose them.</p>
+      <p>GitHub hosts this public site and logs visitors' IP addresses for security. This is not an anonymous or offline service. See <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages#data-collection" rel="noopener noreferrer">GitHub Pages data collection</a>.</p>
+      <p>Recorded results cover only these examples and their pinned source revision. A real clean scan is not proof that content is trustworthy. There is no semantic understanding, OCR, or general decryption, and unsupported or unfinished scans must be held.</p>
+    </section>
+  </main>
+  <footer class="shell">Public demonstration · Recorded results only · Keep private content in your local workflow</footer>
+</body>
+</html>

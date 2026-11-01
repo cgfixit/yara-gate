@@ -178,6 +178,19 @@ This serves a page on `127.0.0.1` that calls the real `scan_bytes` on samples or
 
 This capture dates from October 19 and shows an earlier, 20-rule pack. Provenance for every screenshot is in [screenshots/README.md](screenshots/README.md).
 
+## Public recorded demo
+
+The [Pages demo](docs/pages-demo.md) is a static companion to the local app. It
+replays real scanner recordings for six inert examples under all three policies,
+with findings, coverage, and explicit incomplete outcomes. It cannot scan your
+content: there is no paste box, upload, or connection to localhost. The Python
+scanner remains on your machine.
+
+The Pages workflow validates pull requests and publishes only when manually run
+on `main` after Pages is configured. Adding these files does not activate a site.
+See the [preview and deployment guide](docs/pages-demo.md) and
+[browser verification](docs/verification/2026-11-01-pages-demo.md).
+
 ## Verification and CI
 
 `.github/workflows/ci.yml` runs on Ubuntu and macOS. The job runs actionlint (on Linux), checks the lock, runs Ruff, Ruff format, and `mypy --strict`, and lints the rules. It then checks the lock hash, the fire and near-miss pairs, and the added-rule checks, and measures precision, failing any rule above 2%. After that it scans tracked text for control characters, then runs the in-place scans, the [direct probe](docs/research/probe_rule_coverage.py), selftest, and pytest. A separate Windows Server 2025 job covers the rules, the text-control check, scan-only, and intake. Actions are pinned to commit SHAs with `contents: read`. CodeQL runs with upload disabled, so its success alone does not mean results reached the security dashboard. The dated records are in [docs/verification/](docs/verification/).
