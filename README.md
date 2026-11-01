@@ -52,9 +52,10 @@ The gate does not replace either product's own defenses: retrieval checks, untru
 **For engineering**
 - **It fails closed.** A timeout, a size limit, an encrypted document, an archive it cannot open, or a rule that will not compile all exit 2 and stay held. "The scanner failed" never turns into "nothing was found".
 - **The contract is small.** Exit `0` means clean, `1` block, `2` incomplete. One JSON record per input. Read only when the record is a complete `clean`.
-- **It looks inside, with bounds.** It scans raw bytes plus derived views: UTF-16, HTML-unescaped, JSON-unescaped, format controls removed, look-alikes folded, inflated PDF streams, and joined Office text. It goes at most 3 container levels deep, opens at most 1,000 members, reads at most 100 MiB per file, and expands at most 500 MiB in total, all under a shared deadline.
+- **It looks inside, with bounds.** It scans raw bytes plus derived views: UTF-16, HTML-unescaped, JSON-unescaped, format controls removed, look-alikes folded, inflated PDF streams (including streams wrapped in ASCIIHex or ASCII85), and joined Office text. It goes at most 3 container levels deep, opens at most 1,000 members, reads at most 100 MiB per file, and expands at most 500 MiB in total, all under a shared deadline.
+- **Pixels are not text.** Decoded PDF streams, which often hold image data, and BMP, TIFF, EMF, or WMF files whose name and header agree are scanned in a samples mode. In that mode a flat or grainy run of pixels does not count as base64, and pixel bytes that happen to spell a Unicode control do not count as one. Text in the same file, such as a script appended to an image or a caption with an instruction, is still checked like any other text.
 - **It runs on Windows, macOS, and Linux.** CI runs the full suite on Ubuntu 24.04 and macOS 15, and runs the rule, scan-only, and intake checks on Windows Server 2025.
-- **Speed, measured in this Linux container with the shipped pack warm:** 1–7 ms for a message-sized body and about 0.7 s for 1 MB of Markdown. Your hardware will differ.
+- **Speed, measured in this Linux container with the shipped pack warm:** 1–7 ms for a message-sized body, about 0.7 s for 1 MB of Markdown, and about 3 s for a 7 MB uncompressed screenshot. Your hardware will differ.
 
 ## Quick start
 
@@ -98,11 +99,11 @@ scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, neve
 
 A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) under every policy; the policy changes only the verdict, and `policy_reason` in the record says what it did. A `note` is a weak signal with nothing else behind it: a visible override phrase (`agent_prompt_injection_phrases`, the multilingual and base64-encoded forms, and `agent_override_imperative`) or a lone Unicode control in text. Every other non-blocking rule is `advisory`.
 
-`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended: a message, a tool result, or a file the agent will act on. It holds notes too, so an SMS whose whole text is "ignore previous instructions" is held. `agent-document` is for a retrieved document a person may have written about attacks: a threat report or a test suite that quotes an override phrase passes with the note recorded, while a settings file that turns off approvals, a code-relay request, or a request for the system prompt is still held. The caller knows which one it is reading; the scanner does not guess from the content. A message is read only on a complete `clean` record. A document is read on that, or on the exact notes-only `agent-document` record in [docs/integrations.md](docs/integrations.md#documents-that-quote-attacks), and on nothing broader. Under either policy, release a held file through a person reviewing the report, never through a filename or a repository-wide allowlist. Use a separate gate home for each policy.
+`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended: a message, a tool result, or a file the agent will act on. It holds notes too, so an SMS whose whole text is "ignore previous instructions" is held. `agent-document` is for a retrieved document a person may have written about attacks: a threat report or a test suite that quotes an override phrase passes with the note recorded, while a settings file that turns off approvals, a code-relay request, or a request for the system prompt is still held. The caller knows which one it is reading; the scanner does not guess from the content. A message is read only on a complete `clean` record. A document is read on that, or on the exact notes-only `agent-document` record in [docs/integrations.md](docs/integrations.md#documents-that-quote-attacks), and on nothing broader. Under either policy, release a held file through a person reviewing the report, never through a filename or a repository-wide allowlist. There is no `release` command yet; its design and status are in [#39](https://github.com/cgfixit/yara-gate/issues/39). Use a separate gate home for each policy.
 
 ## Drop folder
 
-`yara-gate watch` (macOS and Linux) and `yara-gate scan` on an inbox path take files through `~/YaraGate/`, or the directory given by `--home`. The folders are created with mode `0700`, and copied files lose their executable bit.
+`yara-gate watch` (macOS and Linux) and `yara-gate scan` on an inbox path take files through `~/YaraGate/`, or the directory given by `--home`. On macOS and Linux the folders are created with mode `0700`, and copied files lose their executable bit. On Windows, NTFS ignores those mode bits, so the folders inherit the ACL of the folder that holds them. Keep the gate home inside your user profile, as the default `~/YaraGate` is.
 
 | Directory | Role |
 | --- | --- |
@@ -139,7 +140,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Optional vendor packs**, installed only with `rules install --allow-network`: YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13.
 
-**Precision:** on a generated corpus of 310 benign files, 74 of the 78 rules hit nothing. The other four are documented Windows collisions, each at 0.32%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** on a generated corpus of 310 benign files, 76 of the 80 rules hit nothing. The other four are documented Windows collisions, each at 0.32%. This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
 - It does not catch a novel or targeted payload. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -177,7 +178,7 @@ This capture dates from October 19 and shows an earlier, 20-rule pack. Provenanc
 
 ## Verification and CI
 
-`.github/workflows/ci.yml` runs on Ubuntu and macOS. The job checks the lock, runs Ruff and `mypy --strict`, runs actionlint (on Linux), and lints the rules. It then checks the lock hash and the fire and near-miss pairs, and scans tracked text for control characters. After that come the added-rule checks, the precision measurement (which fails any rule above 2%), in-place scans, the [direct probe](docs/research/probe_rule_coverage.py), selftest, and pytest. A separate Windows Server 2025 job covers the rules, scan-only, and intake. Actions are pinned to commit SHAs with `contents: read`. CodeQL runs with upload disabled, so its success alone does not mean results reached the security dashboard. The dated records are in [docs/verification/](docs/verification/).
+`.github/workflows/ci.yml` runs on Ubuntu and macOS. The job runs actionlint (on Linux), checks the lock, runs Ruff, Ruff format, and `mypy --strict`, and lints the rules. It then checks the lock hash, the fire and near-miss pairs, and the added-rule checks, and measures precision, failing any rule above 2%. After that it scans tracked text for control characters, then runs the in-place scans, the [direct probe](docs/research/probe_rule_coverage.py), selftest, and pytest. A separate Windows Server 2025 job covers the rules, the text-control check, scan-only, and intake. Actions are pinned to commit SHAs with `contents: read`. CodeQL runs with upload disabled, so its success alone does not mean results reached the security dashboard. The dated records are in [docs/verification/](docs/verification/).
 
 ```bash
 uv run python docs/research/probe_rule_coverage.py --verify   # real library and CLI scans in disposable homes
@@ -187,8 +188,9 @@ uv run python docs/research/probe_rule_coverage.py --verify   # real library and
 
 ```text
 src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, heuristics,
-                     models, quarantine, report, rules, hunt, demo, selftest
-rules/local/         the 78 shipped rules; rules/rules.lock pins the vendor packs
+                     models, quarantine, report, rules, hunt, demo, selftest, samples,
+                     launchd, release (reviewed-release building blocks, not yet a command)
+rules/local/         the 80 shipped rules in 56 files; rules/rules.lock pins the vendor packs
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh
