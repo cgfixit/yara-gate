@@ -55,6 +55,7 @@ def heuristic_findings(
     findings.extend(embedded_findings(data))
     findings.extend(pickle_reduce_findings(path, data))
     findings.extend(model_header_findings(path, data))
+    findings.extend(keras_config_findings(path, data))
     findings.extend(ooxml_structure_findings(path, data))
     findings.extend(mcp_tool_findings(path, data))
     office, error = office_findings(path, data)
@@ -910,6 +911,130 @@ def model_header_findings(path: Path, data: bytes) -> list[Finding]:
     if (suffix == ".gguf" or data.startswith(b"GGUF")) and _gguf_bad(data):
         findings.append(_block("heuristic_gguf_header"))
     return findings
+
+
+# A Keras config that names one of these modules imports it during load_model; none is a layer,
+# loss, or activation. keras.utils.get_file (CVE-2025-8747) and
+# keras.config.enable_unsafe_deserialization (CVE-2025-9906) are Keras's own functions that
+# fetch a file or switch safe_mode off, so they are listed by name.
+_KERAS_UNSAFE_MODULES = frozenset(
+    {
+        "__builtin__",
+        "builtins",
+        "code",
+        "codeop",
+        "ctypes",
+        "http",
+        "importlib",
+        "marshal",
+        "nt",
+        "os",
+        "pickle",
+        "posix",
+        "pty",
+        "requests",
+        "runpy",
+        "shutil",
+        "socket",
+        "subprocess",
+        "sys",
+        "urllib",
+        "webbrowser",
+    }
+)
+_KERAS_UNSAFE_FUNCTIONS = frozenset({"enable_unsafe_deserialization", "get_file"})
+_HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
+_KERAS_JSON_START = b'{"class_name"'
+_KERAS_MAX_NODES = 200_000
+_KERAS_MAX_DEPTH = 64
+_KERAS_H5_CONFIGS = 4
+_KERAS_H5_SPAN = 16 * 1024 * 1024
+
+
+def keras_config_findings(path: Path, data: bytes) -> list[Finding]:
+    """Walk a Keras model config without loading it.
+
+    A ``.keras`` archive keeps its graph in ``config.json``; ``model.to_json()`` writes the same
+    shape; a legacy ``.h5`` stores it as the ``model_config`` attribute, plain JSON inside the
+    HDF5 file. ``keras.models.load_model`` resolves every ``module`` and ``class_name`` it names,
+    and a Lambda layer carries marshalled Python bytecode. Block a reference to a module or
+    function that runs commands, fetches files, or turns safe_mode off; flag a Lambda as advisory,
+    since safe_mode refuses it by default and an operator may still allow it.
+    """
+    for config in _keras_configs(path, data):
+        hits: set[str] = set()
+        _walk_keras(config, hits)
+        findings: list[Finding] = []
+        if "unsafe" in hits:
+            findings.append(_block("heuristic_keras_unsafe_call"))
+        if "lambda" in hits:
+            findings.append(_advisory("heuristic_keras_lambda"))
+        if findings:
+            return findings
+    return []
+
+
+def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        if b'"class_name"' not in data or not data.lstrip().startswith(b"{"):
+            return
+        try:
+            yield json.loads(data)
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+            return
+        return
+    if not (suffix in {".h5", ".hdf5"} or data.startswith(_HDF5_MAGIC)):
+        return
+    decoder = json.JSONDecoder()
+    start = data.find(_KERAS_JSON_START)
+    for _ in range(_KERAS_H5_CONFIGS):
+        if start < 0:
+            return
+        window = data[start : start + _KERAS_H5_SPAN].decode("utf-8", "replace")
+        try:
+            config, _end = decoder.raw_decode(window)
+        except (json.JSONDecodeError, RecursionError):
+            config = None
+        if config is not None:
+            yield config
+        start = data.find(_KERAS_JSON_START, start + 1)
+
+
+def _walk_keras(root: object, hits: set[str]) -> None:
+    stack: list[tuple[object, int]] = [(root, 0)]
+    seen = 0
+    while stack and seen < _KERAS_MAX_NODES and len(hits) < 2:
+        node, depth = stack.pop()
+        seen += 1
+        if depth > _KERAS_MAX_DEPTH:
+            continue
+        if isinstance(node, dict):
+            if _keras_unsafe(node):
+                hits.add("unsafe")
+            class_name = node.get("class_name")
+            if class_name == "__lambda__" or (
+                node.get("function_type") == "lambda" and "function" in node
+            ):
+                hits.add("lambda")
+            stack.extend((value, depth + 1) for value in node.values())
+        elif isinstance(node, list):
+            stack.extend((item, depth + 1) for item in node)
+
+
+def _keras_unsafe(node: dict[object, object]) -> bool:
+    module = node.get("module")
+    if not isinstance(module, str):
+        return False
+    if module.split(".", 1)[0] in _KERAS_UNSAFE_MODULES:
+        return True
+    if not module.startswith("keras"):
+        return False
+    names = (node.get("class_name"), node.get("config"), node.get("registered_name"))
+    return any(
+        isinstance(name, str) and name.rsplit(">", 1)[-1] in _KERAS_UNSAFE_FUNCTIONS
+        for name in names
+    )
 
 
 def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:

