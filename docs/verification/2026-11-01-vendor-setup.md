@@ -40,3 +40,7 @@ FACT. `vendor.installed.json` beside `vendor/` now holds the installed-file inve
 FACT. A wrong sha256 in the lock now prints `incomplete: sha256 mismatch for elastic` from both `setup --force` and `rules install --allow-network`, exit 2. The exception is `RuleIntegrityError`, a `RuleDownloadError` that is also a `ValueError`, as the existing test expects.
 
 FACT. `uv run pytest -q tests/test_rules.py tests/test_cli.py`: 65 passed, 1 skipped. Run because these changes move lock and inventory behavior those tests pin.
+
+## Review follow-up: the override list in the digest memo
+
+FACT. Codex review on #144 reported that `ruleset_digest()` returned its per-process cached value before hashing the override list. Reproduced: in one process, after `skip` was changed to `advisory` and the file's mtime moved, `vendor_overrides()` returned the new action but the digest was unchanged. The memo stamp now includes the override file's path, mtime, and size, or a missing marker, whenever vendor files are part of the ruleset. After the fix, the same probe reports a changed digest. The bundled-only digest is byte-identical to the one before the fix. `pytest tests/test_rules.py tests/test_cli.py tests/test_scanner.py`: 159 passed, 1 skipped.

@@ -1041,7 +1041,21 @@ def ruleset_digest(
             stamp_rows.append((rule_key, -1, -1))
             continue
         stamp_rows.append((rule_key, stat.st_mtime_ns, stat.st_size))
-    stamp = (use_overlay, tuple(stamp_rows), shadow_lines)
+    # With vendor files loaded the override list is part of the digest, so an edit to it must
+    # miss this per-process memo just as an edited rule file does.
+    overrides_row: tuple[str, int, int] | None = None
+    if any(rule_key.startswith("vendor/") for rule_key in keys):
+        overrides_path = vendor_overrides_path()
+        try:
+            overrides_stat = os.stat(overrides_path)
+            overrides_row = (
+                str(overrides_path),
+                overrides_stat.st_mtime_ns,
+                overrides_stat.st_size,
+            )
+        except OSError:
+            overrides_row = (str(overrides_path), -1, -1)
+    stamp = (use_overlay, tuple(stamp_rows), shadow_lines, overrides_row)
     # A same-size same-mtime rewrite is caught on the next process. Inside one run the
     # directory is the operator's rules, and hashing every file per scanned input missed the budget.
     key = str(rules_dir)
@@ -1062,7 +1076,7 @@ def ruleset_digest(
     for line in shadow_lines:
         hasher.update(line.encode())
         hasher.update(b"\x00")
-    if any(rule_key.startswith("vendor/") for rule_key in keys):
+    if overrides_row is not None:
         # The override list changes vendor verdicts, so it is part of that ruleset's identity.
         try:
             hasher.update(b"overrides\x00" + vendor_overrides_path().read_bytes())
