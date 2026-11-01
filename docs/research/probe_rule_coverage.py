@@ -415,7 +415,6 @@ def main() -> None:
         "plain_mail.eml",
         "emoji.txt",
         "persian.txt",
-        "roles_only.txt",
         "sensitive_source_only.txt",
         "template_split.rels",
         "benign_utf16.txt",
@@ -695,7 +694,8 @@ def main() -> None:
             compact = json.loads(next((home / "reports").glob("*.json")).read_text())
             # The finding keeps the rule's own tier (note or advisory) under every policy.
             if label in delivery_cli and not any(
-                f["rule_id"] == delivery[label][1] and f["severity"] in ("note", "advisory")
+                f["rule_id"] in rule_set(delivery[label][1])
+                and f["severity"] in ("note", "advisory")
                 for f in compact["findings"]
             ):
                 failures.append(f"CLI {label}: missing delivery rule or original severity")

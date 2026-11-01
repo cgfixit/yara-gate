@@ -44,6 +44,7 @@ from yara_gate.heuristics import (
     heuristic_findings,
     joiner_findings,
     pdf_token_findings,
+    smuggling_findings,
     tag_findings,
 )
 from yara_gate.models import (
@@ -293,7 +294,8 @@ def _scan_file(
             decoded = _decoded_text(unit.data)
             if decoded is not None:
                 text, view = decoded
-                for finding in [*joiner_findings(text), *tag_findings(text)]:
+                hidden = [*joiner_findings(text), *tag_findings(text), *smuggling_findings(text)]
+                for finding in hidden:
                     finding.view = view
                     extra.append(finding)
             for finding in extra:
@@ -313,8 +315,11 @@ def _scan_file(
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
                 if view in {"html-unescaped", "json-unescaped"}:
-                    # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold.
-                    view_findings.extend(tag_findings(derived.decode("utf-8")))
+                    # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold;
+                    # entities or escapes can spell a selector or invisible run the same way.
+                    unescaped_text = derived.decode("utf-8")
+                    view_findings.extend(tag_findings(unescaped_text))
+                    view_findings.extend(smuggling_findings(unescaped_text))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view

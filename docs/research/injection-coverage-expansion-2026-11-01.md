@@ -4,6 +4,8 @@ Scope: how far the shipped detection reaches against prompt injection and nearby
 
 The baseline is `main` at `1d13547`, the merge of #147. It ran on Linux with Python 3.12.3, YARA-X 1.22.1 from the lock, and 82 local rules compiled from 57 files with 0 skipped. No vendor packs were installed.
 
+**Status:** F2 and F5 are implemented. [The verification record](../verification/2026-11-01-unicode-channels-turn-markers.md) has the before and after results. LLMail send-tool holds went from 6.41% to 23.95% under `agent-ingest` and from 2.59% to 14.25% under `agent-document`, with no change on the benign sets. The rest of this note describes the baseline at `1d13547`.
+
 **Evidence labels:**
 - **measured:** run in this session by the scripts below.
 - **probed:** one constructed inert input; this is an observation, not a rate.

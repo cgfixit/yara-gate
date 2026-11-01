@@ -126,6 +126,140 @@ def tag_findings(text: str) -> list[Finding]:
     ]
 
 
+def _span_class(spans: Iterable[tuple[int, int]]) -> str:
+    """Return a regex character-class body for code point spans.
+
+    The class is built from integers at import time, so this source file holds no invisible
+    characters (docs/verification/check_text_controls.py).
+    """
+    return "".join(f"{re.escape(chr(low))}-{re.escape(chr(high))}" for low, high in spans)
+
+
+# Variation selectors: VS1-VS16 (U+FE00-FE0F) and VS17-VS256 (U+E0100-E01EF).
+_VS_SPANS = ((0xFE00, 0xFE0F), (0xE0100, 0xE01EF))
+_VS_RUN = re.compile(f"[{_span_class(_VS_SPANS)}]{{2,}}")
+_SUPPLEMENTARY_VS = re.compile(f"[{_span_class(((0xE0100, 0xE01EF),))}]")
+# U+FE0E and U+FE0F choose text or emoji presentation. A doubled U+FE0F is a keyboard artifact,
+# and a run of only these two cannot carry more than one bit per character.
+_PRESENTATION_SELECTORS = frozenset((chr(0xFE0E), chr(0xFE0F)))
+# CJK ideographs: the only bases registered for VS17-VS256 (Unicode IVD).
+_IVS_BASES = ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0x20000, 0x3FFFF))
+# Default-ignorable code points that render as nothing: the soft hyphen, the combining grapheme
+# joiner, Hangul fillers, Khmer inherent vowels, Mongolian selectors and vowel separator,
+# zero-width characters and directional marks, invisible operators (U+2060-U+2064), deprecated
+# format controls, and the BOM. Tag characters and variation selectors have their own checks.
+INVISIBLE_SPANS = (
+    (0x00AD, 0x00AD),
+    (0x034F, 0x034F),
+    (0x115F, 0x1160),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x200B, 0x200F),
+    (0x2060, 0x2064),
+    (0x206A, 0x206F),
+    (0x3164, 0x3164),
+    (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0),
+)
+# Eight in a row hold at least one byte: Sneaky Bits (U+2062 and U+2064) or zero-width binary.
+# Prose needs at most one between two visible characters.
+_INVISIBLE_RUN = re.compile(f"[{_span_class(INVISIBLE_SPANS)}]{{8,}}")
+_TAG_RUN = re.compile(f"[{_span_class(((0xE0000, 0xE007F),))}]+")
+# Code points the derived text views drop, in addition to category Cf.
+IGNORABLE = frozenset(
+    chr(point) for low, high in (*INVISIBLE_SPANS, *_VS_SPANS) for point in range(low, high + 1)
+)
+
+
+def smuggling_findings(text: str) -> list[Finding]:
+    """Block variation-selector smuggling and runs of invisible code points that encode data.
+
+    A variation selector picks a glyph for the one character before it, so two in a row have no
+    rendering, and VS17-VS256 are registered only after CJK ideographs. Emoji smuggling writes
+    one selector per payload byte after any base character. Eight or more invisible code points
+    in a row encode at least one byte (Sneaky Bits, zero-width binary). Both are hidden data
+    channels, like Unicode tag characters (``heuristic_unicode_tag``). The offset is the first
+    character of the channel in the UTF-8 encoding of ``text``.
+    """
+    if text.isascii():
+        return []
+    findings: list[Finding] = []
+    vs_at = _variation_offense(text)
+    if vs_at is not None:
+        start, end = vs_at
+        findings.append(_located("heuristic_unicode_variation", text, start, end))
+    run = _INVISIBLE_RUN.search(text)
+    if run is not None:
+        findings.append(_located("heuristic_invisible_run", text, run.start(), run.end()))
+    return findings
+
+
+def _variation_offense(text: str) -> tuple[int, int] | None:
+    for run in _VS_RUN.finditer(text):
+        if not set(run.group()) <= _PRESENTATION_SELECTORS:
+            return run.start(), run.end()
+    for match in _SUPPLEMENTARY_VS.finditer(text):
+        index = match.start()
+        base = ord(text[index - 1]) if index else 0
+        if not any(low <= base <= high for low, high in _IVS_BASES):
+            return index, match.end()
+    return None
+
+
+def _located(rule_id: str, text: str, start: int, end: int) -> Finding:
+    offset = len(text[:start].encode("utf-8"))
+    return Finding(
+        rule_id=rule_id,
+        offset=offset,
+        length=len(text[start:end].encode("utf-8")),
+        severity=Severity.block,
+        source=FindingSource.heuristic,
+    )
+
+
+def smuggled_text(text: str) -> str | None:
+    """Decode text hidden in tag characters, variation selectors, or two-symbol invisible runs.
+
+    The result feeds the ``unicode-decoded`` view, so the lexical rules can report what a hidden
+    channel says. The blocking findings above do not depend on it. Tag characters inside an
+    emoji subdivision flag are skipped; a two-symbol run is kept only when one bit order decodes
+    to printable ASCII.
+    """
+    if text.isascii():
+        return None
+    segments: list[str] = []
+    flags_removed = _EMOJI_TAG_SEQUENCE.sub("", text)
+    for run in _TAG_RUN.finditer(flags_removed):
+        decoded = "".join(chr(ord(c) - 0xE0000) for c in run.group() if 0xE0020 <= ord(c) < 0xE007F)
+        segments.append(decoded)
+    for run in _VS_RUN.finditer(text):
+        if set(run.group()) <= _PRESENTATION_SELECTORS:
+            continue
+        payload = bytes(
+            ord(c) - 0xFE00 if ord(c) <= 0xFE0F else ord(c) - 0xE0100 + 16 for c in run.group()
+        )
+        segments.append(payload.decode("utf-8", errors="replace"))
+    for run in _INVISIBLE_RUN.finditer(text):
+        segments.append(_binary_run(run.group()))
+    joined = "\n".join(segment for segment in segments if segment.strip())
+    return joined or None
+
+
+def _binary_run(run: str) -> str:
+    symbols = sorted(set(run))
+    if len(symbols) != 2:
+        return ""
+    usable = len(run) - len(run) % 8
+    # Either symbol may stand for 1; keep the bit order that reads as text.
+    for one in (symbols[1], symbols[0]):
+        bits = "".join("1" if char == one else "0" for char in run[:usable])
+        payload = int(bits, 2).to_bytes(usable // 8, "big")
+        printable = sum(32 <= byte < 127 or byte in (9, 10, 13) for byte in payload)
+        if printable >= 0.9 * len(payload):
+            return payload.decode("ascii", errors="replace")
+    return ""
+
+
 _CONTEXT = 16
 
 # The Unicode-control signals that are notes on their own.

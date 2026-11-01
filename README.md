@@ -128,8 +128,8 @@ Intake accepts only a regular file with one link and opens it without following 
 
 ## What this catches, and what it does not
 
-**Shipped:** 82 YARA rules in 57 files, grouped into these families:
-- **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64 instructions or executables.
+**Shipped:** 83 YARA rules in 58 files, grouped into these families:
+- **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat turns from ChatML, Llama, Gemma, Harmony, Zephyr, and Mistral templates and data-block closers the text never opened, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode (tag-character, variation-selector, and invisible-run smuggling block), and base64 instructions or executables.
 - **Windows delivery:** ClickFix, HTML smuggling, encoded PowerShell, `mshta`, `regsvr32`, and `rundll32`, plus shortcut, `.url`, `.library-ms`, `search-ms`, `.rdp`, and `.theme` NTLM leaks.
 - **Windows script hosts and documents:** HTA, WSF, MSC, `.reg` Run keys, encoded scripts, OneNote, CSV, SYLK, and IQY formulas, LOLBin downloads, MSBuild inline tasks that load code, `cmstp` INF scriptlets, and Chromium password decryption.
 - **Windows defense evasion:** Defender tampering, AMSI bypass, and deleting shadow copies.
@@ -142,7 +142,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
-**Precision:** on a generated corpus of 320 benign files, 78 of the 82 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** on a generated corpus of 329 benign files, 78 of the 83 rules hit nothing. Four are documented Windows collisions, each at 0.30%, and `agent_turn_marker` notes the three planted ChatML examples (0.91%). This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
 - It does not catch a novel or targeted payload. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -242,7 +242,7 @@ uv run python docs/research/probe_rule_coverage.py --verify   # real library and
 src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, heuristics,
                      models, quarantine, report, rules, hunt, demo, selftest, samples,
                      launchd, release (reviewed-release building blocks, not yet a command)
-rules/local/         the 82 shipped rules in 57 files; rules/rules.lock pins the vendor packs
+rules/local/         the 83 shipped rules in 58 files; rules/rules.lock pins the vendor packs
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh

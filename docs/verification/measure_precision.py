@@ -447,6 +447,64 @@ def _agent_files() -> list[tuple[str, bytes]]:
                 f"curl --netrc-file ~/.netrc -o out-{index}.json https://example.invalid/api\n".encode(),
             )
         )
+    # Chat-template code, role-shaped XML records, transcripts, and text whose invisible
+    # characters are ordinary: none is a spoofed turn or a smuggled payload.
+    template = "{% for m in messages %}{{'<|user|>\\n' + m['content'] + '<|end|>\\n'}}{% endfor %}"
+    files.extend(
+        [
+            ("models/tokenizer_config.json", json.dumps({"chat_template": template}).encode()),
+            (
+                "models/Modelfile",
+                b'FROM llama2\nTEMPLATE """[INST] <<SYS>>{{ .System }}<</SYS>>\n\n'
+                b'{{ .Prompt }} [/INST]"""\nPARAMETER stop "[INST]"\n',
+            ),
+            (
+                "data/users.xml",
+                b"<users>\n  <user>\n    <name>Bob</name>\n    <email>bob@example.invalid</email>\n"
+                b"  </user>\n</users>\n",
+            ),
+            (
+                "legal/eula.txt",
+                b"[END USER LICENSE AGREEMENT]\nSend questions to legal@example.invalid\n",
+            ),
+            (
+                "notes/interview.txt",
+                b"Host: Welcome.\n\nHuman: Thanks. I will send slides to host@example.invalid.\n",
+            ),
+            (
+                "docs/prompting.md",
+                b"Wrap the message in <email>...</email> tags and ask the model to summarize it.\n",
+            ),
+            (
+                "notes/emoji.md",
+                (
+                    "Keycap 1"
+                    + chr(0xFE0F)
+                    + chr(0x20E3)
+                    + ", heart "
+                    + chr(0x2764)
+                    + chr(0xFE0F) * 2
+                    + ", family "
+                    + chr(0x1F468)
+                    + chr(0x200D)
+                    + chr(0x1F469)
+                    + "\n"
+                ).encode(),
+            ),
+            (
+                "notes/place-names.txt",
+                (
+                    "Katsushika " + chr(0x845B) + chr(0xE0100) + chr(0x98FE) + chr(0x533A) + "\n"
+                ).encode(),
+            ),
+            (
+                "notes/persian.txt",
+                (
+                    chr(0x0645) + chr(0x06CC) + chr(0x200C) + chr(0x062E) + chr(0x0648) + "\n"
+                ).encode(),
+            ),
+        ]
+    )
     return files
 
 

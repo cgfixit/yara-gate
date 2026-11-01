@@ -26,9 +26,11 @@ from yara_gate.filetype import sniff, utf16_encoding
 from yara_gate.heuristics import (
     _PDF_LEX,
     _PDF_VALUE_WINDOW,
+    IGNORABLE,
     MAX_PDF_DEFINITIONS,
     PdfRawObjects,
     _decode_pdf_name,
+    smuggled_text,
 )
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
@@ -430,18 +432,25 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
             yield "json-unescaped", _derived(decoded, budget)
-    # ASCII cannot contain Cf characters or Unicode variation selectors.
+    # ASCII cannot contain Cf characters or other default-ignorable code points.
     # Check after unescaping: an ASCII entity can introduce either one.
     normalized = unescaped
     if not unescaped.isascii():
         # Inspect hidden formatting without modifying the original or interpreting it as authority.
+        # Hangul fillers, variation selectors, and the other non-Cf ignorables split a phrase
+        # as invisibly as a zero-width space does.
         normalized = "".join(
             char
             for char in unescaped
-            if unicodedata.category(char) != "Cf" and not 0xFE00 <= ord(char) <= 0xFE0F
+            if unicodedata.category(char) != "Cf" and char not in IGNORABLE
         )
         if normalized != unescaped:
             yield "format-controls-removed", _derived(normalized, budget)
+        # A payload hidden in tag characters, variation selectors, or an invisible binary run,
+        # decoded so the lexical rules can say what it asks for. The block does not need it.
+        smuggled = smuggled_text(unescaped)
+        if smuggled is not None:
+            yield "unicode-decoded", _derived(smuggled, budget)
     # A reader sees "Ign\u043ere", fullwidth letters, "1gn0r3", or "i g n o r e" as the word; the
     # lexical rules do not. Fold those spellings into one more labeled view of the same bytes.
     folded = folded_text(unescaped)
@@ -471,9 +480,7 @@ def folded_text(text: str) -> str:
             char
             for char in folded
             if char in "\t\r\n"
-            or (
-                unicodedata.category(char) not in ("Cf", "Cc") and not 0xFE00 <= ord(char) <= 0xFE0F
-            )
+            or (unicodedata.category(char) not in ("Cf", "Cc") and char not in IGNORABLE)
         )
     if not folded.isascii():
         folded = _WORD.sub(_fold_confusables, folded)
