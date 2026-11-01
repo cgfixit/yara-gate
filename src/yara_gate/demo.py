@@ -73,6 +73,15 @@ class DemoResponse(BaseModel):
     findings: list[DemoFinding]
     policy: str
     policy_reason: str | None
+    compiled_rules: int
+    skipped_rule_files: int
+    engine_version: str | None
+    tool_version: str | None
+    ruleset_sha256: str | None
+    units_scanned: int
+    views_scanned: dict[str, int]
+    bytes_scanned: int
+    scan_seconds: float | None
 
 
 def view_result(result: ScanResult) -> DemoResponse:
@@ -86,6 +95,15 @@ def view_result(result: ScanResult) -> DemoResponse:
         incomplete_reason=result.incomplete_reason,
         policy=result.policy.value,
         policy_reason=result.policy_reason,
+        compiled_rules=result.compiled_rules,
+        skipped_rule_files=result.skipped_rule_files,
+        engine_version=result.engine_version,
+        tool_version=result.tool_version,
+        ruleset_sha256=result.ruleset_sha256,
+        units_scanned=result.units_scanned,
+        views_scanned=result.views_scanned,
+        bytes_scanned=result.bytes_scanned,
+        scan_seconds=result.scan_seconds,
         findings=[
             DemoFinding(
                 rule_id=item.rule_id,

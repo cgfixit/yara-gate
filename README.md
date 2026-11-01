@@ -184,11 +184,36 @@ With the 2026-10-04 pins installed and this list applied, the generated benign c
 uv run yara-gate demo --rules rules
 ```
 
-This serves a page on `127.0.0.1` that calls the real `scan_bytes` on samples or pasted text, under either policy, and labels the view each finding came from. Nothing is written to disk. The root `demo.html` is only a limited JavaScript illustration.
+The local scan workbench calls the real `scan_bytes` on inert examples or up to
+64 KiB of pasted UTF-8 text. It starts with `agent-ingest` for messages and tool
+results; select `agent-document` for retrieved documents or `default` for manual
+inspection. Each result explains the decision, preserves each finding's severity
+and view/member provenance, and shows compiled/skipped rule counts, runtime,
+coverage counters, and fingerprints. Expand **Demo response JSON** to inspect the
+content-free preview fields.
 
-![The live demo holds an HTML-decoded instruction under the agent-ingest policy](screenshots/yara-gate-dependency-refresh.jpg)
+Changing the text or policy clears the previous result. UTF-8 byte counts,
+loading/error states, keyboard submission, and **Clear input & result** help avoid
+mistaking an old result for a current scan. The layout adapts to narrow screens.
 
-This capture dates from October 19 and shows an earlier, 20-rule pack. Provenance for every screenshot is in [screenshots/README.md](screenshots/README.md).
+The server binds only to `127.0.0.1`. Scans stay in memory: no pasted content,
+reports, or scan history are saved by the app; compiled rules may be cached
+locally. There are no analytics, external assets, cloud calls, or rule downloads.
+Clear is not secure memory erasure or clipboard cleanup. The explicit GitHub
+documentation link leaves the local app when opened.
+
+This is a policy preview, not a CyClaw/Harness connector or a release console.
+It never moves files or authorizes agent actions. Use the full CLI/library
+[integration contract](docs/integrations.md#previewing-policies-in-the-local-workbench)
+to gate the exact bytes before the agent reads them. The root `demo.html` remains
+a limited JavaScript illustration, separate from this scanner-backed app.
+
+![The local workbench explains an advisory held by agent-ingest](screenshots/yara-gate-workbench-hold.jpg)
+
+Captured November 1 with 80 bundled rules and no vendor packs. See
+[verification](docs/verification/2026-11-01-demo-workbench.md) and
+[screenshot provenance](screenshots/README.md#november-1-local-scan-workbench)
+for the exercised revision, scenarios, and limits.
 
 ## Verification and CI
 

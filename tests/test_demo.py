@@ -40,6 +40,15 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert plain["verdict"] == "clean"
         assert plain["exit_code"] == 0
         assert "path" not in plain
+        assert plain["compiled_rules"] > 0
+        assert plain["skipped_rule_files"] == 0
+        assert plain["units_scanned"] == 1
+        assert plain["views_scanned"] == {}  # Raw inputs are counted in units_scanned.
+        assert plain["bytes_scanned"] > 0
+        assert plain["engine_version"]
+        assert plain["tool_version"]
+        assert len(plain["ruleset_sha256"]) == 64
+        assert plain["scan_seconds"] >= 0
 
         status, advisory = _post(port, {"sample": "base64"})
         assert status == 200
@@ -80,10 +89,14 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         html = page.read().decode("utf-8")
         policy = page.headers["Content-Security-Policy"]
         assert page.status == 200
-        assert "Scan plain note" in html
+        assert "Local scan workbench" in html
+        assert 'value="agent-ingest" selected' in html
         assert "__NONCE__" not in html
         assert "nonce-" in policy
         assert page.headers["X-Content-Type-Options"] == "nosniff"
+        assert page.headers["Cache-Control"] == "no-store"
+        assert "connect-src 'self'" in policy
+        assert "frame-ancestors 'none'" in policy
     finally:
         server.shutdown()
         server.server_close()
