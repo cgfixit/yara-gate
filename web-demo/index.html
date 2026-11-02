@@ -6,13 +6,16 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Explore recorded yara-gate scan results and policies. This demo does not scan files or accept private content.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="yara-gate · Recorded demo">
+  <meta property="og:description" content="Recorded results from an offline gate that holds risky content before an AI agent reads it. Nothing is scanned or uploaded on this site.">
   <title>yara-gate · Recorded demo</title>
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.mjs"></script>
 </head>
 <body>
   <a class="skip" href="#content">Skip to examples</a>
-  <header><div class="shell bar"><strong class="brand"><span aria-hidden="true">YG</span> yara-gate</strong><span class="tag">Recorded demo · no live scan</span></div></header>
+  <header><div class="shell bar"><strong class="brand"><span aria-hidden="true">YG</span> yara-gate</strong><span class="bar-end"><span class="tag">Recorded demo · no live scan</span><a href="https://github.com/cgfixit/yara-gate/" rel="noopener noreferrer">Source on GitHub</a></span></div></header>
   <main class="shell" id="content">
     <div class="intro">
       <p class="eyebrow">A gate before the context window</p>
@@ -29,8 +32,8 @@
         <p id="example-description" class="help"></p>
         <label for="policy">Where would the content be used?</label>
         <select id="policy">
-          <option value="agent-ingest">Message or tool result · agent-ingest</option>
-          <option value="agent-document">Retrieved document · agent-document</option>
+          <option value="agent-ingest">Message/tool result · agent-ingest</option>
+          <option value="agent-document">Document · agent-document</option>
           <option value="default">Manual inspection · default</option>
         </select>
         <p id="policy-help" class="policy-help"></p>
@@ -55,10 +58,12 @@
     <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
     <section class="panel guide" aria-labelledby="local-title">
       <h2 id="local-title">Run the real scanner on your own machine</h2>
-      <p>From a yara-gate checkout with Python 3.12 and uv installed:</p>
-      <pre>uv sync --frozen
+      <p>With Git, Python 3.12, and uv installed:</p>
+      <pre>git clone https://github.com/cgfixit/yara-gate.git
+cd yara-gate
+uv sync --frozen
 uv run yara-gate demo --rules rules</pre>
-      <p class="help">Dependency installation uses the network. After installation, the loopback app scans locally with bundled rules. It can accept short pastes; this public page cannot. Vendor installation is a separate, explicit step.</p>
+      <p class="help">Cloning and dependency installation use the network. After installation, the loopback app scans locally with bundled rules. It can accept short pastes; this public page cannot. Vendor installation is a separate, explicit step.</p>
       <div class="guide-grid">
         <div><h3>Messages &amp; tool results</h3><p>Use <code>agent-ingest</code> before a CyClaw query or a Harness tool response reaches the model. Require a complete clean result.</p></div>
         <div><h3>Retrieved documents</h3><p>Use <code>agent-document</code> for corpus files that may quote attacks. Accept only complete clean or the exact notes-only record.</p></div>

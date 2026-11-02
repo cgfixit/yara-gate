@@ -86,20 +86,61 @@ class PageCheck(HTMLParser):
             require(tag == "script", "Unexpected resource")
 
 
+def is_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def validate_recordings(data: dict) -> None:
     require(set(data) == {"schema", "source_revision", "captured_at", "cases"}, "Recording fields")
     require(data["schema"] == 1, "Recording schema")
     require(re.fullmatch(r"[0-9a-f]{40}", data["source_revision"]) is not None, "Source revision")
+    require(
+        re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", data["captured_at"]) is not None,
+        "Capture time must be UTC",
+    )
     require(len(data["cases"]) == 6, "Expected six reviewed scenarios")
     ids = set()
+    # Every completed recording must come from one ruleset, so the page never mixes revisions.
+    rulesets = set()
     for case in data["cases"]:
         require(set(case) == {"id", "title", "description", "results"}, "Scenario fields")
         require(case["id"] not in ids, "Duplicate scenario")
         ids.add(case["id"])
         require(set(case["results"]) == POLICIES, "Policy recordings missing")
+        require(
+            len({result["sha256"] for result in case["results"].values()}) == 1,
+            "One scenario must record the same input under every policy",
+        )
         for policy, result in case["results"].items():
             require(set(result) == RESULT_KEYS, "Response contains unreviewed fields")
             require(result["policy"] == policy, "Policy identity")
+            require(
+                all(
+                    is_count(result[key])
+                    for key in (
+                        "compiled_rules",
+                        "skipped_rule_files",
+                        "units_scanned",
+                        "bytes_scanned",
+                    )
+                )
+                and isinstance(result["views_scanned"], dict)
+                and all(
+                    isinstance(view, str) and is_count(count)
+                    for view, count in result["views_scanned"].items()
+                )
+                and isinstance(result["findings"], list),
+                "Coverage counters",
+            )
+            if result["verdict"] != "incomplete":
+                rulesets.add(
+                    (
+                        result["ruleset_sha256"],
+                        result["compiled_rules"],
+                        result["engine_version"],
+                        result["tool_version"],
+                    )
+                )
             expected = {"clean": 0, "advisory": 0, "block": 1, "incomplete": 2}
             require(result["verdict"] in expected, "Unknown verdict")
             require(result["exit_code"] == expected[result["verdict"]], "Exit/verdict mismatch")
@@ -111,9 +152,24 @@ def validate_recordings(data: dict) -> None:
                 re.fullmatch(r"[0-9a-f]{64}", result["sha256"]) is not None, "Input fingerprint"
             )
             require(policy != "agent-ingest" or result["verdict"] != "advisory", "Ingest hold")
+            severities = set()
             for finding in result["findings"]:
                 require(set(finding) == FINDING_KEYS, "Finding contains unreviewed fields")
                 require(finding["severity"] in {"note", "advisory", "block"}, "Finding severity")
+                severities.add(finding["severity"])
+                require(
+                    isinstance(finding["rule_id"], str)
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", finding["rule_id"])
+                    is not None,
+                    "Rule identifier",
+                )
+                require(
+                    all(
+                        finding[key] is None or is_count(finding[key])
+                        for key in ("offset", "length")
+                    ),
+                    "Finding position",
+                )
                 require(
                     all(
                         re.fullmatch(r"(?:zip|tar|gzip|mime):[0-9]+", x)
@@ -121,6 +177,12 @@ def validate_recordings(data: dict) -> None:
                     ),
                     "Member names must not be published",
                 )
+            complete = result["verdict"] != "incomplete"
+            require(
+                result["advisory"] == (complete and "advisory" in severities)
+                and result["note"] == (complete and "note" in severities),
+                "Severity flags must match the recorded findings",
+            )
             if policy == "agent-document" and result["verdict"] == "advisory":
                 require(
                     result["note"]
@@ -130,6 +192,7 @@ def validate_recordings(data: dict) -> None:
                     and result["policy_reason"] == "agent-document records note findings",
                     "Document recording must be exactly notes-only",
                 )
+    require(len(rulesets) == 1, "Completed recordings must share one ruleset and runtime")
 
 
 def build(output: Path) -> None:
