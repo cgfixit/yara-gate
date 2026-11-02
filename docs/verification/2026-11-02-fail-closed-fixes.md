@@ -15,7 +15,7 @@ archive and as `config.json`:
 | Variant (same `json.loads` result where applicable) | Baseline | After |
 | --- | --- | --- |
 | plain | block | block |
-| `"class_name"` escaped key | clean | block |
+| `"class\u005fname"`, the key with a JSON-escaped underscore | clean | block |
 | UTF-8 BOM prefix | clean | block |
 | UTF-16LE | clean | block |
 | `"pad": [0] * 200001` ahead of the layers (past the old 200,000-node cap) | clean | block |
