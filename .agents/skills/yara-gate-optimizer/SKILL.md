@@ -65,7 +65,7 @@ For requested publication, inspect the final diff, follow any repository PR
 template, stage only intended files, commit, push and create draft PRs. Read back
 the published body and exact remote head. Follow that head's CI to terminal results
 or a concrete blocker. Report CI, review, mergeability and draft status separately.
-CodeQL query success with upload disabled does not prove dashboard delivery.
+A green CodeQL `Analyze (...)` job means the analysis ran; read the `CodeQL` check for new alerts.
 Keep drafts unmerged unless the user explicitly authorizes merging.
 
 Finish with observed improvements, evidence, unverified boundaries and known risks.

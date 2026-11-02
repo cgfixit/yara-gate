@@ -33,6 +33,8 @@ concurrency:
 
 jobs:
   gate:
+    # Pull requests list this and the deploy job as skipped; the names say why.
+    name: Deploy gate (main only)
     # Only a push to main in this repository that ci passed, or a manual run on main. The
     # commit deployed is always github.sha (main's head when this run started), never a ref
     # taken from the event; a ci run for any other commit leaves this job skipped, and the
@@ -69,6 +71,7 @@ jobs:
         run: python3 scripts/pages_deploy_gate.py --sha "$SHA" --repo "$REPO" --run-id "$RUN_ID"
 
   build:
+    name: Re-record and build the demo
     needs: gate
     # Pull requests always validate; the deploy path builds only what the gate allowed.
     if: >-
@@ -120,6 +123,7 @@ jobs:
           retention-days: 1
 
   deploy:
+    name: Deploy to GitHub Pages (main only)
     needs: [gate, build]
     if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
