@@ -176,11 +176,16 @@ directory the gate owns, and reads only what the gate allowed:
    mtime, then copy it through a temporary name and rename it into the gate's
    staging directory, so no watcher sees a partial copy. Compare the source's size
    and mtime again after the copy and drop the copy if they changed.
-3. Scan the staged copy with `yara-gate scan STAGED --json --policy agent-ingest
-   --home GATE_REPORTS --rules RULES`. Allow it only for exit 0, exactly one record,
-   `verdict` `clean`, `exit_code` 0, `incomplete_reason` null, `policy`
-   `agent-ingest`, and a record `sha256` equal to the SHA-256 of the staged bytes.
-   Everything else, including a scanner that did not start, is held.
+3. Scan the staged copy with `yara-gate scan STAGED --json --policy POLICY
+   --home GATE_REPORTS --rules RULES`, and allow it only on exit 0, exactly one
+   record, that policy's read rule, and a record `sha256` equal to the SHA-256 of the
+   staged bytes. Everything else, including a scanner that did not start, is held.
+   Pick the policy by who can write to the folder. For a folder other people can
+   write to (a shared Dropbox folder), use `agent-ingest` and read clean records only.
+   Use `agent-document` and its notes-only rule
+   ([below](#documents-that-quote-attacks)) only for a folder whose authors you trust
+   to write about attacks. Under `agent-document`, an override phrase in hidden Office
+   or PDF text is still a note (#110).
 4. Move the staged copy into `allowed/<sha256>/` or `held/<sha256>/` with the
    record beside it. The consumer reads `allowed/` only. The sync folder is never
    written, so a later change there cannot reach bytes already allowed, and a
@@ -343,6 +348,20 @@ A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
 consumer's own approval checks on any tool or send action it proposes.
 
+### A public SMS number
+
+[docs/examples/sms_gate_bridge.py](examples/sms_gate_bridge.py) is a standard-library
+bridge for a Twilio number. It verifies `X-Twilio-Signature` against the auth token
+and the public URL, and holds every MMS (the gate never fetches media, and image text
+is not read). It scans each body and the sender's recent messages joined together, so
+an instruction split across two texts is held on the second, and it writes allowed and
+held messages to owner-only queues. It sends no automatic reply. The first half of a
+split instruction has already been allowed by the time the second arrives; it is
+harmless alone, but the consumer should still read messages as one sender's thread,
+not as instructions. Measured gaps for this channel, the consumer changes it needs,
+and the review queue it lacks are in the
+[integration-readiness review](reviews/2026-11-02-integration-readiness.md).
+
 ## PDFs and other compressed documents
 
 A PDF verdict covers the file's raw bytes and the `pdf-flate` view: every
@@ -358,9 +377,11 @@ stream that inflates is never dropped from the view. A Word, Excel,
 or PowerPoint verdict covers each XML member and an `ooxml-text` view that joins
 the text runs of the body, headers, footers, notes, comments, shared strings, and
 slides, so a sentence Word split across formatting runs (the usual case) is seen
-whole. Not covered: PDF text split across several `Tj` operators, other stream
-filters (LZW, RunLength, an ASCII chain without Flate), images, and Office parts a reader does
-not see (settings, styles). The PDF and Office structure checks still run on the
+whole. Not covered: PDF text split across several `Tj` operators or a kerned `TJ` array,
+text a PDF stores as font glyph IDs (what LibreOffice and most office exports write, so
+the gate reads none of their text), hex-string text, other stream filters (LZW,
+RunLength, an ASCII chain without Flate), images, ODT text split by spans, RTF text
+split by control words, and Office parts a reader does not see (settings, styles). The PDF and Office structure checks still run on the
 raw file.
 
 A consumer that extracts text itself should gate that text too, since the
@@ -467,4 +488,8 @@ both policies hold those findings. Legitimate security documentation can match;
 for a corpus of such documents, `agent-document` passes a file whose only findings
 are notes, under the exact predicate above, and still holds the rest. Release other held files
 through explicit review rather than a filename or repository-wide allowlist. These are integration requirements, not a claim that
-either consumer now calls yara-gate automatically.
+either consumer now calls yara-gate automatically. The
+[integration-readiness review](reviews/2026-11-02-integration-readiness.md) maps both
+consumers at named commits: where CyClaw's indexer can call the gate (at load time, so
+`rclone copy` cannot restore a moved file), and what the harness would need for an
+inbound SMS channel.
