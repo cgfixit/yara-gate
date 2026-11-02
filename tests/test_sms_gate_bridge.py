@@ -1,8 +1,10 @@
 """The SMS bridge example must keep message queues owner-only, including ones that already exist."""
 
+import errno
 import importlib.util
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -35,16 +37,22 @@ def test_an_existing_queue_is_narrowed_and_keeps_its_entries(tmp_path: Path) -> 
     queue = tmp_path / "queue"
     queue.mkdir()
     os.chmod(queue, 0o755)  # noqa: S103 - the readable queue this test must narrow
-    allowed = queue / "allowed.jsonl"
-    allowed.write_text('{"earlier": 1}\n', encoding="utf-8")
-    os.chmod(allowed, 0o644)
+    for name in bridge.QUEUE_FILES:
+        (queue / name).write_text('{"earlier": 1}\n', encoding="utf-8")
+        os.chmod(queue / name, 0o644)
 
     gate = bridge.Gate(queue, None)
-    gate._append("allowed.jsonl", {"later": 2})
-
-    assert _mode(queue) == 0o700
-    assert _mode(allowed) == 0o600 and _mode(queue / "held.jsonl") == 0o600
-    assert allowed.read_text(encoding="utf-8").splitlines() == ['{"earlier": 1}', '{"later": 2}']
+    try:
+        for name in bridge.QUEUE_FILES:
+            gate._append(name, {"later": 2})
+            assert _mode(queue / name) == 0o600
+            assert (queue / name).read_text(encoding="utf-8").splitlines() == [
+                '{"earlier": 1}',
+                '{"later": 2}',
+            ]
+        assert _mode(queue) == 0o700
+    finally:
+        os.close(gate.dir_fd)
 
 
 def test_a_linked_queue_path_is_refused_and_its_target_untouched(tmp_path: Path) -> None:
@@ -69,3 +77,74 @@ def test_a_linked_queue_path_is_refused_and_its_target_untouched(tmp_path: Path)
 
     assert outside.read_text(encoding="utf-8") == "untouched\n"
     assert _mode(outside) == 0o644
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS extended ACLs")
+@pytest.mark.parametrize("inherited", [False, True])
+def test_macos_acl_grants_are_removed(tmp_path: Path, inherited: bool) -> None:
+    queue = tmp_path / "queue"
+    queue.mkdir()
+    subprocess.run(
+        [
+            "/bin/chmod",
+            "+a",
+            "everyone allow read,search,file_inherit,directory_inherit",
+            str(queue),
+        ],
+        check=True,
+    )
+    for name in bridge.QUEUE_FILES:
+        path = queue / name
+        path.write_bytes(b'{"earlier": 1}\n')
+        if not inherited:
+            subprocess.run(["/bin/chmod", "-N", str(path)], check=True)
+            subprocess.run(["/bin/chmod", "+a", "everyone allow read", str(path)], check=True)
+    paths = [queue, *(queue / name for name in bridge.QUEUE_FILES)]
+    for path in paths:
+        assert " allow " in subprocess.check_output(["/bin/ls", "-lde", str(path)], text=True)
+
+    gate = bridge.Gate(queue, None)
+    try:
+        for path in paths:
+            assert " allow " not in subprocess.check_output(
+                ["/bin/ls", "-lde", str(path)], text=True
+            )
+        for name in bridge.QUEUE_FILES:
+            path = queue / name
+            # A replacement/rotated queue must be secured on append as well as at startup.
+            subprocess.run(["/bin/chmod", "+a", "everyone allow read", str(path)], check=True)
+            gate._append(name, {"later": 2})
+            assert " allow " not in subprocess.check_output(
+                ["/bin/ls", "-lde", str(path)], text=True
+            )
+            assert path.read_bytes() == b'{"earlier": 1}\n{"later": 2}\n'
+    finally:
+        os.close(gate.dir_fd)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS extended ACLs")
+@pytest.mark.parametrize("operation", ["acl_init", "acl_set_fd"])
+def test_acl_failure_refuses_startup_and_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    queue = tmp_path / "queue"
+    gate = bridge.Gate(queue, None)
+    libc = bridge.ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+
+    def denied(*args: object) -> int:
+        bridge.ctypes.set_errno(errno.EPERM)
+        return 0 if operation == "acl_init" else -1
+
+    monkeypatch.setattr(libc, operation, denied)
+    monkeypatch.setattr(bridge.ctypes, "CDLL", lambda *args, **kwargs: libc)
+    try:
+        with pytest.raises(OSError, match="queue ACL"):
+            bridge.Gate(queue, None)
+        for name in bridge.QUEUE_FILES:
+            path = queue / name
+            path.write_bytes(b'{"earlier": 1}\n')
+            with pytest.raises(OSError, match="queue ACL"):
+                gate._append(name, {"later": 2})
+            assert path.read_bytes() == b'{"earlier": 1}\n'
+    finally:
+        os.close(gate.dir_fd)

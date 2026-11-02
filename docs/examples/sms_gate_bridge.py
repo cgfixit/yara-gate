@@ -25,19 +25,21 @@ Run it on loopback behind the HTTPS reverse proxy or tunnel whose URL Twilio cal
 
 The token is read from the environment, never from argv or a file in the repository. The
 queue directory must belong to the user running the bridge; an existing directory is narrowed
-to 0700 and its queue files to 0600, and a link or another user's path stops the bridge at
-startup. It needs a POSIX system (Linux or macOS).
+to 0700 and its queue files to 0600, with macOS extended ACLs removed. A link, another user's
+path, or a failure to make it private stops the bridge at startup. It needs Linux or macOS.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import hashlib
 import hmac
 import json
 import os
 import stat
+import sys
 import threading
 import time
 from collections import defaultdict, deque
@@ -59,6 +61,27 @@ QUEUE_FILES = ("allowed.jsonl", "held.jsonl")
 def _require_mine(info: os.stat_result, path: Path) -> None:
     if info.st_uid != os.getuid():
         raise PermissionError(f"{path} belongs to another user")
+
+
+def _make_private(fd: int, mode: int) -> None:
+    os.fchmod(fd, mode)
+    if sys.platform == "darwin":
+        # macOS ACL grants survive chmod; clear them on the validated descriptor.
+        libc = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+        libc.acl_init.argtypes = [ctypes.c_int]
+        libc.acl_init.restype = ctypes.c_void_p
+        libc.acl_set_fd.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        libc.acl_set_fd.restype = ctypes.c_int
+        libc.acl_free.argtypes = [ctypes.c_void_p]
+        libc.acl_free.restype = ctypes.c_int
+        acl = libc.acl_init(0)
+        if not acl:
+            raise OSError(ctypes.get_errno(), "cannot allocate a private queue ACL")
+        try:
+            if libc.acl_set_fd(fd, acl) != 0:
+                raise OSError(ctypes.get_errno(), "cannot clear the queue ACL")
+        finally:
+            libc.acl_free(acl)
 
 
 def twilio_signature(auth_token: str, url: str, fields: list[tuple[str, str]]) -> str:
@@ -94,7 +117,7 @@ class Gate:
         self.dir_fd = os.open(queue, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             _require_mine(os.fstat(self.dir_fd), queue)
-            os.fchmod(self.dir_fd, 0o700)
+            _make_private(self.dir_fd, 0o700)
             for name in QUEUE_FILES:
                 os.close(self._open(name))
         except BaseException:
@@ -112,7 +135,7 @@ class Gate:
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 raise PermissionError(f"{path} must be a regular file with one link")
             _require_mine(info, path)
-            os.fchmod(fd, 0o600)
+            _make_private(fd, 0o600)
         except BaseException:
             os.close(fd)
             raise

@@ -181,7 +181,18 @@ or files already exist: the first draft applied those modes only on creation, so
 (reported in review and reproduced). The bridge now narrows an existing queue at startup,
 keeps its entries, and refuses to start on a symlinked directory or file, a hardlinked or
 FIFO queue file, or another user's directory or file; `tests/test_sms_gate_bridge.py`
-covers reuse and links. The log carries message IDs and outcomes, not text.
+covers reuse and links. On macOS, explicit and inherited ACL grants survive `fchmod`:
+a follow-up probe at `e7d6665` appended a message while an `everyone allow read`
+entry remained on the queue file. The bridge now also clears macOS extended ACLs
+through the validated directory/file descriptors and refuses startup or append if
+that fails. The focused tests cover explicit and inherited ACLs, repeat appends,
+ACL failure without writing, and preservation of both queues' existing contents.
+Both ACL regression cases fail at `e7d6665` and pass with the fix; the real
+`Gate.decide` probe still allows an ordinary SMS and holds an override, preserving
+the earlier records with `0700`/`0600` modes and no ACL grants. These checks used
+Python 3.12.12 and YARA-X 1.22.1 on macOS, with disposable rules and inert messages;
+they did not exercise live Twilio or another OS account. The log carries message
+IDs and outcomes, not text.
 
 **What the harness would have to add:**
 
