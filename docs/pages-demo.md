@@ -102,15 +102,17 @@ to withdraw it, unpublish the Pages site in repository settings.
 
 ## Recording provenance and refresh
 
-The current dataset was captured on November 2, 2026 at 14:24:08 UTC from scanner
-revision `38e100bbc559e86e570e3361256498d3a0c23420`, Python 3.12.3 and YARA-X
-1.22.1. It uses the 82 bundled rules only, with no vendor packs. The six examples
+The current dataset was captured on November 2, 2026 at 17:50:37 UTC from scanner
+revision `8a83ffe10c70fe12d3af27d1e5691e782807652a` (`main` after #149, #150, and
+#151), Python 3.12.3 and YARA-X 1.22.1. It uses the 82 bundled rules only, with no
+vendor packs. The six examples
 are an ordinary note, a quoted override, a secret-transfer request to an invalid
 example address, an HTML-encoded override, a synthetic executable header named
 as a PDF, and a deliberately broken rule compilation in a disposable rules tree.
-No sample was executed and no referenced URL was fetched. The November 1 dataset
-(revision `68e27e7`, 80 rules) recorded the same verdicts, findings, offsets, and
-input fingerprints; only the rule count and ruleset fingerprint changed.
+No sample was executed and no referenced URL was fetched. The earlier datasets,
+`68e27e7` (November 1, 80 rules) and `38e100b` (November 2, 82 rules), recorded the
+same verdicts, findings, offsets, and input fingerprints; only the rule count and
+ruleset fingerprint changed.
 
 To refresh, check out the intended source revision with no local changes under
 `src/`, `rules/local/`, `rules/rules.lock`, `pyproject.toml`, or `uv.lock`, then run

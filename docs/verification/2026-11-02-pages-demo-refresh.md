@@ -107,6 +107,33 @@ Two consecutive builds were byte-identical. Builder: system Python 3.13.18;
 | `recordings.mjs` | `8f2087d12576941294593e76358f8fa37788caa44c89ea951ee1853cbbb90ca9` |
 | `style.css` | `dc4bf3090613bc8a646583699a79cf7a9b54e78eefd04be5b2c8e2b6cc3305fd` |
 
+## Post-merge re-record at `8a83ffe`
+
+#150 changed a rule file and #151 changed scanner code, so after the merge train
+(#150, #151, then #149, all squash-merged) `main`'s ruleset fingerprint no longer
+matched the `38e100b` recordings. On a branch cut at `main` =
+`8a83ffe10c70fe12d3af27d1e5691e782807652a`, with the scanner sources clean, the
+committed recorder ran at **17:50:37 UTC**:
+
+```sh
+uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
+```
+
+Compared with the `38e100b` dataset, only `source_revision`, `captured_at`, and the
+15 completed records' `ruleset_sha256` changed (now
+`92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3`). The rule
+count stayed 82, and verdicts, findings, offsets, input fingerprints, and
+coverage counters were unchanged.
+
+Two builds were byte-identical, and `node --check` passed for both modules. Only
+`recordings.mjs` changed:
+`e097c65ff245385c16dcae26443dd21afaed3bd1bbcb34958d1577d9c48a4dae`; `app.mjs`,
+`index.html`, and `style.css` match the table above. The same headless Chromium
+probe showed all 18 outcomes at 1366×900 and at 375×740. It made only the four
+same-origin requests, logged no console messages, and found no horizontal
+overflow. The provenance panel read revision `8a83ffe…` and capture time
+`2026-11-02T17:50:37+00:00`, with 82 compiled rules.
+
 ## Limits
 
 The hosted site, HTTPS, and the post-merge deployment were not exercised here;
