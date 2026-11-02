@@ -33,14 +33,18 @@ concurrency:
 
 jobs:
   gate:
-    # Only a push to main in this repository that ci passed, or a manual run on main.
+    # Only a push to main in this repository that ci passed, or a manual run on main. The
+    # commit deployed is always github.sha (main's head when this run started), never a ref
+    # taken from the event; a ci run for any other commit leaves this job skipped, and the
+    # newer commit's own ci run deploys it.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_sha == github.sha)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -59,7 +63,7 @@ jobs:
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: python3 scripts/pages_deploy_gate.py --sha "$SHA" --repo "$REPO" --run-id "$RUN_ID"
@@ -73,19 +77,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      # The default ref: the pull request's merge commit, or github.sha on the deploy path.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Empty on pull requests (the merge ref); the gated commit on the deploy path.
-          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
+
+      - name: Confirm the checkout is the gated commit
+        if: needs.gate.outputs.deploy == 'true'
+        env:
+          GATED: ${{ needs.gate.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$GATED"
 
       - name: Install uv and Python 3.12
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           python-version: "3.12"
-          # The deploy path builds from the lock file alone, with no restored cache.
-          enable-cache: ${{ github.event_name == 'pull_request' }}
+          # Built from the lock file alone; no cache is restored or saved here.
+          enable-cache: false
 
       - name: Sync the locked scanner
         run: uv sync --frozen
