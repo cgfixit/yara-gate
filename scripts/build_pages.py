@@ -98,7 +98,7 @@ def validate_recordings(data: dict) -> None:
         re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", data["captured_at"]) is not None,
         "Capture time must be UTC",
     )
-    require(len(data["cases"]) == 6, "Expected six reviewed scenarios")
+    require(len(data["cases"]) == 9, "Expected nine reviewed scenarios")
     ids = set()
     # Every completed recording must come from one ruleset, so the page never mixes revisions.
     rulesets = set()
@@ -232,7 +232,7 @@ def build(output: Path) -> None:
     (output / "recordings.mjs").write_text(
         "export default " + json.dumps(data, ensure_ascii=True) + ";\n", encoding="utf-8"
     )
-    print(f"Built four public files in {output}; six scenarios / 18 policy recordings validated")
+    print(f"Built four public files in {output}; nine scenarios / 27 policy recordings validated")
 
 
 if __name__ == "__main__":
