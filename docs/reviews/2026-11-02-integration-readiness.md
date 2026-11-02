@@ -175,8 +175,13 @@ The bridge example implements the left half and was exercised on loopback:
 | Override split across two texts | second text held by the window scan |
 | MMS | held |
 
-The queue files are owner-only (`0600` in a `0700` directory), and the log carries
-message IDs and outcomes, not text.
+The queue files are owner-only (`0600` in a `0700` directory), also when the directory
+or files already exist: the first draft applied those modes only on creation, so a reused
+`0755` directory and `0644` queue file kept them while an ordinary message was appended
+(reported in review and reproduced). The bridge now narrows an existing queue at startup,
+keeps its entries, and refuses to start on a symlinked directory or file, a hardlinked or
+FIFO queue file, or another user's directory or file; `tests/test_sms_gate_bridge.py`
+covers reuse and links. The log carries message IDs and outcomes, not text.
 
 **What the harness would have to add:**
 

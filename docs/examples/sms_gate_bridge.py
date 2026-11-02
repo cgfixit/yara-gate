@@ -23,7 +23,10 @@ Run it on loopback behind the HTTPS reverse proxy or tunnel whose URL Twilio cal
     TWILIO_AUTH_TOKEN=... uv run python docs/examples/sms_gate_bridge.py \\
         --public-url https://sms.example.com/twilio/sms --queue ~/sms-gate --port 8787
 
-The token is read from the environment, never from argv or a file in the repository.
+The token is read from the environment, never from argv or a file in the repository. The
+queue directory must belong to the user running the bridge; an existing directory is narrowed
+to 0700 and its queue files to 0600, and a link or another user's path stops the bridge at
+startup. It needs a POSIX system (Linux or macOS).
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ import hashlib
 import hmac
 import json
 import os
+import stat
 import threading
 import time
 from collections import defaultdict, deque
@@ -49,6 +53,12 @@ WINDOW_MESSAGES = 5  # How many of a sender's recent messages are rescanned toge
 WINDOW_SECONDS = 15 * 60
 RATE_PER_MINUTE = 12  # Per sender; a flood is held for review rather than scanned and passed.
 EMPTY_TWIML = b'<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+QUEUE_FILES = ("allowed.jsonl", "held.jsonl")
+
+
+def _require_mine(info: os.stat_result, path: Path) -> None:
+    if info.st_uid != os.getuid():
+        raise PermissionError(f"{path} belongs to another user")
 
 
 def twilio_signature(auth_token: str, url: str, fields: list[tuple[str, str]]) -> str:
@@ -77,11 +87,39 @@ class Gate:
         self.lock = threading.Lock()
         self.recent: dict[str, deque[tuple[float, str]]] = defaultdict(deque)
         self.arrivals: dict[str, deque[float]] = defaultdict(deque)
+        # Creation modes do not apply to a path that already exists, so an existing queue is
+        # checked and narrowed here. Queue files are opened relative to this descriptor, so
+        # renaming the path afterwards cannot redirect them.
         queue.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.dir_fd = os.open(queue, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            _require_mine(os.fstat(self.dir_fd), queue)
+            os.fchmod(self.dir_fd, 0o700)
+            for name in QUEUE_FILES:
+                os.close(self._open(name))
+        except BaseException:
+            os.close(self.dir_fd)
+            raise
+
+    def _open(self, name: str) -> int:
+        """Open a queue file to append: ours, regular, one link, mode 0600, contents kept."""
+        path = self.queue / name
+        # O_NONBLOCK keeps a FIFO left in the queue from blocking the open.
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
+        fd = os.open(name, flags, 0o600, dir_fd=self.dir_fd)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise PermissionError(f"{path} must be a regular file with one link")
+            _require_mine(info, path)
+            os.fchmod(fd, 0o600)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
 
     def _append(self, name: str, entry: dict[str, Any]) -> None:
-        path = self.queue / name
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        fd = self._open(name)
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
@@ -203,7 +241,11 @@ def main() -> None:
         raise SystemExit("refusing: set TWILIO_AUTH_TOKEN in the environment")
     if urlsplit(args.public_url).scheme != "https":
         raise SystemExit("refusing: --public-url must be the https URL Twilio signs")
-    bridge = Bridge(args.port, args.public_url, token, Gate(args.queue.expanduser(), args.rules))
+    try:
+        gate = Gate(args.queue.expanduser(), args.rules)
+    except OSError as exc:
+        raise SystemExit(f"refusing to use the queue: {exc}") from None
+    bridge = Bridge(args.port, args.public_url, token, gate)
     print(f"listening on 127.0.0.1:{bridge.server_address[1]} for {args.public_url}", flush=True)
     bridge.serve_forever()
 
