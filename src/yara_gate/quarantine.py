@@ -10,13 +10,20 @@ import stat
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 from yara_gate.models import ScanPolicy, ScanResult, Verdict
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_file
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 # The common per-component limit on Linux and macOS, in encoded bytes.
 _NAME_MAX = 255
@@ -87,32 +94,41 @@ class IntakeRejected(Exception):
 
 
 def intake(home: GatePaths, src: Path) -> Path:
-    """Copy one regular file into quarantine/<sha256>/ and strip the executable bit."""
+    """Copy one regular file into quarantine/<sha256>/<its name> and strip the executable bit.
+
+    A digest has one slot holding one file, named as the latest submission. The bytes are
+    copied in and scanned under the name they arrived with, because type checks depend on
+    the name: the same bytes can be an ordinary tool.exe and a disguised invoice.pdf. An
+    earlier copy under any name comes back through quarantine and is replaced.
+    """
     home.ensure()
     fd = _open_regular(src)
+    opened = os.fstat(fd)
     consumed = False
     try:
         digest = _hash_fd(fd)
-        existing = _existing_slot(home, digest)
-        if existing is not None:
-            quarantine = home.quarantine / digest
-            if existing.parent != quarantine:
-                # Every rescan must pass through quarantine, including a stricter policy.
-                os.replace(existing.parent, quarantine)
-                existing = quarantine / existing.name
-            consumed = not _same_file(fd, existing)
-            return existing
         slot = home.quarantine / digest
+        for root in (home.clean, home.blocked):
+            earlier = root / digest
+            if earlier.is_dir():
+                # Every rescan passes through quarantine, including a stricter policy.
+                if slot.exists():
+                    shutil.rmtree(earlier)
+                else:
+                    os.replace(earlier, slot)
         slot.mkdir(parents=True, exist_ok=True)
         dest = slot / src.name
         _copy_fd(fd, dest)
+        for item in slot.iterdir():
+            if item.name != dest.name and not item.is_dir():
+                item.unlink()
         consumed = not _same_file(fd, dest)
         return dest
     finally:
         os.close(fd)
         # Windows refuses to unlink a file while any handle to it is open, this one included.
         if consumed:
-            _unlink_entry(src)
+            _unlink_entry(src, opened)
 
 
 def process_inbox_file(
@@ -123,14 +139,27 @@ def process_inbox_file(
     timeout_s: int = 30,
     policy: ScanPolicy = ScanPolicy.default,
 ) -> ScanResult:
-    try:
-        placed = intake(home, src)
-    except IntakeRejected as exc:
-        return _reject_entry(home, src, exc.reason, policy)
-    result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
-    write_reports(home.reports, result)
-    _relocate(home, result)
-    return result
+    home.ensure()
+    # One submission at a time per gate home, from intake to relocation, so a CLI scan and
+    # watch cannot interleave on the same slot.
+    with _gate_lock(home):
+        try:
+            placed = intake(home, src)
+        except IntakeRejected as exc:
+            return _reject_entry(home, src, exc.reason, policy)
+        result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
+        if result.verdict is not Verdict.incomplete and result.sha256 != placed.parent.name:
+            result = replace(
+                result,
+                verdict=Verdict.incomplete,
+                advisory=False,
+                note=False,
+                policy_reason=None,
+                incomplete_reason="quarantined copy changed during the scan",
+            )
+        write_reports(home.reports, result)
+        _relocate(home, result)
+        return result
 
 
 def scan_in_place(
@@ -298,22 +327,28 @@ class _InboxHandler:
         return stat.S_ISREG(again.st_mode) and (again.st_size, again.st_mtime_ns) == stamp
 
 
-def _existing_slot(home: GatePaths, digest: str) -> Path | None:
-    if digest == "_rejected":
-        return None
-    for root in (home.clean, home.blocked, home.quarantine):
-        slot = root / digest
-        if slot.name == "_rejected" or not slot.is_dir():
-            continue
-        files = [item for item in slot.iterdir() if item.is_file() and not _is_partial(item.name)]
-        if files:
-            return files[0]
-    return None
-
-
-def _is_partial(name: str) -> bool:
-    """A copy in progress. A dotfile from the inbox is a real submission."""
-    return name.startswith(".partial-") or (name.startswith(".") and name.endswith(".partial"))
+@contextmanager
+def _gate_lock(home: GatePaths) -> Iterator[None]:
+    """Hold the gate home's intake lock. The OS releases it if the process dies."""
+    fd = os.open(home.root / ".intake.lock", os.O_RDWR | os.O_CREAT | _BINARY, 0o600)
+    try:
+        if sys.platform == "win32":
+            while True:
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue  # LK_LOCK gives up after about ten seconds; keep waiting.
+            try:
+                yield
+            finally:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+    finally:
+        os.close(fd)
 
 
 def _relocate(home: GatePaths, result: ScanResult) -> None:
@@ -321,12 +356,13 @@ def _relocate(home: GatePaths, result: ScanResult) -> None:
     if result.verdict is Verdict.incomplete or not src.exists():
         return
     dest_root = home.blocked if result.verdict is Verdict.block else home.clean
-    dest = dest_root / result.sha256
     dest_root.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        shutil.rmtree(src, ignore_errors=True)
-        return
-    os.replace(src, dest)
+    # One slot per digest: a copy left in either folder holds an earlier verdict.
+    for root in (home.clean, home.blocked):
+        earlier = root / result.sha256
+        if earlier.exists():
+            shutil.rmtree(earlier)
+    os.replace(src, dest_root / result.sha256)
 
 
 def _acquire_lock(home: GatePaths) -> None:
@@ -482,8 +518,15 @@ def _same_file(fd: int, other: Path) -> bool:
         return False
 
 
-def _unlink_entry(src: Path) -> None:
+def _unlink_entry(src: Path, copied: os.stat_result) -> None:
+    """Remove the inbox entry only if it is still the file that was copied.
+
+    A file renamed onto the entry after it was opened has not been scanned, so it stays in
+    the inbox for its own intake.
+    """
     try:
+        if not os.path.samestat(src.lstat(), copied):
+            return
         src.unlink()
     except OSError:
         return
