@@ -141,3 +141,50 @@ the refreshed data reaches the site only after a manual `pages-demo` run on
 `main`. No new screenshots were captured; the November 1 Pages screenshots
 remain dated captures of the 80-rule dataset. Other browsers, a screen-reader
 audit, vendor-pack accuracy, and live CyClaw/Harness integration are unverified.
+
+## Automatic deploys and hosted check — 20:04 to 20:20 UTC
+
+This section supersedes the limits above for the hosted site. After #153 added
+the gated `workflow_run` deploy, two merges published without a manual run:
+
+| Merged commit | `pages-demo` run | Gate log | Re-record step | Deploy log |
+| --- | --- | --- | --- | --- |
+| `63cb3fb` (#153) | [41515866312](https://github.com/cgfixit/yara-gate/actions/runs/41515866312) | `every other check passed (7)` | passed `--baseline` (6 scenarios) | `Created deployment for 63cb3fb…` |
+| `6fc549b` (#155) | [41516975690](https://github.com/cgfixit/yara-gate/actions/runs/41516975690) | `every other check passed (7)` | `9 scenarios x 3 policies … (82 rules)`, only provenance refreshed | `Created deployment for 6fc549b…` |
+
+Both runs started when `ci` finished on the push, and the seven checks the gate
+saw were the three `ci` jobs, the checked-in CodeQL job, and default setup's three
+`Analyze` jobs.
+
+This environment's network allowlist then admitted `cgfixit.github.io`, so the
+hosted site was fetched for the first time in these records, at about 20:16 UTC
+with TLS verification on. A local `scripts/build_pages.py` build of `6fc549b`
+produced the same `index.html`, `style.css`, and `app.mjs` bytes:
+
+| Hosted file | SHA-256 | Local build of `6fc549b` |
+| --- | --- | --- |
+| `index.html` | `3d59e877676ad6e0bcdc95d89fe52f806bf78772a8ed401636a711ebfca216b4` | identical |
+| `style.css` | `dc4bf3090613bc8a646583699a79cf7a9b54e78eefd04be5b2c8e2b6cc3305fd` | identical |
+| `app.mjs` | `5ba62ea8cddd4f1822f139f5cddc74b84a284373aba4875c09342ed87d7c66ea` | identical |
+| `recordings.mjs` | `a931188fc76994247cd21ba3899b6edfc2b3f30947feff8276f1e1ce6560bb57` | differs, as designed |
+
+The hosted recordings come from the deploy's own re-recording: revision
+`6fc549b6a1f4a6392efc491bf6e57fe8383aea11`, captured at `2026-11-02T20:12:06+00:00`
+(the second the deploy log's re-record step finished), nine scenarios, 82 compiled
+rules. The recorder's `outcome_changes` against the committed
+`web-demo/recordings.json` returned none.
+
+Headless Chromium 153.0.8010.12 (Playwright 1.63.0) then loaded
+`https://cgfixit.github.io/yara-gate/` through the environment's proxy over TLS 1.3:
+
+- At 1366×900 and 375×740, all 27 scenario and policy pairs showed the verdict and
+  exit code recorded in the hosted data (54 checks, no mismatch).
+- Only the page, stylesheet, and two modules were requested; selection changes made
+  no further requests. No console messages or page errors.
+- No horizontal document overflow at either width.
+- The provenance panel visibly showed the full `6fc549b…` revision and the capture
+  time above.
+
+Not covered: other browsers, a screen-reader audit, and the HTTPS certificate
+beyond the browser's own validation. The screenshots of this pass were not
+committed.
