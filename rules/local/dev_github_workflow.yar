@@ -12,9 +12,15 @@ rule dev_github_workflow_secrets_dump {
         $dump = /\$\{\{[ \t]*toJSON\([ \t]*secrets[ \t]*\)[ \t]*\}\}/ nocase ascii
         $job = /(^|\n)[ \t]*(runs-on|steps)[ \t]*:/ ascii
         $send = /\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|nc|ncat)\b|\bbase64\b|webhook\.site|\bfetch\(|requests\.post|upload-artifact/ ascii
+        // The dump as the whole value of an action input (with: key: ${{ toJSON(secrets) }}), after
+        // up to 16 single-line sibling inputs. The action receives it; this step sends nothing.
+        $with_dump = /\n[ \t]*with[ \t]*:[ \t]*\r?\n([ \t]+[A-Za-z0-9_-]+[ \t]*:[ \t]*[^ \t\r\n#][^\r\n]*\r?\n){0,16}[ \t]+[A-Za-z0-9_-]+[ \t]*:[ \t]*['"]?\$\{\{[ \t]*toJSON\([ \t]*secrets[ \t]*\)[ \t]*\}\}/ nocase ascii
     condition:
         yara_gate_text and $job and
-        for any i in (1..#dump) : ( $send in (@dump[i] - 1024..@dump[i] + 1024) )
+        for any i in (1..#dump) : (
+            $send in (@dump[i] - 1024..@dump[i] + 1024) and
+            not for any k in (1..#with_dump) : ( @with_dump[k] + !with_dump[k] == @dump[i] + !dump[i] )
+        )
 }
 
 rule dev_github_workflow_runner_backdoor {
@@ -34,22 +40,25 @@ rule dev_github_workflow_runner_backdoor {
         // first line indented no deeper than the run key, so each string fixes the key's column
         // (dash form or plain) and requires every following line to be deeper or blank. A sibling
         // env: or with: that carries the field is therefore not part of the shell text.
-        $block2 = /(^|\n)( {0}- | {2})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {3}[^\r\n]{0,200})?\r?\n){0,8} {3}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block4 = /(^|\n)( {2}- | {4})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {5}[^\r\n]{0,200})?\r?\n){0,8} {5}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block6 = /(^|\n)( {4}- | {6})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {7}[^\r\n]{0,200})?\r?\n){0,8} {7}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block8 = /(^|\n)( {6}- | {8})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {9}[^\r\n]{0,200})?\r?\n){0,8} {9}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block10 = /(^|\n)( {8}- | {10})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {11}[^\r\n]{0,200})?\r?\n){0,8} {11}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block12 = /(^|\n)( {10}- | {12})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {13}[^\r\n]{0,200})?\r?\n){0,8} {13}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block14 = /(^|\n)( {12}- | {14})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {15}[^\r\n]{0,200})?\r?\n){0,8} {15}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block16 = /(^|\n)( {14}- | {16})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {17}[^\r\n]{0,200})?\r?\n){0,8} {17}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block18 = /(^|\n)( {16}- | {18})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {19}[^\r\n]{0,200})?\r?\n){0,8} {19}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $block20 = /(^|\n)( {18}- | {20})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*\r?\n(( {21}[^\r\n]{0,200})?\r?\n){0,8} {21}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
-        $self_hosted = /(^|\n)[ \t]*runs-on[ \t]*:[ \t]*(\[[ \t]*)?['"]?self-hosted\b/ ascii
+        $block2 = /(^|\n)( {0}- | {2})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {3}[^\r\n]{0,200})?\r?\n){0,8} {3}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block4 = /(^|\n)( {2}- | {4})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {5}[^\r\n]{0,200})?\r?\n){0,8} {5}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block6 = /(^|\n)( {4}- | {6})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {7}[^\r\n]{0,200})?\r?\n){0,8} {7}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block8 = /(^|\n)( {6}- | {8})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {9}[^\r\n]{0,200})?\r?\n){0,8} {9}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block10 = /(^|\n)( {8}- | {10})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {11}[^\r\n]{0,200})?\r?\n){0,8} {11}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block12 = /(^|\n)( {10}- | {12})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {13}[^\r\n]{0,200})?\r?\n){0,8} {13}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block14 = /(^|\n)( {12}- | {14})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {15}[^\r\n]{0,200})?\r?\n){0,8} {15}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block16 = /(^|\n)( {14}- | {16})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {17}[^\r\n]{0,200})?\r?\n){0,8} {17}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block18 = /(^|\n)( {16}- | {18})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {19}[^\r\n]{0,200})?\r?\n){0,8} {19}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        $block20 = /(^|\n)( {18}- | {20})run[ \t]*:[ \t]*[|>][-+0-9]*[ \t]*(#[^\r\n]*)?\r?\n(( {21}[^\r\n]{0,200})?\r?\n){0,8} {21}[^\r\n]{0,200}\$\{\{[ \t]*github\.event\.(discussion|issue|comment|review|review_comment|pull_request)\.(body|title)[ \t]*\}\}/ ascii
+        // Runner labels are case-insensitive. Flow list, block list, or a bare label.
+        $self_hosted = /(^|\n)[ \t]*runs-on[ \t]*:[ \t]*(\[[ \t]*|\r?\n[ \t]*-[ \t]+)?['"]?self-hosted\b/ nocase ascii
         // The runner kills a job's leftover processes by this id; any override lets them outlive the job.
         $untracked = /(^|\n)[ \t]*RUNNER_TRACKING_ID[ \t]*:/ ascii
         $jobs = /(^|\n)jobs[ \t]*:/ ascii
-        // A job header: a key at indent 2 to 4 whose next line opens with a job-level key.
-        $job = /\n {2,4}[A-Za-z_][A-Za-z0-9_-]*[ \t]*:[ \t]*(#[^\r\n]*)?\r?\n {4,8}(runs-on|steps|needs|if|name|env|strategy|permissions|environment|container|services|outputs|timeout-minutes|continue-on-error|concurrency|defaults|uses|with|secrets)[ \t]*:/ ascii
+        // A job header: a key at indent 2, 3, or 4 whose first key line (after any comment or blank
+        // lines) sits at twice that indent and opens a job-level key. Fixed pairs keep a job's own
+        // environment: or env: map, whose child is name:, from reading as a new job.
+        $job = /\n( {2}[A-Za-z_][A-Za-z0-9_-]*[ \t]*:[ \t]*(#[^\r\n]*)?\r?\n([ \t]*(#[^\r\n]*)?\r?\n)* {4}| {3}[A-Za-z_][A-Za-z0-9_-]*[ \t]*:[ \t]*(#[^\r\n]*)?\r?\n([ \t]*(#[^\r\n]*)?\r?\n)* {6}| {4}[A-Za-z_][A-Za-z0-9_-]*[ \t]*:[ \t]*(#[^\r\n]*)?\r?\n([ \t]*(#[^\r\n]*)?\r?\n)* {8})(runs-on|steps|needs|if|name|env|strategy|permissions|environment|container|services|outputs|timeout-minutes|continue-on-error|concurrency|defaults|uses|with|secrets)[ \t]*:/ ascii
     condition:
         // The runner evidence must sit in the same job as the step, before it with no job header in
         // between, or be a top-level RUNNER_TRACKING_ID before jobs:, which applies to every job.
