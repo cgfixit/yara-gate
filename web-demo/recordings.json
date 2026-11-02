@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "source_revision": "8a83ffe10c70fe12d3af27d1e5691e782807652a",
-  "captured_at": "2026-11-02T17:50:37+00:00",
+  "source_revision": "683b954a274d23a08e44107e9c958cbf72eae592",
+  "captured_at": "2026-11-02T19:49:33+00:00",
   "cases": [
     {
       "id": "plain",
@@ -157,6 +157,106 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 29,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "lookalike",
+      "title": "A look-alike text message",
+      "description": "The same override sent as an SMS with a Cyrillic letter in place of one Latin letter. The scanner folds look-alikes, so the message is still held.",
+      "results": {
+        "default": {
+          "sha256": "0f762450333c8f3c84069ddc5b276a3b1961970eeb6875f8807a47c32198f100",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 125,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "0f762450333c8f3c84069ddc5b276a3b1961970eeb6875f8807a47c32198f100",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 125,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "0f762450333c8f3c84069ddc5b276a3b1961970eeb6875f8807a47c32198f100",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 125,
           "exit_code": 0
         }
       }
@@ -351,6 +451,233 @@
             "html-unescaped": 1
           },
           "bytes_scanned": 76,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "hidden_html",
+      "title": "An instruction hidden in a web page",
+      "description": "A synced page whose override sentence is styled invisible. Hidden instructions are held under every agent policy, including the document policy.",
+      "results": {
+        "default": {
+          "sha256": "28aa41a5f452133d9b9d261dd8d0628cc2f6773438ff50862177e1b377700cd2",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_hidden_html",
+              "offset": 60,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 74,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 149,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "28aa41a5f452133d9b9d261dd8d0628cc2f6773438ff50862177e1b377700cd2",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_hidden_html",
+              "offset": 60,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 74,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 149,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "28aa41a5f452133d9b9d261dd8d0628cc2f6773438ff50862177e1b377700cd2",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_hidden_html",
+              "offset": 60,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 74,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 149,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "word_split",
+      "title": "A Word file with a split sentence",
+      "description": "An override sentence Word stored across three formatting runs. The joined text is scanned, so it is found; the document policy records it as a note.",
+      "results": {
+        "default": {
+          "sha256": "9aa2be991191865a32bfc57349ca00241e95498f6a9fb2b32d43d68ad6df3cd8",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1493,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "9aa2be991191865a32bfc57349ca00241e95498f6a9fb2b32d43d68ad6df3cd8",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1493,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "9aa2be991191865a32bfc57349ca00241e95498f6a9fb2b32d43d68ad6df3cd8",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "92c9e4282abe5adb4f13a04aab1e0b0718c85d568972b74876702c92432057c3",
+          "engine_version": "1.22.1",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 82,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1493,
           "exit_code": 0
         }
       }

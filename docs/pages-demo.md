@@ -1,7 +1,7 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for six
+YARA-X backend. This site therefore replays **real recorded results** for nine
 inert examples under `agent-ingest`, `agent-document`, and `default`. Selecting an
 example does not start a scan. The UI labels every result as recorded and shows
 the scanner revision, capture time, rule coverage, and engine version.
@@ -133,17 +133,20 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The committed baseline was captured on November 2, 2026 at 17:50:37 UTC from scanner
-revision `8a83ffe10c70fe12d3af27d1e5691e782807652a` (`main` after #149, #150, and
-#151), Python 3.12.3 and YARA-X 1.22.1. It uses the 82 bundled rules only, with no
-vendor packs. The six examples
-are an ordinary note, a quoted override, a secret-transfer request to an invalid
-example address, an HTML-encoded override, a synthetic executable header named
-as a PDF, and a deliberately broken rule compilation in a disposable rules tree.
-No sample was executed and no referenced URL was fetched. The earlier datasets,
-`68e27e7` (November 1, 80 rules) and `38e100b` (November 2, 82 rules), recorded the
-same verdicts, findings, offsets, and input fingerprints; only the rule count and
-ruleset fingerprint changed.
+The committed baseline holds nine inert examples, recorded with the 82 bundled
+rules only and no vendor packs (Python 3.12.3, YARA-X 1.22.1, captured 2026-11-02T19:49:33+00:00 on the
+branch that added the last three; each deploy refreshes the revision and time). The
+examples are an ordinary note, a quoted override, the same override sent as an SMS
+with a Cyrillic look-alike letter, a secret-transfer request to an invalid example
+address, an HTML-encoded override, an override hidden in a web page with
+`display:none`, a Word file whose override sentence spans three formatting runs, a
+synthetic executable header named as a PDF, and a deliberately broken rule
+compilation in a disposable rules tree. The look-alike, hidden-page, and Word cases
+show the two intake channels the README leads with: an open SMS number, and a synced
+corpus where `agent-document` reads the split sentence as a note while
+`agent-ingest` holds it. No sample was executed and no referenced URL was fetched.
+Earlier six-example datasets (`68e27e7`, `38e100b`, `8a83ffe`) recorded the same
+outcomes for the six inputs they shared.
 
 When a change legitimately alters an outcome, re-record in that pull request and
 commit the result. Use a checkout with no uncommitted changes under `src/`,
@@ -155,7 +158,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the six fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the nine fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
