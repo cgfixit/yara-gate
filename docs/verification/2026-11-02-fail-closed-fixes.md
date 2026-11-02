@@ -18,7 +18,8 @@ archive and as `config.json`:
 | `"class_name"` escaped key | clean | block |
 | UTF-8 BOM prefix | clean | block |
 | UTF-16LE | clean | block |
-| `"pad": [0] * 200001` ahead of the layers (node cap) | clean | incomplete, `keras config exceeds walk limit` |
+| `"pad": [0] * 200001` ahead of the layers (past the old 200,000-node cap) | clean | block |
+| `"pad": [0] * 2000001` ahead of the layers (past the new 2,000,000-node cap) | clean | incomplete, `keras config exceeds walk limit` |
 | layer nested 70 levels (depth cap) | clean | incomplete, same reason |
 | `.h5` with reordered top-level keys | clean | block |
 | `.h5` with `{ "class_name"` (space) | clean | block |
@@ -31,6 +32,16 @@ requires. `.h5` candidates open with any top-level key Keras writes, and nested
 objects inside a decoded config are skipped. Reaching the node or depth cap in a
 Keras config with nothing found returns an incomplete reason through the
 heuristic error channel, so the file is held instead of passing.
+
+Because overflow now holds the file, the node cap was re-tuned for false holds.
+The config is already parsed when the walk starts, so the cap bounds only the
+walk, measured at about 2.1M nodes/s. A synthetic Keras 3 functional Dense layer
+is about 52 nodes, so the old 200,000 cap would have held a legitimate model of
+roughly 3,800 such layers (fewer for layers with more config keys). The cap is
+now 2,000,000 (about 38,000 layers). On a 17.5 MB benign 30,000-layer config the
+Keras check took 0.33 s at the old cap (ending incomplete) and 0.74 s at the new
+cap (complete); the whole scan was clean in 4.0 s, and a 26.3 MB 45,000-layer
+config was clean in 6.7 s, inside the default 30 s deadline.
 
 Benign size and timing checks (one run each): a 2.4 MB annotation file with
 300,000+ nodes and `class_name` keys (no top-level `class_name`), a 2.8 MB JSON

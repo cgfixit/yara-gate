@@ -975,7 +975,9 @@ _HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
 _KERAS_JSON_START = re.compile(
     rb'\{\s*"(?:class_name|config|module|registered_name|build_config|compile_config)"\s*:'
 )
-_KERAS_MAX_NODES = 200_000
+# The config is already parsed, so the cap bounds only the walk (about 2M nodes/s measured).
+# 2M nodes is roughly 38,000 functional layers; a config past it is held as incomplete.
+_KERAS_MAX_NODES = 2_000_000
 _KERAS_MAX_DEPTH = 64
 _KERAS_END = object()
 _KERAS_H5_CONFIGS = 4
