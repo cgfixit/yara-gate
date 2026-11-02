@@ -261,6 +261,24 @@ def _keras(kind: str) -> bytes:
     return output.getvalue()
 
 
+def _keras_json(kind: str) -> bytes:
+    """An inert Keras config naming os.system, spelled the ways json.loads still accepts."""
+    unsafe = {"module": "os", "class_name": "function", "config": "system"}
+    layers = {"layers": [unsafe]}
+    if kind == "api-index":
+        # Not a model: no class_name at the top, so naming subprocess is just data.
+        return json.dumps({"symbols": [{"class_name": "Popen", "module": "subprocess"}]}).encode()
+    if kind == "reordered-h5":
+        config = json.dumps({"config": layers, "class_name": "Sequential"}).encode()
+        return b"\x89HDF\r\n\x1a\n" + bytes(64) + config + bytes(16)
+    plain = json.dumps({"module": "keras", "class_name": "Sequential", "config": layers})
+    if kind == "escaped-key":
+        return plain.replace('"class_name"', '"class\\u005fname"').encode()
+    if kind == "bom":
+        return b"\xef\xbb\xbf" + plain.encode()
+    return plain.encode("utf-16")
+
+
 def cases() -> list[tuple[str, bytes, str | None]]:
     plist = (
         b'<?xml version="1.0"?><plist version="1.0"><dict>'
@@ -471,6 +489,11 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("dense.keras", _keras("dense"), None),
         ("builtin-loss.keras", _keras("builtin-loss"), None),
         ("builtin-eval.keras", _keras("builtin-eval"), "heuristic_keras_unsafe_call"),
+        ("escaped-key.json", _keras_json("escaped-key"), "heuristic_keras_unsafe_call"),
+        ("bom-config.json", _keras_json("bom"), "heuristic_keras_unsafe_call"),
+        ("utf16-config.json", _keras_json("utf16"), "heuristic_keras_unsafe_call"),
+        ("reordered.h5", _keras_json("reordered-h5"), "heuristic_keras_unsafe_call"),
+        ("api-index.json", _keras_json("api-index"), None),
         ("env-after-block.yml", _workflow("env-after-block"), None),
         ("other-job.yml", _workflow("other-job"), None),
         ("secrets-to-env-upload.yml", _workflow("dump-input-upload"), None),
@@ -508,17 +531,30 @@ rule Vendor_Unlisted_Inert { strings: $a = "inert-override-keep" condition: $a }
 """
 
 
+_FAKE_OTHER_PACK = """
+rule Methodology_Contains_Shortcut_OtherURIhandlers {
+    strings: $a = "inert-override-other-pack" condition: $a
+}
+"""
+
+
 def _vendor_override_failures(root: Path) -> list[str]:
-    """Inert stand-ins for vendor rules, named as in rules/vendor-overrides.json."""
+    """Inert stand-ins for vendor rules, named as in rules/vendor-overrides.json.
+
+    The list's entries name signature-base, so a same-named rule in another pack still blocks.
+    """
     rules = root / "override-rules"
     shutil.copytree(REPO / "rules/local", rules / "local")
     shutil.copy2(REPO / "rules/rules.lock", rules / "rules.lock")
-    (rules / "vendor" / "inert").mkdir(parents=True)
-    (rules / "vendor" / "inert" / "fake.yar").write_text(_FAKE_VENDOR, encoding="utf-8")
+    (rules / "vendor" / "signature-base").mkdir(parents=True)
+    (rules / "vendor" / "signature-base" / "fake.yar").write_text(_FAKE_VENDOR, encoding="utf-8")
+    (rules / "vendor" / "elastic").mkdir(parents=True)
+    (rules / "vendor" / "elastic" / "fake.yar").write_text(_FAKE_OTHER_PACK, encoding="utf-8")
     expected = {
         "inert-override-skip": None,
         "inert-override-low": ("Methodology_Suspicious_Shortcut_Local_URL", "advisory"),
         "inert-override-keep": ("Vendor_Unlisted_Inert", "block"),
+        "inert-override-other-pack": ("Methodology_Contains_Shortcut_OtherURIhandlers", "block"),
     }
     failures: list[str] = []
     for token, want in expected.items():
@@ -553,7 +589,7 @@ def main() -> None:
         failures.extend(_vendor_override_failures(root))
     if failures:
         raise SystemExit("\n".join(failures))
-    print(f"added-rule checks passed ({len(cases())} plus 3 vendor-override cases)")
+    print(f"added-rule checks passed ({len(cases())} plus 4 vendor-override cases)")
 
 
 if __name__ == "__main__":

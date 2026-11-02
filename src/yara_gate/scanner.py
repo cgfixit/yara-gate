@@ -58,7 +58,13 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
-from yara_gate.rules import compile_ruleset, default_rules_dir, vendor_overrides, yara_x_version
+from yara_gate.rules import (
+    compile_ruleset,
+    default_rules_dir,
+    vendor_namespace_dirs,
+    vendor_overrides,
+    yara_x_version,
+)
 
 
 class ScanTimeout(Exception):
@@ -171,7 +177,13 @@ def _scan_file(
             # validated raster's views say so through ``samples``.
             samples = samples or view == "pdf-flate"
             return _yara_findings(
-                rules, payload, ext, seconds, samples=samples, overrides=overrides
+                rules,
+                payload,
+                ext,
+                seconds,
+                samples=samples,
+                overrides=overrides,
+                vendor_dirs=vendor_dirs,
             )
         finally:
             scanned_bytes += len(payload)
@@ -229,6 +241,8 @@ def _scan_file(
         overrides = vendor_overrides()
     except (OSError, ValueError):
         return finish("invalid vendor-overrides.json")
+    # An override applies only to a match from the pack directory its entry names.
+    vendor_dirs = vendor_namespace_dirs(ruleset)
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
     try:
@@ -410,7 +424,8 @@ def _yara_findings(
     timeout_s: int,
     *,
     samples: bool = False,
-    overrides: Mapping[str, str] | None = None,
+    overrides: Mapping[tuple[str, str], str] | None = None,
+    vendor_dirs: Mapping[str, str] | None = None,
 ) -> list[Finding]:
     result = _invoke_scan(rules, data, timeout_s, ext, samples=samples)
     findings: list[Finding] = []
@@ -418,10 +433,13 @@ def _yara_findings(
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
         rule_id = str(getattr(rule, "identifier", "rule"))
         mode = meta.get("verdict_on_match")
+        namespace = str(getattr(rule, "namespace", "")) or None
         if mode is None:
             # A rule without verdict_on_match is a vendor rule. Its severity comes from the
-            # reviewed rules/vendor-overrides.json list, and it blocks when the list omits it.
-            mode = (overrides or {}).get(rule_id, "block")
+            # reviewed rules/vendor-overrides.json entry for its pack and name, and it blocks
+            # when the list has none; a rule outside vendor/ has no pack and always blocks.
+            pack = (vendor_dirs or {}).get(namespace or "")
+            mode = (overrides or {}).get((pack, rule_id), "block") if pack else "block"
             if mode == "skip":
                 continue
         if mode not in ("note", "advisory", "block"):
@@ -438,7 +456,7 @@ def _yara_findings(
                 length=length,
                 severity=Severity(str(mode)),
                 source=FindingSource.yara,
-                namespace=str(getattr(rule, "namespace", "")) or None,
+                namespace=namespace,
             )
         )
     return findings

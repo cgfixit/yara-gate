@@ -171,7 +171,7 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 
 ### How vendor matches are graded
 
-Vendor matches default to **block**. The reviewed [`rules/vendor-overrides.json`](rules/vendor-overrides.json) can skip a named rule or grade it as `note` or `advisory`; arbitrary vendor metadata such as `score` never decides policy. A malformed list makes scans incomplete, and the list enters the fingerprint when vendor files load. See the [operator guide](user-guide.md#how-vendor-matches-are-graded) for review steps and [verification](docs/verification/2026-11-01-vendor-setup.md) for the current exceptions and synthetic-corpus results.
+Vendor matches default to **block**. The reviewed [`rules/vendor-overrides.json`](rules/vendor-overrides.json) can skip a named rule from a named pack or grade it as `note` or `advisory`; the same rule name in another pack still blocks, and arbitrary vendor metadata such as `score` never decides policy. A malformed list makes scans incomplete, and the list enters the fingerprint when vendor files load. See the [operator guide](user-guide.md#how-vendor-matches-are-graded) for review steps and [verification](docs/verification/2026-11-01-vendor-setup.md) for the current exceptions and synthetic-corpus results.
 
 ## Live demo
 
