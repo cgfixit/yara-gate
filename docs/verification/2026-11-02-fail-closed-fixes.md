@@ -4,7 +4,8 @@ Source: `main` at `38e100bbc559e86e570e3361256498d3a0c23420` plus the uncommitte
 change on branch `claude/fail-closed-fixes`. Python 3.12.3, YARA-X 1.22.1, 82
 bundled rules. All inputs were inert, scanned with disposable rules roots, gate
 homes, and `XDG_DATA_HOME`/`XDG_CACHE_HOME` where an installed root mattered.
-No vendor pack was downloaded; vendor rules were inert stand-ins.
+Vendor behavior used inert stand-ins, plus one census with the real pinned packs
+installed into a disposable root (section 2).
 
 ## 1. Keras configs: encoding bypasses and a fail-open walk
 
@@ -56,7 +57,23 @@ processes sharing one compiled cache:
 | signature-base rule with `advisory` | advisory | advisory |
 | same name as the skipped rule, from `vendor/elastic/` | block | block |
 
-On the baseline the elastic match was silenced (`got []`). `lint_rules.py` now
+On the baseline the elastic match was silenced (`got []`).
+
+**Real pinned packs.** To check that pack scoping adds no false positives,
+`yara-gate setup --rules <scratch root>` downloaded the three locked packs into a
+disposable root (scratch `XDG_DATA_HOME`/`XDG_CACHE_HOME`; nothing under the
+repository or `~/YaraGate`): sha256 matched, `compiled_rules=13631
+skipped_rules=13`, the same counts as the November 1 census. No rule name is
+defined in more than one pack (by a `rule <name>` scan: yara-forge 5,141,
+signature-base 5,991, elastic 3,069), and both override names exist only in
+`vendor/signature-base/`. The 320-file benign corpus from `measure_precision.py`
+was then scanned under all three policies (960 scans) with `main`'s name-only
+matching and with this branch: verdicts and findings were identical. The only
+vendor finding was the documented advisory `Methodology_Suspicious_Shortcut_Local_URL`
+on `Handbook.url`; the `mailto:` and `steam://` shortcuts stayed clean, and the
+other non-clean files were the four tagged Windows collisions. No scan was
+incomplete. A future pin that reuses an overridden name in another pack would
+block until a reviewed entry names that pack. `lint_rules.py` now
 fails when an entry names a pack that `rules.lock` does not install; with
 `signature-bse` substituted it exited 1 with
 `Methodology_Contains_Shortcut_OtherURIhandlers names a pack not in rules.lock`.
@@ -106,6 +123,6 @@ uv run pytest -q tests/test_heuristics.py tests/test_rules.py tests/test_scanner
 uv run pytest -q tests/test_demo.py <six invariant-guard tests>    # 16 passed
 ```
 
-Not verified here: real vendor packs (none were downloaded), Keras itself
+Not verified here: vendor-pack accuracy beyond that benign census, Keras itself
 loading the variant files (not installed; the claim rests on its use of
 `json.loads`), the wheel-install test, Windows and macOS, and hosted CI.
