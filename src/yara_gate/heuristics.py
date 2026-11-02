@@ -55,7 +55,8 @@ def heuristic_findings(
     findings.extend(embedded_findings(data))
     findings.extend(pickle_reduce_findings(path, data))
     findings.extend(model_header_findings(path, data))
-    findings.extend(keras_config_findings(path, data))
+    keras, keras_error = keras_config_findings(path, data)
+    findings.extend(keras)
     findings.extend(ooxml_structure_findings(path, data))
     findings.extend(mcp_tool_findings(path, data))
     office, error = office_findings(path, data)
@@ -63,6 +64,8 @@ def heuristic_findings(
     if error is None and pdf_encrypted(data):
         # The strings and streams a reader decrypts are ciphertext here, so the text is unread.
         error = "encrypted pdf"
+    if error is None:
+        error = keras_error
     return findings, error
 
 
@@ -967,15 +970,20 @@ _KERAS_UNSAFE_BUILTINS = frozenset(
     }
 )
 _HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
-_KERAS_JSON_START = b'{"class_name"'
+# The opening of a JSON object whose first key is one Keras writes at a config's top level, in
+# any key order and with any spacing; a legacy .h5 keeps the config as a plain JSON attribute.
+_KERAS_JSON_START = re.compile(
+    rb'\{\s*"(?:class_name|config|module|registered_name|build_config|compile_config)"\s*:'
+)
 _KERAS_MAX_NODES = 200_000
 _KERAS_MAX_DEPTH = 64
 _KERAS_END = object()
 _KERAS_H5_CONFIGS = 4
 _KERAS_H5_SPAN = 16 * 1024 * 1024
+_KERAS_TOO_LARGE = "keras config exceeds walk limit"
 
 
-def keras_config_findings(path: Path, data: bytes) -> list[Finding]:
+def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
     """Walk a Keras model config without loading it.
 
     A ``.keras`` archive keeps its graph in ``config.json``; ``model.to_json()`` writes the same
@@ -983,9 +991,14 @@ def keras_config_findings(path: Path, data: bytes) -> list[Finding]:
     HDF5 file. ``keras.models.load_model`` resolves every ``module`` and ``class_name`` it names,
     and a Lambda layer carries marshalled Python bytecode. Block a reference to a module or
     function that runs commands, fetches files, or turns safe_mode off; flag a Lambda as advisory,
-    since safe_mode refuses it by default and an operator may still allow it.
+    since safe_mode refuses it by default and an operator may still allow it. A config too large
+    or too deep to walk completely is incomplete, never clean.
     """
     for config in _keras_configs(path, data):
+        if not (isinstance(config, dict) and "class_name" in config):
+            # load_model needs class_name at the top. Without it this is a JSON document that
+            # merely names a module, such as an API index or a label map, not a loadable model.
+            continue
         hits: set[str] = set()
         _walk_keras(config, hits)
         findings: list[Finding] = []
@@ -994,47 +1007,63 @@ def keras_config_findings(path: Path, data: bytes) -> list[Finding]:
         if "lambda" in hits:
             findings.append(_advisory("heuristic_keras_lambda"))
         if findings:
-            return findings
-    return []
+            return findings, None
+        if "truncated" in hits:
+            return [], _KERAS_TOO_LARGE
+    return [], None
 
 
 def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
     suffix = path.suffix.lower()
     if suffix == ".json":
-        if b'"class_name"' not in data or not data.lstrip().startswith(b"{"):
+        # Decode as json.loads does for bytes, so a BOM, UTF-16, or UTF-32 file and an escaped key
+        # (Keras reads config.json with json.loads) reach the same check as plain UTF-8.
+        try:
+            text = data.decode(json.detect_encoding(data))
+        except (UnicodeDecodeError, LookupError):
+            return
+        text = text.lstrip("\ufeff \t\r\n")
+        if not text.startswith("{") or ('"class_name"' not in text and "\\u" not in text):
             return
         try:
-            yield json.loads(data)
-        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+            yield json.loads(text)
+        except (ValueError, RecursionError):
             return
         return
     if not (suffix in {".h5", ".hdf5"} or data.startswith(_HDF5_MAGIC)):
         return
     decoder = json.JSONDecoder()
-    start = data.find(_KERAS_JSON_START)
+    position = 0
     for _ in range(_KERAS_H5_CONFIGS):
-        if start < 0:
+        match = _KERAS_JSON_START.search(data, position)
+        if match is None:
             return
+        start = match.start()
         window = data[start : start + _KERAS_H5_SPAN].decode("utf-8", "replace")
         try:
-            config, _end = decoder.raw_decode(window)
+            config, end = decoder.raw_decode(window)
         except (json.JSONDecodeError, RecursionError):
-            config = None
-        if config is not None:
-            yield config
-        start = data.find(_KERAS_JSON_START, start + 1)
+            position = start + 1
+            continue
+        yield config
+        # Skip the objects nested inside the one just walked.
+        position = start + max(1, len(window[:end].encode("utf-8")))
 
 
 def _walk_keras(root: object, hits: set[str]) -> None:
     # One lazy iterator per open container: the stack never holds more than the depth cap,
-    # however many elements a list has, and the node cap stops the walk itself.
+    # however many elements a list has, and the node cap stops the walk itself. Reaching either
+    # cap with nodes left unvisited adds "truncated", so the caller can hold the file.
     stack: list[Iterator[object]] = [iter((root,))]
     seen = 0
-    while stack and seen < _KERAS_MAX_NODES and len(hits) < 2:
+    while stack and not {"unsafe", "lambda"} <= hits:
         node = next(stack[-1], _KERAS_END)
         if node is _KERAS_END:
             stack.pop()
             continue
+        if seen >= _KERAS_MAX_NODES:
+            hits.add("truncated")
+            return
         seen += 1
         if isinstance(node, dict):
             if _keras_unsafe(node):
@@ -1044,10 +1073,16 @@ def _walk_keras(root: object, hits: set[str]) -> None:
                 node.get("function_type") == "lambda" and "function" in node
             ):
                 hits.add("lambda")
-            if len(stack) <= _KERAS_MAX_DEPTH:
-                stack.append(iter(node.values()))
-        elif isinstance(node, list) and len(stack) <= _KERAS_MAX_DEPTH:
-            stack.append(iter(node))
+            if node:
+                if len(stack) > _KERAS_MAX_DEPTH:
+                    hits.add("truncated")
+                else:
+                    stack.append(iter(node.values()))
+        elif isinstance(node, list) and node:
+            if len(stack) > _KERAS_MAX_DEPTH:
+                hits.add("truncated")
+            else:
+                stack.append(iter(node))
 
 
 def _keras_unsafe(node: dict[object, object]) -> bool:

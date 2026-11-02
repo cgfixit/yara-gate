@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
 from pathlib import Path
 
-from yara_gate.rules import OVERRIDES_NAME, compile_sources, parse_vendor_overrides
+from yara_gate.rules import (
+    OVERRIDES_NAME,
+    compile_sources,
+    parse_vendor_overrides,
+    vendor_pack_dir,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 _RULE = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)\s*\{")
@@ -71,8 +77,15 @@ def main() -> None:
         if path.suffix in {".yar", ".yara"}
         for name, _body in _blocks(path.read_text(encoding="utf-8"))
     }
-    for name in sorted(set(overrides) & local_names):
+    for name in sorted({rule for _pack, rule in overrides} & local_names):
         failures.append(f"{OVERRIDES_NAME}: {name} is a local rule")
+    # An entry applies only to matches from its pack's vendor/ directory, so a pack name that
+    # rules.lock does not install would leave the entry silently dead.
+    lock = json.loads((REPO / "rules" / "rules.lock").read_text(encoding="utf-8"))
+    pack_dirs = {vendor_pack_dir(pack["name"]) for pack in lock["packs"]}
+    for pack, name in sorted(overrides):
+        if pack not in pack_dirs:
+            failures.append(f"{OVERRIDES_NAME}: {name} names a pack not in rules.lock")
     if failures:
         raise SystemExit("\n".join(failures))
     print(f"local rules compiled and linted ({declared}); vendor overrides ({len(overrides)})")

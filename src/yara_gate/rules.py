@@ -38,6 +38,8 @@ _DOWNLOAD_CAP = 300 * 1024 * 1024
 Transport = Callable[[str], bytes]
 # The last compiled set, keyed by its digest, so each file in a run skips deserializing.
 _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
+# Per compiled ruleset digest: namespace (gate_<index>) -> vendor pack directory for vendor files.
+_VENDOR_NAMESPACES: dict[str, dict[str, str]] = {}
 # Content hash of one rules directory. Later files in the same run stat instead of rereading.
 _DIGEST_STAMP: dict[str, tuple[object, ...]] = {}
 _DIGEST_VALUE: dict[str, str] = {}
@@ -417,7 +419,7 @@ def compile_ruleset(
     if cached is not None:
         rules, skipped = cached
         good = _files_except(files, rules_dir, skipped)
-        _remember(digest, rules, skipped, _count_rules(good))
+        _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
     shipped_root = _readable_shipped_local() if use_overlay else None
@@ -453,13 +455,36 @@ def compile_ruleset(
         compiler.add_source(text, origin=path.name)
     rules = compiler.build()
     _write_cache(digest, rules, skipped)
-    _remember(digest, rules, skipped, _count_rules(good))
+    _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
     return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
 
-def _remember(digest: str, rules: object, skipped: list[str], compiled: int) -> None:
+def _remember(
+    digest: str, rules: object, skipped: list[str], compiled: int, vendor_dirs: dict[str, str]
+) -> None:
     _MEMO.clear()
+    _VENDOR_NAMESPACES.clear()
     _MEMO[digest] = (rules, list(skipped), compiled, _count_skipped(skipped))
+    _VENDOR_NAMESPACES[digest] = vendor_dirs
+
+
+def _vendor_dirs(good: list[tuple[Path, str]], rules_dir: Path) -> dict[str, str]:
+    """Map each vendor file's namespace to its pack directory, in compile order (gate_<index>)."""
+    dirs: dict[str, str] = {}
+    for index, (path, _text) in enumerate(good):
+        parts = _rule_key(path, rules_dir).split("/")
+        if len(parts) > 2 and parts[0] == "vendor":
+            dirs[f"gate_{index}"] = parts[1]
+    return dirs
+
+
+def vendor_namespace_dirs(digest: str | None) -> dict[str, str]:
+    """The namespace-to-pack-directory map of the ruleset ``compile_ruleset`` just returned.
+
+    Empty when that ruleset is no longer the remembered one, so no override applies and every
+    vendor match keeps its default ``block``.
+    """
+    return dict(_VENDOR_NAMESPACES.get(digest or "", {}))
 
 
 def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
@@ -520,7 +545,7 @@ def install_packs(
 ) -> RulesLock:
     """Download the locked URLs and keep the old vendor tree if any check fails."""
     root = rules_dir or default_rules_dir()
-    lock = _lock_for_install(root)
+    lock = lock_for_install(root)
     if not lock.packs:
         raise ValueError("rules.lock has no packs")
     staging = _staging_dir(root)
@@ -732,7 +757,14 @@ INVENTORY_NAME = "vendor.installed.json"
 OVERRIDES_NAME = "vendor-overrides.json"
 _OVERRIDE_ACTIONS = frozenset({"skip", "note", "advisory"})
 _OVERRIDE_KEYS = frozenset({"rule", "pack", "action", "reviewed", "reason"})
-_OVERRIDES_MEMO: dict[tuple[str, int, int], dict[str, str]] = {}
+_OVERRIDES_MEMO: dict[tuple[str, int, int], dict[tuple[str, str], str]] = {}
+# A lock pack name whose files install under a different vendor/ directory.
+_PACK_DIRS = {"yara-forge-core": "yara-forge"}
+
+
+def vendor_pack_dir(pack: str) -> str:
+    """The vendor/ subdirectory that a rules.lock pack installs into."""
+    return _PACK_DIRS.get(pack, pack)
 
 
 def installed_inventory(rules_dir: Path) -> list[str] | None:
@@ -771,12 +803,13 @@ def vendor_overrides_path() -> Path:
     return project_root() / "rules" / OVERRIDES_NAME
 
 
-def vendor_overrides() -> dict[str, str]:
-    """Map a vendor rule identifier to ``skip``, ``note``, or ``advisory``.
+def vendor_overrides() -> dict[tuple[str, str], str]:
+    """Map (vendor pack directory, rule identifier) to ``skip``, ``note``, or ``advisory``.
 
-    Only a match whose rule declares no ``verdict_on_match`` (every vendor rule, no local one)
-    is affected. A missing file means no override, so every vendor match stays ``block``.
-    Raises ValueError on a malformed file, which a scan reports as incomplete.
+    Only a match whose rule declares no ``verdict_on_match`` and was loaded from that pack's
+    directory under ``vendor/`` is affected; a same-named rule in another pack, or outside
+    ``vendor/``, still blocks. A missing file means no override, so every vendor match stays
+    ``block``. Raises ValueError on a malformed file, which a scan reports as incomplete.
     """
     path = vendor_overrides_path()
     try:
@@ -793,7 +826,7 @@ def vendor_overrides() -> dict[str, str]:
     return parsed
 
 
-def parse_vendor_overrides(raw: bytes) -> dict[str, str]:
+def parse_vendor_overrides(raw: bytes) -> dict[tuple[str, str], str]:
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -803,7 +836,7 @@ def parse_vendor_overrides(raw: bytes) -> dict[str, str]:
     )
     if not isinstance(entries, list):
         raise ValueError("invalid vendor-overrides.json")
-    actions: dict[str, str] = {}
+    actions: dict[tuple[str, str], str] = {}
     for entry in entries:
         if (
             not isinstance(entry, dict)
@@ -811,10 +844,13 @@ def parse_vendor_overrides(raw: bytes) -> dict[str, str]:
             or not all(isinstance(entry[name], str) and entry[name] for name in _OVERRIDE_KEYS)
             or entry["action"] not in _OVERRIDE_ACTIONS
             or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", entry["rule"]) is None
-            or entry["rule"] in actions
+            or re.fullmatch(r"[a-z0-9][a-z0-9._-]*", entry["pack"]) is None
         ):
             raise ValueError("invalid vendor-overrides.json")
-        actions[entry["rule"]] = entry["action"]
+        key = (vendor_pack_dir(entry["pack"]), entry["rule"])
+        if key in actions:
+            raise ValueError("invalid vendor-overrides.json")
+        actions[key] = entry["action"]
     return actions
 
 
@@ -828,7 +864,8 @@ def bundled_lock_path() -> Path | None:
     return None
 
 
-def _lock_for_install(root: Path) -> RulesLock:
+def lock_for_install(root: Path) -> RulesLock:
+    """The root's rules.lock, else the packaged lock an installed copy downloads from."""
     if (root / "rules.lock").is_file():
         return load_lock(root)
     bundled = bundled_lock_path()
@@ -1134,6 +1171,7 @@ def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
 
 def _clear_cache(rules_dir: Path) -> None:
     _MEMO.clear()
+    _VENDOR_NAMESPACES.clear()
     _DIGEST_STAMP.clear()
     _DIGEST_VALUE.clear()
     _LISTING.clear()

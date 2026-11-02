@@ -213,10 +213,18 @@
     let controller = null;
     let busy = false;
     const encoder = new TextEncoder();
+    // The server accepts scans only with Host 127.0.0.1:<port>, so a page opened as localhost
+    // loads but every scan is refused. Say so instead of blaming the input.
+    const wrongHost = location.hostname !== "127.0.0.1";
+    function hostNotice() {
+      if (!wrongHost) return;
+      $("error").textContent = "Scans run only at http://127.0.0.1:" + location.port + "/. Open that address; the server refuses scans sent through other host names, such as localhost.";
+      $("status").textContent = "Not available at this address. No scan was run.";
+    }
 
     function setBusy(value) {
       busy = value;
-      for (const id of ["scan-sample", "scan-paste"]) $(id).disabled = value;
+      for (const id of ["scan-sample", "scan-paste"]) $(id).disabled = value || wrongHost;
       $("results-panel").setAttribute("aria-busy", String(value));
     }
     function clearResult(message) {
@@ -231,6 +239,7 @@
       $("provenance").replaceChildren();
       for (const id of ["verdict", "result-meta", "decision-title", "decision-help", "scan-label", "reason", "rule-count", "unit-count", "duration", "coverage-warning", "json-result", "error"]) $(id).textContent = "";
       $("status").textContent = message;
+      hostNotice();
     }
     function countBytes() {
       const count = encoder.encode($("paste").value).length;
@@ -305,7 +314,7 @@
       $("status").textContent = title + ". Exit " + data.exit_code + " under " + data.policy + ".";
     }
     async function postScan(body, label) {
-      if (busy) return;
+      if (busy || wrongHost) return;
       clearResult("Scanning locally…");
       const current = generation;
       body.policy = $("policy").value;
@@ -339,7 +348,7 @@
     });
     $("paste-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      if (busy) return;
+      if (busy || wrongHost) return;
       const count = countBytes();
       if (count === 0 || count > 65536) {
         clearResult("Not scanned. Correct the text and try again.");
@@ -366,6 +375,7 @@
     $("policy-help").textContent = policyHelp[$("policy").value];
     countBytes();
     setBusy(false);
+    hostNotice();
   </script>
 </body>
 </html>

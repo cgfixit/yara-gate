@@ -356,11 +356,12 @@ def _setup_hint(rules: Path | None) -> None:
     """
     if not sys.stderr.isatty():
         return
-    from yara_gate.rules import default_rules_dir, load_lock
+    from yara_gate.rules import default_rules_dir, lock_for_install
 
     root = rules or default_rules_dir()
     try:
-        if not load_lock(root).packs or _vendor_installed(root):
+        # The same lock setup would use: an installed root has none until its first install.
+        if not lock_for_install(root).packs or _vendor_installed(root):
             return
     except (OSError, ValueError):
         return
