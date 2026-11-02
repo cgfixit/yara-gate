@@ -2,7 +2,7 @@
 
 **An offline gate that fails closed, for everything an AI agent is about to read.**
 
-Prompt injection has no general fix. No model, classifier, or system prompt reliably stops text from steering an agent that reads it. You *can* control what reaches the agent's context, and whether content the scanner could not fully inspect gets through anyway.
+Prompt injection has no general fix. Pattern matching cannot prove that text is safe for an agent to read. You *can* control what reaches the agent's context, and whether content the scanner could not fully inspect gets through anyway.
 
 yara-gate scans files and message bodies before an agent, a search index, or a person opens them. It holds known-bad shapes, hidden text, and anything it could not finish reading. The caller gets a verdict, an exit code, and a report it can enforce. The scan never uses the network, never executes what it reads, and never fetches URLs found inside it.
 
@@ -16,9 +16,11 @@ The two findings are `agent_prompt_injection_phrases` and `agent_secret_transfer
 
 It narrows the door. It does not make what walks through trustworthy: a clean verdict permits *reading* content as data, never *following* instructions found in it.
 
+[User guide](user-guide.md) · [Integration contract](docs/integrations.md) · [Rule coverage and limits](docs/rules.md) · [Public recorded demo](https://cgfixit.github.io/yara-gate/) · [Screenshot gallery](screenshots/README.md) · [Security](SECURITY.md)
+
 ## Where agents are exposed
 
-Each row was run against `main` (`80c8650`) with `scan_bytes(..., policy="agent-ingest")` and a copy of the shipped rules.
+These are supported ingestion patterns, not automatically installed connectors. See the [integration recipes](docs/integrations.md#which-entry-point-to-use) for entry points and the [coverage limits](docs/rules.md#limits) for what each scan can inspect.
 
 | Intake channel | What goes wrong | What the gate holds |
 | --- | --- | --- |
@@ -33,33 +35,31 @@ Each row was run against `main` (`80c8650`) with `scan_bytes(..., policy="agent-
 
 ## Built for CyClaw and CG-agent-harness
 
-[CyClaw](https://github.com/cgfixit/CyClaw) answers from its operator's documents. Its Dropbox layer runs `rclone`, which pulls straight into `data/corpus/` and asks for a reindex with exit 10. Its Telegram channel, off by default, lets a phone send queries over loopback `/query`. Both are attacker-reachable inputs. Gate files between the pull and the reindex: pull into a staging directory, scan, and copy only the clean files into `data/corpus/`. Pass each Telegram message body through `scan_bytes` before it becomes a query.
+For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between staging and corpus reindexing, and scan incoming message bodies before they become queries. For [CG-agent-harness](https://github.com/cgfixit/CG-agent-harness), gate attachments, retrieved documents, fetched pages, tool results, and cloned repositories before they enter the prompt.
 
-[CG-agent-harness](https://github.com/cgfixit/CG-agent-harness) puts several things into a local model's context: chat attachments, its notes corpus, web pages it is permitted to fetch, MCP tool results, and repositories cloned for reviewed coding. Scan each of them before it enters the prompt.
-
-Status: as of 2026-10-30, `git grep -i yara` on both default branches finds nothing, so neither product calls yara-gate yet. [docs/integrations.md](docs/integrations.md) has the contract to call: which entry point each input needs, and the single rule a reader uses to decide whether to read.
+The [consumer integration guide](docs/integrations.md#cyclaw-and-cg-agent-harness) describes the proposed wiring and acceptance checks. The [sync-folder example](docs/examples/sync_folder_gate.py) and [pre-read hook](docs/examples/yara_gate_pre_read_hook.sh) are runnable starting points; the caller must connect and enforce them.
 
 The gate does not replace either product's own defenses: retrieval checks, untrusted-content fences, consent for cloud models, and write approvals. It runs in front of them.
 
 ## Why it's worth running
 
 **For the business**
-- **It closes the cheapest attack path.** Anyone who can text a number, email an address, or share a folder is the attacker you meet first. A deterministic local gate holds the known shapes in milliseconds per message, at no per-scan cost.
+- **It closes the cheapest attack path.** Anyone who can text a number, email an address, or share a folder is the attacker you meet first. A deterministic local gate holds known shapes locally, with no per-scan service fee.
 - **Content never leaves the machine.** Nothing is sent to a cloud classifier, so the scan adds no third party that sees your users' messages or documents.
-- **Every decision leaves a record.** Each scan writes SARIF 2.1.0 and JSON with the rule ID, severity, policy, content view, ruleset fingerprint, engine version, and coverage counters, never the matched bytes. Feed it to code scanning, a SIEM, or an incident timeline.
+- **Every decision leaves a record.** CLI scans write SARIF 2.1.0 and JSON with the rule ID, severity, policy, content view, ruleset fingerprint, engine version, and coverage counters, never the matched bytes. Library calls return a record; the caller decides whether to persist it. See [reports](user-guide.md#5-read-a-report).
 - **No lock-in.** It is MIT-licensed, the rules are YARA you can read, and the candidate rules you generate become blocking only when you promote them.
 
 **For engineering**
-- **It fails closed.** A timeout, a size limit, an encrypted document, an archive it cannot open, or a rule that will not compile all exit 2 and stay held. "The scanner failed" never turns into "nothing was found".
-- **The contract is small.** Exit `0` means clean, `1` block, `2` incomplete. One JSON record per input. Read only when the record is a complete `clean`.
+- **It fails closed.** A timeout, a size limit, an encrypted document, an archive it cannot open, or a fatal local-rule compile failure yields incomplete/exit 2. Inbox files stay quarantined; other callers must hold access on that result. "The scanner failed" never turns into "nothing was found".
+- **The contract is small.** Exit `0` means clean or advisory, `1` block, `2` incomplete. The [policy table](#verdicts-and-policies) defines the read decision; unattended messages and tool results require a complete `clean` under `agent-ingest`.
 - **It looks inside, with bounds.** It scans raw bytes plus derived views: UTF-16, HTML-unescaped, JSON-unescaped, format controls removed, look-alikes folded, inflated PDF streams (including streams wrapped in ASCIIHex or ASCII85), and joined Office text. It goes at most 3 container levels deep, opens at most 1,000 members, reads at most 100 MiB per file, and expands at most 500 MiB in total, all under a shared deadline.
-- **Pixels are not text.** Decoded PDF streams, which often hold image data, and BMP, TIFF, EMF, or WMF files whose name and header agree are scanned in a samples mode. In that mode a flat or grainy run of pixels does not count as base64, and pixel bytes that happen to spell a Unicode control do not count as one. Text in the same file, such as a script appended to an image or a caption with an instruction, is still checked like any other text.
+- **Pixels are not text.** Image/sample views avoid treating arbitrary pixel bytes as encoded instructions; text views are still checked. See [view handling and limits](docs/rules.md#limits).
 - **It runs on Windows, macOS, and Linux.** CI runs the full suite on Ubuntu 24.04 and macOS 15, and runs the rule, scan-only, and intake checks on Windows Server 2025.
-- **Speed, measured in this Linux container with the shipped pack warm:** 1–7 ms for a message-sized body, about 0.7 s for 1 MB of Markdown, and about 3 s for a 7 MB uncompressed screenshot. Your hardware will differ.
+- **Measured performance:** [text scanning](docs/verification/text-scan-performance.md) and [scan overhead](docs/verification/scan-overhead.md) record workloads, revisions, engines, and timings. They are dated measurements, not a latency guarantee.
 
 ## Quick start
 
-Python 3.12 and [uv](https://docs.astral.sh/uv/):
+From a checkout, with Python 3.12 and [uv](https://docs.astral.sh/uv/). See the [installation guide](user-guide.md#1-install-once) for the full walkthrough:
 
 ```bash
 uv sync --frozen
@@ -86,7 +86,7 @@ allowed = (
 scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, never opens a socket
 ```
 
-`name` supplies only the suffix that the type checks read. Keep phone numbers and other identifiers out of it, because it becomes the report path.
+`name` labels the input for filename and extension checks; only its final path component becomes the report path. Keep identifiers out of it. Library calls return a `ScanResult`; CLI scans also persist reports under the gate home, including scans of stdin. See [in-memory ingestion](docs/integrations.md#messages-and-other-in-memory-content).
 
 ## Verdicts and policies
 
@@ -96,7 +96,9 @@ scan_file("attachment.pdf", policy="agent-ingest")  # never moves the file, neve
 | `advisory`, from `note` findings only | read, report it | **held as block** | read, report it | 0 / **1** / 0 |
 | `advisory`, with an `advisory` finding | read, report it | **held as block** | **held as block** | 0 / **1** / **1** |
 | `block` | held | held | held | 1 |
-| `incomplete` | held in quarantine | held in quarantine | held in quarantine | 2 |
+| `incomplete` | held | held | held | 2 |
+
+Inbox files with incomplete results stay in quarantine. In-memory inputs and files outside the inbox are not relocated; callers must enforce the hold.
 
 A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) under every policy; the policy changes only the verdict, and `policy_reason` in the record says what it did. A `note` is a weak signal with nothing else behind it: a visible override phrase (`agent_prompt_injection_phrases`, the multilingual and base64-encoded forms, and `agent_override_imperative`) or a lone Unicode control in text. Every other non-blocking rule is `advisory`.
 
@@ -140,12 +142,12 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Structural checks without YARA:** Office macros and DDE, PDF actions (including those inside compressed object streams), executables embedded in documents or nested archives, double extensions, filename control characters, MCP tool poisoning, pickle, safetensors, and GGUF model files, and Keras model configs that import `os`, `subprocess`, or Keras's `get_file`, or carry a Lambda layer.
 
-**Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. The 2026-10-04 pins compiled 13,535 rules and skipped 13. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
+**Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. See the dated [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) and [grading verification](docs/verification/2026-11-01-vendor-setup.md) for measured coverage and skips. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
-**Precision:** on a generated corpus of 320 benign files, 78 of the 82 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** in the [documented 320-file synthetic corpus](docs/rules.md#measured-precision), 78 of the 82 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
-- It does not catch a novel or targeted payload. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
+- It cannot guarantee detection of novel or targeted payloads. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
 - It does not judge meaning. It has no semantic understanding of prompt injection, no OCR, no general text extraction, and no decryption. A paraphrased attack in plain prose can pass.
 - It does not inspect inside 7z, RAR, xz, or encrypted containers. They are held as incomplete rather than guessed at.
 - Its deadline does not interrupt third-party parsers mid-call.
@@ -165,18 +167,11 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs.
 - If a shipped rule fails to compile, or recorded vendor files are missing, the scan exits 2. The record of installed vendor files is `vendor.installed.json`, an untracked file beside `vendor/`, so `setup` in a checkout leaves `git status` clean.
 
-`yara-gate hunt --confirmed <sha256> --reason "…"` writes a candidate rule from a file already in `blocked/`. The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block.
+`yara-gate hunt --confirmed <sha256> --reason "…" --scope path/to/search` writes a candidate rule from a file already in `blocked/`. The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block.
 
 ### How vendor matches are graded
 
-A vendor rule carries no `verdict_on_match`, so its match is a **block** unless [`rules/vendor-overrides.json`](rules/vendor-overrides.json) lists it. That file is a short, reviewed list in this repository. Each entry names one vendor rule, its pack, an action (`skip`, `note`, or `advisory`), the review date, and the reason. The scanner never derives a severity from a vendor rule's own metadata, such as signature-base's `score`; a person decides, and the list records the decision.
-
-| Vendor rule | Action | Why |
-| --- | --- | --- |
-| `Methodology_Contains_Shortcut_OtherURIhandlers` (signature-base) | skip | Its own description calls it noisy. It blocked ordinary `mailto:` and `steam://` `.url` shortcuts. Local rules still cover the risky `.url` shapes |
-| `Methodology_Suspicious_Shortcut_Local_URL` (signature-base) | advisory | A `.url` to a local `file:` URL. The local `win_internet_shortcut_launch` rule already grades this shape advisory |
-
-With the 2026-10-04 pins installed and this list applied, the generated benign corpus gets the same verdict under every policy as with the shipped rules alone. That corpus holds no benign executables, where most vendor rules apply. If a vendor rule holds a file you trust, add an entry with a reason and run `uv run python docs/verification/lint_rules.py`. If the list is missing, every vendor match blocks; if it is malformed, scans exit 2 with `invalid vendor-overrides.json`. With the packs installed, the list is part of the ruleset fingerprint in each report.
+Vendor matches default to **block**. The reviewed [`rules/vendor-overrides.json`](rules/vendor-overrides.json) can skip a named rule or grade it as `note` or `advisory`; arbitrary vendor metadata such as `score` never decides policy. A malformed list makes scans incomplete, and the list enters the fingerprint when vendor files load. See the [operator guide](user-guide.md#how-vendor-matches-are-graded) for review steps and [verification](docs/verification/2026-11-01-vendor-setup.md) for the current exceptions and synthetic-corpus results.
 
 ## Live demo
 
@@ -184,29 +179,9 @@ With the 2026-10-04 pins installed and this list applied, the generated benign c
 uv run yara-gate demo --rules rules
 ```
 
-The local scan workbench calls the real `scan_bytes` on inert examples or up to
-64 KiB of pasted UTF-8 text. It starts with `agent-ingest` for messages and tool
-results; select `agent-document` for retrieved documents or `default` for manual
-inspection. Each result explains the decision, preserves each finding's severity
-and view/member provenance, and shows compiled/skipped rule counts, runtime,
-coverage counters, and fingerprints. Expand **Demo response JSON** to inspect the
-content-free preview fields.
+The local workbench calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It starts with `agent-ingest` and offers all three policies, decision guidance, finding provenance, coverage, and response JSON. It binds only to `127.0.0.1`, keeps pasted content and results in memory, and makes no cloud calls or rule downloads; compiled rules may be cached locally.
 
-Changing the text or policy clears the previous result. UTF-8 byte counts,
-loading/error states, keyboard submission, and **Clear input & result** help avoid
-mistaking an old result for a current scan. The layout adapts to narrow screens.
-
-The server binds only to `127.0.0.1`. Scans stay in memory: no pasted content,
-reports, or scan history are saved by the app; compiled rules may be cached
-locally. There are no analytics, external assets, cloud calls, or rule downloads.
-Clear is not secure memory erasure or clipboard cleanup. The explicit GitHub
-documentation link leaves the local app when opened.
-
-This is a policy preview, not a CyClaw/Harness connector or a release console.
-It never moves files or authorizes agent actions. Use the full CLI/library
-[integration contract](docs/integrations.md#previewing-policies-in-the-local-workbench)
-to gate the exact bytes before the agent reads them. The root `demo.html` remains
-a limited JavaScript illustration, separate from this scanner-backed app.
+See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser) for controls and privacy limits, and the [integration contract](docs/integrations.md#previewing-policies-in-the-local-workbench) for enforcing a real read gate. The workbench never moves files or authorizes agent actions. Root `demo.html` is an older, limited JavaScript illustration.
 
 ![The local workbench explains an advisory held by agent-ingest](screenshots/yara-gate-workbench-hold.jpg)
 
@@ -217,20 +192,15 @@ for the exercised revision, scenarios, and limits.
 
 ## Public recorded demo
 
-The [Pages demo](docs/pages-demo.md) is a static companion to the local app. It
-replays real scanner recordings for six inert examples under all three policies,
-with findings, coverage, and explicit incomplete outcomes. It cannot scan your
-content: there is no paste box, upload, or connection to localhost. The Python
-scanner remains on your machine.
+**[Open the public recorded demo →](https://cgfixit.github.io/yara-gate/)**
 
-The Pages workflow validates pull requests and publishes only when manually run
-on `main` after Pages is configured. Adding these files does not activate a site.
-See the [preview and deployment guide](docs/pages-demo.md) and
-[browser verification](docs/verification/2026-11-01-pages-demo.md).
+The Pages companion replays real scanner results for six inert examples under all three policies, with findings, coverage, and incomplete outcomes. It accepts no pasted content or uploads and has no connection to localhost; use the local workbench for your own content. The recordings retain their captured revision and 80-rule coverage; they are not a live status check of the current 82-rule pack.
+
+See the [Pages screenshots](screenshots/README.md#pages-recorded-demo--november-1-2026), [recording verification](docs/verification/2026-11-01-pages-demo.md), and [preview, privacy, and deployment guide](docs/pages-demo.md). GitHub receives hosting requests and logs visitor IP addresses. Updates publish only through a manual `pages-demo` run on `main`; pull requests and pushes validate without deploying.
 
 ## Verification and CI
 
-`.github/workflows/ci.yml` runs on Ubuntu and macOS. The job runs actionlint (on Linux), checks the lock, runs Ruff, Ruff format, and `mypy --strict`, and lints the rules. It then checks the lock hash, the fire and near-miss pairs, and the added-rule checks, and measures precision, failing any rule above 2%. After that it scans tracked text for control characters, then runs the in-place scans, the [direct probe](docs/research/probe_rule_coverage.py), selftest, and pytest. A separate Windows Server 2025 job covers the rules, the text-control check, scan-only, and intake. Actions are pinned to commit SHAs with `contents: read`. CodeQL runs with upload disabled, so its success alone does not mean results reached the security dashboard. The dated records are in [docs/verification/](docs/verification/).
+The [CI workflow](.github/workflows/ci.yml) runs lint, type checks, rule compilation and boundary checks, synthetic precision checks, direct runtime probes, selftest, and pytest on Ubuntu 24.04 and macOS 15. A separate Windows Server 2025 job covers rule, scan-only, and intake checks. See [Actions](https://github.com/cgfixit/yara-gate/actions) for current status and [dated verification records](docs/verification/) for source-specific evidence. Actions are pinned to commit SHAs; the Pages deployment job alone receives Pages/OIDC write permissions. The repository's [CodeQL workflow](.github/workflows/codeql.yml) disables result upload, so its success alone does not establish a security-dashboard upload.
 
 ```bash
 uv run python docs/research/probe_rule_coverage.py --verify   # real library and CLI scans in disposable homes
@@ -243,6 +213,8 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, he
                      models, quarantine, report, rules, hunt, demo, selftest, samples,
                      launchd, release (reviewed-release building blocks, not yet a command)
 rules/local/         the 82 shipped rules in 57 files; rules/rules.lock pins the vendor packs
+web-demo/           public recorded-demo assets; docs/pages-demo.md explains deployment
+screenshots/        original captures and provenance; user-guide.md covers operation
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh
