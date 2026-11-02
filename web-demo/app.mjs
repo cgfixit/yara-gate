@@ -1,7 +1,8 @@
 import recording from './recordings.mjs';
 
 const $ = (id) => document.getElementById(id);
-const policies = ['default', 'agent-ingest', 'agent-document'];
+// Same order as the policy picker: the agent policies first.
+const policies = ['agent-ingest', 'agent-document', 'default'];
 const help = {
   default: 'Manual inspection reports notes and advisories with exit 0. Exit 0 alone is not an unattended read gate.',
   'agent-ingest': 'For messages and tool results. Holds notes and advisories; requires a complete clean result before reading.',

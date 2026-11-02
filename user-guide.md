@@ -192,6 +192,9 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 The root `demo.html` is a separate, limited JavaScript illustration.
+Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
+replays saved results for six inert examples; it scans nothing and accepts no
+content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
 uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules

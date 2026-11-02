@@ -2,9 +2,15 @@
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
 YARA-X backend. This site therefore replays **real recorded results** for six
-inert examples under `default`, `agent-ingest`, and `agent-document`. Selecting an
+inert examples under `agent-ingest`, `agent-document`, and `default`. Selecting an
 example does not start a scan. The UI labels every result as recorded and shows
 the scanner revision, capture time, rule coverage, and engine version.
+
+The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
+deployment ran on November 1, 2026 at 20:29 UTC
+([pages-demo run 3](https://github.com/cgfixit/yara-gate/actions/runs/41347105100),
+manual dispatch on `main` at `1d13547`); its deploy job reported that environment
+URL. A merged change reaches the site only after the next manual run.
 
 Use `yara-gate demo` on loopback to inspect your own content. This public companion
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
@@ -24,10 +30,15 @@ it is not the Pages entrypoint.
 | `app.mjs` | Local rendering and scenario/policy selection |
 | `recordings.mjs` | Module generated from the curated `web-demo/recordings.json` |
 
+`scripts/record_pages_demo.py` produces `recordings.json` from real scans (see
+[refresh](#recording-provenance-and-refresh)); it is not part of the artifact.
 The builder never recursively copies the repository. Rule bodies, sample files,
 screenshots, docs, logs, credentials, and unrelated files are excluded. It rejects
 linked source files, extra recording fields, content-entry elements, unexpected
-assets, and changes to the browser policy. These checks catch accidental
+assets, and changes to the browser policy. It also rejects a dataset that mixes
+rulesets or runtimes across completed recordings, records different inputs for
+one scenario, carries severity flags that disagree with its findings, or has
+non-integer counters and offsets. These checks catch accidental
 regressions; review the actual public strings before publishing. They are not a
 secret detector or a sandbox for malicious source changes.
 
@@ -60,27 +71,27 @@ subpath. Stop your preview server when finished. Rebuild into a new directory;
 the builder refuses to overwrite an existing output. The static build needs no
 Python packages, scanner installation, vendor downloads, or GitHub credentials.
 
-## Activate after review and merge
+## Deployment
 
-No repository setting is changed by this PR, and no PR or push event publishes
-the site. The workflow uses SHA-pinned GitHub actions. Its build job has only
+No PR or push event publishes the site. The workflow uses SHA-pinned GitHub actions. Its build job has only
 `contents: read`, and checkout does not persist credentials. Both artifact upload
 and deployment require an explicit `workflow_dispatch` on `refs/heads/main`.
 Only the separate deployment job has `pages: write` and `id-token: write`.
 
-1. Review and merge the static site and `.github/workflows/pages-demo.yml`.
-2. In repository **Settings → Pages → Build and deployment**, choose **GitHub
-   Actions** as the source. Do not publish the repository root from a branch.
-3. Configure the **github-pages** environment to permit deployments from `main`
-   only. Retain any required reviewers or other existing environment protections.
+The standing configuration, and the checklist for each update:
+
+1. Review and merge the change to `web-demo/`, the builder, or the workflow.
+2. Keep **Settings → Pages → Build and deployment** set to **GitHub Actions**.
+   Do not publish the repository root from a branch.
+3. Keep the **github-pages** environment limited to deployments from `main`,
+   with any required reviewers or other existing protections.
 4. Run **Actions → pages-demo → Run workflow**, selecting `main`. The workflow
    validates and uploads only `build/pages`, with one-day artifact retention,
    then deploys through the protected environment. Concurrent deployments are
    serialized, not cancelled mid-deploy.
 5. Follow the deployment job's `page_url`, confirm HTTPS, and repeat the scenario,
-   policy, narrow-screen, and browser-console checks on the hosted site. The
-   expected default project URL is `https://cgfixit.github.io/yara-gate/`; this
-   guide does **not** claim it is already live. Keep HTTPS enforcement enabled.
+   policy, narrow-screen, and browser-console checks on the hosted site. Keep
+   HTTPS enforcement enabled.
 
 See GitHub's [publishing-source setup](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 and [custom-workflow requirements](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
@@ -91,22 +102,36 @@ to withdraw it, unpublish the Pages site in repository settings.
 
 ## Recording provenance and refresh
 
-The initial dataset was captured on November 1, 2026 at 16:09:44 UTC from scanner
-revision `68e27e7917e0ca5b2f0ebfb8428c67e97ed6fbda`, Python 3.12.12 and YARA-X
-1.22.1. It uses the 80 bundled rules only, with no vendor packs. The six examples
+The current dataset was captured on November 2, 2026 at 14:24:08 UTC from scanner
+revision `38e100bbc559e86e570e3361256498d3a0c23420`, Python 3.12.3 and YARA-X
+1.22.1. It uses the 82 bundled rules only, with no vendor packs. The six examples
 are an ordinary note, a quoted override, a secret-transfer request to an invalid
 example address, an HTML-encoded override, a synthetic executable header named
 as a PDF, and a deliberately broken rule compilation in a disposable rules tree.
-No sample was executed and no referenced URL was fetched.
+No sample was executed and no referenced URL was fetched. The November 1 dataset
+(revision `68e27e7`, 80 rules) recorded the same verdicts, findings, offsets, and
+input fingerprints; only the rule count and ruleset fingerprint changed.
 
-For a refresh, run `scan_bytes` from the intended source revision with disposable
-copies of `rules/local` and `rules/rules.lock`, using all three policies for each
-example. The failure case must use its own deliberately invalid rule copy. Save
-only the response/finding fields allowlisted by the builder, plus `exit_code`;
-omit paths, namespace paths, timings, and input/matched bytes. Record the source
-revision and UTC capture time, verify the policy and incomplete outcomes, inspect
-the public JSON, and rerun the artifact checks and browser acceptance before
-review. A recording never authorizes access to another input.
+To refresh, check out the intended source revision with no local changes under
+`src/`, `rules/local/`, `rules/rules.lock`, `pyproject.toml`, or `uv.lock`, then run
+from the repository root:
 
-See the [dated verification record](verification/2026-11-01-pages-demo.md) for
-the observed outcomes, exact artifact fingerprints, screenshots, and limits.
+```sh
+uv sync --frozen
+uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
+```
+
+The recorder scans the six fixed inert inputs in memory with `scan_bytes`, under
+all three policies, against disposable copies of `rules/local` and
+`rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
+It refuses to write when a verdict, completeness state, or skip count differs
+from the reviewed expectation, or when the scanner sources differ from `HEAD`.
+It keeps only the response/finding fields the builder allowlists, plus
+`exit_code`: no paths, namespaces, timings, or input/matched bytes. It records
+`HEAD` and the UTC capture time. Review the JSON diff, rerun the artifact checks
+and browser acceptance, then deploy through the checklist above. A recording
+never authorizes access to another input.
+
+See the [refresh verification record](verification/2026-11-02-pages-demo-refresh.md)
+and the [first verification record](verification/2026-11-01-pages-demo.md) for the
+observed outcomes, exact artifact fingerprints, screenshots, and limits.

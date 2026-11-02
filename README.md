@@ -194,7 +194,7 @@ for the exercised revision, scenarios, and limits.
 
 **[Open the public recorded demo →](https://cgfixit.github.io/yara-gate/)**
 
-The Pages companion replays real scanner results for six inert examples under all three policies, with findings, coverage, and incomplete outcomes. It accepts no pasted content or uploads and has no connection to localhost; use the local workbench for your own content. The recordings retain their captured revision and 80-rule coverage; they are not a live status check of the current 82-rule pack.
+The Pages companion replays real scanner results for six inert examples under all three policies, with findings, coverage, and incomplete outcomes. It accepts no pasted content or uploads and has no connection to localhost; use the local workbench for your own content. The recordings name the revision and rule count they were captured with, and stay pinned to it until a reviewed refresh with [`scripts/record_pages_demo.py`](scripts/record_pages_demo.py); they are not a live status check of the current pack.
 
 See the [Pages screenshots](screenshots/README.md#pages-recorded-demo--november-1-2026), [recording verification](docs/verification/2026-11-01-pages-demo.md), and [preview, privacy, and deployment guide](docs/pages-demo.md). GitHub receives hosting requests and logs visitor IP addresses. Updates publish only through a manual `pages-demo` run on `main`; pull requests and pushes validate without deploying.
 
@@ -213,8 +213,9 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, he
                      models, quarantine, report, rules, hunt, demo, selftest, samples,
                      launchd, release (reviewed-release building blocks, not yet a command)
 rules/local/         the 82 shipped rules in 57 files; rules/rules.lock pins the vendor packs
-web-demo/           public recorded-demo assets; docs/pages-demo.md explains deployment
-screenshots/        original captures and provenance; user-guide.md covers operation
+web-demo/            public recorded-demo assets; scripts/ builds and re-records them;
+                     docs/pages-demo.md explains deployment
+screenshots/         original captures and provenance; user-guide.md covers operation
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh
