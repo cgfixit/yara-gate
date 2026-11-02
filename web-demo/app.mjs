@@ -80,7 +80,7 @@ for (const example of recording.cases) {
 definitions($('recording-source'), [
   ['Captured at (UTC)', recording.captured_at],
   ['Scanner source revision', recording.source_revision],
-  ['Coverage scope', 'Bundled local rules only; no vendor packs. Results do not update until a new recording is reviewed.']
+  ['Coverage scope', 'Bundled local rules only; no vendor packs. Re-recorded from this revision when the page was deployed; verdicts and findings must match the reviewed baseline, or the deploy stops.']
 ]);
 $('example').addEventListener('change', render);
 $('policy').addEventListener('change', render);

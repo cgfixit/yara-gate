@@ -1,50 +1,118 @@
 name: pages-demo
 
+# Pull requests validate the public demo without deploying it. A merge to main deploys it once
+# ci has passed on that commit and every other check on it (CodeQL included) is green. A
+# manual run redeploys the current main through the same gate. workflow_run always runs this
+# file as it is on main, never a pull request's copy.
 on:
   pull_request:
     paths:
       - web-demo/**
       - scripts/build_pages.py
+      - scripts/record_pages_demo.py
+      - scripts/pages_deploy_gate.py
       - .github/workflows/pages-demo.yml
-  push:
+      # Scanner or rule changes can change the recorded outcomes the page shows.
+      - src/**
+      - rules/**
+      - pyproject.toml
+      - uv.lock
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
-    paths:
-      - web-demo/**
-      - scripts/build_pages.py
-      - .github/workflows/pages-demo.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-demo-${{ github.ref }}
+  # Deploys run one at a time, and a newer pending deploy replaces an older pending one.
+  group: pages-demo-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
+  gate:
+    # Only a push to main in this repository that ci passed, or a manual run on main.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+      sha: ${{ steps.gate.outputs.sha }}
+    steps:
+      - name: Checkout the gate from main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Wait for every other check on the commit, newest main only
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 scripts/pages_deploy_gate.py --sha "$SHA" --repo "$REPO" --run-id "$RUN_ID"
+
+  build:
+    needs: gate
+    # Pull requests always validate; the deploy path builds only what the gate allowed.
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'pull_request' || needs.gate.outputs.deploy == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Empty on pull requests (the merge ref); the gated commit on the deploy path.
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          # The deploy path builds from the lock file alone, with no restored cache.
+          enable-cache: ${{ github.event_name == 'pull_request' }}
+
+      - name: Sync the locked scanner
+        run: uv sync --frozen
+
+      - name: Re-record with the real scanner and compare with the reviewed recordings
+        run: |
+          mkdir -p build
+          uv run --frozen python scripts/record_pages_demo.py \
+            --output build/recordings.json --baseline web-demo/recordings.json
+          cp build/recordings.json web-demo/recordings.json
+
       - name: Validate and build only the public demo
         run: |
           python3 scripts/build_pages.py --output build/pages
           node --check build/pages/app.mjs
           node --check build/pages/recordings.mjs
-      - name: Upload Pages artifact for an explicit main deployment
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+
+      - name: Upload the Pages artifact
+        if: needs.gate.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: build/pages
           retention-days: 1
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [gate, build]
+    if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -57,6 +125,6 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - name: Deploy reviewed static artifact
+      - name: Deploy the gated, re-recorded artifact
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

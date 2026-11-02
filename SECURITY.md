@@ -11,4 +11,7 @@ curated recordings, with no scanner backend or content-entry controls. It does
 not expose the loopback app. Its CSP disallows script connections and forms;
 there is no analytics or application storage. GitHub still receives ordinary
 hosting requests and logs visitors' IP addresses. Only the four allowlisted build
-outputs may be deployed, after review, through the manual `main` workflow.
+outputs are deployed, and only from `main`: automatically after a merge once every
+check on that commit is green, or by a manual run on `main` through the same gate.
+Each deploy re-records the results with the real scanner and stops if any verdict or
+finding differs from the reviewed recordings.

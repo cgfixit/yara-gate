@@ -35,7 +35,9 @@ jobs:
       - name: Analyze
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          # Code scanning is off on this user-owned private repo. The
-          # pinned action uploads only when this value is "always".
+          # GitHub's CodeQL default setup already uploads code-scanning
+          # results for this repository, and an advanced workflow cannot
+          # upload alongside it; this job runs the Python queries as a check.
+          # The pinned action uploads only when this value is "always".
           upload: never
           upload-database: false
