@@ -52,6 +52,17 @@ manual dispatch, so merges built the demo and skipped the deploy job. #153 deplo
 every green merge and re-records the results at the merged commit, guarded so that any
 change in a verdict or finding needs a reviewed commit.
 
+**Published.** To review the live state, `main`'s existing manual path was dispatched:
+[pages-demo run 10](https://github.com/cgfixit/yara-gate/actions/runs/41513916877) built
+and deployed `8a83ffe`, the `main` head, at 19:52 UTC, and the deploy job reported
+`https://cgfixit.github.io/yara-gate/`. This environment cannot reach that host or the
+artifact store. The deterministic builder run at `8a83ffe` reproduced the four
+fingerprints in the [refresh record](../verification/2026-11-02-pages-demo-refresh.md)
+(`app.mjs` `210d2a4f…`, `index.html` `8611aa22…`, `recordings.mjs` `8f2087d1…`,
+`style.css` `dc4bf309…`). In headless Chromium that build showed all 18 outcomes at
+desktop and phone widths, with four same-origin requests, no console messages, and
+no overflow. The page now shows the six `38e100b`, 82-rule recordings.
+
 **Accuracy.** All 18 recorded outcomes (six inputs × three policies) match what the
 scanner produces at `8a83ffe`, field for field except provenance. The copy is careful.
 It says that nothing is scanned in the browser, that a clean result is not trust,
