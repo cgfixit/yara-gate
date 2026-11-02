@@ -10,7 +10,9 @@ The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
 deployment ran on November 1, 2026 at 20:29 UTC
 ([pages-demo run 3](https://github.com/cgfixit/yara-gate/actions/runs/41347105100),
 manual dispatch on `main` at `1d13547`); its deploy job reported that environment
-URL. A merged change reaches the site only after the next manual run.
+URL. A merge to `main` now redeploys it automatically once every check on the merged
+commit is green, re-recording the results at that commit (see [Deployment](#deployment)).
+Before that change, merges built the demo without publishing it.
 
 Use `yara-gate demo` on loopback to inspect your own content. This public companion
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
@@ -30,8 +32,9 @@ it is not the Pages entrypoint.
 | `app.mjs` | Local rendering and scenario/policy selection |
 | `recordings.mjs` | Module generated from the curated `web-demo/recordings.json` |
 
-`scripts/record_pages_demo.py` produces `recordings.json` from real scans (see
-[refresh](#recording-provenance-and-refresh)); it is not part of the artifact.
+`scripts/record_pages_demo.py` produces `recordings.json` from real scans, and
+`scripts/pages_deploy_gate.py` decides whether a `main` commit may deploy (see
+[Deployment](#deployment)); neither is part of the artifact.
 The builder never recursively copies the repository. Rule bodies, sample files,
 screenshots, docs, logs, credentials, and unrelated files are excluded. It rejects
 linked source files, extra recording fields, content-entry elements, unexpected
@@ -73,48 +76,79 @@ Python packages, scanner installation, vendor downloads, or GitHub credentials.
 
 ## Deployment
 
-No PR or push event publishes the site. The workflow uses SHA-pinned GitHub actions. Its build job has only
-`contents: read`, and checkout does not persist credentials. Both artifact upload
-and deployment require an explicit `workflow_dispatch` on `refs/heads/main`.
-Only the separate deployment job has `pages: write` and `id-token: write`.
+Pull requests validate the demo and never publish it. They run the same build job as a
+deploy: the recorder re-records with the real scanner and must match the committed
+recordings (see [below](#recordings-reviewed-baseline-and-deploy-time-refresh)), then
+the builder validates the four-file artifact. Pull requests that change `src/`,
+`rules/`, `pyproject.toml`, or `uv.lock` run it too, because they can change what the
+page shows. All actions are SHA-pinned, and no job persists checkout credentials.
 
-The standing configuration, and the checklist for each update:
+A merge to `main` publishes the demo in three jobs:
 
-1. Review and merge the change to `web-demo/`, the builder, or the workflow.
-2. Keep **Settings → Pages → Build and deployment** set to **GitHub Actions**.
+1. **gate** (`actions: read`, `checks: read`, `contents: read`). It runs on
+   `workflow_run` when `ci` completes, and only for a successful `push` run of `ci`
+   on `main` in this repository whose commit is still `main`'s head (`github.sha`);
+   `workflow_run` always uses the workflow file as it is on `main`, and the commit it
+   deploys is never a ref taken from the event payload. `scripts/pages_deploy_gate.py` lets only the newest `main` commit
+   through, and only after every other check on it has finished `success`,
+   `skipped`, or `neutral`: CodeQL and any other check suite included. It waits up
+   to 20 minutes, skips a commit that `main` has already moved past (the newer
+   commit deploys itself), and stops the deploy on any red, cancelled, or timed-out
+   check, on a check still running at the deadline, or on an API error.
+2. **build** (`contents: read`). It checks out the default ref, confirms it is the
+   gated commit, uses no dependency cache, syncs the locked environment, re-records with `--baseline`, builds, and
+   uploads only `build/pages`, with one-day artifact retention.
+3. **deploy** (`pages: write` and `id-token: write`, nothing else). It deploys
+   through the `github-pages` environment. Deploys run one at a time and are never
+   cancelled mid-deploy; a newer pending deploy replaces an older pending one.
+
+**Actions → pages-demo → Run workflow** on `main` redeploys the current `main`
+through the same gate. On any other branch the workflow does nothing.
+
+The standing repository configuration:
+
+1. Keep **Settings → Pages → Build and deployment** set to **GitHub Actions**.
    Do not publish the repository root from a branch.
-3. Keep the **github-pages** environment limited to deployments from `main`,
-   with any required reviewers or other existing protections.
-4. Run **Actions → pages-demo → Run workflow**, selecting `main`. The workflow
-   validates and uploads only `build/pages`, with one-day artifact retention,
-   then deploys through the protected environment. Concurrent deployments are
-   serialized, not cancelled mid-deploy.
-5. Follow the deployment job's `page_url`, confirm HTTPS, and repeat the scenario,
-   policy, narrow-screen, and browser-console checks on the hosted site. Keep
-   HTTPS enforcement enabled.
+2. Keep the **github-pages** environment limited to deployments from `main`. If it
+   requires reviewers, each automatic deploy waits for that approval.
+3. After a deploy, follow the deployment job's `page_url`, confirm HTTPS, and
+   spot-check the scenarios, policies, a narrow screen, and the browser console.
+   Keep HTTPS enforcement enabled.
 
 See GitHub's [publishing-source setup](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 and [custom-workflow requirements](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 The workflow does not enable Pages or change environment protections itself.
-To update the site, review/merge the change and run the same workflow again.
-To roll back, revert the relevant site change through review and redeploy `main`;
-to withdraw it, unpublish the Pages site in repository settings.
+To roll back, revert the change through review; the revert's merge deploys itself.
+To withdraw the site, unpublish it in repository settings.
 
-## Recording provenance and refresh
+## Recordings: reviewed baseline and deploy-time refresh
 
-The current dataset was captured on November 2, 2026 at 14:24:08 UTC from scanner
-revision `38e100bbc559e86e570e3361256498d3a0c23420`, Python 3.12.3 and YARA-X
-1.22.1. It uses the 82 bundled rules only, with no vendor packs. The six examples
+`web-demo/recordings.json` is the **reviewed baseline**: the verdicts, findings,
+offsets, input fingerprints, and coverage counters the page claims for each input,
+plus the provenance of the capture that produced them. Each deploy re-records with the
+real scanner at the deployed commit and compares the result with this baseline. Only
+provenance may differ: the source revision, capture time, ruleset fingerprint,
+compiled-rule count, and engine and tool versions. Any other difference (a verdict, a
+finding, an offset, a title) stops the deploy, and fails the pull request check before
+that, so a change to what the page claims always arrives as a reviewed commit. The
+published page names the exact `main` commit it was recorded from.
+
+The committed baseline was captured on November 2, 2026 at 17:50:37 UTC from scanner
+revision `8a83ffe10c70fe12d3af27d1e5691e782807652a` (`main` after #149, #150, and
+#151), Python 3.12.3 and YARA-X 1.22.1. It uses the 82 bundled rules only, with no
+vendor packs. The six examples
 are an ordinary note, a quoted override, a secret-transfer request to an invalid
 example address, an HTML-encoded override, a synthetic executable header named
 as a PDF, and a deliberately broken rule compilation in a disposable rules tree.
-No sample was executed and no referenced URL was fetched. The November 1 dataset
-(revision `68e27e7`, 80 rules) recorded the same verdicts, findings, offsets, and
-input fingerprints; only the rule count and ruleset fingerprint changed.
+No sample was executed and no referenced URL was fetched. The earlier datasets,
+`68e27e7` (November 1, 80 rules) and `38e100b` (November 2, 82 rules), recorded the
+same verdicts, findings, offsets, and input fingerprints; only the rule count and
+ruleset fingerprint changed.
 
-To refresh, check out the intended source revision with no local changes under
-`src/`, `rules/local/`, `rules/rules.lock`, `pyproject.toml`, or `uv.lock`, then run
-from the repository root:
+When a change legitimately alters an outcome, re-record in that pull request and
+commit the result. Use a checkout with no uncommitted changes under `src/`,
+`rules/local/`, `rules/rules.lock`, `pyproject.toml`, or `uv.lock`, and run from the
+repository root:
 
 ```sh
 uv sync --frozen
@@ -128,9 +162,10 @@ It refuses to write when a verdict, completeness state, or skip count differs
 from the reviewed expectation, or when the scanner sources differ from `HEAD`.
 It keeps only the response/finding fields the builder allowlists, plus
 `exit_code`: no paths, namespaces, timings, or input/matched bytes. It records
-`HEAD` and the UTC capture time. Review the JSON diff, rerun the artifact checks
-and browser acceptance, then deploy through the checklist above. A recording
-never authorizes access to another input.
+`HEAD` and the UTC capture time. Review the JSON diff and rerun the artifact checks
+and browser acceptance; the merge then deploys it. To check outcomes without
+writing, pass `--baseline web-demo/recordings.json` and an `--output` outside the
+tree, as the workflow does. A recording never authorizes access to another input.
 
 See the [refresh verification record](verification/2026-11-02-pages-demo-refresh.md)
 and the [first verification record](verification/2026-11-01-pages-demo.md) for the

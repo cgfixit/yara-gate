@@ -136,6 +136,51 @@ def curated(result: Any) -> dict[str, Any]:
     return data
 
 
+# Fields that say which scanner produced a record, not what it decided. A deploy re-records and
+# may refresh them; any other difference is a changed public outcome that needs a reviewed commit.
+PROVENANCE = frozenset({"source_revision", "captured_at"})
+RESULT_PROVENANCE = frozenset(
+    {"ruleset_sha256", "compiled_rules", "engine_version", "tool_version"}
+)
+
+
+def outcomes(data: dict[str, Any]) -> dict[str, Any]:
+    """The dataset without provenance: what the page claims each input produced."""
+    view = {key: value for key, value in data.items() if key not in PROVENANCE}
+    view["cases"] = [
+        {
+            **case,
+            "results": {
+                policy: {k: v for k, v in result.items() if k not in RESULT_PROVENANCE}
+                for policy, result in case["results"].items()
+            },
+        }
+        for case in data["cases"]
+    ]
+    return view
+
+
+def _flatten(value: Any, path: str = "") -> dict[str, Any]:
+    if isinstance(value, dict):
+        flat: dict[str, Any] = {}
+        for key, item in value.items():
+            flat.update(_flatten(item, f"{path}/{key}"))
+        return flat or {path: {}}
+    if isinstance(value, list):
+        flat = {}
+        for index, item in enumerate(value):
+            label = item.get("id", index) if isinstance(item, dict) else index
+            flat.update(_flatten(item, f"{path}[{label}]"))
+        return flat or {path: []}
+    return {path: value}
+
+
+def outcome_changes(fresh: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
+    """Paths whose reviewed outcome differs between a fresh recording and the baseline."""
+    new, old = _flatten(outcomes(fresh)), _flatten(outcomes(baseline))
+    return sorted(path for path in new.keys() | old.keys() if new.get(path) != old.get(path))
+
+
 def record() -> dict[str, Any]:
     revision = source_revision()
     cases = []
@@ -169,8 +214,29 @@ def record() -> dict[str, Any]:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--output", type=Path, required=True, help="recordings JSON to write")
-    output = parser.parse_args().output
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        help="reviewed recordings the fresh outcomes must match; only provenance may differ",
+    )
+    args = parser.parse_args()
+    output = args.output
     recording = record()
+    if args.baseline is not None:
+        try:
+            baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+            validate_recordings(baseline)
+        except (OSError, ValueError) as exc:
+            raise SystemExit(f"refusing: invalid baseline {args.baseline}: {exc}") from None
+        changes = outcome_changes(recording, baseline)
+        if changes:
+            shown = "\n  ".join(changes[:12])
+            more = f"\n  (+{len(changes) - 12} more)" if len(changes) > 12 else ""
+            raise SystemExit(
+                f"refusing: recorded outcomes differ from {args.baseline} at:\n  {shown}{more}\n"
+                "Re-record locally, review the public JSON, and commit it before publishing."
+            )
+        print(f"Outcomes match the reviewed baseline {args.baseline}; only provenance refreshed")
     output.write_text(json.dumps(recording, indent=2) + "\n", encoding="utf-8")
     rules = {c["results"]["default"]["compiled_rules"] for c in recording["cases"]} - {0}
     print(
