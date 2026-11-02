@@ -25,7 +25,7 @@ These are supported ingestion patterns, not automatically installed connectors. 
 | Intake channel | What goes wrong | What the gate holds |
 | --- | --- | --- |
 | **An open phone number, Telegram bot, or webhook** | Anyone who has the number can write into the agent's context | Override phrases (8 languages plus English), role spoofing, requests for secrets, Markdown-image exfiltration (`![x](https://…?d={{chat_history}})`), invisible Unicode, look-alike spellings such as `Ignоre` with a Cyrillic о, and base64-wrapped instructions or executables. The body is scanned in memory, and the same buffer goes to the model |
-| **A synced corpus** (Dropbox, OneDrive, iCloud, `rclone`) | A shared-folder member or a compromised account drops a poisoned document, and the next reindex makes it retrievable for good | Hidden HTML instructions, entity- and JSON-escaped text, sentences split across Word runs, text in compressed PDF streams, PDF actions, Office macros, and DDE. Encrypted PDFs and Office files are held as **incomplete** rather than passed unread |
+| **A synced corpus** (Dropbox, OneDrive, iCloud, `rclone`) | A shared-folder member or a compromised account drops a poisoned document, and the next reindex makes it retrievable for good | Hidden HTML instructions, PDF actions, Office macros, and DDE under either policy. Override phrases in entity- and JSON-escaped text, in sentences split across Word runs, and in compressed PDF streams are held under `agent-ingest` (use it for folders other people can write to); `agent-document` records them as notes and reads the file. Encrypted PDFs and Office files are held as **incomplete** rather than passed unread. Text that a PDF stores as font glyph IDs (most exported PDFs) is not read, so gate the extracted text too |
 | **New RAG or upload files** | A "report" whose real reader is the model | The same document views, plus checks for file-type mismatches, double extensions, and control characters in file names |
 | **A cloned repository** | A `.vscode/tasks.json` that runs on folder open (the fake job-interview lure), `curl \| sh`, reverse shells, persistence | `dev_vscode_autorun_task`, download-and-execute, reverse-shell, Gatekeeper and Defender tampering, and LaunchAgent and sudoers persistence rules |
 | **Email attachments and archives** | Payloads nested two levels deep | In-memory zip, tar, and gzip archives, plus MIME mail parts. Path-escaping member names, symlink entries, and 7z, RAR, or xz containers are held as incomplete. Nothing is extracted to disk |
@@ -37,7 +37,7 @@ These are supported ingestion patterns, not automatically installed connectors. 
 
 For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between staging and corpus reindexing, and scan incoming message bodies before they become queries. For [CG-agent-harness](https://github.com/cgfixit/CG-agent-harness), gate attachments, retrieved documents, fetched pages, tool results, and cloned repositories before they enter the prompt.
 
-The [consumer integration guide](docs/integrations.md#cyclaw-and-cg-agent-harness) describes the proposed wiring and acceptance checks. The [sync-folder example](docs/examples/sync_folder_gate.py) and [pre-read hook](docs/examples/yara_gate_pre_read_hook.sh) are runnable starting points; the caller must connect and enforce them.
+The [consumer integration guide](docs/integrations.md#cyclaw-and-cg-agent-harness) describes the proposed wiring and acceptance checks. The [sync-folder example](docs/examples/sync_folder_gate.py), [SMS bridge](docs/examples/sms_gate_bridge.py), and [pre-read hook](docs/examples/yara_gate_pre_read_hook.sh) are runnable starting points; the caller must connect and enforce them. The [integration-readiness review](docs/reviews/2026-11-02-integration-readiness.md) measures both channels and lists what each consumer still needs.
 
 The gate does not replace either product's own defenses: retrieval checks, untrusted-content fences, consent for cloud models, and write approvals. It runs in front of them.
 
@@ -150,6 +150,8 @@ Intake accepts only a regular file with one link and opens it without following 
 - It cannot guarantee detection of novel or targeted payloads. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
 - It does not judge meaning. It has no semantic understanding of prompt injection, no OCR, no general text extraction, and no decryption. A paraphrased attack in plain prose can pass.
 - It does not inspect inside 7z, RAR, xz, or encrypted containers. They are held as incomplete rather than guessed at.
+- It does not read text that a PDF stores as font glyph IDs, which is how most office exports write it. Gate the text your extractor produces as well; see [PDFs and other compressed documents](docs/integrations.md#pdfs-and-other-compressed-documents).
+- It scans each input on its own. An instruction split across two messages is seen only if the caller also scans them together, as the [SMS bridge example](docs/examples/sms_gate_bridge.py) does.
 - Its deadline does not interrupt third-party parsers mid-call.
 
 The exact boundaries of every rule, the derived views, and the limits are in **[docs/rules.md](docs/rules.md)**.
@@ -218,7 +220,7 @@ web-demo/            public recorded-demo assets; scripts/ builds and re-records
 screenshots/         original captures and provenance; user-guide.md covers operation
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
-docs/examples/       sync_folder_gate.py, yara_gate_pre_read_hook.sh
+docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.sh
 docs/verification/   CI checks and dated evidence;  docs/research/  probes and research notes
 user-guide.md        operator walkthrough;  SECURITY.md  reporting and network scope
 AGENTS.md            contracts for agents working in this tree (CLAUDE.md imports it)
