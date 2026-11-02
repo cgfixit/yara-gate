@@ -3,6 +3,9 @@ import os
 import stat
 from pathlib import Path
 
+import pytest
+
+from yara_gate import quarantine
 from yara_gate.models import ScanPolicy, Verdict, exit_code
 from yara_gate.quarantine import GatePaths, _InboxHandler, drain_inbox, process_inbox_file
 from yara_gate.samples import (
@@ -10,6 +13,7 @@ from yara_gate.samples import (
     clean_text,
     eicar_bytes,
     injection_markdown,
+    mini_pe,
     tag_smuggled_markdown,
 )
 
@@ -95,6 +99,71 @@ def test_second_drop_of_the_same_bytes_converges(tmp_path: Path, rules_copy: Pat
     assert not second.exists()
     assert again.verdict is Verdict.clean
     assert again.sha256 == hashlib.sha256(clean_text()).hexdigest()
+
+
+def _slots(home: GatePaths) -> list[str]:
+    return sorted(
+        f"{root.name}/{item.name}"
+        for root in (home.quarantine, home.clean, home.blocked)
+        for slot in root.iterdir()
+        if slot.is_dir() and slot.name != "_rejected"
+        for item in slot.iterdir()
+    )
+
+
+def test_same_bytes_under_a_new_name_are_scanned_under_that_name(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    home = _home(tmp_path)
+    honest = home.inbox / "tool.exe"
+    honest.write_bytes(mini_pe())
+    assert process_inbox_file(home, honest, rules_dir=rules_copy).verdict is Verdict.clean
+    disguised = home.inbox / "invoice.pdf"
+    disguised.write_bytes(mini_pe())
+    result = process_inbox_file(home, disguised, rules_dir=rules_copy)
+    assert result.verdict is Verdict.block
+    assert "filetype_mismatch_pe" in {finding.rule_id for finding in result.findings}
+    assert Path(result.path).name == "invoice.pdf"
+    assert _slots(home) == ["blocked/invoice.pdf"]
+    report = (home.reports / f"{result.sha256}.json").read_text(encoding="utf-8")
+    assert '"block"' in report and "invoice.pdf" in report and "tool.exe" not in report
+
+    renamed = home.inbox / "tool.exe"
+    renamed.write_bytes(mini_pe())
+    assert process_inbox_file(home, renamed, rules_dir=rules_copy).verdict is Verdict.clean
+    assert _slots(home) == ["clean/tool.exe"]
+
+
+def test_copies_left_in_both_folders_collapse_to_one_slot(tmp_path: Path, rules_copy: Path) -> None:
+    home = _home(tmp_path)
+    digest = hashlib.sha256(mini_pe()).hexdigest()
+    for root, name in ((home.clean, "tool.exe"), (home.blocked, "invoice.pdf")):
+        (root / digest).mkdir()
+        (root / digest / name).write_bytes(mini_pe())
+    src = home.inbox / "invoice.pdf"
+    src.write_bytes(mini_pe())
+    assert process_inbox_file(home, src, rules_dir=rules_copy).verdict is Verdict.block
+    assert _slots(home) == ["blocked/invoice.pdf"]
+
+
+def test_an_entry_replaced_during_the_copy_stays_in_the_inbox(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _home(tmp_path)
+    src = home.inbox / "report.txt"
+    src.write_bytes(clean_text())
+    later = home.inbox / ".incoming"
+    later.write_bytes(b"written after the first file was opened\n")
+    copy = quarantine._copy_fd
+
+    def replaced_mid_copy(fd: int, dest: Path) -> None:
+        os.replace(later, src)
+        copy(fd, dest)
+
+    monkeypatch.setattr(quarantine, "_copy_fd", replaced_mid_copy)
+    result = process_inbox_file(home, src, rules_dir=rules_copy)
+    assert result.sha256 == hashlib.sha256(clean_text()).hexdigest()
+    assert src.read_bytes() == b"written after the first file was opened\n"
 
 
 def test_drain_scans_files_already_in_the_inbox(tmp_path: Path, rules_copy: Path) -> None:

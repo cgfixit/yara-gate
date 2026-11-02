@@ -150,7 +150,8 @@ repository-wide allowlist.
 ## Synced folders (Dropbox, OneDrive, iCloud Drive)
 
 A sync client's folder is never the gate's inbox. Inbox intake copies its input
-into `quarantine/<sha256>/` and then removes the inbox entry; a sync client would
+into `quarantine/<sha256>/<name>` and then removes the inbox entry (unless another
+file has replaced it during the copy); a sync client would
 treat that as a deletion and propagate it to every other device and shared-folder
 member. A directory scan of an inbox also consumes client metadata (`.dropbox`,
 `.DS_Store`, `desktop.ini`); only `watch` skips dotfiles. The inbox settle logic

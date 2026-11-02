@@ -116,6 +116,8 @@ A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) 
 | `blocked/<sha256>/` | A block finding, any advisory or note under `agent-ingest`, or an advisory under `agent-document` |
 | `reports/<sha256>.{sarif,json}` | Written for every scan, before the file moves |
 
+Each SHA-256 has one slot holding one file, named as it was last submitted. File-type checks depend on the name, so the same bytes dropped again under another name are copied in and scanned under that name, and the slot, its report, and its folder follow that scan: a PE that is clean as `tool.exe` blocks when resubmitted as `invoice.pdf`. From intake to relocation, a submission holds the gate home's `.intake.lock`, so `scan` and `watch` on one home take one file at a time. The inbox entry is removed only if it is still the file that was copied; a file renamed onto it during the copy stays in the inbox for its own scan.
+
 ```mermaid
 flowchart LR
     drop["inbox/"] --> intake["sha256 copy into quarantine/"]
