@@ -52,15 +52,15 @@ def _check(name: str, conclusion: str | None = "success", run_id: int = 1) -> di
 
 RUNS = [
     _run(1, gate.CI),
-    _run(2, ".github/workflows/codeql.yml"),
+    _run(2, "dynamic/github-code-scanning/codeql"),
     _run(9, gate.SELF, None, "in_progress"),
 ]
 
 
 def test_gate_waits_on_everything_but_itself() -> None:
-    own = _check("gate", None, run_id=9)
+    own = _check("Deploy gate (main only)", None, run_id=9)
     assert gate.evaluate(RUNS, [_check("check", run_id=1), own], 9)[0] == "green"
-    assert gate.evaluate(RUNS, [_check("Analyze Python", None, run_id=2), own], 9)[0] == "pending"
+    assert gate.evaluate(RUNS, [_check("Analyze (python)", None, run_id=2), own], 9)[0] == "pending"
 
 
 @pytest.mark.parametrize("conclusion", ["failure", "cancelled", "timed_out", "action_required"])

@@ -52,4 +52,4 @@ Record the source revision, engine version, rule coverage/skips, commands, and o
 
 Review [the local source review](docs/reviews/2026-10-08-local-review.md) and [prior intake verification](docs/verification/intake-coverage.md) as dated leads, not evergreen acceptance. Reproduce relevant failures on the current baseline before fixing them. Do not reinterpret a known defect as an intended contract.
 
-When publication is requested, keep drafts focused, verify the published head, and distinguish CI completion from review/merge status. The existing CodeQL workflow executes queries with upload disabled; job success alone does not mean results reached the security dashboard. Do not merge without authorization.
+When publication is requested, keep drafts focused, verify the published head, and distinguish CI completion from review/merge status. CodeQL runs through GitHub's default setup, not a workflow file; a green `Analyze (...)` job means the analysis finished, and the `CodeQL` check is the one that reports new alerts. Do not merge without authorization.
