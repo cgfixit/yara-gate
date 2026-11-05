@@ -503,3 +503,17 @@ def test_overlapping_unfiltered_object_streams_share_the_file_buffer() -> None:
     # 64 declarations each reaching the same 1 MB tail: one view each, not one copy each.
     assert peak < 8 * 1_000_000
     assert budget.expanded == 0
+
+
+def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    import pickle
+
+    from yara_gate import heuristics
+
+    monkeypatch.setattr(heuristics, "_PICKLE_MAX_OPS", 50)
+    data = pickle.dumps(list(range(100)), protocol=4)
+    findings, error = heuristics.pickle_reduce_findings(Path("big.pkl"), data)
+    assert findings == []
+    assert error == "pickle exceeds walk limit"
+    _, reason = heuristic_findings(Path("big.pkl"), data)
+    assert reason == "pickle exceeds walk limit"
