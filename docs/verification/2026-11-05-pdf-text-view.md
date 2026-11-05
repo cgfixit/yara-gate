@@ -22,8 +22,11 @@ and Word all write this) scanned clean.
 - The scanner runs one YARA pass per paragraph as the `pdf-text` view, keeps one finding per
   rule, and reports the note `heuristic_pdf_text_unmapped` when a composite font has no
   readable map or an unresolved font shows two-byte codes.
-- A `yara_x.Scanner` is reused per compiled ruleset and thread (`threading.local`); every call
-  still sets the timeout and every global.
+- Inside the `pdf-text` paragraph loop only, a `yara_x.Scanner` is reused per compiled ruleset
+  and thread (`threading.local`); every call still sets the timeout and every global. Hosted CI
+  on the first push caught that reuse everywhere reorders a report's findings (the Pages
+  recorder refused `hidden_html`: same findings, other order), so every other view builds a
+  fresh Scanner as on `main`, and the view's findings are sorted by rule id.
 
 ## Design note
 

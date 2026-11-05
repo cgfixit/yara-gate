@@ -389,20 +389,26 @@ def _pdf_text_findings(
     """
     text = pdf_text(unit.data, streams, objects, budget)
     found: dict[str, Finding] = {}
-    for block in text.blocks:
-        budget.check()
-        for finding in yara(rules, _derived(block, budget), ext, "pdf-text"):
-            found.setdefault(finding.rule_id, finding)
+    _SCANNERS.reuse = True
+    try:
+        for block in text.blocks:
+            budget.check()
+            for finding in yara(rules, _derived(block, budget), ext, "pdf-text"):
+                found.setdefault(finding.rule_id, finding)
+    finally:
+        _SCANNERS.reuse = False
+        _SCANNERS.pair = None
     if text.unmapped:
         found["heuristic_pdf_text_unmapped"] = Finding(
             rule_id="heuristic_pdf_text_unmapped",
             severity=Severity.note,
             source=FindingSource.heuristic,
         )
-    for finding in found.values():
+    ordered = [found[rule_id] for rule_id in sorted(found)]
+    for finding in ordered:
         finding.member_path = list(unit.member_path)
         finding.view = "pdf-text"
-    return list(found.values())
+    return ordered
 
 
 _SCANNERS = threading.local()
@@ -529,14 +535,17 @@ def _invoke_scan(
 ) -> object:
     import yara_x
 
-    # A Scanner costs about 0.6 ms to build, more than scanning a paragraph; reuse one per
-    # compiled ruleset and thread. Every call sets the timeout and every global again.
-    cached = getattr(_SCANNERS, "pair", None)
+    # A Scanner costs about 0.6 ms to build, more than scanning a PDF paragraph, so the
+    # pdf-text loop reuses one per compiled ruleset and thread. Every other call builds its
+    # own: a reused Scanner reports matching rules in another order, and report order is
+    # part of the recorded output. Every call sets the timeout and every global again.
+    cached = getattr(_SCANNERS, "pair", None) if getattr(_SCANNERS, "reuse", False) else None
     if cached is not None and cached[0] is rules:
         scanner = cached[1]
     else:
         scanner = yara_x.Scanner(rules)
-        _SCANNERS.pair = (rules, scanner)
+        if getattr(_SCANNERS, "reuse", False):
+            _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
     blob, exe = base64_run_signals(data, samples=samples)
     for name, value in (
