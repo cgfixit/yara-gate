@@ -100,11 +100,15 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     }
     fonts = _fonts(data, streams, objects, by_number, budget)
     tokens = 0
+    # A page's /Contents array is read as one stream, so the font one stream selects stays
+    # selected in the next; a form XObject also inherits its caller's font. The selection is
+    # carried across streams in file order.
+    state = _TextState()
     for stream in streams:
         body = stream.text
         if body is None or b"BT" not in body:
             continue
-        tokens = _blocks(body, fonts, result, budget, tokens)
+        tokens = _blocks(body, fonts, result, budget, tokens, state)
     return result
 
 
@@ -119,25 +123,47 @@ def _fonts(
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
     references: dict[bytes, set[tuple[int, int]]] = {}
+    dictionaries: list[bytes] = []
+    indirect: set[tuple[int, int]] = set()
     for source in sources:
         budget.check()
-        dictionaries = [match.group(1) for match in _FONT_RESOURCES.finditer(source)]
-        for match in _FONT_RESOURCE_REF.finditer(source):
-            for body in objects(int(match.group(1)), int(match.group(2))):
-                dictionaries.append(body)
-        for dictionary in dictionaries:
-            for ref in _NAME_REF.finditer(dictionary):
-                name = _name(ref.group(1))
-                slot = references.setdefault(name, set())
-                if len(slot) < 64:
-                    slot.add((int(ref.group(2)), int(ref.group(3))))
+        dictionaries.extend(match.group(1) for match in _FONT_RESOURCES.finditer(source))
+        indirect.update(
+            (int(match.group(1)), int(match.group(2)))
+            for match in _FONT_RESOURCE_REF.finditer(source)
+        )
+    # One pass over the file finds every wanted object; a lookup per key would rescan it.
+    _prime(objects, indirect)
+    for key in sorted(indirect):
+        dictionaries.extend(objects(*key))
+    for dictionary in dictionaries:
+        for ref in _NAME_REF.finditer(dictionary):
+            name = _name(ref.group(1))
+            slot = references.setdefault(name, set())
+            if len(slot) < 64:
+                slot.add((int(ref.group(2)), int(ref.group(3))))
     cache: dict[tuple[int, int], Font | None] = {}
     fonts: dict[bytes, list[Font]] = {}
+    _prime(objects, {key for refs in references.values() for key in refs})
+    headers: dict[tuple[int, int], int] | None = None
+
+    def raw(key: tuple[int, int]) -> bytes:
+        nonlocal headers
+        if headers is None:
+            headers = {}
+            for match in _OBJ_HEADER.finditer(data):
+                headers[(int(match.group(1)), int(match.group(2)))] = match.end()
+        start = headers.get(key)
+        if start is None:
+            return b""
+        end = data.find(b"endobj", start, start + _MAX_OBJECT_BYTES)
+        return data[start : end if end >= 0 else start + _MAX_OBJECT_BYTES]
+
     for name, refs in references.items():
         found: list[Font] = []
         for key in sorted(refs):
             if key not in cache:
-                cache[key] = _font(objects(*key), by_number, budget)
+                cache[key] = _font(objects(*key), by_number, budget, raw, key)
             font = cache[key]
             if font is not None and font not in found:
                 found.append(font)
@@ -146,12 +172,22 @@ def _fonts(
     return fonts
 
 
-def _font(bodies: list[bytes], by_number: dict[int, bytes | None], budget: Budget) -> Font | None:
+def _font(
+    bodies: list[bytes],
+    by_number: dict[int, bytes | None],
+    budget: Budget,
+    raw: Callable[[tuple[int, int]], bytes],
+    key: tuple[int, int],
+) -> Font | None:
     for body in bodies:
         if b"/Font" not in body and b"/Subtype" not in body:
             continue
         composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
         mapping = _TO_UNICODE.search(body)
+        if mapping is None and len(body) >= _LOOKUP_WINDOW:
+            # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
+            # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
+            mapping = _TO_UNICODE.search(raw(key))
         if mapping is None:
             return Font(composite, None, (2,) if composite else (1,))
         cmap_bytes = by_number.get(int(mapping.group(1)))
@@ -161,6 +197,21 @@ def _font(bodies: list[bytes], by_number: dict[int, bytes | None], budget: Budge
         default = (2,) if composite else (1,)
         return Font(composite, cmap or None, lengths or default)
     return None
+
+
+_LOOKUP_WINDOW = 4000
+_MAX_OBJECT_BYTES = 1 << 20
+
+
+_OBJ_HEADER = re.compile(
+    rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj\b"
+)
+
+
+def _prime(objects: Lookup, keys: set[tuple[int, int]]) -> None:
+    prime = getattr(objects, "prime", None)
+    if keys and callable(prime):
+        prime(keys)
 
 
 def _cmap(data: bytes, budget: Budget) -> tuple[dict[bytes, str], tuple[int, ...]]:
@@ -322,8 +373,22 @@ class _Paragraphs:
         target.append(text[:MAX_BLOCK_CHARS])
 
 
+@dataclass
+class _TextState:
+    """The selected font and size, which outlive one content stream."""
+
+    fonts: list[Font] = field(default_factory=list)
+    size: float = 0.0
+    selected: bool = False
+
+
 def _blocks(
-    body: bytes, fonts: dict[bytes, list[Font]], result: PdfText, budget: Budget, tokens: int
+    body: bytes,
+    fonts: dict[bytes, list[Font]],
+    result: PdfText,
+    budget: Budget,
+    tokens: int,
+    state: _TextState,
 ) -> int:
     """Append the paragraphs of one content stream to ``result``; return the token count.
 
@@ -332,8 +397,8 @@ def _blocks(
     because generators start a new one at every font change or line.
     """
     operands: list[object] = []
-    current: list[Font] = []
-    size = 0.0
+    current: list[Font] = state.fonts
+    size = state.size
     leading = 0.0
     ctm = _IDENTITY_MATRIX
     saved: list[Matrix] = []
@@ -380,6 +445,7 @@ def _blocks(
         elif op == b"Tf" and len(operands) >= 2 and isinstance(operands[-2], _Name):
             current = fonts.get(operands[-2].value, [])
             size = operands[-1] if isinstance(operands[-1], float) else size
+            state.fonts, state.size, state.selected = current, size, True
         elif op == b"TL" and (values := numbers(1)) is not None:
             leading = values[0]
         elif op == b"Tm" and (values := numbers(6)) is not None:

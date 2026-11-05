@@ -79,12 +79,42 @@ generators:
 `check_added_rules.py` gains 9 PDF cases; with `src/` reverted, the 6 hits miss and the 3
 benign cases pass. `check_rule_pairs.py` adds `heuristic_pdf_text_unmapped`.
 
+## Third-party PDFs
+
+132 unique PDFs from the test resources of two PyPI source packages (`pikepdf` 10.17.0: 61,
+`pypdf` 6.21.4: 71), written by many producers and including malformed, encrypted, CJK,
+Type 3, and form-XObject files. Extracted with `tar --wildcards '*.pdf'` into empty
+directories and only scanned. Each was scanned under `default` by `main` (a worktree) and by
+the branch, and the verdicts, findings, incomplete reasons, and times compared.
+
+The first run found two defects that generated PDFs had not shown, both false
+`heuristic_pdf_text_unmapped` notes:
+
+- `fontsampler.pdf` (clean on `main`): a Type0 font that embeds its descendant font and a long
+  `/W` array puts `/ToUnicode` past the 4 KB object-lookup window. A truncated window now
+  falls back to the whole object, up to `endobj` (1 MB at most).
+- `example.pdf`: a page's `/Contents` array is one stream to a reader, so a font selected in one
+  stream is in effect in the next. The selected font and size now carry across streams.
+
+The run also showed `issue-604.pdf` (8 MB) at 8.5 s against 1.7 s on `main`: font lookups
+called the raw-object index once per key. They are now primed in two batches, and the object
+header index is built once.
+
+| Run | New findings | Lost findings | Verdict changes | Incomplete changes |
+| --- | --- | --- | --- | --- |
+| First | 2 × `heuristic_pdf_text_unmapped` | 0 | 1 (`fontsampler.pdf` clean to advisory) | 0 |
+| After the fixes | 0 | 0 | 0 | 0 |
+
+`check_added_rules.py` gains `cid-long-font.pdf` and `cid-split-contents.pdf`; with the
+previous `pdftext.py`, the first gives a false note and the second a miss.
+
 ## Cost
 
 A 132 KB Chromium PDF with 1,500 paragraphs: 0.12 s on `main`, 1.52 s with a Scanner per
 paragraph, 0.47 s after reusing one and replacing the character tokenizer with a regex, and
 0.73 s with both units (10,501 block passes and 1,511 paragraph passes). The 200-PDF
-differential corpus scanned in 15.4 s.
+differential corpus scanned in 15.4 s. The 132 third-party PDFs take 4.5 s on `main` and
+8.5 s on the branch; the slowest, `issue-604.pdf` (8 MB, 378,000 operators), 1.7 s and 3.8 s.
 
 ## Checks
 
@@ -96,6 +126,6 @@ pytest (heuristics, scanner, report, policies, CLI JSON, text fast paths, demo: 
 
 ## Not established
 
-The real-document corpus is host text rendered by two generators, not third-party PDFs from the wild (scanned, print-to-PDF, or Word-authored files).
+The third-party set is library test PDFs, not a sample of what users send; no scanned-image PDF has text to read, and Word-authored PDFs are represented only through these sets.
 Column layouts that share a baseline join without a space; Type 3 fonts and fonts whose codes
 need the font program are not decoded.

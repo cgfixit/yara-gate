@@ -353,7 +353,24 @@ def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     plain = (
         b"BT /F1 12 Tf 72 700 Td [(Release)-333(notes:)-333(we)-333(fix)-20(ed)-333(bugs.)]TJ ET"
     )
+    # A Type0 font whose inline descendant font and /W widths push /ToUnicode past 4 KB.
+    widths = b" ".join(b"%d [ 600 ]" % index for index in range(1200))
+    long_font = (
+        b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /DescendantFonts [ << /Type /Font"
+        b" /Subtype /CIDFontType2 /W [ " + widths + b" ] >> ] /ToUnicode 6 0 R >>"
+    )
+    # The font is selected in the page's first content stream and used in the second.
+    split_streams = _text_pdf(b"BT /F1 12 Tf ET", _TYPE0_MAPPED, (_to_unicode(_PDF_PHRASE),))
+    second = zlib.compress(b"BT 72 700 Td " + _glyphs(_PDF_PHRASE) + b" Tj ET")
+    split_streams = split_streams.replace(b"/Contents 4 0 R", b"/Contents [4 0 R 7 0 R]").replace(
+        b"trailer",
+        b"7 0 obj\n<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(second)
+        + second
+        + b"\nendstream\nendobj\ntrailer",
+    )
     return [
+        ("cid-long-font.pdf", _text_pdf(glyphs, long_font, (_to_unicode(_PDF_PHRASE),)), hit),
+        ("cid-split-contents.pdf", split_streams, hit),
         ("tex.pdf", _text_pdf(latex, _SIMPLE_FONT), hit),
         ("kerned.pdf", _text_pdf(kerned, _SIMPLE_FONT), hit),
         (
