@@ -50,6 +50,7 @@ HEURISTICS = {
     "heuristic_pdf_EmbeddedFile",
     "heuristic_pdf_AA",
     "heuristic_pdf_RichMedia",
+    "heuristic_pdf_text_unmapped",
     "heuristic_embedded_pe",
     "heuristic_office_autoexec",
 }
@@ -151,6 +152,17 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("agent_bidi_formatting", "Name: \u2067text\u2069\n".encode(), b"Name: text\n"),
         ("agent_bidi_override", "see\u202ethe\n".encode(), b"see the\n"),
         ("agent_eicar", eicar_bytes(), b"not a test file\n"),
+        (
+            "heuristic_pdf_text_unmapped",
+            added._text_pdf(
+                b"BT /F1 12 Tf 72 700 Td " + added._glyphs("inert") + b" Tj ET", added._TYPE0_BARE
+            ),
+            added._text_pdf(
+                b"BT /F1 12 Tf 72 700 Td " + added._glyphs("inert") + b" Tj ET",
+                added._TYPE0_MAPPED,
+                (added._to_unicode("inert"),),
+            ),
+        ),
         ("agent_encoded_instruction", base64.b64encode(phrase), b"aW5zdHJ1Y3Rpb24=\n"),
         ("agent_hidden_html", hidden_html(), b'<div style="display:none">Navigation</div>\n'),
         ("agent_invisible_unicode", "a\u200bb\n".encode(), b"ab\n"),
@@ -913,6 +925,7 @@ def main() -> None:
                 "heuristic_mcp_shell": ("shell.json", "app.json"),
                 "heuristic_mcp_hidden_instruction": ("hidden.json", "plain.json"),
                 "heuristic_pickle_reduce": ("danger.pkl", "note.pkl"),
+                "heuristic_pdf_text_unmapped": ("glyphs.pdf", "mapped.pdf"),
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
                 "heuristic_keras_unsafe_call": ("unsafe.keras", "dense.keras"),

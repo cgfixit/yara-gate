@@ -547,8 +547,66 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         yield "ooxml-text", _derived("".join(parts), budget)
 
 
-def pdf_views(
+@dataclass
+class PdfStream:
+    """One stream of a PDF, decoded once and shared by the ``pdf-flate`` and ``pdf-text`` views.
+
+    ``inflated`` is the FlateDecode output when it sniffs as text (what ``pdf-flate`` reads).
+    ``text`` is that, or the stream's own bytes when it has no filter and sniffs as text, which
+    is how an uncompressed content stream or ToUnicode CMap arrives. ``number`` is the object
+    number of the nearest ``N G obj`` header before the stream keyword.
+    """
+
+    offset: int
+    number: int | None
+    inflated: bytes | None
+    text: bytes | None
+
+
+_PDF_OBJ_HEADER = re.compile(
+    rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+[0-9]{1,5}[\x00\t\n\f\r ]+obj\b"
+)
+
+
+def pdf_streams(
     data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
+) -> list[PdfStream]:
+    """Decode every stream in ``data`` once, under the same limits ``pdf_views`` documents."""
+    if not data.startswith(b"%PDF"):
+        return []
+    streams: list[PdfStream] = []
+    objects: dict[tuple[int, int], PdfValue | None] = {}
+    for count, start in enumerate(_PDF_STREAM.finditer(data)):
+        if count >= MAX_PDF_STREAMS:
+            raise ContentLimit("pdf streams exceed 2000")
+        budget.check()
+        if data[max(0, start.start() - 3) : start.start()] == b"end":
+            continue
+        if decoded is not None and start.start() in decoded:
+            # An object stream the /OpenAction lookup already inflated and charged.
+            inflated = decoded[start.start()]
+        else:
+            inflated = _pdf_stream_bytes(data, start, budget, objects)
+        inflated = inflated if inflated and sniff(inflated) == "text" else None
+        text = inflated
+        if text is None:
+            stream_dict = _pdf_stream_dict(data, start.start())
+            if stream_dict is not None and b"/Filter" not in stream_dict:
+                end = _PDF_END.search(data, start.end())
+                raw = data[start.end() : end.start() if end else len(data)]
+                text = raw if raw and sniff(raw) == "text" else None
+        number = None
+        for header in _PDF_OBJ_HEADER.finditer(data, max(0, start.start() - 4096), start.start()):
+            number = int(header.group(1))
+        streams.append(PdfStream(start.start(), number, inflated, text))
+    return streams
+
+
+def pdf_views(
+    data: bytes,
+    budget: Budget,
+    decoded: dict[int, bytes | None] | None = None,
+    streams: list[PdfStream] | None = None,
 ) -> Iterator[tuple[str, bytes]]:
     """Inflate FlateDecode streams that hold text and return them as one ``pdf-flate`` view.
 
@@ -567,23 +625,9 @@ def pdf_views(
     ``decoded`` holds object streams that were already inflated, by stream offset; they are
     reused so the same bytes are not inflated or charged twice.
     """
-    if not data.startswith(b"%PDF"):
-        return
-    parts: list[bytes] = []
-    objects: dict[tuple[int, int], PdfValue | None] = {}
-    for count, start in enumerate(_PDF_STREAM.finditer(data)):
-        if count >= MAX_PDF_STREAMS:
-            raise ContentLimit("pdf streams exceed 2000")
-        budget.check()
-        if data[max(0, start.start() - 3) : start.start()] == b"end":
-            continue
-        if decoded is not None and start.start() in decoded:
-            # An object stream the /OpenAction lookup already inflated and charged.
-            inflated = decoded[start.start()]
-        else:
-            inflated = _pdf_stream_bytes(data, start, budget, objects)
-        if inflated and sniff(inflated) == "text":
-            parts.append(inflated)
+    if streams is None:
+        streams = pdf_streams(data, budget, decoded)
+    parts = [stream.inflated for stream in streams if stream.inflated]
     if parts:
         yield "pdf-flate", b"\n".join(parts)
 

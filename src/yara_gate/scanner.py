@@ -2,8 +2,9 @@
 
 import hashlib
 import math
+import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +22,11 @@ from yara_gate.content import (
     ContentLimit,
     ContentUnit,
     PdfObjects,
+    PdfStream,
+    _derived,
     content_units,
     ooxml_text_views,
+    pdf_streams,
     pdf_views,
     text_views,
 )
@@ -58,6 +62,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
+from yara_gate.pdftext import pdf_text
 from yara_gate.rules import (
     compile_ruleset,
     default_rules_dir,
@@ -333,7 +338,8 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
+            streams = pdf_streams(unit.data, budget, pdf_objects.decoded)
+            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded, streams):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
                 # An action dictionary inside an object stream is invisible to the raw check.
@@ -342,6 +348,9 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
+            findings.extend(
+                _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext)
+            )
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
@@ -363,6 +372,40 @@ def _scan_file(
     return finish()
 
 
+def _pdf_text_findings(
+    rules: object,
+    unit: ContentUnit,
+    streams: list[PdfStream],
+    objects: PdfObjects,
+    budget: Budget,
+    yara: Callable[..., list[Finding]],
+    ext: str,
+) -> list[Finding]:
+    """Scan each text block a reader shows, one YARA pass per block, as the ``pdf-text`` view.
+
+    Blocks are scanned apart so a phrase cannot be assembled from two text objects. One finding
+    per rule is kept for the view. A composite font whose strings could not be decoded leaves
+    text unread, which is reported as the note ``heuristic_pdf_text_unmapped``.
+    """
+    text = pdf_text(unit.data, streams, objects, budget)
+    found: dict[str, Finding] = {}
+    for block in text.blocks:
+        budget.check()
+        for finding in yara(rules, _derived(block, budget), ext, "pdf-text"):
+            found.setdefault(finding.rule_id, finding)
+    if text.unmapped:
+        found["heuristic_pdf_text_unmapped"] = Finding(
+            rule_id="heuristic_pdf_text_unmapped",
+            severity=Severity.note,
+            source=FindingSource.heuristic,
+        )
+    for finding in found.values():
+        finding.member_path = list(unit.member_path)
+        finding.view = "pdf-text"
+    return list(found.values())
+
+
+_SCANNERS = threading.local()
 _RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
 
 
@@ -486,7 +529,14 @@ def _invoke_scan(
 ) -> object:
     import yara_x
 
-    scanner = yara_x.Scanner(rules)
+    # A Scanner costs about 0.6 ms to build, more than scanning a paragraph; reuse one per
+    # compiled ruleset and thread. Every call sets the timeout and every global again.
+    cached = getattr(_SCANNERS, "pair", None)
+    if cached is not None and cached[0] is rules:
+        scanner = cached[1]
+    else:
+        scanner = yara_x.Scanner(rules)
+        _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
     blob, exe = base64_run_signals(data, samples=samples)
     for name, value in (
