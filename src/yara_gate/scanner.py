@@ -165,7 +165,13 @@ def _scan_file(
     yara_time = 0.0
 
     def yara(
-        rules: object, payload: bytes, ext: str, view: str | None, *, samples: bool = False
+        rules: object,
+        payload: bytes,
+        ext: str,
+        view: str | None,
+        *,
+        samples: bool = False,
+        name: str = "",
     ) -> list[Finding]:
         nonlocal scanned_bytes, yara_time
         if view is not None:
@@ -184,6 +190,7 @@ def _scan_file(
                 samples=samples,
                 overrides=overrides,
                 vendor_dirs=vendor_dirs,
+                name=name,
             )
         finally:
             scanned_bytes += len(payload)
@@ -293,13 +300,16 @@ def _scan_file(
                         )
                     )
             ext = path.suffix.lower().removeprefix(".")
+            # The final name component, for rules about files known by name (.envrc,
+            # devcontainer.json) that have no telling suffix.
+            base = path.name.lower()
             # A .bmp, .tif, .emf, or .wmf whose header validates holds image samples. Its raw
             # bytes and every text view are still scanned, in the same samples mode as the
             # pdf-flate view: a base64 run must hold data beyond repeats and grain, and a
             # Unicode control must sit in UTF-8 text. Text a reader or interpreter would see
             # (a script, a phrase, a real payload) is checked as in any other unit.
             image = raster_image(path.suffix, unit.data)
-            extra.extend(yara(rules, unit.data, ext, None, samples=image))
+            extra.extend(yara(rules, unit.data, ext, None, samples=image, name=base))
             # Object streams are indexed on first use, for an /OpenAction reference only.
             pdf_objects = PdfObjects(unit.data, budget)
             heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
@@ -317,7 +327,7 @@ def _scan_file(
                 return finish(office_error)
             for view, derived in text_views(unit.data, budget):
                 budget.check()
-                view_findings = yara(rules, derived, ext, view, samples=image)
+                view_findings = yara(rules, derived, ext, view, samples=image, name=base)
                 if view == "text-folded":
                     # Folding rewrites digits inside base64 (0 to o), which breaks the media
                     # exemptions; the raw bytes already carry the base64 verdict, and folding
@@ -335,7 +345,7 @@ def _scan_file(
                     findings.append(finding)
             for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
                 budget.check()
-                view_findings = yara(rules, derived, ext, view)
+                view_findings = yara(rules, derived, ext, view, name=base)
                 # An action dictionary inside an object stream is invisible to the raw check.
                 view_findings.extend(pdf_token_findings(derived, pdf_objects))
                 for finding in view_findings:
@@ -345,7 +355,7 @@ def _scan_file(
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
-                for finding in yara(rules, derived, ext, view):
+                for finding in yara(rules, derived, ext, view, name=base):
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
@@ -426,8 +436,9 @@ def _yara_findings(
     samples: bool = False,
     overrides: Mapping[tuple[str, str], str] | None = None,
     vendor_dirs: Mapping[str, str] | None = None,
+    name: str = "",
 ) -> list[Finding]:
-    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples)
+    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples, name=name)
     findings: list[Finding] = []
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
@@ -482,21 +493,22 @@ def _first_match(
 
 
 def _invoke_scan(
-    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False, name: str = ""
 ) -> object:
     import yara_x
 
     scanner = yara_x.Scanner(rules)
     scanner.set_timeout(timeout_s)
     blob, exe = base64_run_signals(data, samples=samples)
-    for name, value in (
+    for global_name, value in (
         ("yara_gate_ext", ext),
+        ("yara_gate_name", name),
         ("yara_gate_text", sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
     ):
         try:
-            scanner.set_global(name, value)
+            scanner.set_global(global_name, value)
         except (TypeError, ValueError):
             pass
     try:
