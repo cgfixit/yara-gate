@@ -318,10 +318,12 @@ def _scan_file(
             for view, derived in text_views(unit.data, budget):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, samples=image)
-                if view == "text-folded":
+                if view in _RAW_ONLY_VIEWS:
                     # Folding rewrites digits inside base64 (0 to o), which breaks the media
                     # exemptions; the raw bytes already carry the base64 verdict, and folding
-                    # cannot create a real encoded payload that the raw view missed.
+                    # cannot create a real encoded payload that the raw view missed. The
+                    # decoded views are the text a base64 or percent run spells, judged by
+                    # the lexical rules; the run itself was judged in the raw view.
                     view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
@@ -364,6 +366,7 @@ def _scan_file(
 
 
 _RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
+_RAW_ONLY_VIEWS = frozenset({"text-folded", "base64-decoded", "percent-decoded"})
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:

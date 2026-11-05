@@ -151,7 +151,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("agent_bidi_formatting", "Name: \u2067text\u2069\n".encode(), b"Name: text\n"),
         ("agent_bidi_override", "see\u202ethe\n".encode(), b"see the\n"),
         ("agent_eicar", eicar_bytes(), b"not a test file\n"),
-        ("agent_encoded_instruction", base64.b64encode(phrase), b"aW5zdHJ1Y3Rpb24=\n"),
+        # The base64-decoded view: an encoded phrase is the phrase; one encoded word is not.
+        ("agent_prompt_injection_phrases", base64.b64encode(phrase), b"aW5zdHJ1Y3Rpb24=\n"),
         ("agent_hidden_html", hidden_html(), b'<div style="display:none">Navigation</div>\n'),
         ("agent_invisible_unicode", "a\u200bb\n".encode(), b"ab\n"),
         # Trojan Source: the same override is a note in prose and a block in source code.

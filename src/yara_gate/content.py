@@ -14,6 +14,7 @@ import stat
 import tarfile
 import time
 import unicodedata
+import urllib.parse
 import zipfile
 import zlib
 from collections import deque
@@ -402,6 +403,121 @@ def _mime_part_text(part: email.message.Message, payload: bytes) -> bytes:
 _JSON_START = re.compile(r"[\[{]\s*(?:[\"{\[\]}\d-]|(?:true|false|null)\b)")
 
 
+# A base64 token long enough to hold a sentence (12 bytes), standard or URL-safe, optionally
+# wrapped at line ends the way mail and PEM-style tools wrap it. Possessive, so ordinary words
+# fail fast and a long run is read once.
+_B64_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{16,}+=*+(?:\r?\n[A-Za-z0-9+/_-]{4,}+=*+)*+"
+)
+_B64_WRAP = re.compile(r"\r?\n")
+MAX_B64_RUNS = 4096
+_B64_PROBE = 256
+_PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
+_PERCENT_MIN = 3
+# A query string that encodes spaces as + needs no %XX escape at all. The literal + leads, so
+# the search skips ahead to each + instead of trying every position.
+_PLUS_RUN = re.compile(r"\+[A-Za-z]{1,64}\+[A-Za-z]{1,64}\+")
+# The characters a base64 token is made of, less = (a query writes q=word+word).
+_B64_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+
+
+def base64_text(text: str, budget: Budget) -> str | None:
+    """Base64 runs in ``text`` that decode to readable text, one decoded run per line.
+
+    A reader or model decodes an encoded instruction as easily as it reads a plain one, so each
+    run that decodes to UTF-8, or to UTF-16LE (PowerShell's -EncodedCommand form), and reads as
+    text with at least one space is kept. Images, keys, hashes, and identifiers decode to
+    binary and are dropped after a short probe. Runs are not joined, so two runs cannot form
+    one phrase, and the count is capped; the caller charges the result to the shared budget.
+    """
+    pieces: list[str] = []
+    for count, match in enumerate(_B64_TOKEN.finditer(text)):
+        if count >= MAX_B64_RUNS:
+            break
+        if count % 256 == 255:
+            budget.check()
+        run = _B64_WRAP.sub("", match.group())
+        urlsafe = "-" in run or "_" in run
+        if urlsafe and ("+" in run or "/" in run):
+            continue  # Neither alphabet: a path, a slug, or an identifier.
+        decoded = _b64_readable(run, b"-_" if urlsafe else None)
+        if decoded is not None:
+            pieces.append(decoded)
+    return "\n".join(pieces) or None
+
+
+def _b64_readable(run: str, altchars: bytes | None) -> str | None:
+    run = run.rstrip("=")
+    run = run[: len(run) - len(run) % 4] if len(run) % 4 == 1 else run
+    padded = run + "=" * (-len(run) % 4)
+    try:
+        head = base64.b64decode(padded[:_B64_PROBE], altchars=altchars, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    if _b64_decode_text(head, probe=True) is None:
+        return None
+    try:
+        raw = base64.b64decode(padded, altchars=altchars, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    return _b64_decode_text(raw, probe=False)
+
+
+def _b64_decode_text(raw: bytes, *, probe: bool) -> str | None:
+    """Decoded text when ``raw`` reads as text; a probe tolerates a sequence cut at its end."""
+    if len(raw) >= 4 and raw[1::2].count(0) * 10 >= (len(raw) // 2) * 9:
+        encoding = "utf-16-le"
+        raw = raw[: len(raw) - len(raw) % 2]
+    else:
+        encoding = "utf-8"
+    try:
+        decoded = raw.decode(encoding)
+    except UnicodeDecodeError as exc:
+        if not probe or exc.start < len(raw) - 3:
+            return None
+        decoded = raw[: exc.start].decode(encoding)
+    if not decoded:
+        return None
+    readable = sum(1 for char in decoded if char.isprintable() or char in "\t\r\n")
+    if readable * 20 < len(decoded) * 19:
+        return None
+    if not probe and not any(char.isspace() for char in decoded):
+        # One encoded word is an identifier or token, not an instruction.
+        return None
+    return decoded
+
+
+def percent_text(text: str) -> str | None:
+    """``text`` with %XX escapes and + spaces decoded, when it holds three escapes or a +-joined
+    run of four words; otherwise None."""
+    head = text[: 1 << 20]
+    if len(_PERCENT.findall(head)) < _PERCENT_MIN and not _plus_words(head):
+        return None
+    decoded = urllib.parse.unquote_plus(text, errors="replace")
+    return decoded if decoded != text else None
+
+
+def _plus_words(text: str) -> bool:
+    """True when a whole token is four or more letter words joined by +, as a query writes
+    spaces; a base64 run that happens to hold +abc+def+ also holds digits or a slash."""
+    for count, match in enumerate(_PLUS_RUN.finditer(text)):
+        if count >= 64:
+            return False
+        start, end = match.start(), match.end()
+        # A query token is short; walking further would read a whole base64 run char by char.
+        low, high = max(0, start - 512), min(len(text), end + 512)
+        while start > low and text[start - 1] in _B64_CHARS:
+            start -= 1
+        while end < high and text[end] in _B64_CHARS:
+            end += 1
+        if (start == low and low > 0) or (end == high and high < len(text)):
+            continue
+        words = text[start:end].split("+")
+        if len(words) >= 4 and all(word.isascii() and word.isalpha() for word in words):
+            return True
+    return False
+
+
 def _json_shaped(text: str) -> bool:
     """True when text opens like JSON, so an INI header such as [Section] is not decoded."""
     return _JSON_START.match(text) is not None
@@ -430,6 +546,15 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
             yield "json-unescaped", _derived(decoded, budget)
+    # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
+    # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
+    # A MIME message's base64 parts are already decoded as its members.
+    encoded = None if _mime_message(data) else base64_text(text, budget)
+    if encoded is not None:
+        yield "base64-decoded", _derived(encoded, budget)
+    unquoted = percent_text(text)
+    if unquoted is not None:
+        yield "percent-decoded", _derived(unquoted, budget)
     # ASCII cannot contain Cf characters or Unicode variation selectors.
     # Check after unescaping: an ASCII entity can introduce either one.
     normalized = unescaped
