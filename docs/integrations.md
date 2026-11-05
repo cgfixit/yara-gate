@@ -381,10 +381,12 @@ slides, so a sentence Word split across formatting runs (the usual case) is seen
 whole. A PDF also gets a `pdf-text` view: the strings of each content stream's `Tj`,
 `TJ`, `'`, and `"` operators (literal and hex) are decoded through the font that shows
 them (a simple font as WinAnsi, a font with a `ToUnicode` map through that map, which is
-how Chrome, LibreOffice, and Word store text as glyph IDs) and joined in reading order: a
-kerned `TJ` array, a word in bold, and a wrapped line join into one paragraph, and each
-paragraph (a jump of more than 1.7 font sizes between baselines) is scanned on its own,
-so two paragraphs cannot form one phrase. A composite font with no readable `ToUnicode`
+how Chrome, LibreOffice, and Word store text as glyph IDs). Each text object (`BT` ...
+`ET`) is joined, so a kerned `TJ` array or a hex string reads as written, and scanned on its
+own. Generators start a new text object at every font change or line, so a paragraph whose
+words span several objects (a word in bold, a wrapped line) is also scanned whole as
+`pdf-paragraph`. A jump of more than 1.7 font sizes between baselines ends a paragraph and
+cuts a text object, so two paragraphs cannot form one phrase. A composite font with no readable `ToUnicode`
 map leaves text unread; that is the note `heuristic_pdf_text_unmapped`, so
 `agent-ingest` holds the file instead of passing text it could not read. Not covered:
 text placed out of reading order or in columns on one baseline (joined in stream

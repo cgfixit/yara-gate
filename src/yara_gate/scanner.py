@@ -381,33 +381,40 @@ def _pdf_text_findings(
     yara: Callable[..., list[Finding]],
     ext: str,
 ) -> list[Finding]:
-    """Scan each text block a reader shows, one YARA pass per block, as the ``pdf-text`` view.
+    """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
+    spans blocks (``pdf-paragraph``), one YARA pass apiece.
 
-    Blocks are scanned apart so a phrase cannot be assembled from two text objects. One finding
-    per rule is kept for the view. A composite font whose strings could not be decoded leaves
-    text unread, which is reported as the note ``heuristic_pdf_text_unmapped``.
+    A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
+    assembled from two paragraphs. A paragraph view exists only when a word in bold or a
+    wrapped line split it across blocks. One finding per rule is kept for each view. A
+    composite font whose strings could not be decoded leaves text unread, which is reported
+    as the note ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
-    found: dict[str, Finding] = {}
+    views: dict[str, dict[str, Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
     _SCANNERS.reuse = True
     try:
-        for block in text.blocks:
-            budget.check()
-            for finding in yara(rules, _derived(block, budget), ext, "pdf-text"):
-                found.setdefault(finding.rule_id, finding)
+        for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
+            for piece in pieces:
+                budget.check()
+                for finding in yara(rules, _derived(piece, budget), ext, view):
+                    views[view].setdefault(finding.rule_id, finding)
     finally:
         _SCANNERS.reuse = False
         _SCANNERS.pair = None
     if text.unmapped:
-        found["heuristic_pdf_text_unmapped"] = Finding(
+        views["pdf-text"]["heuristic_pdf_text_unmapped"] = Finding(
             rule_id="heuristic_pdf_text_unmapped",
             severity=Severity.note,
             source=FindingSource.heuristic,
         )
-    ordered = [found[rule_id] for rule_id in sorted(found)]
-    for finding in ordered:
-        finding.member_path = list(unit.member_path)
-        finding.view = "pdf-text"
+    ordered: list[Finding] = []
+    for view, found in views.items():
+        for rule_id in sorted(found):
+            finding = found[rule_id]
+            finding.member_path = list(unit.member_path)
+            finding.view = view
+            ordered.append(finding)
     return ordered
 
 

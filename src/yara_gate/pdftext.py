@@ -77,9 +77,16 @@ class Font:
 
 @dataclass
 class PdfText:
-    """Joined text blocks, and whether a composite font's strings could not be decoded."""
+    """Text blocks, multi-block paragraphs, and whether some text could not be decoded.
+
+    ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
+    moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
+    each paragraph that spans two or more blocks (a word in bold, a wrapped line), which no
+    single block shows whole.
+    """
 
     blocks: list[str] = field(default_factory=list)
+    paragraphs: list[str] = field(default_factory=list)
     unmapped: bool = False
 
 
@@ -242,6 +249,10 @@ class _Paragraphs:
         self.variants: list[list[str]] = []
         self.baseline: float | None = None
         self.size = 0.0
+        # Where the current block starts in each variant, and how many block pieces with text
+        # this paragraph holds.
+        self.block_start = 0
+        self.pieces = 0
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -266,6 +277,8 @@ class _Paragraphs:
         self.baseline, self.size = baseline, size
         if not self.variants:
             self.variants = [[]]
+        if self.block_start > len(self.variants[0]):
+            self.block_start = len(self.variants[0])
         while len(self.variants) < min(len(variants), MAX_FONT_VARIANTS):
             # A name that means different fonts on different pages: one reading per font.
             self.variants.append(list(self.variants[0]))
@@ -279,15 +292,34 @@ class _Paragraphs:
                 elif isinstance(item, float) and item <= _SPACE_ADJUST:
                     variant.append(" ")
 
-    def flush(self) -> None:
+    def end_block(self) -> None:
+        """Close the current text object's piece of this paragraph and emit it as a block."""
+        found = False
         for variant in self.variants:
-            text = "".join(variant).strip()
+            text = "".join(variant[self.block_start :]).strip()
             if text:
-                if len(self.result.blocks) >= MAX_TEXT_BLOCKS:
-                    raise ContentLimit("pdf text blocks exceed 20000")
-                self.result.blocks.append(text[:MAX_BLOCK_CHARS])
+                found = True
+                self._emit(self.result.blocks, text)
+        if found:
+            self.pieces += 1
+        self.block_start = len(self.variants[0]) if self.variants else 0
+
+    def flush(self) -> None:
+        self.end_block()
+        if self.pieces > 1:
+            for variant in self.variants:
+                text = "".join(variant).strip()
+                if text:
+                    self._emit(self.result.paragraphs, text)
         self.variants = []
         self.baseline = None
+        self.block_start = 0
+        self.pieces = 0
+
+    def _emit(self, target: list[str], text: str) -> None:
+        if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
+            raise ContentLimit("pdf text blocks exceed 20000")
+        target.append(text[:MAX_BLOCK_CHARS])
 
 
 def _blocks(
@@ -334,7 +366,10 @@ def _blocks(
             continue
         op = token.value
         if op == b"BT":
+            paragraphs.end_block()
             line = _IDENTITY_MATRIX
+        elif op == b"ET":
+            paragraphs.end_block()
         elif op == b"q":
             if len(saved) < 64:
                 saved.append(ctm)
