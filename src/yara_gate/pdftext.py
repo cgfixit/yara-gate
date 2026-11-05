@@ -77,16 +77,13 @@ class Font:
 
 @dataclass
 class PdfText:
-    """Text blocks, multi-block paragraphs, and whether some text could not be decoded.
+    """Text blocks, and whether some text could not be decoded.
 
     ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
-    moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
-    each paragraph that spans two or more blocks (a word in bold, a wrapped line), which no
-    single block shows whole.
+    moves to a new paragraph, so each is scanned on its own.
     """
 
     blocks: list[str] = field(default_factory=list)
-    paragraphs: list[str] = field(default_factory=list)
     unmapped: bool = False
 
 
@@ -300,10 +297,8 @@ class _Paragraphs:
         self.variants: list[list[str]] = []
         self.baseline: float | None = None
         self.size = 0.0
-        # Where the current block starts in each variant, and how many block pieces with text
-        # this paragraph holds.
+        # Where the current block starts in each variant.
         self.block_start = 0
-        self.pieces = 0
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -345,30 +340,20 @@ class _Paragraphs:
 
     def end_block(self) -> None:
         """Close the current text object's piece of this paragraph and emit it as a block."""
-        found = False
         for variant in self.variants:
             text = "".join(variant[self.block_start :]).strip()
             if text:
-                found = True
                 self._emit(self.result.blocks, text)
-        if found:
-            self.pieces += 1
         self.block_start = len(self.variants[0]) if self.variants else 0
 
     def flush(self) -> None:
         self.end_block()
-        if self.pieces > 1:
-            for variant in self.variants:
-                text = "".join(variant).strip()
-                if text:
-                    self._emit(self.result.paragraphs, text)
         self.variants = []
         self.baseline = None
         self.block_start = 0
-        self.pieces = 0
 
     def _emit(self, target: list[str], text: str) -> None:
-        if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
+        if len(self.result.blocks) >= MAX_TEXT_BLOCKS:
             raise ContentLimit("pdf text blocks exceed 20000")
         target.append(text[:MAX_BLOCK_CHARS])
 

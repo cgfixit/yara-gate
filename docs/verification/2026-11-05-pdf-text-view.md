@@ -18,9 +18,8 @@ and Word all write this) scanned clean.
   text matrix, decodes `Tj`/`TJ`/`'`/`"` strings through each font (WinAnsi, or the font's
   `ToUnicode` `bfchar`/`bfrange` map, fonts found in direct, indirect, and object-stream
   resource dictionaries, up to four readings when one name means different fonts), joins each
-  text object as a block, and groups blocks by baseline into paragraphs.
-- The scanner runs one YARA pass per block (`pdf-text`) and per multi-block paragraph
-  (`pdf-paragraph`), keeps one finding per rule and view, and reports the note `heuristic_pdf_text_unmapped` when a composite font has no
+  text object as a block, and cuts a block where its text jumps to a new paragraph.
+- The scanner runs one YARA pass per block (`pdf-text`), keeps one finding per rule, and reports the note `heuristic_pdf_text_unmapped` when a composite font has no
   readable map or an unresolved font shows two-byte codes.
 - Inside the PDF text loop only, a `yara_x.Scanner` is reused per compiled ruleset
   and thread (`threading.local`); every call still sets the timeout and every global. Hosted CI
@@ -30,15 +29,15 @@ and Word all write this) scanned clean.
 
 ## Design note: the scanning unit
 
-The request was to join each Tj/TJ text block and scan each block separately. A first draft did
-exactly that per `BT ... ET`, and on real Chrome and LibreOffice output a bold word or a line
-wrap starts a new text object, so the phrase was missed. A second draft scanned paragraphs
-instead, which met the detection goal but not the requested unit. The view now does both:
+The request was to join each Tj/TJ text block and scan each block separately; that is what
+`pdf-text` does. A block is one text object (`BT ... ET`), also cut where its text jumps more
+than 1.7 font sizes to a new paragraph, so LaTeX's one text object per page cannot join two
+paragraphs. Cutting only narrows the unit.
 
-- `pdf-text`: each text object's strings joined and scanned on its own, cut at a paragraph
-  break so a LaTeX page (one `BT` per page) does not join two paragraphs;
-- `pdf-paragraph`: a paragraph that spans two or more blocks, scanned whole. A paragraph
-  ends at a baseline jump of more than 1.7 font sizes; two paragraphs are never joined.
+The cost of the unit, measured below: Chrome and LibreOffice start a new text object at every
+font change, and Chrome at every line, so a phrase with a word in bold or a wrap inside it is
+split and missed. A view that also scans paragraphs spanning several blocks closes that gap;
+it is proposed separately in a stacked draft PR so it can be accepted or declined on its own.
 
 A first draft also added a space at every `Td`; Chrome positions single glyphs with a
 same-line `Td`, which gave "W e fixed". Same-baseline moves now add nothing.
@@ -48,8 +47,7 @@ same-line `Td`, which gave "W e fixed". Same-baseline moves now add nothing.
 150 plain-text files from the host (`/usr/share/doc` READMEs, changelogs, copyright files,
 licences) were converted to PDF by LibreOffice, and 50 of them by Chromium with paragraphs
 split on blank lines and every seventh word in bold. Each PDF was scanned and compared with
-a scan of its own source text, so a `pdf-text` or `pdf-paragraph` finding that the text does
-not have would be introduced by the reconstruction.
+a scan of its own source text, so a `pdf-text` finding that the text does not have would be introduced by the reconstruction.
 
 | Set | PDFs | Introduced by reconstruction | `heuristic_pdf_text_unmapped` | Incomplete |
 | --- | --- | --- | --- | --- |
@@ -59,10 +57,10 @@ The sources had no findings of their own. To test the hit side on the same real 
 phrase was planted as a paragraph in the middle of 20 of them and rendered by both
 generators:
 
-| Generator | Plain text | `main` | Branch | View |
-| --- | --- | --- | --- | --- |
-| LibreOffice | 20/20 | 0/20 | 20/20 | `pdf-text` |
-| Chromium, bold every seventh word | 20/20 | 0/20 | 20/20 | `pdf-paragraph` |
+| Generator | Plain text | `main` | Branch |
+| --- | --- | --- | --- |
+| LibreOffice | 20/20 | 0/20 | 20/20 |
+| Chromium, bold every seventh word | 20/20 | 0/20 | 0/20: every planted phrase is split by bold |
 
 ## Outcomes
 
@@ -72,11 +70,11 @@ generators:
 | Synthetic Identity-H with `ToUnicode` (`bfchar`, `bfrange`, array `bfrange`), font in an object stream through an indirect `/Font` dictionary, `/F1` naming two fonts | clean | detected |
 | Identity-H without `ToUnicode`; unresolved two-byte font | clean | `heuristic_pdf_text_unmapped` |
 | Two paragraphs 300 points apart; benign kerned text; benign glyph-ID text | clean | clean |
-| Chrome `page.pdf()`: phrase, bold word, wrapped at 120 px | clean | detected |
-| LibreOffice HTML export: bold and italic inside the phrase | clean | detected |
+| Chrome `page.pdf()` and LibreOffice: a contiguous phrase, and a LibreOffice paragraph narrower than the phrase | clean | detected |
+| Chrome and LibreOffice: a word in bold or italic inside the phrase; Chrome wrapped at 120 px | clean | clean (split across text objects) |
 | Chrome and LibreOffice benign letters, a 200-section report, a table, a two-paragraph near miss, and two real third-party PDFs on the host | clean or a raw `heuristic_pdf_OpenAction_goto` note as on `main` | the same, no new finding |
 
-`check_added_rules.py` gains 9 PDF cases; with `src/` reverted, the 6 hits miss and the 3
+`check_added_rules.py` gains 10 PDF cases; with `src/` reverted, the 7 hits miss and the 3
 benign cases pass. `check_rule_pairs.py` adds `heuristic_pdf_text_unmapped`.
 
 ## Third-party PDFs
@@ -112,13 +110,13 @@ previous `pdftext.py`, the first gives a false note and the second a miss.
 
 A 132 KB Chromium PDF with 1,500 paragraphs: 0.12 s on `main`, 1.52 s with a Scanner per
 paragraph, 0.47 s after reusing one and replacing the character tokenizer with a regex, and
-0.73 s with both units (10,501 block passes and 1,511 paragraph passes). The 200-PDF
-differential corpus scanned in 15.4 s. The 132 third-party PDFs take 4.5 s on `main` and
-8.5 s on the branch; the slowest, `issue-604.pdf` (8 MB, 378,000 operators), 1.7 s and 3.8 s.
+0.77 s with blocks cut at paragraph breaks (10,501 block passes). The 200-PDF differential
+corpus scanned in 13.1 s. The 132 third-party PDFs take 4.5 s on `main` and 8.7 s on the
+branch; the slowest, `issue-604.pdf` (8 MB, 378,000 operators), 1.7 s and 3.8 s.
 
 ## Checks
 
-`lint_rules.py`, `check_rule_pairs.py` (110), `check_added_rules.py` (106),
+`lint_rules.py`, `check_rule_pairs.py` (110), `check_added_rules.py` (107),
 `check_scan_only.py`, `check_intake.py`, `check_text_controls.py`,
 `measure_precision.py --fail-over` (per-rule counts identical to `main`, no heuristic hit),
 `probe_rule_coverage.py --verify`, `yara-gate selftest`, ruff, `mypy --strict src`, and focused
