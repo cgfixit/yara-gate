@@ -381,21 +381,24 @@ def _pdf_text_findings(
     yara: Callable[..., list[Finding]],
     ext: str,
 ) -> list[Finding]:
-    """Scan each text block a reader sees, one YARA pass per block, as the ``pdf-text`` view.
+    """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
+    spans blocks (``pdf-paragraph``), one YARA pass apiece.
 
     A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
-    assembled from two text objects or two paragraphs. One finding per rule is kept. A
+    assembled from two paragraphs. A paragraph view exists only when a word in bold or a
+    wrapped line split it across blocks. One finding per rule is kept for each view. A
     composite font whose strings could not be decoded leaves text unread, which is reported
     as the note ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
-    views: dict[str, dict[str, Finding]] = {"pdf-text": {}}
+    views: dict[str, dict[str, Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
     _SCANNERS.reuse = True
     try:
-        for block in text.blocks:
-            budget.check()
-            for finding in yara(rules, _derived(block, budget), ext, "pdf-text"):
-                views["pdf-text"].setdefault(finding.rule_id, finding)
+        for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
+            for piece in pieces:
+                budget.check()
+                for finding in yara(rules, _derived(piece, budget), ext, view):
+                    views[view].setdefault(finding.rule_id, finding)
     finally:
         _SCANNERS.reuse = False
         _SCANNERS.pair = None
