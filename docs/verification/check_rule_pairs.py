@@ -690,6 +690,16 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         (
             "win_defender_tamper",
+            b"Set-MpPreference -ExclusionPath C:\\\r\n",
+            b"Set-MpPreference -ExclusionPath C:\\src\\inert-repo\r\n",
+        ),
+        (
+            "win_defender_tamper",
+            "Set-MpPreference -ExclusionProcess powershell.exe\r\n".encode("utf-16"),
+            "Remove-MpPreference -ExclusionProcess powershell.exe\r\n".encode("utf-16"),
+        ),
+        (
+            "win_defender_tamper",
             b"sc.exe config WinDefend start= disabled\r\n",
             b"sc.exe config WinDefend start= auto\r\n",
         ),
