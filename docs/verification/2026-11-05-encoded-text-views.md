@@ -109,3 +109,9 @@ columns; followed by a text line; URL-safe; in a PDF text stream; in an RFC 2047
 The one case the branch gives up is a phrase run into the preceding word. The retired rule
 matched raw substrings; the lexical rules need a word boundary, and the same text in plain form
 is clean on `main` too, so encoded text is now held to the same standard as plain text.
+
+The owner chose to keep the retired rule's stricter reading for encoded text. Decoded base64
+runs now also get a substring check for the retired phrases, reported as
+`agent_encoded_instruction` (the old id, note severity) when the phrase rules did not already
+report that run. The same 86 cases: 85 detected, 0 regressions against `main`; only the glued
+plain-text case, which `main` does not report either, stays clean.

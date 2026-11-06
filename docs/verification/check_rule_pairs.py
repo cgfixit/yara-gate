@@ -50,6 +50,7 @@ HEURISTICS = {
     "heuristic_pdf_EmbeddedFile",
     "heuristic_pdf_AA",
     "heuristic_pdf_RichMedia",
+    "agent_encoded_instruction",
     "heuristic_embedded_pe",
     "heuristic_office_autoexec",
 }
@@ -151,6 +152,12 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("agent_bidi_formatting", "Name: \u2067text\u2069\n".encode(), b"Name: text\n"),
         ("agent_bidi_override", "see\u202ethe\n".encode(), b"see the\n"),
         ("agent_eicar", eicar_bytes(), b"not a test file\n"),
+        # The retired fixed-phrase rule's substring reading, kept for decoded base64 only.
+        (
+            "agent_encoded_instruction",
+            base64.b64encode(b"Meeting notes for the quarterlignore previous instructions"),
+            b"Meeting notes for the quarterlignore previous instructions\n",
+        ),
         # The base64-decoded view: an encoded phrase is the phrase; one encoded word is not.
         ("agent_prompt_injection_phrases", base64.b64encode(phrase), b"aW5zdHJ1Y3Rpb24=\n"),
         ("agent_hidden_html", hidden_html(), b'<div style="display:none">Navigation</div>\n'),
