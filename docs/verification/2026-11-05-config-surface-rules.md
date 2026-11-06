@@ -60,3 +60,21 @@ report the rule with member path `zip:0`. CLI intake of a zipped repository unde
 
 No real-world corpus of `.git/config`, dev container, or direnv files was measured, and
 `textconv = sh -c ...` is a legitimate shape some teams use; it is reported as advisory.
+
+## Codex review fixes (2026-11-06)
+
+A Codex code review of `d348f38` raised four findings; all reproduced on that head (seven
+failing probe cases) and are fixed:
+
+| Finding | Before | After |
+| --- | --- | --- |
+| Any `[core]` header satisfied the section check, so `[alias] process = !sh -c ...` after it matched | false positive | each key must sit in its own section, with no other header between |
+| A pretty-printed `initializeCommand` object or `["sh", "-c", "wget ..."]` array, and a multiline container-command object, were not read | miss | indicators are read inside any JSON string of the key's value, across lines |
+| In compact JSON the host match ran past `initializeCommand`'s value into a later `postCreateCommand` | false positive | the indicator must sit inside the key's own string; escaped quotes stay inside |
+| A zip member named `repo\.devcontainer\devcontainer.json` kept the whole path as `yara_gate_name` on Linux and macOS | miss | backslashes are normalized before the final component is taken |
+
+`check_added_rules.py` gains five cases for these (108 total); with the rule and scanner
+reverted they give two false positives and three misses. The 38-case probe, rule pairs (112),
+`measure_precision.py --fail-over` (0 hits for the three rules), the seven real git config
+files on the host (clean under `agent-ingest`), selftest, and the full pytest suite in one run
+(404 passed, 5 skipped) pass.

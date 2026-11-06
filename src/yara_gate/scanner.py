@@ -4,7 +4,7 @@ import hashlib
 import math
 import time
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from yara_gate.content import (
@@ -301,8 +301,9 @@ def _scan_file(
                     )
             ext = path.suffix.lower().removeprefix(".")
             # The final name component, for rules about files known by name (.envrc,
-            # devcontainer.json) that have no telling suffix.
-            base = path.name.lower()
+            # devcontainer.json) that have no telling suffix. An archive member named with
+            # backslashes is a directory path on Windows, wherever the scan runs.
+            base = PurePosixPath(unit.name.replace("\\", "/")).name.lower()
             # A .bmp, .tif, .emf, or .wmf whose header validates holds image samples. Its raw
             # bytes and every text view are still scanned, in the same samples mode as the
             # pdf-flate view: a base64 run must hold data beyond repeats and grain, and a

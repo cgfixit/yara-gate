@@ -10,14 +10,17 @@ rule dev_git_config_exec {
         reference_attack = "https://attack.mitre.org/techniques/T1546/"
         technique = "T1546"
     strings:
-        // A section git reads command keys from; [alias] is left out because an alias runs only when typed.
-        $section = /(^|\n)[ \t]*\[[ \t]*(core|pager|filter[ \t]+"[^"\r\n]{1,64}"|diff[ \t]+"[^"\r\n]{1,64}")[ \t]*\]/ nocase ascii wide
-        $exec_key = /(^|\n)[ \t]*(fsmonitor|sshCommand|pager|editor|askPass|clean|smudge|process|textconv|log|diff|show|status|branch)[ \t]*=[^\r\n]{0,240}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat)\b|\b(sh|bash|zsh|dash)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand|c|Command)\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bperl[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
+        // Each key counts only inside the section that gives it meaning: no line between the
+        // header and the key may open another section, so an [alias] after [core] is not read.
+        $core = /(^|\n)[ \t]*\[[ \t]*core[ \t]*\][^\r\n]*(\r?\n([ \t]*[^ \t\[\r\n][^\r\n]*)?){0,400}\r?\n[ \t]*(fsmonitor|sshCommand|pager|editor|askPass)[ \t]*=[^\r\n]{0,240}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat)\b|\b(sh|bash|zsh|dash)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand|c|Command)\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bperl[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
+        $pager = /(^|\n)[ \t]*\[[ \t]*pager[ \t]*\][^\r\n]*(\r?\n([ \t]*[^ \t\[\r\n][^\r\n]*)?){0,400}\r?\n[ \t]*[A-Za-z0-9-]{1,64}[ \t]*=[^\r\n]{0,240}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat)\b|\b(sh|bash|zsh|dash)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand|c|Command)\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bperl[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
+        $filter = /(^|\n)[ \t]*\[[ \t]*filter[ \t]+"[^"\r\n]{1,64}"[ \t]*\][^\r\n]*(\r?\n([ \t]*[^ \t\[\r\n][^\r\n]*)?){0,400}\r?\n[ \t]*(clean|smudge|process)[ \t]*=[^\r\n]{0,240}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat)\b|\b(sh|bash|zsh|dash)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand|c|Command)\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bperl[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
+        $diff = /(^|\n)[ \t]*\[[ \t]*diff[ \t]+"[^"\r\n]{1,64}"[ \t]*\][^\r\n]*(\r?\n([ \t]*[^ \t\[\r\n][^\r\n]*)?){0,400}\r?\n[ \t]*textconv[ \t]*=[^\r\n]{0,240}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat)\b|\b(sh|bash|zsh|dash)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand|c|Command)\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bperl[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
         // Hooks kept outside the repository, where another process can write them. Git escapes
         // a backslash in a value, so a UNC path is stored with each one doubled.
-        $hooks = /(^|\n)[ \t]*hooksPath[ \t]*=[ \t]*["']?(\/tmp\/|\/var\/tmp\/|\/dev\/shm\/|\/Users\/Shared\/|~\/Downloads\/|\$TMPDIR\b|%(TEMP|TMP)%|\$env:(TEMP|TMP)\b|[A-Za-z]:[\\\/](Windows[\\\/]Temp|Users[\\\/]Public)\b|(\\\\){1,2}[^\\\r\n]+\\|\/\/[^\/\r\n]+\/)/ nocase ascii wide
+        $hooks = /(^|\n)[ \t]*\[[ \t]*core[ \t]*\][^\r\n]*(\r?\n([ \t]*[^ \t\[\r\n][^\r\n]*)?){0,400}\r?\n[ \t]*hooksPath[ \t]*=[ \t]*["']?(\/tmp\/|\/var\/tmp\/|\/dev\/shm\/|\/Users\/Shared\/|~\/Downloads\/|\$TMPDIR\b|%(TEMP|TMP)%|\$env:(TEMP|TMP)\b|[A-Za-z]:[\\\/](Windows[\\\/]Temp|Users[\\\/]Public)\b|(\\\\){1,2}[^\\\r\n]+\\|\/\/[^\/\r\n]+\/)/ nocase ascii wide
     condition:
-        yara_gate_text and $section and ($exec_key or $hooks)
+        yara_gate_text and any of them
 }
 
 rule dev_devcontainer_lifecycle {
@@ -31,9 +34,12 @@ rule dev_devcontainer_lifecycle {
         reference_attack = "https://attack.mitre.org/techniques/T1204/"
         technique = "T1204"
     strings:
-        $host_line = /"initializeCommand"[ \t\r\n]*:[ \t\r\n]*[^\r\n]{0,400}(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat|certutil|bitsadmin)\b|\b(sh|bash|zsh)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
+        // An indicator counts only inside a JSON string of the key's own value (a string, or one
+        // inside its array or object, which may span lines; escaped quotes stay inside), so a later
+        // property is not read.
+        $host_line = /"initializeCommand"[ \t\r\n]*:[ \t\r\n]*("([^"\\\r\n]|\\.){0,400}|[\[{][^\]}]{0,1200}"([^"\\\r\n]|\\.){0,400})(\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString|nc|ncat|certutil|bitsadmin)\b|\b(sh|bash|zsh)[ \t]+-c\b|\bcmd(\.exe)?[ \t]+\/c\b|\b(powershell|pwsh)(\.exe)?\b|\bpython3?[ \t]+-c\b|\bnode[ \t]+-e\b|\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\bmshta\b|\bosascript\b)/ nocase ascii wide
         $host_list = /"initializeCommand"[ \t\r\n]*:[ \t\r\n]*[\[{][^\]}]{0,600}"(curl|wget|nc|ncat|certutil|bitsadmin|powershell|pwsh|powershell\.exe|mshta|osascript|python3?|node)"/ nocase ascii wide
-        $box = /"(onCreateCommand|updateContentCommand|postCreateCommand|postStartCommand|postAttachCommand)"[ \t\r\n]*:[ \t\r\n]*[^\r\n]{0,400}(\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\b(powershell|pwsh)(\.exe)?\b[^\r\n]{0,80}[ \t]-(e|enc|EncodedCommand)\b|\bpython3?[ \t]+-c\b[^\r\n]{0,160}\b(urllib|socket|b64decode|exec\(|subprocess)|\bnode[ \t]+-e\b[^\r\n]{0,160}\b(child_process|https?\.get|eval\())/ nocase ascii wide
+        $box = /"(onCreateCommand|updateContentCommand|postCreateCommand|postStartCommand|postAttachCommand)"[ \t\r\n]*:[ \t\r\n]*("([^"\\\r\n]|\\.){0,400}|[\[{][^\]}]{0,1200}"([^"\\\r\n]|\\.){0,400})(\bbase64[ \t]+(-d|--decode)\b|\/dev\/tcp\/|\b(powershell|pwsh)(\.exe)?\b([^"\\\r\n]|\\.){0,80}[ \t]-(e|enc|EncodedCommand)\b|\bpython3?[ \t]+-c\b([^"\\\r\n]|\\.){0,160}\b(urllib|socket|b64decode|exec\(|subprocess)|\bnode[ \t]+-e\b([^"\\\r\n]|\\.){0,160}\b(child_process|https?\.get|eval\())/ nocase ascii wide
     condition:
         (yara_gate_name == "devcontainer.json" or yara_gate_name == ".devcontainer.json") and any of them
 }
