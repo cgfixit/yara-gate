@@ -47,7 +47,7 @@ For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between stagi
 **For engineering**
 - **It fails closed.** A timeout, a size limit, an encrypted document, an archive it cannot open, or a fatal local-rule compile failure yields incomplete/exit 2. Inbox files stay quarantined; other callers must hold access on that result.
 - **The contract is small.** Exit `0` means clean or advisory, `1` block, `2` incomplete. The [policy table](#verdicts-and-policies) defines the read decision.
-- **It looks inside, with bounds.** It scans raw bytes plus derived views: UTF-16, HTML-unescaped, JSON-unescaped, format controls removed, look-alikes and terminal escape codes folded (also inside the decoded and joined views below), base64 and percent-encoded runs decoded, inflated PDF streams (including streams wrapped in ASCIIHex or ASCII85), the text a PDF shows (rebuilt per text block and per paragraph through each font's `ToUnicode` map), joined Office text, and decoded MIME parts and headers. It goes at most 3 container levels deep, opens at most 1,000 members, reads at most 100 MiB per file, and expands at most 500 MiB in total, all under a shared deadline.
+- **It looks inside, with bounds.** It scans raw bytes plus derived views: UTF-16, HTML-unescaped, JSON-unescaped, format controls removed, look-alikes and terminal escape codes folded (also inside the decoded and joined views below), base64 and percent-encoded runs decoded, inflated PDF streams (including streams wrapped in ASCIIHex or ASCII85), the text a PDF shows (rebuilt per text block and per paragraph through each font's `ToUnicode` map), joined Office text, Excel cells split across rich-text runs, HTML paragraphs split by inline markup (each scanned on its own), and decoded MIME parts and headers. It goes at most 3 container levels deep, opens at most 1,000 members, reads at most 100 MiB per file, and expands at most 500 MiB in total, all under a shared deadline.
 - **Pixels are not text.** Image/sample views avoid treating arbitrary pixel bytes as encoded instructions; text views are still checked. See [view handling and limits](docs/rules.md#limits).
 - **It runs on Windows, macOS, and Linux.** See [Verification and CI](#verification-and-ci) for what each platform's job covers.
 - **Measured performance:** [text scanning](docs/verification/text-scan-performance.md) and [scan overhead](docs/verification/scan-overhead.md) are dated measurements, not a latency guarantee.
@@ -127,7 +127,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 ## What this catches, and what it does not
 
-**Shipped:** 84 YARA rules in 57 files, grouped into these families:
+**Shipped:** 85 YARA rules in 58 files, grouped into these families:
 - **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64- or percent-encoded instructions, which the lexical rules read in decoded views, or base64 executables.
 - **Windows delivery:** ClickFix, HTML smuggling, encoded PowerShell, `mshta`, `regsvr32`, and `rundll32`, plus shortcut, `.url`, `.library-ms`, `search-ms`, `.rdp`, and `.theme` NTLM leaks.
 - **Windows script hosts and documents:** HTA, WSF, MSC, `.reg` Run keys, encoded scripts, OneNote, CSV, SYLK, and IQY formulas, LOLBin downloads, MSBuild inline tasks that load code, `cmstp` INF scriptlets, and Chromium password decryption.
@@ -135,13 +135,13 @@ Intake accepts only a regular file with one link and opens it without following 
 - **macOS and Linux:** AMOS-style password prompts and `dscl` password checks next to browser or wallet stores, JXA that runs fetched code, keychain dumps, Gatekeeper and quarantine bypass, archive-and-upload exfiltration, `.desktop` launchers, and sudoers, `ld.so.preload`, and TCC persistence.
 - **Cross-platform:** reverse shells, credential files piped or attached to an upload, VS Code folder-open tasks, git config keys that run a fetched or inline command (`core.fsmonitor`, `sshCommand`, pagers, filter drivers, temp-folder `hooksPath`), dev container lifecycle commands, direnv `.envrc` files that download or decode, project settings that turn off a coding agent's approval prompts, AI CLIs run with approval off to hunt for wallets and keys, and Python `.pth` files that run code at interpreter start.
 - **GitHub Actions:** planted workflows that dump every secret with `toJSON(secrets)` to the network or an artifact (Shai-Hulud), or run discussion or issue text on a self-hosted runner (Shai-Hulud 2.0's `discussion.yaml`).
-- **Documents and containers:** RTF objects, active SVG, external OOXML and RTF templates, and disk images.
+- **Documents and containers:** RTF objects, active SVG (scripts, `onload`, and `onbegin` or `onerror` handlers), external OOXML and RTF templates, and disk images.
 
 **Structural checks without YARA:** Office macros and DDE, PDF actions (including those inside compressed object streams; an `/OpenAction` that only opens a page is a note), PDF text the font map cannot decode (a note), executables embedded in documents or nested archives, double extensions, filename control characters, empty files named as documents, stray joiners and Unicode tags in text, MCP tool poisoning, pickle, safetensors, and GGUF model files, and Keras model configs that import `os`, `subprocess`, or Keras's `get_file`, or carry a Lambda layer.
 
 **Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. See the dated [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) and [grading verification](docs/verification/2026-11-01-vendor-setup.md) for measured coverage and skips. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
-**Precision:** in the [documented 324-file synthetic corpus](docs/rules.md#measured-precision), 80 of the 84 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** in the [documented 324-file synthetic corpus](docs/rules.md#measured-precision), 81 of the 85 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
 - It cannot guarantee detection of novel or targeted payloads. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -178,7 +178,7 @@ The local workbench calls the real scanner on inert examples or up to 64 KiB of 
 
 ![The local workbench explains an advisory held by agent-ingest](screenshots/yara-gate-workbench-hold.jpg)
 
-Captured November 1 with the 80 bundled rules of that revision and no vendor packs; the tree now ships 84. See
+Captured November 1 with the 80 bundled rules of that revision and no vendor packs; the tree now ships 85. See
 [verification](docs/verification/2026-11-01-demo-workbench.md) and
 [screenshot provenance](screenshots/README.md#november-1-local-scan-workbench)
 for the exercised revision, scenarios, and limits.
@@ -206,7 +206,7 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), pdftext (the
                      shows), filetype, heuristics, models, quarantine, report, rules, hunt,
                      demo, selftest, samples, launchd, release (reviewed-release building
                      blocks, not yet a command)
-rules/local/         the 84 shipped rules in 57 files; rules/rules.lock pins the vendor packs
+rules/local/         the 85 shipped rules in 58 files; rules/rules.lock pins the vendor packs
 web-demo/            public recorded-demo assets; scripts/ builds and re-records them;
                      docs/pages-demo.md explains deployment
 screenshots/         original captures and provenance; user-guide.md covers operation
