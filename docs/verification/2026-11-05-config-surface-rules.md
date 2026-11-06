@@ -58,8 +58,10 @@ report the rule with member path `zip:0`. CLI intake of a zipped repository unde
 
 ## Not established
 
-No real-world corpus of `.git/config`, dev container, or direnv files was measured, and
-`textconv = sh -c ...` is a legitimate shape some teams use; it is reported as advisory.
+No real-world corpus of `.git/config` or direnv files was measured (the published-package
+corpus below holds only two git config files and one `.envrc`), and `textconv = sh -c ...` is a
+legitimate shape some teams use; it is reported as advisory. Package tarballs are not operator
+upload traffic, so the dev container figure below is not a production false-positive rate.
 
 ## Codex review fixes (2026-11-06)
 
@@ -83,3 +85,29 @@ A Codex security review of `d348f38` added that Windows also drops trailing dots
 when it creates a file, so `devcontainer.json.` and `.envrc.` extract as the names the rules
 look for. Reproduced: both name-scoped rules missed them. The scan name now drops trailing dots
 and spaces too; two fixtures fail without the change and pass with it.
+
+## Published-package corpus (2026-11-06)
+
+Real configuration files were collected from the latest published tarballs of 4,584 npm
+packages (the top 250 by popularity for 20 search terms) and 261 well-known PyPI sdists, read
+in memory with `tarfile`/`zipfile` and never extracted or executed. That gave 112
+`devcontainer.json` files from 80 packages (62 with a lifecycle command key), two `gitconfig`
+files, and one `.envrc`. Each file was scanned with `scan_bytes` under the default policy, with
+the file's own name and a disposable copy of the shipped local rules (no vendor packs), on
+`main` `7f9934c`, this branch `04e8661`, and `views/base64-percent-text` `14a7c72`
+(YARA-X 1.22.1).
+
+| Revision | Clean | Advisory | Rules |
+| --- | --- | --- | --- |
+| `main` | 113 | 2 | `script_download_execute` 1, `script_chmod_execute` 1 |
+| this branch | 112 | 3 | the same two, plus `dev_devcontainer_lifecycle` 1 |
+| `views/base64-percent-text` | 113 | 2 | the same two as `main` |
+
+No file was incomplete and no verdict other than the one below changed. The one new advisory
+is `package/template/devcontainer.json` in the npm package `aicontainer`: its
+`initializeCommand` is `sh -c '...'`, an inline host script that searches `PATH` and several
+home-directory locations for the `aic` CLI and runs it with `exec`. That is the host-side
+command shape the rule describes (`sh -c` in `initializeCommand`), so the match is intended; the
+script is benign, and the advisory is the review signal the rule is meant to give. None of the
+other 61 lifecycle commands (installers, `npm ci`, `pip install`, setup scripts, firewall
+toggles) matched. The two git config files and the `.envrc` were clean on every revision.
