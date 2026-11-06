@@ -503,3 +503,54 @@ def test_overlapping_unfiltered_object_streams_share_the_file_buffer() -> None:
     # 64 declarations each reaching the same 1 MB tail: one view each, not one copy each.
     assert peak < 8 * 1_000_000
     assert budget.expanded == 0
+
+
+def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    import pickle
+
+    from yara_gate import heuristics
+
+    monkeypatch.setattr(heuristics, "_PICKLE_MAX_OPS", 50)
+    data = pickle.dumps(list(range(100)), protocol=4)
+    findings, error = heuristics.pickle_reduce_findings(Path("big.pkl"), data)
+    assert findings == []
+    assert error == "pickle exceeds walk limit"
+    _, reason = heuristic_findings(Path("big.pkl"), data)
+    assert reason == "pickle exceeds walk limit"
+
+
+@pytest.mark.parametrize(
+    ("cap", "data"),
+    [
+        ("_PICKLE_MAX_MEMO", b"\x80\x04N" + b"\x94" * 100 + b"."),
+        ("_PICKLE_MAX_STACK", b"\x80\x04" + b"N" * 100 + b"."),
+    ],
+)
+def test_pickle_memo_and_stack_caps_are_incomplete(
+    monkeypatch: pytest.MonkeyPatch, cap: str, data: bytes
+) -> None:
+    from yara_gate import heuristics
+
+    monkeypatch.setattr(heuristics, cap, 50)
+    findings, error = heuristics.pickle_reduce_findings(Path("m.pkl"), data)
+    assert findings == []
+    assert error == "pickle exceeds walk limit"
+
+
+def test_pickle_walk_calls_the_deadline_check() -> None:
+    from yara_gate import heuristics
+
+    calls: list[int] = []
+
+    class Deadline(Exception):
+        pass
+
+    def check() -> None:
+        calls.append(1)
+        if len(calls) >= 2:
+            raise Deadline
+
+    data = b"\x80\x04" + b"N0" * 10_000 + b"."
+    with pytest.raises(Deadline):
+        heuristics.pickle_reduce_findings(Path("m.pkl"), data, check)
+    assert len(calls) == 2

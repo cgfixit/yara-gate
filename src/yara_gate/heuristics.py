@@ -1,14 +1,16 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import builtins
 import codecs
 import io
 import json
+import pickletools
 import re
 import unicodedata
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
 from yara_gate.models import Finding, FindingSource, Severity
@@ -49,11 +51,16 @@ _VARIATION = frozenset({0xFE0E, 0xFE0F})
 
 
 def heuristic_findings(
-    path: Path, data: bytes, objects: PdfObjectLookup | None = None
+    path: Path,
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    check: Callable[[], None] | None = None,
 ) -> tuple[list[Finding], str | None]:
+    """Structural findings and an incomplete reason; ``check`` enforces the scan deadline."""
     findings = pdf_findings(data, objects)
     findings.extend(embedded_findings(data))
-    findings.extend(pickle_reduce_findings(path, data))
+    pickled, pickle_error = pickle_reduce_findings(path, data, check)
+    findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
     keras, keras_error = keras_config_findings(path, data)
     findings.extend(keras)
@@ -66,6 +73,8 @@ def heuristic_findings(
         error = "encrypted pdf"
     if error is None:
         error = keras_error
+    if error is None:
+        error = pickle_error
     return findings, error
 
 
@@ -872,8 +881,40 @@ def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
 
 
 # Walk opcodes only. pickle.loads would run the callable this check exists to stop.
-_PICKLE_MODULES = frozenset({"os", "subprocess", "builtins", "posix", "nt"})
+# The Unpickler's fix_imports maps the Python 2 name __builtin__ to builtins.
+_PICKLE_MODULES = frozenset({"os", "subprocess", "builtins", "__builtin__", "posix", "nt"})
 _PICKLE_NAMES = frozenset({"eval", "exec"})
+# Builtins that only build a value from their arguments. Protocols 2 and 3 pickle a set,
+# frozenset, bytearray, complex, range, or slice as a call to one; any other builtin
+# (getattr, __import__, open, compile, ...) still counts as dangerous.
+_PICKLE_SAFE_BUILTINS = frozenset(
+    {
+        "bool",
+        "bytearray",
+        "bytes",
+        "complex",
+        "dict",
+        "float",
+        "frozenset",
+        "int",
+        "list",
+        "range",
+        "set",
+        "slice",
+        "str",
+        "tuple",
+        # Protocol 2 spells range, str, and int with their Python 2 names.
+        "long",
+        "unicode",
+        "xrange",
+        # A pickled exception is rebuilt by calling its class with the saved arguments.
+        *(
+            name
+            for name, value in vars(builtins).items()
+            if isinstance(value, type) and issubclass(value, BaseException)
+        ),
+    }
+)
 _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|pwsh)(\s|$)")
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
 # Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
@@ -889,12 +930,23 @@ _HIDDEN_INSTRUCTION = re.compile(
 )
 
 
-def pickle_reduce_findings(path: Path, data: bytes) -> list[Finding]:
+def pickle_reduce_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
+    """A call to a dangerous global, or an incomplete reason when the walk cannot finish.
+
+    ``check`` is called every few thousand opcodes; the scanner passes its deadline check,
+    which raises when the scan's time is up.
+    """
     if not _pickle_candidate(path, data):
-        return []
-    offset = _pickle_reduce_offset(data)
+        return [], None
+    try:
+        offset = _pickle_reduce_offset(data, check)
+    except _PickleLimit:
+        # A walk that stops early has not seen the rest of the stream: hold it, not clean.
+        return [], _PICKLE_TOO_LARGE
     if offset is None:
-        return []
+        return [], None
     return [
         Finding(
             rule_id="heuristic_pickle_reduce",
@@ -903,7 +955,7 @@ def pickle_reduce_findings(path: Path, data: bytes) -> list[Finding]:
             severity=Severity.block,
             source=FindingSource.heuristic,
         )
-    ]
+    ], None
 
 
 def model_header_findings(path: Path, data: bytes) -> list[Finding]:
@@ -1155,116 +1207,215 @@ def _pickle_candidate(path: Path, data: bytes) -> bool:
     return len(data) >= 2 and data[0] == 0x80 and data[1] <= 5
 
 
-def _pickle_reduce_offset(data: bytes) -> int | None:
-    stack: list[str | tuple[str, str] | None] = []
-    offset = 0
+# About 0.6 µs an opcode on a laptop, so the cap stays well inside the 30 s scan deadline.
+_PICKLE_MAX_OPS = 20_000_000
+# Memo and stack entries cost memory however few bytes the opcodes take (MEMOIZE is one
+# byte), so each is capped too; CPython's pickler batches items 1,000 at a time.
+_PICKLE_MAX_MEMO = 1_000_000
+_PICKLE_MAX_STACK = 1_000_000
+_PICKLE_TOO_LARGE = "pickle exceeds walk limit"
+_PICKLE_MARK = object()
+# Opcodes whose argument is the str an Unpickler pushes. BINSTRING and its kin are str too
+# under the default ASCII decoding, so STACK_GLOBAL accepts them.
+_PICKLE_STR_OPS = frozenset(
+    {
+        "SHORT_BINUNICODE",
+        "BINUNICODE",
+        "BINUNICODE8",
+        "UNICODE",
+        "SHORT_BINSTRING",
+        "BINSTRING",
+        "STRING",
+    }
+)
+_PICKLE_PUT_OPS = frozenset({"PUT", "BINPUT", "LONG_BINPUT"})
+_PICKLE_GET_OPS = frozenset({"GET", "BINGET", "LONG_BINGET"})
+
+
+class _PickleLimit(Exception):
+    pass
+
+
+def _pickle_reduce_offset(data: bytes, check: Callable[[], None] | None = None) -> int | None:
+    """Offset of the first call to a dangerous global, walking opcodes without loading them.
+
+    ``_pickle_ops`` parses every protocol's opcodes with ``pickletools``' own tables and runs
+    nothing; byte payloads, long strings, and big integers are skipped, not built. The
+    stack is simulated from each opcode's documented stack effect, so a dict, a set, a big
+    integer, an object's state, or a memo reference before the call does not end the walk.
+    Strings and globals are tracked through the memo, because STACK_GLOBAL can take its module
+    and name from BINGET. Pickles written back to back (the legacy torch.save layout) are
+    walked in turn. A malformed stream ends with no finding, as a loader would refuse it; a
+    stream longer than the walk limit, or one whose memo or stack outgrows its cap, raises
+    ``_PickleLimit``.
+    """
+    stream = io.BytesIO(data)
     steps = 0
-    while offset < len(data) and steps < 100_000:
-        steps += 1
-        opcode = data[offset]
-        start = offset
-        offset += 1
-        if opcode == 0x80:  # PROTO
-            offset += 1
-        elif opcode == 0x95:  # FRAME
-            offset += 8
-        elif opcode == 0x2E:  # STOP
-            return None
-        elif opcode == 0x94:  # MEMOIZE
-            continue
-        elif opcode == 0x28:  # MARK
-            stack.append(None)
-        elif opcode in {0x29, 0x5D, 0x7D, 0x4E, 0x88, 0x89, 0x8F}:
-            stack.append(None)
-        elif opcode == 0x4B:  # BININT1
-            offset += 1
-            stack.append(None)
-        elif opcode == 0x4D:  # BININT2
-            offset += 2
-            stack.append(None)
-        elif opcode == 0x4A:  # BININT
-            offset += 4
-            stack.append(None)
-        elif opcode == 0x47:  # BINFLOAT
-            offset += 8
-            stack.append(None)
-        elif opcode == 0x8C:  # SHORT_BINUNICODE
-            text, offset = _counted(data, offset, 1)
-            if text is None:
-                return None
-            stack.append(text)
-        elif opcode == 0x58:  # BINUNICODE
-            text, offset = _counted(data, offset, 4)
-            if text is None:
-                return None
-            stack.append(text)
-        elif opcode == 0x8D:  # BINUNICODE8
-            text, offset = _counted(data, offset, 8)
-            if text is None:
-                return None
-            stack.append(text)
-        elif opcode == 0x63:  # GLOBAL
-            module, offset = _line(data, offset)
-            name, offset = _line(data, offset) if module is not None else (None, offset)
-            if module is None or name is None:
-                return None
-            stack.append((module, name))
-        elif opcode == 0x93:  # STACK_GLOBAL
-            if len(stack) < 2:
-                return None
-            top_name = stack.pop()
-            top_module = stack.pop()
-            if not isinstance(top_module, str) or not isinstance(top_name, str):
-                return None
-            stack.append((top_module, top_name))
-        elif opcode in {0x52, 0x81}:  # REDUCE, NEWOBJ
-            if len(stack) < 2:
-                return None
-            stack.pop()
-            callable_item = stack.pop()
-            if isinstance(callable_item, tuple) and _dangerous(*callable_item):
-                return start
-            stack.append(None)
-        elif opcode == 0x85 and stack:  # TUPLE1
-            stack.pop()
-            stack.append(None)
-        elif opcode == 0x86 and len(stack) >= 2:  # TUPLE2
-            del stack[-2:]
-            stack.append(None)
-        elif opcode == 0x87 and len(stack) >= 3:  # TUPLE3
-            del stack[-3:]
-            stack.append(None)
-        elif opcode == 0x73 and len(stack) >= 2:  # SETITEM
-            del stack[-2:]
-        elif opcode == 0x30 and stack:  # POP
-            stack.pop()
-        elif opcode == 0x71:  # BINPUT
-            offset += 1
-        elif opcode == 0x72:  # LONG_BINPUT
-            offset += 4
-        elif opcode == 0x43:  # SHORT_BINBYTES
-            # The payload is an argument, not a callable. Skip it and keep walking.
-            nxt = _skip_counted(data, offset, 1)
-            if nxt is None:
-                return None
-            offset = nxt
-            stack.append(None)
-        elif opcode == 0x42:  # BINBYTES
-            nxt = _skip_counted(data, offset, 4)
-            if nxt is None:
-                return None
-            offset = nxt
-            stack.append(None)
-        else:
-            # An opcode this walker does not know stops the walk with no finding.
-            return None
-        if offset > len(data):
+    while stream.tell() < len(data) and data[stream.tell()] == 0x80:
+        stack: list[object] = []
+        memo: dict[object, object] = {}
+        try:
+            for opcode, arg, position in _pickle_ops(stream, data):
+                steps += 1
+                if steps > _PICKLE_MAX_OPS:
+                    raise _PickleLimit
+                if check is not None and steps % 4096 == 0:
+                    check()
+                hit = _pickle_step(opcode, arg, stack, memo)
+                if len(memo) > _PICKLE_MAX_MEMO or len(stack) > _PICKLE_MAX_STACK:
+                    raise _PickleLimit
+                if hit:
+                    return int(position) if position is not None else None
+        except (ValueError, IndexError, EOFError, UnicodeError, OverflowError):
             return None
     return None
 
 
+# Opcodes whose argument is a counted payload the walk never needs whole: byte strings are
+# not callables, a module or attribute name longer than _PICKLE_KEEP_TEXT is not a dangerous
+# global, and a big integer's value is irrelevant. Name -> (length width, signed length).
+_PICKLE_COUNTED = {
+    "BINBYTES": (4, False),
+    "BINBYTES8": (8, False),
+    "BYTEARRAY8": (8, False),
+    "BINSTRING": (4, True),
+    "BINUNICODE": (4, False),
+    "BINUNICODE8": (8, False),
+    "LONG4": (4, True),
+}
+_PICKLE_KEEP_TEXT = 4096
+_PICKLE_CODES = {op.code.encode("latin-1"): op for op in pickletools.opcodes}
+
+
+def _pickle_ops(stream: io.BytesIO, data: bytes) -> Iterator[tuple[Any, object, int]]:
+    """``pickletools.genops`` for one pickle, without building large payloads.
+
+    The opcode table and argument readers are ``pickletools``' own. A counted payload larger
+    than ``_PICKLE_KEEP_TEXT``, any byte payload, and a newline-terminated argument longer than
+    that are skipped and yield no argument. A GLOBAL or INST name that long ends the walk: no
+    module has such a name, so a loader stops there too. A truncated or unknown opcode raises
+    ValueError, as ``genops`` does.
+    """
+    size = len(data)
+    while True:
+        position = stream.tell()
+        code = stream.read(1)
+        opcode = _PICKLE_CODES.get(code)
+        if opcode is None:
+            raise ValueError("pickle opcode missing or unknown")
+        counted = _PICKLE_COUNTED.get(opcode.name)
+        arg: object = None
+        if counted is not None and opcode.arg is not None:
+            width, signed = counted
+            raw = stream.read(width)
+            if len(raw) != width:
+                raise ValueError("pickle length truncated")
+            length = int.from_bytes(raw, "little", signed=signed)
+            if length < 0 or length > size - stream.tell():
+                raise ValueError("pickle length out of range")
+            if length > _PICKLE_KEEP_TEXT or opcode.name in {"BINBYTES", "BINBYTES8", "BYTEARRAY8"}:
+                stream.seek(length, 1)
+            else:
+                stream.seek(-width, 1)
+                arg = opcode.arg.reader(stream)
+        elif opcode.arg is not None and opcode.arg.n == pickletools.UP_TO_NEWLINE:
+            start = stream.tell()
+            lines = 2 if opcode.name in {"GLOBAL", "INST"} else 1
+            end = start
+            for _ in range(lines):
+                end = data.find(b"\n", end, end + _PICKLE_KEEP_TEXT + 1)
+                if end < 0:
+                    break
+                end += 1
+            if end >= 0:
+                arg = opcode.arg.reader(stream)
+            elif lines == 2 or data.find(b"\n", start) < 0:
+                raise ValueError("pickle name line too long or unterminated")
+            else:
+                stream.seek(data.find(b"\n", start) + 1)
+        elif opcode.arg is not None:
+            arg = opcode.arg.reader(stream)
+        yield opcode, arg, position
+        if opcode.name == "STOP":
+            return
+
+
+def _pickle_step(opcode: Any, arg: object, stack: list[object], memo: dict[object, object]) -> bool:
+    """Apply one opcode's stack effect; True when it calls a dangerous global."""
+    name = opcode.name
+    if name in _PICKLE_STR_OPS:
+        stack.append(arg if isinstance(arg, str) else None)
+    elif name in {"GLOBAL", "INST"}:
+        module, _, attr = str(arg).partition(" ")
+        if name == "INST":
+            _pickle_pop_mark(stack)
+            if _dangerous(module, attr):
+                return True
+            stack.append(None)
+        else:
+            stack.append((module, attr))
+    elif name == "STACK_GLOBAL":
+        top_name, top_module = stack.pop(), stack.pop()
+        pair = (
+            (top_module, top_name)
+            if isinstance(top_module, str) and isinstance(top_name, str)
+            else None
+        )
+        stack.append(pair)
+    elif name in {"REDUCE", "NEWOBJ", "NEWOBJ_EX"}:
+        # REDUCE and NEWOBJ take one argument object above the callable, NEWOBJ_EX two.
+        for _ in range(2 if name == "NEWOBJ_EX" else 1):
+            stack.pop()
+        target = stack.pop()
+        if isinstance(target, tuple) and _dangerous(*target):
+            return True
+        stack.append(None)
+    elif name == "OBJ":
+        items = _pickle_pop_mark(stack)
+        target = items[0] if items else None
+        if isinstance(target, tuple) and _dangerous(*target):
+            return True
+        stack.append(None)
+    elif name in _PICKLE_PUT_OPS:
+        memo[arg] = stack[-1]
+    elif name == "MEMOIZE":
+        memo[len(memo)] = stack[-1]
+    elif name in _PICKLE_GET_OPS:
+        stack.append(memo.get(arg))
+    elif name == "DUP":
+        stack.append(stack[-1])
+    elif name == "MARK":
+        stack.append(_PICKLE_MARK)
+    else:
+        before = opcode.stack_before
+        if pickletools.markobject in before:
+            _pickle_pop_mark(stack)
+            below = before.index(pickletools.markobject)
+        else:
+            below = len(before)
+        if below > len(stack):
+            raise IndexError("pickle stack underflow")
+        if below:
+            del stack[-below:]
+        stack.extend(None for _ in opcode.stack_after)
+    return False
+
+
+def _pickle_pop_mark(stack: list[object]) -> list[object]:
+    for index in range(len(stack) - 1, -1, -1):
+        if stack[index] is _PICKLE_MARK:
+            items = stack[index + 1 :]
+            del stack[index:]
+            return items
+    raise IndexError("pickle mark missing")
+
+
 def _dangerous(module: str, name: str) -> bool:
-    return module in _PICKLE_MODULES or name in _PICKLE_NAMES
+    if name in _PICKLE_NAMES:
+        return True
+    if module in {"builtins", "__builtin__"}:
+        return name not in _PICKLE_SAFE_BUILTINS
+    return module in _PICKLE_MODULES
 
 
 def _skip_counted(data: bytes, offset: int, width: int) -> int | None:

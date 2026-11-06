@@ -998,6 +998,8 @@ def _swap_vendor(root: Path, staging: Path, lock: RulesLock) -> None:
 def define_scan_globals(compiler: Any) -> None:
     """Declare the globals the scanner sets per buffer; their values here are compile defaults."""
     compiler.define_global("yara_gate_ext", "bin")
+    # The scanned file's or member's final name component, lowercased (".envrc").
+    compiler.define_global("yara_gate_name", "")
     # True when the buffer sniffs as text. The Unicode-control rules read it: their byte
     # sequences occur by chance in compressed or random data, where they mean nothing.
     compiler.define_global("yara_gate_text", True)

