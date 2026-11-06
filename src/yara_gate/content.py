@@ -129,6 +129,8 @@ _LEET_TOKEN = re.compile(r"(?<![^\W_])[^\W_]*[0134578@$][^\W_@$]*(?:[0134578@$][
 # Four or more single letters separated by one space, dot, dash, underscore, or asterisk.
 _SPACED = re.compile(r"(?<![^\W_])(?:[^\W\d_][ .\-_*]){3,}[^\W\d_](?![^\W_])")
 _SPACERS = re.compile(r"[ .\-_*]")
+# A hyphen after a letter at a line end, before a lowercase letter on the next line.
+_HYPHEN_WRAP = re.compile(r"(?<=[A-Za-z])-[ \t]*+\r?\n[ \t]*+(?=[a-z])")
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
 _ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
@@ -910,10 +912,11 @@ def folded_text(text: str) -> str:
 
     Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
     (fullwidth and other presentation forms), removal of format controls and of control
-    characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
-    folded to Latin inside mixed-script tokens, letters spaced one apart rejoined, and digit or
-    symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
-    numbers stay as written. The result is a view; the original bytes are scanned unchanged.
+    characters other than tab, CR, and LF, Cyrillic and Greek look-alikes folded to Latin inside
+    mixed-script tokens, a word hyphenated at a line end rejoined (``previ-`` then ``ous``),
+    letters spaced one apart rejoined, and digit or symbol stand-ins folded inside tokens that
+    mix them with letters. Russian, Greek, and ordinary numbers stay as written. The result is a
+    view; the original bytes are scanned unchanged.
     """
     if not text.strip(" \t\r\n"):
         return text
@@ -929,6 +932,9 @@ def folded_text(text: str) -> str:
         folded = folded.translate(FOLD_DELETE)
     if not folded.isascii():
         folded = _NON_ASCII_WORD.sub(_fold_confusables, folded)
+    if "-" in folded:
+        # A word hyphenated at a line end (previ-, ous) reads as one word.
+        folded = _HYPHEN_WRAP.sub("", folded)
     folded = _SPACED.sub(lambda match: _SPACERS.sub("", match.group()), folded)
     return _LEET_TOKEN.sub(_fold_leet, folded)
 
@@ -1220,6 +1226,115 @@ def comment_texts(text: str, budget: Budget) -> list[str]:
         if closed:
             flush()
             family = ""
+    flush()
+    return blocks
+
+
+_MARKDOWN_SUFFIXES = frozenset({"md", "markdown", "mdown", "mkd", "mkdn", "mdx"})
+# A heading or YAML front matter at the start of a text file with no suffix or .txt.
+_MARKDOWN_OPENER = re.compile(r"\A\ufeff?\s*+(?:#{1,6}[ \t]++\S|---[ \t]*+\r?\n)")
+_MARKDOWN_FENCE = re.compile(r"[ \t]{0,3}+(`{3,}+|~{3,}+)")
+_MARKDOWN_QUOTE = re.compile(r"[ \t]{0,3}+(?:>[ \t]?+)++")
+_MARKDOWN_HEADING = re.compile(r"[ \t]{0,3}+#{1,6}+(?:[ \t]++|$)")
+_MARKDOWN_ITEM = re.compile(r"[ \t]*+(?:[-*+]|[0-9]{1,9}+[.)])[ \t]++")
+_MARKDOWN_BREAK = re.compile(
+    r"[ \t]{0,3}+(?:(?:-[ \t]*+){3,}+|(?:=[ \t]*+){3,}+|(?:[*_][ \t]*+){3,}+)$"
+)
+# Inline markup within one line: bracketed text, as a link, image, reference, or checkbox, keeps
+# its text and loses its brackets and target; emphasis and strong stars,
+# strikethrough tildes, code-span backticks, and underscores at a word edge (snake_case stays).
+_MARKDOWN_INLINE = re.compile(
+    r"!?\[([^\[\]\r\n]{0,1024}+)\]"
+    r"(?:\([^()\s]{0,2048}+(?:[ \t]++\"[^\"\r\n]{0,512}+\")?+\)|\[[^\[\]\r\n]{0,256}+\])?+"
+    r"|\*++|~~++|`++|(?<![^\W_])_++|_++(?![^\W_])"
+)
+
+
+def _markdown_inline(match: re.Match[str]) -> str:
+    return match.group(1) or ""
+
+
+def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
+    """The text of each Markdown paragraph, list item, or heading that inline markup splits.
+
+    Read for a file named ``.md``, ``.markdown``, ``.mdown``, ``.mkd``, ``.mkdn``, or ``.mdx``,
+    or a ``.txt`` or suffixless file that opens with a heading or front matter. Within each line,
+    emphasis and strong markers, strikethrough, code-span backticks, and underscores at a word
+    edge are dropped; bracketed text (a link, image, reference, or checkbox) keeps its text; and
+    a ``>`` quote leader is removed. Lines of one paragraph are joined with newlines. A blank
+    line, a heading, a list item, a thematic break, a code fence, or a deeper quote starts a new
+    piece, and fenced code is not read, since its markers are literal; a fence closes only on
+    its own character repeated at least as many times. Markers are dropped one line at a
+    time, never paired across lines. A piece with nothing removed is left to the raw view.
+    Lexical only, not a CommonMark renderer.
+    """
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    suffix = base.rsplit(".", 1)[-1].lower() if "." in base else ""
+    if suffix not in _MARKDOWN_SUFFIXES and (
+        suffix not in {"", "txt"} or _MARKDOWN_OPENER.match(text[:4096]) is None
+    ):
+        return []
+    blocks: list[str] = []
+    parts: list[str] = []
+    changed = False
+    fence = ""
+    depth = 0
+
+    def flush() -> None:
+        nonlocal changed, depth
+        if changed and parts:
+            if len(blocks) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            blocks.append("\n".join(parts))
+        parts.clear()
+        changed = False
+        depth = 0
+
+    for count, line in enumerate(text.splitlines()):
+        if count % 4096 == 0:
+            budget.check()
+        opener = _MARKDOWN_FENCE.match(line)
+        if fence:
+            # A closing fence is the opener's character, at least as long, and nothing after it.
+            if (
+                opener is not None
+                and opener.group(1)[0] == fence[0]
+                and len(opener.group(1)) >= len(fence)
+                and not line[opener.end() :].strip()
+            ):
+                fence = ""
+            continue
+        if opener is not None:
+            flush()
+            fence = opener.group(1)
+            continue
+        if not line.strip() or _MARKDOWN_BREAK.match(line):
+            flush()
+            continue
+        body = line
+        quote = _MARKDOWN_QUOTE.match(body)
+        if quote is not None:
+            # A deeper quote is a new block; a shallower or unquoted line continues lazily.
+            level = quote.group().count(">")
+            if level > depth:
+                flush()
+            depth = max(depth, level)
+            body = body[quote.end() :]
+            changed = True
+        heading = _MARKDOWN_HEADING.match(body)
+        item = None if heading else _MARKDOWN_ITEM.match(body)
+        marker = heading or item
+        if marker is not None:
+            level = depth
+            flush()
+            depth = level
+            changed = quote is not None
+            body = body[marker.end() :]
+        shown = _MARKDOWN_INLINE.sub(_markdown_inline, body)
+        changed = changed or shown != body
+        parts.append(shown.strip(" \t"))
+        if heading is not None:
+            flush()
     flush()
     return blocks
 

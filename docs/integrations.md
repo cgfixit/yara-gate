@@ -363,8 +363,10 @@ notes, comments, shared strings, and slides, so a sentence Word split across
 formatting runs is seen whole; an Excel inline-string cell split across rich-text
 runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
 `html-text` piece per paragraph or cell, with bold, links, and comments dropped.
-A sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment lines is
-read as one `comment-text` piece, and a Jupyter cell stored as a list of lines as
+A Markdown paragraph or list item split by emphasis, a code span, or a link is read
+as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
+folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment
+lines is read as one `comment-text` piece, and a Jupyter cell stored as a list of lines as
 one `notebook-text` piece. Not covered: text out of reading order or in columns,
 a sentence split across two paragraphs, Type 3 fonts, LZW and RunLength streams,
 images, ODT spans, RTF control words, and Office parts a reader does not see. The

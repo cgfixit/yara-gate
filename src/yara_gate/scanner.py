@@ -21,6 +21,7 @@ from yara_gate.content import (
     content_units,
     folded_text,
     html_text_blocks,
+    markdown_texts,
     notebook_texts,
     ooxml_cell_texts,
     ooxml_text_views,
@@ -397,14 +398,18 @@ def _scan_file(
                     finding.view = view
                     findings.append(finding)
             # A worksheet cell split across rich-text runs, an HTML paragraph split by bold, a
-            # link, or a comment, a sentence wrapped over two comment lines, and a notebook cell
-            # stored as a list of lines are each one piece of text to the reader.
+            # link, or a comment, a Markdown paragraph split by emphasis or a code span, a
+            # sentence wrapped over two comment lines, and a notebook cell stored as a list of
+            # lines are each one piece of text to the reader.
             pieces = _with_folded_pieces(
                 "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget)
             )
             if decoded is not None:
                 pieces += _with_folded_pieces(
                     "html-text", html_text_blocks(unit.name, decoded[0], budget)
+                )
+                pieces += _with_folded_pieces(
+                    "markdown-text", markdown_texts(unit.name, decoded[0], budget)
                 )
                 cells = notebook_texts(unit.name, decoded[0], budget)
                 pieces += _with_folded_pieces(
