@@ -311,7 +311,12 @@ A JSON body is also read as a `json-unescaped` view, any text body gets a
 phrase, a base64 run that decodes to readable text (UTF-8, or UTF-16LE as
 PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
 `percent-decoded` view, so escaping or encoding a phrase does not hide it from the
-lexical rules. The exact view rules are under [Limits](rules.md#limits).
+lexical rules. Each decoded view is also folded, as `json-unescaped+text-folded` and so
+on, so an escape stacked on a look-alike spelling is read too, and `text-folded` drops
+terminal colour codes such as `ESC [ 1 m` whole. A view label is a provenance chain:
+read a finding's `view` to see which decoding found it, and never treat its offset as
+a position in the body unless the view is `raw`. The exact view rules are under
+[Limits](rules.md#limits).
 
 A mail message with a MIME body (an `.eml` file, or the raw bytes a mail hook or
 IMAP client holds) is opened as a container, like a zip: each decoded leaf part is

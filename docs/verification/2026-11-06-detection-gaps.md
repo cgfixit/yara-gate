@@ -56,10 +56,39 @@ clean, and the zip end-record flood and the xz and bzip2 bombs below were checke
   stored member costs 0.2 s, as on `main`; 200 fake records before an archive are `zip end
   records exceed 64`. CLI intake now files the concatenated zip under `blocked/`.
 
+- **G1 and #145 item 3**: the `json-unescaped`, `base64-decoded`, `percent-decoded`,
+  `mime-headers-decoded`, and `ooxml-text` views are also scanned folded, as
+  `<view>+text-folded`, one step deep; the base64 rules stay with the raw bytes in every folded
+  view. A JSON body with a leet handle and `\u0048ello`, and base64 of a sentence with version
+  numbers and dates, stay clean.
+- **G4**: `text-folded` removes ECMA-48 control sequences whole (CSI, intermediate escapes such
+  as `ESC ( B`, and two-byte escapes, which include the OSC opener), and ESC no longer counts as a
+  binary byte when a unit is sniffed, so a log with colour codes on every line is text. A
+  coloured test log, an OSC 8 hyperlink, and a `tput sgr0` reset stay clean; a densely coloured
+  log saved as `.txt` is no longer an advisory type mismatch.
+- **G5**: `heuristic_variation_selector_run` blocks eight or more variation selectors in a row,
+  in raw text and as HTML entities or JSON escapes. U+2764 U+FE0F, a doubled U+FE0F, seven
+  selectors, and U+845B U+E0100 stay clean.
+- **Cost**: `folded_text` filters with one `str.translate` over a table that
+  `tests/test_text_fast_paths.py` compares with `unicodedata` for every code point, and its
+  mixed-script and leet callbacks skip words and numbers they cannot change (50,000 random
+  strings matched the previous fold). Median of three `scan_bytes` runs on 4 MiB inputs:
+
+  | Input | `main` | Branch |
+  | --- | --- | --- |
+  | ASCII prose | 2.90 s | 2.58 s |
+  | JSON with `\u00e9` escapes and leet tokens on every line | 2.04 s | 3.51 s |
+  | One 3 MiB wrapped base64 run of such text | 0.93 s | 1.95 s |
+
+  The last two are worst cases for the new folded view: every line both decodes and folds.
+  The benign corpus pass (324 files) took 0.586 s on `main` and 0.573 s on the branch, and
+  the 2,959 non-archive files of the sweep below 24.0 s and 24.4 s.
+
 A sweep of 3,142 files on this host (system libraries and data, 186 jars, 72 zips, 16 wheels,
 144 static libraries, 424 gzip files, the bzip2, xz, and zstd files present, and this
 repository's tests, docs, and demo data), scanned in place with `scan_file` on `main` and on
-the branch, changed only these results:
+the branch, changed only these results (the text-view changes added one more: `jansi-1.18.jar`, an ANSI
+library whose coloured member was an advisory type mismatch, is now clean):
 
 | Files | `main` | Branch |
 | --- | --- | --- |
