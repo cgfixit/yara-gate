@@ -1262,12 +1262,14 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
     emphasis and strong markers, strikethrough, code-span backticks, and underscores at a word
     edge are dropped; bracketed text (a link, image, reference, or checkbox) keeps its text; and
     a ``>`` quote leader is removed. Lines of one paragraph are joined with newlines. A blank
-    line, a heading, a list item, a thematic break, or a code fence starts a new piece, and
-    fenced code is not read, since its markers are literal. Markers are dropped one line at a
+    line, a heading, a list item, a thematic break, a code fence, or a deeper quote starts a new
+    piece, and fenced code is not read, since its markers are literal; a fence closes only on
+    its own character repeated at least as many times. Markers are dropped one line at a
     time, never paired across lines. A piece with nothing removed is left to the raw view.
     Lexical only, not a CommonMark renderer.
     """
-    suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    suffix = base.rsplit(".", 1)[-1].lower() if "." in base else ""
     if suffix not in _MARKDOWN_SUFFIXES and (
         suffix not in {"", "txt"} or _MARKDOWN_OPENER.match(text[:4096]) is None
     ):
@@ -1276,27 +1278,35 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
     parts: list[str] = []
     changed = False
     fence = ""
+    depth = 0
 
     def flush() -> None:
-        nonlocal changed
+        nonlocal changed, depth
         if changed and parts:
             if len(blocks) >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
             blocks.append("\n".join(parts))
         parts.clear()
         changed = False
+        depth = 0
 
     for count, line in enumerate(text.splitlines()):
         if count % 4096 == 0:
             budget.check()
         opener = _MARKDOWN_FENCE.match(line)
         if fence:
-            if opener is not None and opener.group(1).startswith(fence):
+            # A closing fence is the opener's character, at least as long, and nothing after it.
+            if (
+                opener is not None
+                and opener.group(1)[0] == fence[0]
+                and len(opener.group(1)) >= len(fence)
+                and not line[opener.end() :].strip()
+            ):
                 fence = ""
             continue
         if opener is not None:
             flush()
-            fence = opener.group(1)[:3]
+            fence = opener.group(1)
             continue
         if not line.strip() or _MARKDOWN_BREAK.match(line):
             flush()
@@ -1304,13 +1314,20 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
         body = line
         quote = _MARKDOWN_QUOTE.match(body)
         if quote is not None:
+            # A deeper quote is a new block; a shallower or unquoted line continues lazily.
+            level = quote.group().count(">")
+            if level > depth:
+                flush()
+            depth = max(depth, level)
             body = body[quote.end() :]
             changed = True
         heading = _MARKDOWN_HEADING.match(body)
         item = None if heading else _MARKDOWN_ITEM.match(body)
         marker = heading or item
         if marker is not None:
+            level = depth
             flush()
+            depth = level
             changed = quote is not None
             body = body[marker.end() :]
         shown = _MARKDOWN_INLINE.sub(_markdown_inline, body)
