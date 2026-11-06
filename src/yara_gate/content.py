@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import bz2
 import email
 import email.errors
 import email.header
@@ -10,6 +11,7 @@ import email.policy
 import gzip
 import html
 import io
+import lzma
 import re
 import stat
 import tarfile
@@ -239,11 +241,26 @@ class ContentUnit:
     member_path: tuple[str, ...] = ()
 
 
+# A bzip2 stream: the header, then the first block's magic or the empty-stream end marker.
+_BZIP2 = re.compile(rb"BZh[1-9](?:1AY&SY|\x17rE8P\x90)")
+# A newc or crc cpio header: the magic and thirteen 8-digit hex fields.
+_CPIO_NEWC = re.compile(rb"07070[12][0-9A-Fa-f]{104}")
+_AR_MAGIC = b"!<arch>\n"
+
+
 def archive_kind(data: bytes) -> str | None:
     if data.startswith((b"PK\x03\x04", b"PK\x05\x06")):
         return "zip"
     if data.startswith(b"\x1f\x8b"):
         return "gzip"
+    if data.startswith(b"\xfd7zXZ\x00"):
+        return "xz"
+    if _BZIP2.match(data):
+        return "bzip2"
+    if data.startswith(_AR_MAGIC):
+        return "ar"
+    if _CPIO_NEWC.match(data):
+        return "cpio"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
     if _mime_message(data):
@@ -270,8 +287,6 @@ def _mime_message(data: bytes) -> bool:
 _UNSUPPORTED_PREFIXES = (
     b"7z\xbc\xaf\x27\x1c",  # 7-Zip
     b"Rar!\x1a\x07",  # RAR 1.5 to 5
-    b"BZh",  # bzip2
-    b"\xfd7zXZ\x00",  # xz
     b"\x28\xb5\x2f\xfd",  # Zstandard frame
     b"\x04\x22\x4d\x18",  # LZ4 frame
     b"\x02\x21\x4c\x18",  # LZ4 legacy frame
@@ -315,6 +330,7 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
         zipfile.BadZipFile,
         tarfile.TarError,
         email.errors.MessageError,
+        lzma.LZMAError,
     ):
         raise ContentLimit("archive unreadable or encrypted") from None
     yield unit
@@ -358,13 +374,112 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                     raise ContentLimit("archive member unreadable")
                 with extracted:
                     yield index, entry.name, budget.read(extracted)
+    elif kind == "ar":
+        yield from _ar_members(unit, budget)
+    elif kind == "cpio":
+        yield from _cpio_members(unit, budget)
     else:
+        # gzip, xz, and bzip2 hold one stream; a .tar.gz names its member by the stem.
         budget.member()
         name = Path(unit.name).stem
-        if unit.name.lower().endswith(".tgz"):
+        if unit.name.lower().endswith((".tgz", ".txz", ".tbz", ".tbz2")):
             name += ".tar"
-        with gzip.GzipFile(fileobj=io.BytesIO(unit.data)) as compressed:
+        stream = io.BytesIO(unit.data)
+        compressed: IO[bytes] | gzip.GzipFile
+        if kind == "gzip":
+            compressed = gzip.GzipFile(fileobj=stream)
+        elif kind == "xz":
+            compressed = lzma.LZMAFile(stream)
+        else:
+            compressed = bz2.BZ2File(stream)
+        with compressed:
             yield 0, name, budget.read(compressed)
+
+
+def _ar_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
+    """Members of a System V or BSD ar archive (a .deb's outer layer, a static library).
+
+    Members are stored, not compressed. The symbol table and GNU long-name table are read as
+    metadata; a malformed header or a size past the end is an unreadable archive.
+    """
+    data = unit.data
+    position = len(_AR_MAGIC)
+    names = b""
+    index = 0
+    while position < len(data):
+        budget.check()
+        header = data[position : position + 60]
+        if len(header) < 60 or header[58:60] != b"`\n":
+            raise ValueError("ar header")
+        size = int(header[48:58].strip() or b"0")
+        start = position + 60
+        end = start + size
+        if size < 0 or end > len(data):
+            raise ValueError("ar member size")
+        position = end + (end & 1)
+        raw = header[:16].rstrip(b" ")
+        body = data[start:end]
+        if raw == b"//":
+            names = body
+            continue
+        if raw in (b"/", b"/SYM64/"):
+            continue
+        if raw.startswith(b"#1/"):
+            length = int(raw[3:])
+            if not 0 <= length <= len(body):
+                raise ValueError("ar member name")
+            raw, body = body[:length].rstrip(b"\0"), body[length:]
+        elif raw.startswith(b"/") and raw[1:].isdigit():
+            raw = names[int(raw[1:]) :].split(b"\n", 1)[0].removesuffix(b"/")
+        else:
+            raw = raw.removesuffix(b"/")
+        budget.member()
+        name = raw.decode("utf-8", errors="replace")
+        _check_member_name(name)
+        if size > MAX_FILE_BYTES:
+            raise ContentLimit("archive member exceeds 100MB")
+        yield index, name, budget.read(io.BytesIO(body))
+        index += 1
+
+
+def _cpio_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
+    """Regular-file members of a newc or crc cpio archive (an initramfs, an RPM payload).
+
+    Directories are skipped; a symlink, device, or other special member is unsupported, as in
+    tar. Hard links store their data once, on the last link, so earlier links are empty.
+    """
+    data = unit.data
+    position = 0
+    index = 0
+    while True:
+        budget.check()
+        header = data[position : position + 110]
+        if _CPIO_NEWC.fullmatch(header) is None:
+            raise ValueError("cpio header")
+        fields = [int(header[6 + 8 * slot : 14 + 8 * slot], 16) for slot in range(13)]
+        mode, size, name_size = fields[1], fields[6], fields[11]
+        name_start = position + 110
+        start = (name_start + name_size + 3) & ~3
+        end = start + size
+        if name_size < 1 or end > len(data):
+            raise ValueError("cpio member size")
+        raw = data[name_start : name_start + name_size].rstrip(b"\0")
+        position = (end + 3) & ~3
+        if raw == b"TRAILER!!!":
+            return
+        budget.member()
+        name = raw.decode("utf-8", errors="replace")
+        _check_member_name(name)
+        kind = stat.S_IFMT(mode)
+        if kind == stat.S_IFDIR:
+            index += 1
+            continue
+        if kind != stat.S_IFREG:
+            raise ContentLimit("archive contains unsupported member")
+        if size > MAX_FILE_BYTES:
+            raise ContentLimit("archive member exceeds 100MB")
+        yield index, name, budget.read(io.BytesIO(data[start:end]))
+        index += 1
 
 
 def _check_member_name(name: str) -> None:

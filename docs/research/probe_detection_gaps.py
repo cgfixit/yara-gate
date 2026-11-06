@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import argparse
 import base64
+import bz2
 import gzip
 import io
 import json
+import lzma
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from collections.abc import Callable
@@ -50,8 +53,6 @@ OPEN: dict[str, str] = {
     "pdf-with-trailing-zip": "G3",
     "ansi-bold-glued": "G4",
     "variation-selector-smuggling": "G5",
-    "deb-with-gzip-member": "G6",
-    "cpio-with-gzip-member": "G6",
 }
 
 
@@ -136,13 +137,22 @@ def ar_archive(members: dict[str, bytes]) -> bytes:
     return bytes(output)
 
 
-def cpio_newc(members: dict[str, bytes]) -> bytes:
+def tarred(name: str, data: bytes) -> bytes:
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        info = tarfile.TarInfo(name)
+        info.size = len(data)
+        archive.addfile(info, io.BytesIO(data))
+    return output.getvalue()
+
+
+def cpio_newc(members: dict[str, bytes], mode: int = 0o100644) -> bytes:
     """A newc cpio archive (an initramfs or RPM payload) of regular files."""
     output = bytearray()
     entries = [*members.items(), ("TRAILER!!!", b"")]
     for ino, (name, data) in enumerate(entries, 1):
         raw = name.encode() + b"\0"
-        mode = 0o100644 if name != "TRAILER!!!" else 0
+        mode = mode if name != "TRAILER!!!" else 0
         fields = (ino, mode, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(raw), 0)
         output += b"070701" + b"".join(f"{field:08X}".encode() for field in fields) + raw
         output += b"\0" * (-len(output) % 4) + data + b"\0" * (-len(data) % 4)
@@ -300,6 +310,45 @@ def cases() -> list[Case]:
             "libx.a",
             ar_archive({"x.o": b"\x7fELF" + b"\0" * 60}),
             "clean",
+        ),
+        Case("G6", "xz of the phrase", "a.txt.xz", lzma.compress(phrase), PHRASE_RULE),
+        Case(
+            "G6",
+            "tar.xz of the phrase",
+            "a.tar.xz",
+            lzma.compress(tarred("a.txt", phrase)),
+            PHRASE_RULE,
+        ),
+        Case("G6", "bzip2 of the phrase", "a.txt.bz2", bz2.compress(phrase), PHRASE_RULE),
+        Case("G6", "empty bzip2 (benign)", "e.bz2", bz2.compress(b""), "clean"),
+        Case("G6", "corrupt xz", "a.xz", b"\xfd7zXZ\x00" + PAD, "incomplete:unreadable"),
+        Case("G6", "corrupt bzip2", "a.bz2", b"BZh91AY&SY" + PAD, "incomplete:unreadable"),
+        Case("G6", "text starting BZh (benign)", "n.txt", b"BZh is the bzip2 magic.", "clean"),
+        Case(
+            "G6",
+            "ar long names (benign)",
+            "liby.a",
+            b"!<arch>\n//              0           0     0     644     24        `\n"
+            + b"a-very-long-member.txt/\n"
+            + b"/0              0           0     0     644     3         `\nhi\n\n",
+            "clean",
+        ),
+        Case(
+            "G6", "ar member escaping", "a.deb", ar_archive({"../x": b"hi"}), "incomplete:escapes"
+        ),
+        Case(
+            "G6",
+            "ar truncated",
+            "a.a",
+            ar_archive({"x.o": b"0123456789"})[:-4],
+            "incomplete:unreadable",
+        ),
+        Case(
+            "G6",
+            "cpio symlink",
+            "a.cpio",
+            cpio_newc({"link": b"/etc/passwd"}, mode=0o120777),
+            "incomplete:unsupported member",
         ),
         Case(
             "G6", "cpio of a text file (benign)", "a.cpio", cpio_newc({"a.txt": b"hi\n"}), "clean"
