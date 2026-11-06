@@ -1,19 +1,21 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 17
-inert examples under `agent-ingest`, `agent-document`, and `default`: eleven
-attacks, five benign near-twins, and one failed scan. Selecting an example does
+YARA-X backend. This site therefore replays **real recorded results** for 35
+inert examples under `agent-ingest`, `agent-document`, and `default`: 17
+attacks, each with a benign near-twin, and one failed scan. Selecting an example does
 not start a scan. The UI labels every result as recorded and shows the scanner
 revision, capture time, rule coverage, and engine version.
 
 The page is built to show precision as well as detection. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
 were clean with no findings under every policy, and the failure that stayed
-incomplete. Selecting an attack that has a twin sets the two side by side under the
-chosen policy. Each finding says which check or rule caught it, in which archive
-member, and through which derived view (for example, one decoded base64 run, or a
-PDF paragraph rejoined across text blocks). A static section summarizes the
+incomplete. The gallery shows each attack and its twin in one row, and can be
+filtered by the channel the content arrives through; selecting either one sets the
+two side by side under the chosen policy. Each finding says which check or rule caught it, in which archive
+member, and through which derived view (for example, one decoded base64 run, a
+PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
+folded for look-alikes and digits). A static section summarizes the
 measured false-positive evidence and links to its records.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
@@ -38,7 +40,7 @@ it is not the Pages entrypoint.
 | --- | --- |
 | `index.html` | `web-demo/index.html`: accessible static shell and local-use guidance |
 | `style.css` | Local stylesheet, with no external fonts or assets |
-| `app.mjs` | Local rendering, the computed scoreboard, scenario/policy selection, and the twin comparison |
+| `app.mjs` | Local rendering, the computed scoreboard, the pair rows and channel filter, scenario/policy selection, and the twin comparison |
 | `recordings.mjs` | Module generated from the curated `web-demo/recordings.json` |
 
 `scripts/record_pages_demo.py` produces `recordings.json` from real scans, and
@@ -51,8 +53,9 @@ to the browser policy, and a dataset that mixes rulesets or runtimes, records
 different inputs for one scenario, or carries severity flags that disagree with its
 findings. It holds each scenario to its `kind`: a `control` (benign twin) must be
 clean with no findings under every policy, a `detection` must be held by
-`agent-ingest`, the `failure` must be incomplete under every policy, and a `pair`
-must join one detection and one control that name each other. These checks catch
+`agent-ingest`, the `failure` must be incomplete under every policy, every detection and
+control must name a `pair`, and a pair must join one detection and one control that
+name each other. These checks catch
 accidental regressions; review the actual public strings before publishing.
 
 The page has no analytics, cookies, browser storage, service worker, remote
@@ -146,26 +149,45 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The committed baseline (schema 2) holds 17 inert examples, recorded with the 84
+The committed baseline (schema 2) holds 35 inert examples, recorded with the 85
 bundled rules only and no vendor packs (Python 3.12.3, YARA-X 1.23.0, captured at
-`5059d03` on the branch that added the twins; each deploy refreshes the revision
-and time).
+`ea184f9` on the branch that added the #167–#169 pairs; each deploy refreshes the
+revision and time). Each row is one attack and its benign twin.
 
-| Kind | Examples |
-| --- | --- |
-| Detection | A quoted override; the same override as an SMS with a Cyrillic look-alike letter; a secret-transfer request to an invalid example address; an HTML-encoded override; an override hidden in a web page with `display:none`; a Word file whose override sentence spans three formatting runs; a JSON tool result whose base64 field decodes to a reworded override; a browser-style PDF that stores its text as glyph ids, with the key word in bold; a torch-style checkpoint whose pickle builds a dict, a set, and a big integer before calling `os.system`; a `devcontainer.json` whose `initializeCommand` downloads and runs a script on the host; a synthetic executable header named as a PDF |
-| Control (benign twin) | An ordinary note (twin of the quoted override); the same tool result with a session token, a PNG data URI, and base64 of an ordinary sentence; the same PDF fonts and layout with an ordinary sentence; the same checkpoint state rebuilt through `collections.OrderedDict`; a dev container that only creates a host folder and installs inside the container |
-| Failure | An ordinary note scanned with a deliberately broken rule in a disposable tree |
+| Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
+| --- | --- | --- |
+| Message | A quoted override | An ordinary note |
+| Message | A request to send `.env` to an invalid example address | A request to send a README summary to an example wiki link |
+| SMS | The override with a Cyrillic look-alike letter | An ordinary Russian message naming a Latin brand |
+| Tool result | A JSON field whose base64 decodes to a reworded override | A session token, a PNG data URI, and base64 of an ordinary sentence |
+| Tool result | A coloured CI log with a bold escape glued to the override's first word | The same log with an ordinary bold summary |
+| Web page | An override with an HTML character reference | The same reference in ordinary text |
+| Web page | An override in a `display:none` block | Menu labels in the same hidden block |
+| Web page | An override with a `<b>` tag between two words | The same paragraph with ordinary bold, emphasis, and a link |
+| Document | A Word sentence split across three formatting runs | The same runs with an ordinary sentence |
+| Document | An Excel inline-string cell split across two rich-text runs, with a zero for an `o` | A rich-text cell with a percentage, a version, and a quarter |
+| Document | A glyph-id PDF with the key word in bold | The same fonts and layout with an ordinary sentence |
+| Attachment | A zip holding the override, followed by an ordinary invoice zip | The same two-archive layout with a receipt first |
+| Attachment | An SVG animation with an `onbegin` handler (an inert `void 0`) | The same animation started by `begin="0s"` |
+| Attachment | A synthetic executable header named as a PDF | A one-page PDF with no actions |
+| Model file | A torch-style checkpoint whose pickle calls `os.system` after building ordinary state | The same state rebuilt through `collections.OrderedDict` |
+| Repository | A `devcontainer.json` whose `initializeCommand` downloads and runs a script on the host | A host `mkdir` and installs inside the container |
+| Repository | A source file whose emoji is followed by the override as variation selectors | An emoji presentation selector and a Japanese ideographic variant |
+
+The failure is an ordinary note scanned with a deliberately broken rule in a
+disposable tree.
 
 The look-alike, hidden-page, Word, and PDF cases show the two intake channels the
 README leads with: an open SMS number, and a synced corpus where `agent-document`
-reads a note-only document while `agent-ingest` holds it. The four newest attacks
-(base64 tool result, glyph-id PDF, pickle checkpoint, dev container) all scanned
-clean on `main` at `7f9934c`, before #158–#162; their twins are clean on both
-revisions. No sample was executed or unpickled, and no referenced URL was fetched.
-The fixtures live in `src/yara_gate/samples.py`, so the local workbench scans the same
-bytes. The nine examples carried over from the schema 1 dataset recorded the same
-outcomes, apart from provenance.
+reads a note-only document while `agent-ingest` holds it. The six attacks added for
+#167–#169 (glued zips, terminal escape, inline HTML split, spreadsheet cell, SVG
+handler, variation selectors) all scanned clean on `main` at `4b5b949`, before those
+changes; the four before them scanned clean at `7f9934c`, before #158–#162. All 17
+twins also scanned clean, with no findings, under `agent-ingest` at `4b5b949`. No sample was executed or unpickled,
+and no referenced URL was fetched. The fixtures live in `src/yara_gate/samples.py`,
+so the local workbench scans the same bytes. The 17 examples carried over from the
+previous baseline recorded the same outcomes; only the `pair` of the six attacks
+that gained a twin changed.
 
 When a change legitimately alters an outcome, re-record in that pull request and
 commit the result. Use a checkout with no uncommitted changes under `src/`,

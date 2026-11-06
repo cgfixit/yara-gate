@@ -36,6 +36,18 @@ class DemoSample(StrEnum):
     pickle_benign = "pickle_benign"
     devcontainer = "devcontainer"
     devcontainer_benign = "devcontainer_benign"
+    zip_concat = "zip_concat"
+    zip_concat_benign = "zip_concat_benign"
+    ansi_log = "ansi_log"
+    ansi_log_benign = "ansi_log_benign"
+    html_split = "html_split"
+    html_split_benign = "html_split_benign"
+    xlsx_cell = "xlsx_cell"
+    xlsx_cell_benign = "xlsx_cell_benign"
+    svg_handler = "svg_handler"
+    svg_handler_benign = "svg_handler_benign"
+    selector_run = "selector_run"
+    selector_run_benign = "selector_run_benign"
 
 
 # Each sample is scanned under the name its type implies; the attacks and their benign twins
@@ -52,6 +64,18 @@ _SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
     DemoSample.pickle_benign: ("model.pt", samples.pickle_checkpoint_benign),
     DemoSample.devcontainer: ("devcontainer.json", samples.devcontainer_host_fetch),
     DemoSample.devcontainer_benign: ("devcontainer.json", samples.devcontainer_benign),
+    DemoSample.zip_concat: ("invoice.zip", samples.concatenated_zip_hidden),
+    DemoSample.zip_concat_benign: ("invoice.zip", samples.concatenated_zip_benign),
+    DemoSample.ansi_log: ("build.log", samples.ansi_log_override),
+    DemoSample.ansi_log_benign: ("build.log", samples.ansi_log_benign),
+    DemoSample.html_split: ("release-notes.html", samples.html_inline_override),
+    DemoSample.html_split_benign: ("release-notes.html", samples.html_inline_benign),
+    DemoSample.xlsx_cell: ("totals.xlsx", samples.xlsx_rich_text_override),
+    DemoSample.xlsx_cell_benign: ("totals.xlsx", samples.xlsx_rich_text_benign),
+    DemoSample.svg_handler: ("logo.svg", samples.svg_onbegin_handler),
+    DemoSample.svg_handler_benign: ("logo.svg", samples.svg_declarative_benign),
+    DemoSample.selector_run: ("extension.js", samples.variation_selector_payload),
+    DemoSample.selector_run_benign: ("extension.js", samples.variation_selector_benign),
 }
 
 

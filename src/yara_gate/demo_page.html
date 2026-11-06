@@ -134,6 +134,18 @@
               <option value="pickle_benign">Ordinary model checkpoint · clean</option>
               <option value="devcontainer">Dev container downloading on the host · advisory</option>
               <option value="devcontainer_benign">Ordinary dev container · clean</option>
+              <option value="zip_concat">Two zips in one file, hidden first · note</option>
+              <option value="zip_concat_benign">Two ordinary zips in one file · clean</option>
+              <option value="ansi_log">CI log, escape glued to an override · note</option>
+              <option value="ansi_log_benign">Ordinary coloured CI log · clean</option>
+              <option value="html_split">HTML override split by a bold tag · note</option>
+              <option value="html_split_benign">Release notes, ordinary markup · clean</option>
+              <option value="xlsx_cell">Excel cell, split runs and a zero for o · note</option>
+              <option value="xlsx_cell_benign">Excel cell, ordinary rich text · clean</option>
+              <option value="svg_handler">SVG animation with a script handler · advisory</option>
+              <option value="svg_handler_benign">SVG with a declarative animation · clean</option>
+              <option value="selector_run">Text hidden in variation selectors · block</option>
+              <option value="selector_run_benign">Ordinary emoji and ideograph selectors · clean</option>
             </optgroup>
           </select>
           <button type="button" id="scan-sample" disabled>Scan sample</button>

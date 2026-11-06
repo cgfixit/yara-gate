@@ -93,3 +93,19 @@ def test_pages_rejects_a_broken_pair(builder, tmp_path: Path, case_id: str, pair
     _edit_recordings(builder, lambda cases: cases[case_id].update(pair=pair))
     with pytest.raises(ValueError, match="pair must join"):
         builder.build(tmp_path / "site")
+
+
+def test_pages_rejects_an_attack_without_a_twin(builder, tmp_path: Path) -> None:
+    def unpair(cases: dict) -> None:
+        cases["zip_concat"]["pair"] = None
+        cases["zip_concat_benign"]["pair"] = None
+
+    _edit_recordings(builder, unpair)
+    with pytest.raises(ValueError, match="Every detection and control is paired"):
+        builder.build(tmp_path / "site")
+
+
+def test_pages_rejects_a_paired_failure(builder, tmp_path: Path) -> None:
+    _edit_recordings(builder, lambda cases: cases["incomplete"].update(pair="plain"))
+    with pytest.raises(ValueError, match="Every detection and control is paired"):
+        builder.build(tmp_path / "site")

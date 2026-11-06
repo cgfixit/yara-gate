@@ -13,16 +13,12 @@ const help = {
   'agent-ingest': 'For messages and tool results. Holds notes and advisories; requires a complete clean result before reading.',
   'agent-document': 'For retrieved documents. Permits the exact notes-only result; holds advisories. Messages still need agent-ingest.'
 };
-const kinds = {
-  detection: ['Attacks', 'Held before the agent reads them.'],
-  control: ['Benign twins', 'Same shape as an attack, ordinary content. Recorded clean under every policy.'],
-  failure: ['Failure handling', 'A scan that cannot finish is held, never passed.']
-};
 const kindTag = { detection: 'Attack', control: 'Benign twin', failure: 'Failure' };
 // Plain-language names for the derived views a finding can come from.
 const viewNames = {
   raw: 'the original bytes',
-  'text-folded': 'the text with look-alike letters and spacing folded',
+  'text-folded': 'the text with look-alike letters, digits, spacing, and terminal escapes folded',
+  'format-controls-removed': 'the text with invisible formatting characters removed',
   'html-unescaped': 'the text with HTML character references decoded',
   'json-unescaped': 'the text with JSON string escapes decoded',
   'base64-decoded': 'one decoded base64 run, read on its own',
@@ -30,6 +26,8 @@ const viewNames = {
   'mime-headers-decoded': 'the decoded email headers',
   'decoded-utf16': 'the text decoded from UTF-16',
   'ooxml-text': 'the joined text of an Office document',
+  'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
+  'html-text': 'one HTML block read as a browser shows it, inline tags dropped',
   'pdf-flate': 'an inflated PDF stream',
   'pdf-text': 'one PDF text block, read through its font maps',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'
@@ -39,8 +37,9 @@ const sources = {
   heuristic: 'Structural check, no YARA rule, found it ',
   filetype: 'File-type check found it '
 };
+const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: recording.cases[0].id, policy: 'agent-ingest' };
+const state = { example: recording.cases[0].id, policy: 'agent-ingest', channel: 'All' };
 
 function text(parent, tag, value, className) {
   const element = document.createElement(tag);
@@ -57,6 +56,8 @@ function definitions(parent, entries) {
   }
 }
 function viewName(view) {
+  // A decoded or rejoined view can be folded once more, so stacked evasions are read together.
+  if (view.endsWith(folded)) return viewName(view.slice(0, -folded.length)) + ', then folded for look-alikes and digits';
   return viewNames[view] || 'the ' + view + ' view';
 }
 function where(finding) {
@@ -93,25 +94,54 @@ function scoreboard() {
   $('scoreboard').hidden = false;
 }
 
+function caseButton(parent, item) {
+  const card = text(parent, 'button', '', 'card ' + item.kind);
+  card.type = 'button';
+  card.dataset.example = item.id;
+  text(card, 'span', kindTag[item.kind], 'card-kind');
+  text(card, 'span', item.title, 'card-title');
+  const chips = text(card, 'span', '', 'chips');
+  for (const policy of policies) chip(chips, item.results[policy].verdict, policyLabels[policy][1]);
+  card.addEventListener('click', () => select(item.id, true));
+}
+
+// One row per attack and its benign twin, attack first; the failure stands alone.
 function gallery() {
   const root = $('gallery');
-  for (const kind of ['detection', 'control', 'failure']) {
-    const group = text(root, 'div', '', 'group');
-    text(group, 'h3', kinds[kind][0]);
-    text(group, 'p', kinds[kind][1], 'help');
-    const list = text(group, 'div', '', 'cards');
-    for (const item of recording.cases.filter((entry) => entry.kind === kind)) {
-      const card = text(list, 'button', '', 'card ' + kind);
-      card.type = 'button';
-      card.dataset.example = item.id;
-      text(card, 'span', item.channel, 'channel');
-      text(card, 'span', item.title, 'card-title');
-      const chips = text(card, 'span', '', 'chips');
-      for (const policy of policies) chip(chips, item.results[policy].verdict, policyLabels[policy][1]);
-      if (item.pair) text(card, 'span', kind === 'control' ? 'Twin of an attack' : 'Has a benign twin', 'pair-note');
-      card.addEventListener('click', () => select(item.id, true));
+  const placed = new Set();
+  for (const item of recording.cases) {
+    if (placed.has(item.id)) continue;
+    const twin = item.pair ? byId.get(item.pair) : null;
+    const members = !twin ? [item] : item.kind === 'detection' ? [item, twin] : [twin, item];
+    const row = text(root, 'div', '', 'pair' + (twin ? '' : ' single'));
+    row.dataset.channel = item.channel;
+    text(row, 'span', item.channel, 'channel');
+    const halves = text(row, 'div', '', 'halves');
+    for (const member of members) {
+      placed.add(member.id);
+      caseButton(halves, member);
     }
   }
+}
+
+function channelFilters() {
+  const counts = new Map();
+  for (const row of document.querySelectorAll('.pair')) counts.set(row.dataset.channel, (counts.get(row.dataset.channel) || 0) + 1);
+  for (const [channel, count] of [['All', document.querySelectorAll('.pair').length], ...counts]) {
+    const button = text($('channels'), 'button', channel + ' · ' + count, 'filter');
+    button.type = 'button';
+    button.dataset.channel = channel;
+    button.addEventListener('click', () => {
+      state.channel = channel;
+      applyFilter();
+    });
+  }
+  applyFilter();
+}
+
+function applyFilter() {
+  for (const row of document.querySelectorAll('.pair')) row.hidden = state.channel !== 'All' && row.dataset.channel !== state.channel;
+  for (const button of document.querySelectorAll('.filter')) button.setAttribute('aria-pressed', String(button.dataset.channel === state.channel));
 }
 
 function policyButtons() {
@@ -224,6 +254,7 @@ function render() {
 
 scoreboard();
 gallery();
+channelFilters();
 policyButtons();
 $('twin-open').addEventListener('click', () => {
   const pair = byId.get(state.example).pair;

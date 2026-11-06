@@ -92,7 +92,8 @@ def test_baseline_guard_allows_provenance_and_refuses_outcomes() -> None:
             result["compiled_rules"] += 1
             result["engine_version"] = "9.9.9"
     assert recorder.outcome_changes(fresh, baseline) == []
-    fresh["cases"][1]["results"]["agent-document"]["verdict"] = "block"
+    note = next(case for case in fresh["cases"] if case["id"] == "note")
+    note["results"]["agent-document"]["verdict"] = "block"
     assert recorder.outcome_changes(fresh, baseline) == [
         "/cases[note]/results/agent-document/verdict"
     ]
