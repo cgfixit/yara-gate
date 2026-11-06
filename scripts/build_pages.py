@@ -33,7 +33,7 @@ RESULT_KEYS = {
 }
 FINDING_KEYS = {"rule_id", "offset", "length", "severity", "source", "view", "member_path"}
 CASE_KEYS = {"id", "kind", "channel", "pair", "title", "description", "results"}
-SCENARIOS = 17
+SCENARIOS = 35
 KINDS = {"detection", "control", "failure"}
 PAIRED = {"detection", "control"}
 CHANNELS = {
@@ -225,6 +225,9 @@ def validate_recordings(data: dict) -> None:
                 )
     require(len(rulesets) == 1, "Completed recordings must share one ruleset and runtime")
     for case_id, (kind, pair) in pairs.items():
+        # The page shows every attack beside its benign twin, so every detection and every
+        # control is paired; only the failure stands alone.
+        require((pair is None) == (kind not in PAIRED), "Every detection and control is paired")
         if pair is None:
             continue
         # A pair joins one detection and its benign twin, and each names the other.

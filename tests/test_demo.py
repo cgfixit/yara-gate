@@ -275,17 +275,29 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     server, thread = serve_in_thread(rules_copy)
     port = int(server.server_address[1])
     expected = {
-        "b64_tool": ("b64_tool_benign", "agent_override_imperative", "base64-decoded"),
-        "pdf_glyph": ("pdf_glyph_benign", "agent_override_imperative", "pdf-paragraph"),
-        "pickle_call": ("pickle_benign", "heuristic_pickle_reduce", "raw"),
-        "devcontainer": ("devcontainer_benign", "dev_devcontainer_lifecycle", "raw"),
+        "b64_tool": ("b64_tool_benign", "agent_override_imperative", {"base64-decoded"}),
+        "pdf_glyph": ("pdf_glyph_benign", "agent_override_imperative", {"pdf-paragraph"}),
+        "pickle_call": ("pickle_benign", "heuristic_pickle_reduce", {"raw"}),
+        "devcontainer": ("devcontainer_benign", "dev_devcontainer_lifecycle", {"raw"}),
+        "zip_concat": ("zip_concat_benign", "agent_prompt_injection_phrases", {"raw"}),
+        "ansi_log": ("ansi_log_benign", "agent_prompt_injection_phrases", {"text-folded"}),
+        "html_split": ("html_split_benign", "agent_prompt_injection_phrases", {"html-text"}),
+        "xlsx_cell": (
+            "xlsx_cell_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-cell+text-folded"},
+        ),
+        "svg_handler": ("svg_handler_benign", "doc_svg_event_handler", {"raw", "text-folded"}),
+        "selector_run": ("selector_run_benign", "heuristic_variation_selector_run", {"raw"}),
     }
     try:
-        for attack, (benign, rule_id, view) in expected.items():
+        for attack, (benign, rule_id, views) in expected.items():
             status, held = _post(port, {"sample": attack, "policy": "agent-ingest"})
             assert status == 200
             assert held["verdict"] == "block"
-            assert [(f["rule_id"], f["view"]) for f in held["findings"]] == [(rule_id, view)]
+            assert {(f["rule_id"], f["view"]) for f in held["findings"]} == {
+                (rule_id, view) for view in views
+            }
             for policy in ("default", "agent-ingest", "agent-document"):
                 status, twin = _post(port, {"sample": benign, "policy": policy})
                 assert status == 200
