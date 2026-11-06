@@ -41,6 +41,34 @@ plain PDF, an ANSI-coloured test log, a Japanese ideographic variation sequence 
 U+E0100) and an emoji presentation selector (U+2764 U+FE0F), and prose that names `MSCF` and
 `ITSF`.
 
+## Fixes on `claude/festive-curie-up7rx3`
+
+Same host and toolchain. The probe marks each fixed case `ok`; its benign boundaries stayed
+clean, and the zip end-record flood and the xz and bzip2 bombs below were checked beside it.
+
+- **G6**: the formats above are `incomplete: unsupported archive`. xz and bzip2 are read with
+  the standard library, and ar and newc/crc cpio as stored archives, so a gzip inside a `.deb` or
+  an initramfs is opened. A 300 MiB run of zeros compressed with xz (45 KB) or bzip2 (2 KB) stops
+  at `archive member exceeds 100MB` in 0.8 s and 0.4 s.
+- **G2, G3**: every zip in a concatenation is read (the hidden archive is `zip:1` after the
+  benign one), and a zip appended to a PDF, JPEG, or shell script is read as that zip. A stored
+  nested zip is still read once (4 units, one finding). 80 MiB of end-record signatures inside a
+  stored member costs 0.2 s, as on `main`; 200 fake records before an archive are `zip end
+  records exceed 64`. CLI intake now files the concatenated zip under `blocked/`.
+
+A sweep of 3,142 files on this host (system libraries and data, 186 jars, 72 zips, 16 wheels,
+144 static libraries, 424 gzip files, the bzip2, xz, and zstd files present, and this
+repository's tests, docs, and demo data), scanned in place with `scan_file` on `main` and on
+the branch, changed only these results:
+
+| Files | `main` | Branch |
+| --- | --- | --- |
+| 13 `.zst` (Go test data) | clean | incomplete, `unsupported archive` |
+| 24 `.bz2` and 1 `.xz` | incomplete, `unsupported archive` | read: 17 clean; 4 advisory from content rules (`agent_base64_blob` on digit dumps, as the same text gets uncompressed); 1 corrupt stream and 1 that runs past the 30 s deadline incomplete |
+| 3 empty Nix `.drv.bz2` logs | incomplete, `unsupported archive` | advisory `heuristic_empty_file`, as a gzipped empty `.drv` already is |
+| `libc.a` | block (`heuristic_embedded_elf`) | incomplete, `archive members exceed 1000` |
+| 1 corrupt Go test archive (`test_go1.11_999b.a`) | clean | incomplete, `archive unreadable or encrypted` |
+
 ## Sources
 
 - Zip concatenation in the wild, and how 7-Zip, WinRAR, and Explorer read it:
