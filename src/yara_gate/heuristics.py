@@ -1199,6 +1199,10 @@ def _pickle_candidate(path: Path, data: bytes) -> bool:
 
 # About 0.6 µs an opcode on a laptop, so the cap stays well inside the 30 s scan deadline.
 _PICKLE_MAX_OPS = 20_000_000
+# Memo and stack entries cost memory however few bytes the opcodes take (MEMOIZE is one
+# byte), so each is capped too; CPython's pickler batches items 1,000 at a time.
+_PICKLE_MAX_MEMO = 1_000_000
+_PICKLE_MAX_STACK = 1_000_000
 _PICKLE_TOO_LARGE = "pickle exceeds walk limit"
 _PICKLE_MARK = object()
 # Opcodes whose argument is the str an Unpickler pushes. BINSTRING and its kin are str too
@@ -1231,7 +1235,8 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
     Strings and globals are tracked through the memo, because STACK_GLOBAL can take its module
     and name from BINGET. Pickles written back to back (the legacy torch.save layout) are
     walked in turn. A malformed stream ends with no finding, as a loader would refuse it; a
-    stream longer than the walk limit raises ``_PickleLimit``.
+    stream longer than the walk limit, or one whose memo or stack outgrows its cap, raises
+    ``_PickleLimit``.
     """
     stream = io.BytesIO(data)
     steps = 0
@@ -1244,6 +1249,8 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
                 if steps > _PICKLE_MAX_OPS:
                     raise _PickleLimit
                 hit = _pickle_step(opcode, arg, stack, memo)
+                if len(memo) > _PICKLE_MAX_MEMO or len(stack) > _PICKLE_MAX_STACK:
+                    raise _PickleLimit
                 if hit:
                     return int(position) if position is not None else None
         except (ValueError, IndexError, EOFError, UnicodeError, OverflowError):

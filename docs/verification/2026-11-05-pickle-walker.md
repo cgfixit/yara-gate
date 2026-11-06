@@ -49,3 +49,16 @@ returned clean after 100,000 steps. Measured: about 0.6 µs an opcode, 12 s at t
 
 No real third-party checkpoint corpus was scanned. Modules outside the list (`runpy`,
 `importlib`, `pty`, ...) are still not reported; that is a separate predicate change.
+
+## Codex review fix (2026-11-06)
+
+A Codex code review of `20c56e8` found that the memo grows with each one-byte `MEMOIZE`, well
+before the opcode cap. Reproduced: a 4 MB stream of `MEMOIZE` after one `None` reached a
+350 MB peak RSS and returned clean; 4 MB of `None` pushes grew the stack the same way. The
+Unpickler numbers a memo entry by the memo's size, so entries cannot be dropped without
+misnumbering later strings; instead the memo and the stack are each capped at 1,000,000
+entries, and a stream past either cap is incomplete. The same inputs now stop at the cap in
+under 0.7 s (106 MB peak at the memo cap). CPython's pickler batches list and dict items 1,000
+at a time, and the 65 joblib test pickles give results identical to `main`.
+`tests/test_heuristics.py` gains a test for each cap; the full pytest suite in one run passes
+(407 passed, 5 skipped).

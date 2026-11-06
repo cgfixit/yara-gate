@@ -517,3 +517,21 @@ def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> Non
     assert error == "pickle exceeds walk limit"
     _, reason = heuristic_findings(Path("big.pkl"), data)
     assert reason == "pickle exceeds walk limit"
+
+
+@pytest.mark.parametrize(
+    ("cap", "data"),
+    [
+        ("_PICKLE_MAX_MEMO", b"\x80\x04N" + b"\x94" * 100 + b"."),
+        ("_PICKLE_MAX_STACK", b"\x80\x04" + b"N" * 100 + b"."),
+    ],
+)
+def test_pickle_memo_and_stack_caps_are_incomplete(
+    monkeypatch: pytest.MonkeyPatch, cap: str, data: bytes
+) -> None:
+    from yara_gate import heuristics
+
+    monkeypatch.setattr(heuristics, cap, 50)
+    findings, error = heuristics.pickle_reduce_findings(Path("m.pkl"), data)
+    assert findings == []
+    assert error == "pickle exceeds walk limit"
