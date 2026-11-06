@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works offline with the 84 shipped local rules before this optional step. The curated packs (YARA Forge core, signature-base, and Elastic protections-artifacts) add known-malware signatures. Run this once, right after `uv sync`:
+Scanning works offline with the 85 shipped local rules before this optional step. The curated packs (YARA Forge core, signature-base, and Elastic protections-artifacts) add known-malware signatures. Run this once, right after `uv sync`:
 
 ```bash
 uv run yara-gate setup
@@ -185,7 +185,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 The root `demo.html` is a separate, limited JavaScript illustration.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 17 inert examples, each attack beside a benign
+replays saved results for 35 inert examples, each of 17 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -202,10 +202,13 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
-   The **Attack and its benign twin** group pairs four attacks (a base64 field
+   The **Attack and its benign twin** group pairs ten attacks (a base64 field
    in a tool result, a glyph-id PDF, a model checkpoint that calls `os.system`,
-   a dev container that downloads on the host) with a twin of the same shape:
-   scan both to see the attack held and the twin clean.
+   a dev container that downloads on the host, two zips glued into one file, a
+   terminal escape glued to an override, an override split by an HTML bold tag,
+   an Excel cell split across runs with a zero for an o, an SVG animation
+   handler, and text hidden in variation selectors) with a twin of the same
+   shape: scan both to see the attack held and the twin clean.
 3. Read the decision and original finding severities. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and fingerprints; a
    completed bundled-only scan does not mean vendor packs were installed. **Demo

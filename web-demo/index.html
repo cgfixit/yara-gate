@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Recorded yara-gate results: attacks hidden in base64, PDF glyphs, model files, and dev containers are held, and their benign near-twins pass clean. Nothing is scanned or uploaded on this site.">
+  <meta name="description" content="Recorded yara-gate results: attacks hidden in glued zips, terminal escapes, variation selectors, spreadsheet cells, PDF glyphs, model files, and dev containers are held, and each benign near-twin passes clean. Nothing is scanned or uploaded on this site.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="yara-gate · Recorded demo">
   <meta property="og:description" content="Recorded results from an offline gate that holds risky content before an AI agent reads it, paired with benign near-twins that pass. Nothing is scanned or uploaded on this site.">
@@ -20,7 +20,7 @@
     <div class="intro">
       <p class="eyebrow">A gate before the context window</p>
       <h1>Hold what would steer your agent. Pass what wouldn't.</h1>
-      <p class="lead">Real, recorded scanner results for attacks hidden where a quick pattern match cannot see them: a base64 field in a tool result, a PDF that stores its text as glyph numbers, a model checkpoint that runs a command, a dev container that downloads on the host. Each one sits next to a <strong>benign near-twin</strong> with the same shape, so you can see what is held and what still passes.</p>
+      <p class="lead">Real, recorded scanner results for attacks hidden where a quick pattern match cannot see them: a zip tucked in front of another zip, a terminal escape glued to a word, text spelled in invisible variation selectors, a spreadsheet cell split and respelled, a PDF that stores its text as glyph numbers, a model checkpoint that runs a command. <strong>Every attack sits beside a benign near-twin</strong> with the same channel and shape, so you can see what is held and what still passes.</p>
       <p class="notice"><strong>This website does not scan anything.</strong> It replays saved results. There is no paste box, file upload, or connection to a local scanner. Use the local app for your own content.</p>
     </div>
     <noscript><p class="notice">JavaScript is needed to view the recordings. The local scanner can be used from the command line without this website.</p></noscript>
@@ -32,8 +32,9 @@
     </section>
     <div id="workbench" hidden>
       <section class="panel" aria-labelledby="choose-title">
-        <div class="section-head"><h2 id="choose-title"><span class="step">01</span> Pick an example</h2><span class="help">Verdict chips: message · document · manual</span></div>
-        <div id="gallery" class="gallery"></div>
+        <div class="section-head"><h2 id="choose-title"><span class="step">01</span> Pick an attack or its twin</h2><span class="help">Verdict chips: message · document · manual</span></div>
+        <div id="channels" class="filters" role="group" aria-label="Show one channel"></div>
+        <div id="gallery" class="pairs"></div>
       </section>
       <div class="workspace">
         <section class="panel" aria-labelledby="policy-title">
@@ -71,12 +72,13 @@
     <section class="panel guide" aria-labelledby="precision-title">
       <h2 id="precision-title">Few false positives, measured</h2>
       <p>Every attack above has a benign twin that the same build recorded as clean, with no findings, under all three policies. Beyond these examples, the bundled rules are measured against benign files on every change:</p>
-      <div class="guide-grid">
-        <div><h3>324 generated benign files</h3><p>80 of the 84 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.31%). CI fails the build if any rule crosses its limit.</p></div>
+      <div class="guide-grid two">
+        <div><h3>324 generated benign files</h3><p>81 of the 85 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.31%). CI fails the build if any rule crosses its limit.</p></div>
+        <div><h3>Files already on a Linux host</h3><p>6,099 HTML, SVG, and XLSX files kept their verdicts when the HTML block, spreadsheet cell, and SVG handler checks arrived; the new SVG rule matched none. Across 3,142 system files, only archives in newly handled formats changed verdict: some are now held as incomplete or advisory, and one jar became clean.</p></div>
         <div><h3>Real third-party files</h3><p>132 PDFs from the pikepdf and pypdf test suites gained no findings from the PDF text view. 65 joblib test pickles gave the same results as before the deeper pickle walk.</p></div>
         <div><h3>Published configuration</h3><p>Across 112 <code>devcontainer.json</code> files from published npm and PyPI packages, the dev container rule reported one: an inline <code>sh -c</code> host script, the shape it exists to flag. The other 61 lifecycle commands did not match it.</p></div>
       </div>
-      <p class="help">These are generated, test-suite, and published-package files, not your upload traffic, so they are not a production false-positive rate. The rules also carry recorded near-miss pairs that CI requires to stay clean. See <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/rules.md#measured-precision" rel="noopener noreferrer">measured precision</a> and the <a href="https://github.com/cgfixit/yara-gate/tree/main/docs/verification" rel="noopener noreferrer">verification records</a>.</p>
+      <p class="help">These are generated, test-suite, published-package, and host files, not your upload traffic, so they are not a production false-positive rate. The rules also carry recorded near-miss pairs that CI requires to stay clean. See <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/rules.md#measured-precision" rel="noopener noreferrer">measured precision</a> and the <a href="https://github.com/cgfixit/yara-gate/tree/main/docs/verification" rel="noopener noreferrer">verification records</a>.</p>
     </section>
     <section class="panel guide" aria-labelledby="local-title">
       <h2 id="local-title">Run the real scanner on your own machine</h2>
