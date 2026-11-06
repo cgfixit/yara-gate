@@ -6,6 +6,7 @@ import importlib.resources
 import json
 import secrets
 import threading
+from collections.abc import Callable
 from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,8 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
+from yara_gate import samples
 from yara_gate.models import ScanPolicy, ScanResult, exit_code
-from yara_gate.samples import base64_text, clean_text, mini_pe
 from yara_gate.scanner import scan_bytes
 
 _MAX_TEXT = 64 * 1024
@@ -27,6 +28,31 @@ class DemoSample(StrEnum):
     plain = "plain"
     base64 = "base64"
     pe_pdf = "pe_pdf"
+    b64_tool = "b64_tool"
+    b64_tool_benign = "b64_tool_benign"
+    pdf_glyph = "pdf_glyph"
+    pdf_glyph_benign = "pdf_glyph_benign"
+    pickle_call = "pickle_call"
+    pickle_benign = "pickle_benign"
+    devcontainer = "devcontainer"
+    devcontainer_benign = "devcontainer_benign"
+
+
+# Each sample is scanned under the name its type implies; the attacks and their benign twins
+# share a name, so only the content differs.
+_SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
+    DemoSample.plain: ("note.txt", samples.clean_text),
+    DemoSample.base64: ("blob.txt", samples.base64_text),
+    DemoSample.pe_pdf: ("report.pdf", samples.mini_pe),
+    DemoSample.b64_tool: ("tool-result.json", samples.encoded_tool_result),
+    DemoSample.b64_tool_benign: ("tool-result.json", samples.encoded_tool_result_benign),
+    DemoSample.pdf_glyph: ("checklist.pdf", samples.glyph_pdf_override),
+    DemoSample.pdf_glyph_benign: ("checklist.pdf", samples.glyph_pdf_benign),
+    DemoSample.pickle_call: ("model.pt", samples.pickle_checkpoint_call),
+    DemoSample.pickle_benign: ("model.pt", samples.pickle_checkpoint_benign),
+    DemoSample.devcontainer: ("devcontainer.json", samples.devcontainer_host_fetch),
+    DemoSample.devcontainer_benign: ("devcontainer.json", samples.devcontainer_benign),
+}
 
 
 class DemoRequest(BaseModel):
@@ -120,11 +146,8 @@ def view_result(result: ScanResult) -> DemoResponse:
 
 
 def _sample_file(sample: DemoSample) -> tuple[str, bytes]:
-    if sample is DemoSample.plain:
-        return "note.txt", clean_text()
-    if sample is DemoSample.base64:
-        return "blob.txt", base64_text()
-    return "report.pdf", mini_pe()
+    name, build = _SAMPLES[sample]
+    return name, build()
 
 
 def scan_request(request: DemoRequest, *, rules_dir: Path | None) -> DemoResponse:

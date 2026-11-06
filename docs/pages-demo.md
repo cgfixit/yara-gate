@@ -1,10 +1,20 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for nine
-inert examples under `agent-ingest`, `agent-document`, and `default`. Selecting an
-example does not start a scan. The UI labels every result as recorded and shows
-the scanner revision, capture time, rule coverage, and engine version.
+YARA-X backend. This site therefore replays **real recorded results** for 17
+inert examples under `agent-ingest`, `agent-document`, and `default`: eleven
+attacks, five benign near-twins, and one failed scan. Selecting an example does
+not start a scan. The UI labels every result as recorded and shows the scanner
+revision, capture time, rule coverage, and engine version.
+
+The page is built to show precision as well as detection. A scoreboard counts,
+from the recordings themselves, the attacks `agent-ingest` held, the twins that
+were clean with no findings under every policy, and the failure that stayed
+incomplete. Selecting an attack that has a twin sets the two side by side under the
+chosen policy. Each finding says which check or rule caught it, in which archive
+member, and through which derived view (for example, one decoded base64 run, or a
+PDF paragraph rejoined across text blocks). A static section summarizes the
+measured false-positive evidence and links to its records.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
 deployment ran on November 1, 2026 at 20:29 UTC
@@ -29,7 +39,7 @@ it is not the Pages entrypoint.
 | --- | --- |
 | `index.html` | `web-demo/index.html`: accessible static shell and local-use guidance |
 | `style.css` | Local stylesheet, with no external fonts or assets |
-| `app.mjs` | Local rendering and scenario/policy selection |
+| `app.mjs` | Local rendering, the computed scoreboard, scenario/policy selection, and the twin comparison |
 | `recordings.mjs` | Module generated from the curated `web-demo/recordings.json` |
 
 `scripts/record_pages_demo.py` produces `recordings.json` from real scans, and
@@ -41,7 +51,11 @@ linked source files, extra recording fields, content-entry elements, unexpected
 assets, and changes to the browser policy. It also rejects a dataset that mixes
 rulesets or runtimes across completed recordings, records different inputs for
 one scenario, carries severity flags that disagree with its findings, or has
-non-integer counters and offsets. These checks catch accidental
+non-integer counters and offsets. It also holds each scenario to its `kind`: a
+`control` (benign twin) must be clean with no findings under every policy, a
+`detection` must be held by `agent-ingest`, and the `failure` must be incomplete
+under every policy. A `pair` must join one detection and one control that name each
+other, and `channel` must be one of a fixed set of labels. These checks catch accidental
 regressions; review the actual public strings before publishing. They are not a
 secret detector or a sandbox for malicious source changes.
 
@@ -136,20 +150,25 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The committed baseline holds nine inert examples, recorded with the 82 bundled
-rules only and no vendor packs (Python 3.12.3, YARA-X 1.22.1, captured 2026-11-02T19:49:33+00:00 on the
-branch that added the last three; each deploy refreshes the revision and time). The
-examples are an ordinary note, a quoted override, the same override sent as an SMS
-with a Cyrillic look-alike letter, a secret-transfer request to an invalid example
-address, an HTML-encoded override, an override hidden in a web page with
-`display:none`, a Word file whose override sentence spans three formatting runs, a
-synthetic executable header named as a PDF, and a deliberately broken rule
-compilation in a disposable rules tree. The look-alike, hidden-page, and Word cases
-show the two intake channels the README leads with: an open SMS number, and a synced
-corpus where `agent-document` reads the split sentence as a note while
-`agent-ingest` holds it. No sample was executed and no referenced URL was fetched.
-Earlier six-example datasets (`68e27e7`, `38e100b`, `8a83ffe`) recorded the same
-outcomes for the six inputs they shared.
+The committed baseline (schema 2) holds 17 inert examples, recorded with the 84
+bundled rules only and no vendor packs (Python 3.12.3, YARA-X 1.23.0, captured on
+the branch that added the twins; each deploy refreshes the revision and time).
+
+| Kind | Examples |
+| --- | --- |
+| Detection | A quoted override; the same override as an SMS with a Cyrillic look-alike letter; a secret-transfer request to an invalid example address; an HTML-encoded override; an override hidden in a web page with `display:none`; a Word file whose override sentence spans three formatting runs; a JSON tool result whose base64 field decodes to a reworded override; a browser-style PDF that stores its text as glyph ids, with the key word in bold; a torch-style checkpoint whose pickle builds a dict, a set, and a big integer before calling `os.system`; a `devcontainer.json` whose `initializeCommand` downloads and runs a script on the host; a synthetic executable header named as a PDF |
+| Control (benign twin) | An ordinary note (twin of the quoted override); the same tool result with a session token, a PNG data URI, and base64 of an ordinary sentence; the same PDF fonts and layout with an ordinary sentence; the same checkpoint state rebuilt through `collections.OrderedDict`; a dev container that only creates a host folder and installs inside the container |
+| Failure | An ordinary note scanned with a deliberately broken rule in a disposable tree |
+
+The look-alike, hidden-page, Word, and PDF cases show the two intake channels the
+README leads with: an open SMS number, and a synced corpus where `agent-document`
+reads a note-only document while `agent-ingest` holds it. The four newest attacks
+(base64 tool result, glyph-id PDF, pickle checkpoint, dev container) all scanned
+clean on `main` at `7f9934c`, before #158–#162; their twins are clean on both
+revisions. No sample was executed or unpickled, and no referenced URL was fetched.
+The fixtures live in `src/yara_gate/samples.py`, so the local workbench scans the same
+bytes. The nine examples carried over from the schema 1 dataset recorded the same
+outcomes, apart from provenance.
 
 When a change legitimately alters an outcome, re-record in that pull request and
 commit the result. Use a checkout with no uncommitted changes under `src/`,
@@ -161,7 +180,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the nine fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 17 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
@@ -173,6 +192,7 @@ and browser acceptance; the merge then deploys it. To check outcomes without
 writing, pass `--baseline web-demo/recordings.json` and an `--output` outside the
 tree, as the workflow does. A recording never authorizes access to another input.
 
-See the [refresh verification record](verification/2026-11-02-pages-demo-refresh.md)
+See the [showcase verification record](verification/2026-11-06-demo-showcase.md),
+the [refresh verification record](verification/2026-11-02-pages-demo-refresh.md)
 and the [first verification record](verification/2026-11-01-pages-demo.md) for the
 observed outcomes, exact artifact fingerprints, screenshots, and limits.

@@ -269,3 +269,27 @@ def test_demo_scan_stays_in_memory(rules_copy: Path, monkeypatch: pytest.MonkeyP
     )
     assert held.verdict == "block"
     assert held.findings[0].severity == "note"
+
+
+def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> None:
+    server, thread = serve_in_thread(rules_copy)
+    port = int(server.server_address[1])
+    expected = {
+        "b64_tool": ("b64_tool_benign", "agent_override_imperative", "base64-decoded"),
+        "pdf_glyph": ("pdf_glyph_benign", "agent_override_imperative", "pdf-paragraph"),
+        "pickle_call": ("pickle_benign", "heuristic_pickle_reduce", "raw"),
+        "devcontainer": ("devcontainer_benign", "dev_devcontainer_lifecycle", "raw"),
+    }
+    try:
+        for attack, (benign, rule_id, view) in expected.items():
+            status, held = _post(port, {"sample": attack, "policy": "agent-ingest"})
+            assert status == 200
+            assert held["verdict"] == "block"
+            assert [(f["rule_id"], f["view"]) for f in held["findings"]] == [(rule_id, view)]
+            for policy in ("default", "agent-ingest", "agent-document"):
+                status, twin = _post(port, {"sample": benign, "policy": policy})
+                assert status == 200
+                assert (twin["verdict"], twin["findings"]) == ("clean", [])
+    finally:
+        server.shutdown()
+        thread.join()

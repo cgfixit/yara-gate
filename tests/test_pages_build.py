@@ -57,3 +57,39 @@ def test_pages_rejects_paste_box_and_linked_source(builder, tmp_path: Path) -> N
     page.symlink_to(ROOT / "web-demo/index.html")
     with pytest.raises(ValueError, match="regular single-link file"):
         builder.build(tmp_path / "site")
+
+
+def _edit_recordings(builder, change) -> None:
+    source = builder.SOURCE / "recordings.json"
+    data = json.loads(source.read_text())
+    change({case["id"]: case for case in data["cases"]})
+    source.write_text(json.dumps(data))
+
+
+def test_pages_rejects_a_control_with_findings(builder, tmp_path: Path) -> None:
+    def add_finding(cases) -> None:
+        cases["b64_tool_benign"]["results"]["default"]["findings"] = cases["b64_tool"]["results"][
+            "default"
+        ]["findings"]
+
+    _edit_recordings(builder, add_finding)
+    with pytest.raises(ValueError, match="benign control must be clean"):
+        builder.build(tmp_path / "site")
+
+
+def test_pages_rejects_a_detection_ingest_lets_through(builder, tmp_path: Path) -> None:
+    def release(cases) -> None:
+        cases["devcontainer"]["results"]["agent-ingest"]["verdict"] = "clean"
+
+    _edit_recordings(builder, release)
+    with pytest.raises(ValueError, match="held by agent-ingest"):
+        builder.build(tmp_path / "site")
+
+
+@pytest.mark.parametrize(
+    ("case_id", "pair"), [("pdf_glyph", "pickle_benign"), ("pdf_glyph", "note"), ("plain", None)]
+)
+def test_pages_rejects_a_broken_pair(builder, tmp_path: Path, case_id: str, pair) -> None:
+    _edit_recordings(builder, lambda cases: cases[case_id].update(pair=pair))
+    with pytest.raises(ValueError, match="pair must join"):
+        builder.build(tmp_path / "site")

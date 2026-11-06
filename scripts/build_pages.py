@@ -32,6 +32,21 @@ RESULT_KEYS = {
     "exit_code",
 }
 FINDING_KEYS = {"rule_id", "offset", "length", "severity", "source", "view", "member_path"}
+CASE_KEYS = {"id", "kind", "channel", "pair", "title", "description", "results"}
+SCENARIOS = 17
+KINDS = {"detection", "control", "failure"}
+PAIRED = {"detection", "control"}
+CHANNELS = {
+    "Message",
+    "SMS",
+    "Tool result",
+    "Web page",
+    "Document",
+    "Model file",
+    "Repository",
+    "Attachment",
+    "Rules",
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -92,21 +107,37 @@ def is_count(value: object) -> bool:
 
 def validate_recordings(data: dict) -> None:
     require(set(data) == {"schema", "source_revision", "captured_at", "cases"}, "Recording fields")
-    require(data["schema"] == 1, "Recording schema")
+    require(data["schema"] == 2, "Recording schema")
     require(re.fullmatch(r"[0-9a-f]{40}", data["source_revision"]) is not None, "Source revision")
     require(
         re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00", data["captured_at"]) is not None,
         "Capture time must be UTC",
     )
-    require(len(data["cases"]) == 9, "Expected nine reviewed scenarios")
+    require(len(data["cases"]) == SCENARIOS, f"Expected {SCENARIOS} reviewed scenarios")
     ids = set()
+    pairs = {}
     # Every completed recording must come from one ruleset, so the page never mixes revisions.
     rulesets = set()
     for case in data["cases"]:
-        require(set(case) == {"id", "title", "description", "results"}, "Scenario fields")
+        require(set(case) == CASE_KEYS, "Scenario fields")
         require(case["id"] not in ids, "Duplicate scenario")
         ids.add(case["id"])
+        require(case["kind"] in KINDS, "Scenario kind")
+        require(case["channel"] in CHANNELS, "Scenario channel")
+        pairs[case["id"]] = (case["kind"], case["pair"])
         require(set(case["results"]) == POLICIES, "Policy recordings missing")
+        verdicts = {policy: result["verdict"] for policy, result in case["results"].items()}
+        # What each kind claims on the page must be what was recorded.
+        if case["kind"] == "control":
+            require(
+                set(verdicts.values()) == {"clean"}
+                and not any(result["findings"] for result in case["results"].values()),
+                "A benign control must be clean with no findings under every policy",
+            )
+        elif case["kind"] == "detection":
+            require(verdicts["agent-ingest"] == "block", "A detection must be held by agent-ingest")
+        else:
+            require(set(verdicts.values()) == {"incomplete"}, "A failure must stay incomplete")
         require(
             len({result["sha256"] for result in case["results"].values()}) == 1,
             "One scenario must record the same input under every policy",
@@ -193,6 +224,14 @@ def validate_recordings(data: dict) -> None:
                     "Document recording must be exactly notes-only",
                 )
     require(len(rulesets) == 1, "Completed recordings must share one ruleset and runtime")
+    for case_id, (kind, pair) in pairs.items():
+        if pair is None:
+            continue
+        # A pair joins one detection and its benign twin, and each names the other.
+        require(
+            pair in pairs and pairs[pair][1] == case_id and {kind, pairs[pair][0]} == PAIRED,
+            "A pair must join a detection and a control that name each other",
+        )
 
 
 def build(output: Path) -> None:
@@ -232,7 +271,11 @@ def build(output: Path) -> None:
     (output / "recordings.mjs").write_text(
         "export default " + json.dumps(data, ensure_ascii=True) + ";\n", encoding="utf-8"
     )
-    print(f"Built four public files in {output}; nine scenarios / 27 policy recordings validated")
+    count = len(data["cases"])
+    print(
+        f"Built four public files in {output}; {count} scenarios / "
+        f"{count * len(POLICIES)} policy recordings validated"
+    )
 
 
 if __name__ == "__main__":

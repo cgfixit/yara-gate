@@ -118,11 +118,23 @@
         <label for="sample">Try an inert example</label>
         <div class="sample-row">
           <select id="sample">
-            <option value="plain">Plain note · clean</option>
-            <option value="note">Override phrase · note</option>
-            <option value="advisory">Secret request · advisory</option>
-            <option value="base64">Base64 text · advisory</option>
-            <option value="pe_pdf">PE saved as PDF · block</option>
+            <optgroup label="Messages">
+              <option value="plain">Plain note · clean</option>
+              <option value="note">Override phrase · note</option>
+              <option value="advisory">Secret request · advisory</option>
+              <option value="base64">Base64 blob · advisory</option>
+              <option value="pe_pdf">PE saved as PDF · block</option>
+            </optgroup>
+            <optgroup label="Attack and its benign twin">
+              <option value="b64_tool">Tool result, base64 instruction · note</option>
+              <option value="b64_tool_benign">Tool result, ordinary base64 · clean</option>
+              <option value="pdf_glyph">PDF glyph-id text, bold word · note</option>
+              <option value="pdf_glyph_benign">Same PDF, ordinary sentence · clean</option>
+              <option value="pickle_call">Model checkpoint calling os.system · block</option>
+              <option value="pickle_benign">Ordinary model checkpoint · clean</option>
+              <option value="devcontainer">Dev container downloading on the host · advisory</option>
+              <option value="devcontainer_benign">Ordinary dev container · clean</option>
+            </optgroup>
           </select>
           <button type="button" id="scan-sample" disabled>Scan sample</button>
         </div>
