@@ -17,6 +17,9 @@ from yara_gate.content import (
     PdfStream,
     _derived,
     content_units,
+    folded_text,
+    html_text_blocks,
+    ooxml_cell_texts,
     ooxml_text_views,
     pdf_streams,
     pdf_views,
@@ -390,6 +393,17 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
+            # A worksheet cell split across rich-text runs, and an HTML paragraph split by bold,
+            # a link, or a comment, are each one piece of text to the reader.
+            pieces = _with_folded_pieces(
+                "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget)
+            )
+            if decoded is not None:
+                pieces += _with_folded_pieces(
+                    "html-text", html_text_blocks(unit.name, decoded[0], budget)
+                )
+            if any(texts for _, texts in pieces):
+                findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
             conjunction = control_conjunction(findings[unit_start:])
             if conjunction is not None:
                 conjunction.member_path = list(unit.member_path)
@@ -424,27 +438,53 @@ def _pdf_text_findings(
     as the note ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
+    extra: list[Finding] = []
+    if text.unmapped:
+        extra.append(
+            Finding(
+                rule_id="heuristic_pdf_text_unmapped",
+                severity=Severity.note,
+                source=FindingSource.heuristic,
+                view="pdf-text",
+            )
+        )
+    pieces = [("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)]
+    return _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
+
+
+def _piece_findings(
+    rules: object,
+    unit: ContentUnit,
+    pieces: Sequence[tuple[str, Sequence[str]]],
+    budget: Budget,
+    yara: Callable[..., list[Finding]],
+    ext: str,
+    name: str,
+    extra: Sequence[Finding] = (),
+) -> list[Finding]:
+    """One YARA pass per piece of text, keeping one finding per rule and namespace per view.
+
+    A piece is text a reader sees as one unit (a PDF text block, a worksheet cell, an HTML
+    paragraph), scanned on its own so two pieces never form one phrase. The base64 rules are
+    left to the raw bytes, where image samples and media are told apart. ``extra`` findings
+    (already labeled with their view) are kept in their view's order.
+    """
     # Keyed by namespace and rule: two rule files may share an id with different severities.
-    views: dict[str, dict[tuple[str, str], Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
+    views: dict[str, dict[tuple[str, str], Finding]] = {view: {} for view, _ in pieces}
     _SCANNERS.reuse = True
     try:
-        for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
-            for piece in pieces:
+        for view, texts in pieces:
+            for piece in texts:
                 budget.check()
                 for finding in yara(rules, _derived(piece, budget), ext, view, name=name):
-                    # Base64 runs are judged in pdf-flate, where image samples are told apart.
                     if finding.rule_id in _RAW_ONLY_RULES:
                         continue
                     views[view].setdefault((finding.rule_id, finding.namespace or ""), finding)
     finally:
         _SCANNERS.reuse = False
         _SCANNERS.pair = None
-    if text.unmapped:
-        views["pdf-text"][("heuristic_pdf_text_unmapped", "")] = Finding(
-            rule_id="heuristic_pdf_text_unmapped",
-            severity=Severity.note,
-            source=FindingSource.heuristic,
-        )
+    for finding in extra:
+        views.setdefault(finding.view, {})[(finding.rule_id, finding.namespace or "")] = finding
     ordered: list[Finding] = []
     for view, found in views.items():
         for key in sorted(found):
@@ -453,6 +493,12 @@ def _pdf_text_findings(
             finding.view = view
             ordered.append(finding)
     return ordered
+
+
+def _with_folded_pieces(view: str, texts: Sequence[str]) -> list[tuple[str, Sequence[str]]]:
+    """``view``'s pieces, then each one whose folded spelling differs, as ``<view>+text-folded``."""
+    folded = [result for piece in texts if (result := folded_text(piece)) != piece]
+    return [(view, texts), (view + FOLDED_SUFFIX, folded)] if folded else [(view, texts)]
 
 
 _SCANNERS = threading.local()

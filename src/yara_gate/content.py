@@ -987,6 +987,143 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         yield from _with_folded("ooxml-text", "".join(parts), budget)
 
 
+# A worksheet part, where Excel and streaming writers keep inline strings (t="inlineStr").
+_SHEET_PART = re.compile(r"(?i)^xl/worksheets/[^/]+\.xml$")
+# An inline string's open or close tag, a phonetic run's, or a text run with its text, in order.
+_CELL_TOKEN = re.compile(
+    rb"<(/?)(?:[A-Za-z][\w.-]{0,32}:)?(is|rPh)\b[^<>]{0,4096}>"
+    rb"|<(?:[A-Za-z][\w.-]{0,32}:)?t(?:\s[^<>]{0,4096})?>([^<]*)</(?:[A-Za-z][\w.-]{0,32}:)?t>"
+)
+# About 70 microseconds a piece, so the cap stays well inside the 30 s scan deadline.
+MAX_TEXT_PIECES = 100_000
+
+
+def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
+    """The text of each worksheet inline-string cell that is split across two or more runs.
+
+    A cell whose text sits in one run is contiguous in the part's raw bytes already. Each cell is
+    its own piece, so text from two cells is never joined into one phrase. Phonetic runs (rPh,
+    the furigana a Japanese cell carries) are not part of the shown text. One linear pass over
+    the tags; no XML parser runs and no entity is expanded beyond the predefined and numeric
+    ones.
+    """
+    if not _SHEET_PART.match(name) or b"inlineStr" not in data:
+        return []
+    cells: list[str] = []
+    runs: list[bytes] = []
+    inside = phonetic = False
+    for count, match in enumerate(_CELL_TOKEN.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        closing, tag, text = match.group(1), match.group(2), match.group(3)
+        if tag == b"rPh":
+            phonetic = not closing and not match.group().endswith(b"/>")
+        elif tag == b"is":
+            if closing and inside and len(runs) >= 2:
+                if len(cells) >= MAX_TEXT_PIECES:
+                    raise ContentLimit("text pieces exceed 100000")
+                cells.append("".join(html.unescape(run.decode("utf-8", "replace")) for run in runs))
+            inside = not closing and not match.group().endswith(b"/>")
+            runs = []
+        elif inside and not phonetic and text is not None:
+            runs.append(text)
+    return cells
+
+
+_HTML_HEAD = re.compile(
+    r"\A\ufeff?\s*(?:<!--.{0,1024}?-->\s*)*<(?:!doctype\s+html|html\b)", re.I | re.S
+)
+_HTML_SUFFIXES = frozenset({"html", "htm", "xhtml"})
+# A comment opener, a tag (bounded, and never across another <), a declaration or processing
+# instruction, a text run, a run of < that cannot open a tag with the text after it, or a lone <.
+_HTML_TOKEN = re.compile(
+    r"<!--|<(/?)([A-Za-z][A-Za-z0-9:-]{0,64})\b[^<>]{0,4096}>|<[!?][^<>]{0,4096}>"
+    r"|[^<]+|(?:<(?![A-Za-z/!?]))+[^<]*|<"
+)
+_HTML_RAW_TEXT = {
+    "script": re.compile(r"</script\s*>", re.I),
+    "style": re.compile(r"</style\s*>", re.I),
+}
+_HTML_BLOCKS = frozenset(
+    {
+        "address", "article", "aside", "blockquote", "body", "caption", "center", "dd",
+        "details", "dialog", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer",
+        "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html",
+        "legend", "li", "main", "menu", "nav", "ol", "option", "p", "pre", "section",
+        "summary", "table", "tbody", "td", "textarea", "tfoot", "th", "thead", "title", "tr",
+        "ul",
+    }
+)  # fmt: skip
+_HTML_SPACE = re.compile(r"[ \t\r\n\f]+")
+
+
+def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
+    """The text of each HTML block that inline markup splits, as a browser joins it.
+
+    A paragraph, list item, table cell, or other block is one piece; bold, links, spans,
+    comments, and other inline markup inside it are dropped and their text joined, ``<br>``
+    is a line break, and whitespace collapses to one space outside ``<pre>``. Script and style
+    bodies are not text. A block whose text is one run is left to the raw and HTML-unescaped
+    views. Two blocks are never joined. One linear pass with bounded tags; this is lexical text
+    extraction, not computed visibility, sanitization, or script execution.
+    """
+    suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if suffix not in _HTML_SUFFIXES and _HTML_HEAD.match(text[:8192]) is None:
+        return []
+    blocks: list[str] = []
+    parts: list[str] = []
+    segments = 0
+    pre = 0
+
+    def flush() -> None:
+        nonlocal segments
+        if segments >= 2:
+            if len(blocks) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            blocks.append("".join(parts).strip(" "))
+        parts.clear()
+        segments = 0
+
+    position = 0
+    count = 0
+    while position < len(text):
+        count += 1
+        if count % 4096 == 0:
+            budget.check()
+        match = _HTML_TOKEN.match(text, position)
+        if match is None:  # pragma: no cover - the last alternative matches any character
+            break
+        lexeme = match.group()
+        position = match.end()
+        if lexeme == "<!--":
+            # A comment hides its text and splits the run it sits in; unclosed, it runs to the end.
+            close = text.find("-->", position)
+            position = len(text) if close < 0 else close + 3
+            continue
+        if lexeme.startswith(("<!", "<?")) and lexeme.endswith(">"):
+            continue
+        tag = (match.group(2) or "").lower()
+        if tag:
+            if tag in _HTML_RAW_TEXT and not match.group(1) and not lexeme.endswith("/>"):
+                close_match = _HTML_RAW_TEXT[tag].search(text, position)
+                position = len(text) if close_match is None else close_match.end()
+            elif tag == "br":
+                parts.append("\n")
+            elif tag in _HTML_BLOCKS:
+                flush()
+                if tag == "pre":
+                    pre = max(0, pre + (-1 if match.group(1) else 1))
+            continue
+        piece = html.unescape(lexeme)
+        if not pre:
+            piece = _HTML_SPACE.sub(" ", piece)
+        if piece.strip():
+            segments += 1
+        parts.append(piece)
+    flush()
+    return blocks
+
+
 @dataclass
 class PdfStream:
     """One stream of a PDF, decoded once and shared by the ``pdf-flate`` and ``pdf-text`` views.
