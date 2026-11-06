@@ -244,7 +244,9 @@ findings. The reader took 2.82 s old and 2.67 s new over the set.
 The alternating-depth input emits a piece per quote block, as list items already do, and
 stops at the same cap.
 
-Codex's security review then found that `markdown_texts` built `text.splitlines()` (every line
+## Reader memory, after #174 merged
+
+#174 merged at `f2777d3`. Codex's security review then found that `markdown_texts` built `text.splitlines()` (every line
 as its own string) before its first deadline check, and kept every line of a long paragraph in
 a list. Reproduced on `f2777d3` with `# T` and then `ab\n` repeated, measuring peak RSS of the
 reader alone:
@@ -259,6 +261,23 @@ and a long paragraph's lines are joined into a chunk every 1,024 lines. 20,000 r
 mixing every separator `splitlines` honors give the same pieces as `f2777d3`, as do the 15,544
 host files above. The time is unchanged and is bounded by the scan deadline, which the reader
 checks every 4,096 lines.
+
+`comment_texts` (Phase 1a) had the same shape: it already reads one line at a time, but kept
+every line of a block as its own string. With `# ab\n` repeated:
+
+| Input | `39f5aa6` | Fix | Time, `39f5aa6` / fix |
+| --- | --- | --- | --- |
+| 16 MiB | 228 MiB (39 MiB before the call) | 54 MiB (34 MiB before) | 2.9 s / 2.8 s |
+| 64 MiB | 840 MiB (82 MiB before) | 160 MiB (82 MiB before) | 14.0 s / 11.6 s |
+
+Its blocks are now chunked every 1,024 lines the same way. 20,000 random comment inputs of up
+to 3,000 lines give the same blocks as `39f5aa6`, as do 119,532 host source files under `/usr`, `/opt`, `/root`, and `/home`.
+
+Still open: Codex's security review of #173 found that `notebook_texts` runs `json.loads` on the
+whole notebook first; a 16 MiB one-cell notebook peaks at 167 MiB against 52 MiB before the call.
+`mcp_tool_findings` and the Keras config check already parse any `.json` input whole, so this
+matches existing exposure. A size bound either lets padding skip `notebook-text` or holds large
+real notebooks as `incomplete`, and is left to the owner.
 
 ## Not established
 

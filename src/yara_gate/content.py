@@ -1181,6 +1181,10 @@ def _next_line(text: str, end: int) -> int:
     return -1
 
 
+# A long block's lines are joined into a chunk this often, so memory follows its length.
+_LINES_PER_CHUNK = 1024
+
+
 def comment_texts(text: str, budget: Budget) -> list[str]:
     """The text of each block of two or more consecutive line comments, leaders removed.
 
@@ -1194,15 +1198,17 @@ def comment_texts(text: str, budget: Budget) -> list[str]:
     """
     blocks: list[str] = []
     lines: list[str] = []
+    chunks: list[str] = []
     family = ""
     expected = -1
 
     def flush() -> None:
-        if len(lines) >= 2:
+        if chunks or len(lines) >= 2:
             if len(blocks) >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
-            blocks.append("\n".join(lines))
+            blocks.append("\n".join(chunks + lines))
         lines.clear()
+        chunks.clear()
 
     for count, match in enumerate(_COMMENT_LINE.finditer(text)):
         if count % 4096 == 0:
@@ -1221,6 +1227,9 @@ def comment_texts(text: str, budget: Budget) -> list[str]:
             body = body[:-2].rstrip(" \t")
         if body:
             lines.append(body)
+            if len(lines) >= _LINES_PER_CHUNK:
+                chunks.append("\n".join(lines))
+                lines.clear()
         else:
             flush()
         if closed:
@@ -1255,8 +1264,6 @@ _MARKDOWN_LINE = re.compile(
     r"([^\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]*+)"
     r"(?:\r\n|[\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]|\Z)"
 )
-# A long paragraph's lines are joined into a chunk this often, so memory follows its length.
-_MARKDOWN_JOIN_EVERY = 1024
 
 
 def _markdown_inline(match: re.Match[str]) -> str:
@@ -1345,7 +1352,7 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
         shown = _MARKDOWN_INLINE.sub(_markdown_inline, body)
         changed = changed or shown != body
         parts.append(shown.strip(" \t"))
-        if len(parts) >= _MARKDOWN_JOIN_EVERY:
+        if len(parts) >= _LINES_PER_CHUNK:
             chunks.append("\n".join(parts))
             parts.clear()
         if heading is not None:
