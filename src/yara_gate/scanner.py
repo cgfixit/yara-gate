@@ -314,7 +314,7 @@ def _scan_file(
             extra.extend(yara(rules, unit.data, ext, None, samples=image, name=base))
             # Object streams are indexed on first use, for an /OpenAction reference only.
             pdf_objects = PdfObjects(unit.data, budget)
-            heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
+            heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects, budget.check)
             extra.extend(heuristic)
             decoded = _decoded_text(unit.data)
             if decoded is not None:
