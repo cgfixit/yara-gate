@@ -262,6 +262,7 @@ class ContentUnit:
 _BZIP2 = re.compile(rb"BZh[1-9](?:1AY&SY|\x17rE8P\x90)")
 # A newc or crc cpio header: the magic and thirteen 8-digit hex fields.
 _CPIO_NEWC = re.compile(rb"07070[12][0-9A-Fa-f]{104}")
+_CPIO_PADDING = re.compile(rb"\0*")
 _AR_MAGIC = b"!<arch>\n"
 
 
@@ -559,7 +560,8 @@ def _cpio_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str,
     """Regular-file members of a newc or crc cpio archive (an initramfs, an RPM payload).
 
     Directories are skipped; a symlink, device, or other special member is unsupported, as in
-    tar. Hard links store their data once, on the last link, so earlier links are empty.
+    tar. Hard links store their data once, on the last link, so earlier links are empty. The
+    walk goes on past each trailer, as the kernel reads a concatenated initramfs.
     """
     data = unit.data
     position = 0
@@ -579,6 +581,16 @@ def _cpio_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str,
         raw = data[name_start : name_start + name_size].rstrip(b"\0")
         position = (end + 3) & ~3
         if raw == b"TRAILER!!!":
+            # An initramfs concatenates archives: early microcode, then a compressed main
+            # archive, or two archives after one xz stream decodes. Padding zeros are skipped;
+            # another header continues the walk, and any other tail is a member of its own.
+            position = _CPIO_PADDING.match(data, position).end()  # type: ignore[union-attr]
+            if position >= len(data):
+                return
+            if _CPIO_NEWC.match(data, position) is not None:
+                continue
+            budget.member()
+            yield index, "cpio-tail", budget.read(io.BytesIO(data[position:]))
             return
         budget.member()
         name = raw.decode("utf-8", errors="replace")

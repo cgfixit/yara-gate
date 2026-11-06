@@ -511,6 +511,30 @@ def cases() -> list[Case]:
         ),
         Case(
             "G6",
+            "two xz streams of cpio archives",
+            "initrd.cpio.xz",
+            lzma.compress(cpio_newc({"a.txt": b"hi\n"}))
+            + lzma.compress(cpio_newc({"m.gz": gzip.compress(phrase)})),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G6",
+            "initramfs: microcode cpio, then gzip cpio",
+            "initrd.img",
+            cpio_newc({"kernel/x86/microcode/a.bin": b"\0" * 64})
+            + b"\0" * 300
+            + gzip.compress(cpio_newc({"etc/motd": phrase})),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G6",
+            "cpio with trailing padding (benign)",
+            "a.cpio",
+            cpio_newc({"a.txt": b"hi\n"}) + b"\0" * 512,
+            "clean",
+        ),
+        Case(
+            "G6",
             "static library (benign)",
             "libx.a",
             ar_archive({"x.o": b"\x7fELF" + b"\0" * 60}),
