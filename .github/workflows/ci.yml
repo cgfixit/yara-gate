@@ -85,6 +85,10 @@ jobs:
       - name: Detection gaps and their benign boundaries
         run: uv run python docs/research/probe_detection_gaps.py --verify
 
+      - name: Worst-case timing tripwire (4 MiB inputs)
+        timeout-minutes: 5
+        run: uv run python docs/verification/check_worst_case_timing.py
+
       - name: Selftest
         run: uv run yara-gate selftest
 
