@@ -89,3 +89,23 @@ one finding at `mime:0`, and the full pytest suite in one run passes (404 passed
 
 Cost: with no candidate cap, a 4 MiB file of long identifiers takes 0.81 s against 0.52 s
 before (every token is probed); ASCII prose, UTF-16, and base64 runs are unchanged.
+
+## Parity with the retired rule (2026-11-06)
+
+`agent_encoded_instruction` matched six strings through YARA's `base64` modifier: the four ASCII
+phrases and two in UTF-16LE. Each string was placed in 14 contexts (bare; in prose; in a JSON
+value; at the middle and at the end of a longer run, at all three byte alignments; wrapped at 76
+columns; followed by a text line; URL-safe; in a PDF text stream; in an RFC 2047 encoded MIME
+`Subject`), giving 84 cases, plus a phrase glued to the word before it, encoded and plain. All
+86 were scanned under `agent-ingest` with `main` (the retired rule present) and with this branch.
+
+| | `main` | Branch |
+| --- | --- | --- |
+| Detected | 79 of 86 | 84 of 86 |
+| Detected only here | | the six wrapped cases: line wraps break the `base64` modifier |
+| Detected only on `main` | `glued-encoded`: base64 of `...quarterlignore previous instructions` | |
+| Neither | `glued-plain`: the same glued text unencoded | |
+
+The one case the branch gives up is a phrase run into the preceding word. The retired rule
+matched raw substrings; the lexical rules need a word boundary, and the same text in plain form
+is clean on `main` too, so encoded text is now held to the same standard as plain text.
