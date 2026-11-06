@@ -2,8 +2,9 @@
 
 import hashlib
 import math
+import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -21,8 +22,11 @@ from yara_gate.content import (
     ContentLimit,
     ContentUnit,
     PdfObjects,
+    PdfStream,
+    _derived,
     content_units,
     ooxml_text_views,
+    pdf_streams,
     pdf_views,
     text_views,
 )
@@ -58,6 +62,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
+from yara_gate.pdftext import pdf_text
 from yara_gate.rules import (
     compile_ruleset,
     default_rules_dir,
@@ -349,7 +354,8 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
+            streams = pdf_streams(unit.data, budget, pdf_objects.decoded)
+            for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded, streams):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, name=base)
                 if view in _RAW_ONLY_VIEWS:
@@ -362,6 +368,9 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
+            findings.extend(
+                _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext, base)
+            )
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
@@ -381,6 +390,60 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+def _pdf_text_findings(
+    rules: object,
+    unit: ContentUnit,
+    streams: list[PdfStream],
+    objects: PdfObjects,
+    budget: Budget,
+    yara: Callable[..., list[Finding]],
+    ext: str,
+    name: str,
+) -> list[Finding]:
+    """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
+    spans blocks (``pdf-paragraph``), one YARA pass apiece.
+
+    A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
+    assembled from two paragraphs. A paragraph view exists only when a word in bold or a
+    wrapped line split it across blocks. One finding per rule is kept for each view. A
+    composite font whose strings could not be decoded leaves text unread, which is reported
+    as the note ``heuristic_pdf_text_unmapped``.
+    """
+    text = pdf_text(unit.data, streams, objects, budget)
+    # Keyed by namespace and rule: two rule files may share an id with different severities.
+    views: dict[str, dict[tuple[str, str], Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
+    _SCANNERS.reuse = True
+    try:
+        for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
+            for piece in pieces:
+                budget.check()
+                for finding in yara(rules, _derived(piece, budget), ext, view, name=name):
+                    # Base64 runs are judged in pdf-flate, where image samples are told apart.
+                    if finding.rule_id in _RAW_ONLY_RULES:
+                        continue
+                    views[view].setdefault((finding.rule_id, finding.namespace or ""), finding)
+    finally:
+        _SCANNERS.reuse = False
+        _SCANNERS.pair = None
+    if text.unmapped:
+        views["pdf-text"][("heuristic_pdf_text_unmapped", "")] = Finding(
+            rule_id="heuristic_pdf_text_unmapped",
+            severity=Severity.note,
+            source=FindingSource.heuristic,
+        )
+    ordered: list[Finding] = []
+    for view, found in views.items():
+        for key in sorted(found):
+            finding = found[key]
+            finding.member_path = list(unit.member_path)
+            finding.view = view
+            ordered.append(finding)
+    return ordered
+
+
+_SCANNERS = threading.local()
 
 
 # The phrases the retired YARA rule agent_encoded_instruction matched in base64 (its id and
@@ -534,7 +597,17 @@ def _invoke_scan(
 ) -> object:
     import yara_x
 
-    scanner = yara_x.Scanner(rules)
+    # A Scanner costs about 0.6 ms to build, more than scanning a PDF paragraph, so the
+    # pdf-text loop reuses one per compiled ruleset and thread. Every other call builds its
+    # own: a reused Scanner reports matching rules in another order, and report order is
+    # part of the recorded output. Every call sets the timeout and every global again.
+    cached = getattr(_SCANNERS, "pair", None) if getattr(_SCANNERS, "reuse", False) else None
+    if cached is not None and cached[0] is rules:
+        scanner = cached[1]
+    else:
+        scanner = yara_x.Scanner(rules)
+        if getattr(_SCANNERS, "reuse", False):
+            _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
     blob, exe = base64_run_signals(data, samples=samples)
     for global_name, value in (

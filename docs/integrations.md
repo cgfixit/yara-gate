@@ -381,11 +381,22 @@ stream that inflates is never dropped from the view. A Word, Excel,
 or PowerPoint verdict covers each XML member and an `ooxml-text` view that joins
 the text runs of the body, headers, footers, notes, comments, shared strings, and
 slides, so a sentence Word split across formatting runs (the usual case) is seen
-whole. Not covered: PDF text split across several `Tj` operators or a kerned `TJ` array,
-text a PDF stores as font glyph IDs (what LibreOffice and most office exports write, so
-the gate reads none of their text), hex-string text, other stream filters (LZW,
-RunLength, an ASCII chain without Flate), images, ODT text split by spans, RTF text
-split by control words, and Office parts a reader does not see (settings, styles). The PDF and Office structure checks still run on the
+whole. A PDF also gets a `pdf-text` view: the strings of each content stream's `Tj`,
+`TJ`, `'`, and `"` operators (literal and hex) are decoded through the font that shows
+them (a simple font as WinAnsi, a font with a `ToUnicode` map through that map, which is
+how Chrome, LibreOffice, and Word store text as glyph IDs). Each text object (`BT` ...
+`ET`) is joined, so a kerned `TJ` array or a hex string reads as written, and scanned on its
+own. Generators start a new text object at every font change or line, so a paragraph whose
+words span several objects (a word in bold, a wrapped line) is also scanned whole as
+`pdf-paragraph`. A jump of more than 1.7 font sizes between baselines ends a paragraph and
+cuts a text object, so two paragraphs cannot form one phrase. A composite font with no readable `ToUnicode`
+map leaves text unread; that is the note `heuristic_pdf_text_unmapped`, so
+`agent-ingest` holds the file instead of passing text it could not read. Not covered:
+text placed out of reading order or in columns on one baseline (joined in stream
+order), a sentence split across two paragraphs, Type 3 and other fonts whose codes need
+the font program, other stream filters (LZW, RunLength, an ASCII chain without Flate),
+images, ODT text split by spans, RTF text split by control words, and Office parts a
+reader does not see (settings, styles). The PDF and Office structure checks still run on the
 raw file.
 
 A consumer that extracts text itself should gate that text too, since the
