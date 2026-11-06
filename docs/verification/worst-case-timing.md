@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 13 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 16 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -59,3 +59,14 @@ ceiling rejects an actual completed scan, and a 1 ms worker deadline exercises
 real subprocess termination with a nonzero parent exit. Both passed. Ruff and
 format checks, actionlint 1.7.12, text-control checking, and diff whitespace
 checks passed. Full pytest/selftest and other platforms are left to hosted CI.
+
+## PR review follow-up
+
+The original notebook inputs exercised malformed/escaped JSON, but neither
+produced a `notebook-text` view. Added a valid notebook with a long line array,
+a long source-comment block, and a Markdown paragraph with many short marked-up
+lines. All 16 inputs remain exactly 4 MiB. These three cases now require their
+respective reader-view counters, so bypassing a reader cannot produce a passing
+fast scan. All 16 completed under the same ceilings locally. Three focused
+regressions cover the scan ceiling, actual worker termination, and rejection of
+a missing required reader. The 13-row table above preserves the original run.

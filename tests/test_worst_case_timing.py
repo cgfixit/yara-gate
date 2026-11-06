@@ -26,3 +26,16 @@ def test_tripwire_stops_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", [str(SCRIPT)])
     with pytest.raises(SystemExit, match="process exceeded 0.001s"):
         main()
+
+
+def test_tripwire_rejects_missing_reader(rules_copy: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = runpy.run_path(str(SCRIPT))
+    scan = module["scan_case"]
+    # A fast clean scan cannot stand in for exercising the notebook reader.
+    monkeypatch.setitem(
+        scan.__globals__,
+        "cases",
+        lambda: iter([("notebook-lines.ipynb", b" " * module["SIZE"], None)]),
+    )
+    with pytest.raises(RuntimeError, match="required reader notebook-text did not run"):
+        scan("notebook-lines.ipynb", rules_copy)

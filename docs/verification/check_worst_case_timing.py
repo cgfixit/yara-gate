@@ -42,8 +42,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ("json-escapes.json", b'{"cells":["', b"\\u005b", None),
         ("notebook-nesting.ipynb", b'{"nbformat":4,"cells":', b"[", None),
         ("comment-lines.py", b"", b"#\n", None),
+        ("comment-block.py", b"", b"# ab\n", None),
         ("comment-pieces.py", b"", b"# a\n# b\n\n", "text pieces exceed 100000"),
         ("markdown-brackets.md", b"# Heading\n", b"[", None),
+        ("markdown-lines.md", b"", b"**ab**\n", None),
         ("rtf-controls.rtf", b"{\\rtf1 ", b"{\\b ", None),
         ("svg-spans.svg", b"<svg><text>", b"<tspan>a</tspan>", None),
         ("small-capitals.txt", b"", "\u026a\u0262\u0274\u1d0f\u0280\u1d07 ".encode(), None),
@@ -51,6 +53,11 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
         yield name, prefix + token * count + b" " * rest, reason
+    prefix = b'{"nbformat":4,"cells":[{"cell_type":"markdown","source":['
+    suffix = b'"last line"]}]}'
+    token = b'"ab\\n",'
+    count, rest = divmod(SIZE - len(prefix) - len(suffix), len(token))
+    yield "notebook-lines.ipynb", prefix + token * count + b" " * rest + suffix, None
     # A stored member keeps the actual scan input exactly 4 MiB, including ZIP metadata.
     stream = io.BytesIO()
     info = zipfile.ZipInfo("xl/comments1.xml", date_time=(2026, 1, 1, 0, 0, 0))
@@ -92,6 +99,13 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         raise RuntimeError(f"{name}: {seconds:.3f}s exceeds {SCAN_SECONDS}s")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
+    view = {
+        "comment-block.py": "comment-text",
+        "markdown-lines.md": "markdown-text",
+        "notebook-lines.ipynb": "notebook-text",
+    }.get(name)
+    if view is not None and not result.views_scanned.get(view):
+        raise RuntimeError(f"{name}: required reader {view} did not run")
     return row
 
 
@@ -140,7 +154,7 @@ def main() -> None:
                 raise SystemExit(f"FAIL {name}: process exceeded {PROCESS_SECONDS}s") from None
             except subprocess.CalledProcessError:
                 raise SystemExit(f"FAIL {name}: worker failed") from None
-    print("PASS: 13 adversarial inputs, each exactly 4 MiB", flush=True)
+    print("PASS: 16 adversarial inputs, each exactly 4 MiB", flush=True)
 
 
 if __name__ == "__main__":
