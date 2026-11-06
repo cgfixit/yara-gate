@@ -193,8 +193,8 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 The root `demo.html` is a separate, limited JavaScript illustration.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for nine inert examples; it scans nothing and accepts no
-content ([how it is built and published](docs/pages-demo.md)).
+replays saved results for 17 inert examples, each attack beside a benign
+near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
 uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules
@@ -210,6 +210,10 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
+   The **Attack and its benign twin** group pairs four attacks (a base64 field
+   in a tool result, a glyph-id PDF, a model checkpoint that calls `os.system`,
+   a dev container that downloads on the host) with a twin of the same shape:
+   scan both to see the attack held and the twin clean.
 3. Read the decision and original finding severities. **View result** jumps to
    the result on a small screen. **Coverage & provenance** shows the loaded-rule
    count, skipped files, derived views, and fingerprints. A completed bundled-only
