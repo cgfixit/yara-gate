@@ -362,7 +362,10 @@ and an `ooxml-text` view that joins the text runs of the body, headers, footers,
 notes, comments, shared strings, and slides, so a sentence Word split across
 formatting runs is seen whole; an Excel inline-string cell split across rich-text
 runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
-`html-text` piece per paragraph or cell, with bold, links, and comments dropped. Not covered: text out of reading order or in columns,
+`html-text` piece per paragraph or cell, with bold, links, and comments dropped.
+A sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment lines is
+read as one `comment-text` piece, and a Jupyter cell stored as a list of lines as
+one `notebook-text` piece. Not covered: text out of reading order or in columns,
 a sentence split across two paragraphs, Type 3 fonts, LZW and RunLength streams,
 images, ODT spans, RTF control words, and Office parts a reader does not see. The
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office

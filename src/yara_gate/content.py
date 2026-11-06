@@ -11,6 +11,7 @@ import email.policy
 import gzip
 import html
 import io
+import json
 import lzma
 import re
 import stat
@@ -1157,6 +1158,126 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
         parts.append(piece)
     flush()
     return blocks
+
+
+# A line comment: indentation, a leader, more leader characters, and the rest of the line. The
+# leader is one of a fixed set tried at a fixed position, and every quantifier is possessive.
+# A bare */ is not a leader, so it ends a block comment.
+_COMMENT_LINE = re.compile(r"(?m)^[ \t]*+(//|#|--|;|'|/\*|\*(?!/))[/#;*!-]*+([^\r\n]*+)")
+
+
+def _next_line(text: str, end: int) -> int:
+    """Where the line after the one ending at ``end`` starts, or -1 at the end of ``text``."""
+    if text.startswith("\r\n", end):
+        return end + 2
+    if text.startswith(("\n", "\r"), end):
+        return end + 1
+    return -1
+
+
+def comment_texts(text: str, budget: Budget) -> list[str]:
+    """The text of each block of two or more consecutive line comments, leaders removed.
+
+    A block is a run of adjacent lines that open with the same leader (``//``, ``#``, ``--``,
+    ``;``, or ``'``), or the ``*`` lines of a ``/*`` block comment. The lines of a block are
+    joined with newlines, so a sentence wrapped over two comment lines reads as it does to a
+    person. An empty comment line, a line of code, or another leader ends the block, and a
+    ``*`` line outside a block comment (a list item) is not a comment. A one-line comment is
+    contiguous in the raw text already. Lexical only: a leader inside a string literal counts,
+    and a comment after code on the same line does not.
+    """
+    blocks: list[str] = []
+    lines: list[str] = []
+    family = ""
+    expected = -1
+
+    def flush() -> None:
+        if len(lines) >= 2:
+            if len(blocks) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            blocks.append("\n".join(lines))
+        lines.clear()
+
+    for count, match in enumerate(_COMMENT_LINE.finditer(text)):
+        if count % 4096 == 0:
+            budget.check()
+        leader = match.group(1)
+        kind = "*" if leader in ("/*", "*") else leader
+        if match.start() != expected or kind != family or (leader == "/*" and family == "*"):
+            flush()
+            family = "" if leader == "*" else kind
+        expected = _next_line(text, match.end())
+        if not family:
+            continue
+        body = match.group(2).strip(" \t")
+        closed = kind == "*" and body.endswith("*/")
+        if closed:
+            body = body[:-2].rstrip(" \t")
+        if body:
+            lines.append(body)
+        else:
+            flush()
+        if closed:
+            flush()
+            family = ""
+    flush()
+    return blocks
+
+
+_NOTEBOOK_SUFFIX = ".ipynb"
+
+
+def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int, bool]]:
+    """Each Jupyter cell source and text output, joined, with its line count and code flag.
+
+    nbformat stores multiline text as a list of lines, so the raw and JSON-unescaped views see
+    the list's quotes and commas between two lines of one sentence. The text is a notebook when
+    it is named ``.ipynb`` or holds both ``"cells"`` and ``"nbformat"``, and parses as a JSON
+    object with a ``cells`` list. A cell's ``source``, a stream output's ``text``, and each
+    ``text/*`` entry of an output's ``data`` is one item; two items are never joined. Malformed
+    or deeply nested JSON gives no items.
+    """
+    if not name.lower().endswith(_NOTEBOOK_SUFFIX) and (
+        '"cells"' not in text or '"nbformat"' not in text
+    ):
+        return []
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        return []
+    cells = document.get("cells") if isinstance(document, dict) else None
+    if not isinstance(cells, list):
+        return []
+    items: list[tuple[str, int, bool]] = []
+
+    def add(value: object, code: bool) -> None:
+        if isinstance(value, str):
+            lines = [value]
+        elif isinstance(value, list) and all(isinstance(line, str) for line in value):
+            lines = value
+        else:
+            return
+        if len(items) >= MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
+        items.append(("".join(lines), len(lines), code))
+
+    for count, cell in enumerate(cells):
+        if count % 4096 == 0:
+            budget.check()
+        if not isinstance(cell, dict):
+            continue
+        add(cell.get("source"), cell.get("cell_type") == "code")
+        outputs = cell.get("outputs")
+        for output in outputs if isinstance(outputs, list) else ():
+            if not isinstance(output, dict):
+                continue
+            add(output.get("text"), False)
+            data = output.get("data")
+            if isinstance(data, dict):
+                for mime, value in data.items():
+                    if isinstance(mime, str) and mime.startswith("text/"):
+                        add(value, False)
+    return items
 
 
 @dataclass

@@ -10,15 +10,18 @@ from typing import Any
 
 from yara_gate.content import (
     FOLDED_SUFFIX,
+    MAX_TEXT_PIECES,
     Budget,
     ContentLimit,
     ContentUnit,
     PdfObjects,
     PdfStream,
     _derived,
+    comment_texts,
     content_units,
     folded_text,
     html_text_blocks,
+    notebook_texts,
     ooxml_cell_texts,
     ooxml_text_views,
     pdf_streams,
@@ -393,8 +396,9 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            # A worksheet cell split across rich-text runs, and an HTML paragraph split by bold,
-            # a link, or a comment, are each one piece of text to the reader.
+            # A worksheet cell split across rich-text runs, an HTML paragraph split by bold, a
+            # link, or a comment, a sentence wrapped over two comment lines, and a notebook cell
+            # stored as a list of lines are each one piece of text to the reader.
             pieces = _with_folded_pieces(
                 "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget)
             )
@@ -402,6 +406,18 @@ def _scan_file(
                 pieces += _with_folded_pieces(
                     "html-text", html_text_blocks(unit.name, decoded[0], budget)
                 )
+                cells = notebook_texts(unit.name, decoded[0], budget)
+                pieces += _with_folded_pieces(
+                    "notebook-text", [text for text, lines, _ in cells if lines >= 2]
+                )
+                # A comment inside a code cell is inside a JSON string in the raw text.
+                comments = comment_texts(decoded[0], budget)
+                for text, _, code in cells:
+                    if code:
+                        comments += comment_texts(text, budget)
+                        if len(comments) > MAX_TEXT_PIECES:
+                            raise ContentLimit("text pieces exceed 100000")
+                pieces += _with_folded_pieces("comment-text", comments)
             if any(texts for _, texts in pieces):
                 findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
             conjunction = control_conjunction(findings[unit_start:])
