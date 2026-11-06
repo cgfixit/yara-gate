@@ -222,7 +222,8 @@ Drawings, Word glossary parts, and Excel threaded-comment parts are not added he
 
 The existing `html-text` reader also accepts `.svg` or an SVG root, including one
 after an XML declaration. `tspan` and `textPath` stay inline; each `text` element is
-its own piece. This is lexical extraction: coordinates, CSS, visibility, and visual
+its own piece. CDATA inside SVG contributes literal text without entity decoding.
+This is lexical extraction: coordinates, CSS, visibility, and visual
 line layout are not interpreted. Positioning tspans within one text element can
 still form a phrase. Latin small capitals with a direct ASCII letter equivalent
 fold in `text-folded` and the joined/decoded views that already fold; this is a

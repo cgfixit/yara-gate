@@ -1147,6 +1147,7 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     parts: list[str] = []
     segments = 0
     pre = 0
+    svg_depth = 0
 
     def flush() -> None:
         nonlocal segments
@@ -1163,6 +1164,17 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
         count += 1
         if count % 4096 == 0:
             budget.check()
+        if svg_depth and text.startswith("<![CDATA[", position):
+            end = text.find("]]>", position + 9)
+            piece = text[position + 9 : end if end >= 0 else len(text)]
+            position = end + 3 if end >= 0 else len(text)
+            # XML character data is visible text; entity-looking bytes remain literal.
+            if not pre:
+                piece = _HTML_SPACE.sub(" ", piece)
+            if piece.strip():
+                segments += 1
+            parts.append(piece)
+            continue
         match = _HTML_TOKEN.match(text, position)
         if match is None:  # pragma: no cover - the last alternative matches any character
             break
@@ -1177,6 +1189,8 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
             continue
         tag = (match.group(2) or "").lower()
         if tag:
+            if tag == "svg" and not lexeme.endswith("/>"):
+                svg_depth = max(0, svg_depth + (-1 if match.group(1) else 1))
             if tag in _HTML_RAW_TEXT and not match.group(1) and not lexeme.endswith("/>"):
                 # A textarea or title body is one run of shown text: never a split phrase.
                 flush()

@@ -83,3 +83,14 @@ suite, or production recall study was performed. Hosted checks are separate.
 Format references: [SVG 2 text](https://www.w3.org/TR/SVG2/text.html) and
 [Microsoft's modern-comment example](https://learn.microsoft.com/en-us/office/open-xml/presentation/how-to-reply-to-a-comment-in-a-presentation)
 (consulted 2026-11-06). Neither substitutes for viewer acceptance.
+
+## PR review follow-up
+
+Review of `5d0c55b` reproduced a missed directive split between an SVG CDATA
+section and a following tspan: `clean` instead of the ordinary phrase note. The
+reader now consumes CDATA as literal text while inside SVG. Entity-looking text
+inside CDATA stays literal, and ordinary HTML CDATA handling is unchanged. The
+focused file now has 10 passing cases; the detection-gap probe and 324-file
+precision results are unchanged. Ruff, format, strict mypy, and text-control
+checks passed. The earlier source hashes and timings above describe the original
+candidate; the follow-up commit is the reviewed source for this correction.
