@@ -1042,19 +1042,21 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     return cells
 
 
-_HTML_HEAD = re.compile(
-    r"\A\ufeff?\s*(?:<!--.{0,1024}?-->\s*)*<(?:!doctype\s+html|html\b)", re.I | re.S
-)
+_HTML_OPENER = re.compile(r"<(?:!doctype\s+html|html\b)", re.I)
 _HTML_SUFFIXES = frozenset({"html", "htm", "xhtml"})
 # A comment opener, a tag (bounded, and never across another <), a declaration or processing
 # instruction, a text run, a run of < that cannot open a tag with the text after it, or a lone <.
+# A tag's attributes: a quoted value may hold < or >, as in title="<script>"; every quantifier is
+# possessive, so a tag that does not close fails without backtracking.
+_HTML_ATTRIBUTES = r"""(?:[^<>"'=]++|=\s*+"[^"]{0,4096}+"|=\s*+'[^']{0,4096}+'|[="']){0,4096}+"""
 _HTML_TOKEN = re.compile(
-    r"<!--|<(/?)([A-Za-z][A-Za-z0-9:-]{0,64})\b[^<>]{0,4096}>|<[!?][^<>]{0,4096}>"
+    r"<!--|<(/?)([A-Za-z][A-Za-z0-9:-]{0,64})\b" + _HTML_ATTRIBUTES + r">|<[!?][^<>]{0,4096}>"
     r"|[^<]+|(?:<(?![A-Za-z/!?]))+[^<]*|<"
 )
+# Elements whose body is not markup: script and style are not shown, and a textarea or title
+# shows its body as written, so a <script> or <b> inside one is text, never a tag.
 _HTML_RAW_TEXT = {
-    "script": re.compile(r"</script\s*>", re.I),
-    "style": re.compile(r"</style\s*>", re.I),
+    tag: re.compile(rf"</{tag}\s*>", re.I) for tag in ("script", "style", "textarea", "title")
 }
 _HTML_BLOCKS = frozenset(
     {
@@ -1069,18 +1071,37 @@ _HTML_BLOCKS = frozenset(
 _HTML_SPACE = re.compile(r"[ \t\r\n\f]+")
 
 
+def _opens_as_html(head: str) -> bool:
+    """True when ``head``, after a BOM, whitespace, and comments, opens with a doctype or <html>.
+
+    Comments are skipped one at a time with str.find, so no pattern can reconsider where an
+    earlier comment ended.
+    """
+    position = 1 if head.startswith("\ufeff") else 0
+    while True:
+        while position < len(head) and head[position].isspace():
+            position += 1
+        if not head.startswith("<!--", position):
+            return _HTML_OPENER.match(head, position) is not None
+        close = head.find("-->", position + 4)
+        if close < 0:
+            return False
+        position = close + 3
+
+
 def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     """The text of each HTML block that inline markup splits, as a browser joins it.
 
     A paragraph, list item, table cell, or other block is one piece; bold, links, spans,
     comments, and other inline markup inside it are dropped and their text joined, ``<br>``
     is a line break, and whitespace collapses to one space outside ``<pre>``. Script and style
-    bodies are not text. A block whose text is one run is left to the raw and HTML-unescaped
-    views. Two blocks are never joined. One linear pass with bounded tags; this is lexical text
-    extraction, not computed visibility, sanitization, or script execution.
+    bodies are not text, and a textarea or title body is read as written, with no tags in it.
+    A block whose text is one run is left to the raw and HTML-unescaped views. Two blocks are
+    never joined. One linear pass with bounded tags; this is lexical text extraction, not
+    computed visibility, sanitization, or script execution.
     """
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    if suffix not in _HTML_SUFFIXES and _HTML_HEAD.match(text[:8192]) is None:
+    if suffix not in _HTML_SUFFIXES and not _opens_as_html(text[:8192]):
         return []
     blocks: list[str] = []
     parts: list[str] = []
@@ -1117,6 +1138,8 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
         tag = (match.group(2) or "").lower()
         if tag:
             if tag in _HTML_RAW_TEXT and not match.group(1) and not lexeme.endswith("/>"):
+                # A textarea or title body is one run of shown text: never a split phrase.
+                flush()
                 close_match = _HTML_RAW_TEXT[tag].search(text, position)
                 position = len(text) if close_match is None else close_match.end()
             elif tag == "br":

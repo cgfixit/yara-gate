@@ -10,9 +10,10 @@ rule doc_svg_event_handler {
     strings:
         $svg = /<svg\b/ nocase ascii
         // The element name (optionally namespace-prefixed), its other attributes within the same tag,
-        // then the handler with a first non-space character, quoted or not.
-        $begin = /<([A-Za-z][\w.-]{0,32}:)?(animate|animateMotion|animateTransform|animateColor|set)\b[^<>]{0,1024}\sonbegin\s*=\s*["']?[^\s"'>]/ nocase ascii
-        $error = /<([A-Za-z][\w.-]{0,32}:)?(image|feImage|svg|use)\b[^<>]{0,1024}\sonerror\s*=\s*["']?[^\s"'>]/ nocase ascii
+        // then the handler with a first non-space character, quoted or not; spaces after the quote
+        // are allowed, so only an empty or all-space handler is clean.
+        $begin = /<([A-Za-z][\w.-]{0,32}:)?(animate|animateMotion|animateTransform|animateColor|set)\b[^<>]{0,1024}\sonbegin\s*=\s*(["']\s*)?[^\s"'>]/ nocase ascii
+        $error = /<([A-Za-z][\w.-]{0,32}:)?(image|feImage|svg|use)\b[^<>]{0,1024}\sonerror\s*=\s*(["']\s*)?[^\s"'>]/ nocase ascii
     condition:
         $svg and ($begin or $error)
 }

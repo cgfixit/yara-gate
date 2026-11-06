@@ -130,6 +130,17 @@ the same verdicts as on the branch above; 378 of the HTML files produced 15,365 
 pieces and 1,956 folded ones, none with a finding. None of the three workbooks holds a
 rich-text inline string, so `ooxml-cell` on real files is unmeasured.
 
+Codex review of #169 found three defects, each reproduced and fixed. The HTML header check
+backtracked exponentially on leading comments (0.6 s for 22 comments in a non-HTML name); it is
+now a loop over comments, and 1,000 take 0.00 s. A space after the quote (`onerror=" void(0)"`)
+bypassed `doc_svg_event_handler`; a blank handler still stays clean. A literal `<script>` in a
+`<textarea>` hid every later paragraph from `html-text`; textarea and title bodies are now read
+as written, and the tag matcher reads quoted attribute values (`title="<script>"`), with
+possessive quantifiers: 3.5 MB of unclosed quotes takes 1.4 s. Correction: the markup sweep above
+ran with a rules copy made before `doc_svg_event_handler` existed. Re-run with the branch's rules
+on `main` and on the branch, the 6,099 files give the same verdicts and the rule hits none of
+them.
+
 Found while building `html-text`, and still open as **G7**: Markdown emphasis or a code span
 inside a phrase (`Ignore all **previous** instructions`, or the same with backticks) scans clean,
 because the markers sit between the words. The probe records it.

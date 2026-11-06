@@ -688,6 +688,17 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             b'<svg:svg><svg:image onerror="void 0"/></svg:svg>',
             "doc_svg_event_handler",
         ),
+        (
+            "space-error.svg",
+            b'<svg><image href="x" onerror=" void(0)"/></svg>',
+            "doc_svg_event_handler",
+        ),
+        (
+            "space-begin.svg",
+            b"<svg><set attributeName='x' onbegin='  void 0'/></svg>",
+            "doc_svg_event_handler",
+        ),
+        ("blank-handler.svg", b'<svg><image href="x" onerror="   "/></svg>', None),
         ("empty-handler.svg", b'<svg><image href="x" onerror=""/></svg>', None),
         ("data-attr.svg", b'<svg><animate data-onbegin="x" begin="0s"/></svg>', None),
         ("html-img.html", b'<svg></svg><img src="x" onerror="void 0">', None),
