@@ -204,6 +204,46 @@ produced 60,053 pieces; the most in one file was 4,544 (Node's `CHANGELOG.md`).
 
 The hyphen pattern alone takes 0.07 s to 0.15 s over 4 MiB, with or without hyphens.
 
+### Review fixes on `a2340a9`
+
+Codex left three findings on `d25a080` (#174). Each reproduced on `d25a080` before the fix:
+
+- A suffixless member under a dotted archive directory (`project.v1/README`) took
+  `v1/readme` as its suffix and was never read; the same text under `project/README` was.
+  The suffix now comes from the final path component.
+- A blockquote straight after prose, or a deeper quote, joined onto the paragraph before it,
+  so `Ignore **all**` followed by `> previous instructions …` was an advisory phrase match
+  assembled from two blocks. A deeper quote now starts a piece; same-depth quote lines and
+  lazy continuation lines still join.
+- The opening fence was cut to three characters, so a three-backtick line closed a
+  four-backtick block and the real closer opened a fence that hid the rest of the file. A
+  fence now closes only on its own character, at least as long, with nothing after it.
+
+The probe gains two detections and two benign boundaries for these. All four fail on
+`d25a080` and pass on `a2340a9`; the probe gives 155 `ok`, 10 `open`, and no `FAIL` or
+`STALE`. Ruff, `mypy --strict src`, `check_text_controls.py`, `lint_rules.py`,
+`check_rule_pairs.py`, `check_added_rules.py`, `check_scan_only.py`,
+`probe_rule_coverage.py --verify`, `measure_precision.py --fail-over`, and selftest exit 0, and
+the Pages recorder matches its baseline.
+
+`markdown_texts` was run old and new over the 15,545 Markdown-gated files under `/usr`, `/opt`,
+`/root`, and `/home` (base names only, so the archive-path fix is not in this count). 14
+produced different pieces: suffixless Makefiles and a `vimdiff` script that open with `# `,
+npm's `npm-install.md`, nvm's README, actionlint's changelog and usage page, and one record
+in this repository. Scanned with each reader, all 14 have the same verdict and the same
+findings. The reader took 2.82 s old and 2.67 s new over the set.
+
+| Input | Size | Time | Outcome |
+| --- | --- | --- | --- |
+| one line with 2,000 nested `>` leaders, repeated | 4 MiB | 0.86 s | clean |
+| alternating depth-1 and depth-2 quotes with emphasis | 4 MiB | 1.07 s | incomplete, `text pieces exceed 100000` |
+| an unclosed four-backtick fence, then three-backtick lines | 4 MiB | 1.29 s | clean |
+| a 5,000-backtick fence and a 4,999-backtick line, repeated | 4 MiB | 0.63 s | clean |
+| a five-backtick fence, then shorter closers | 4 MiB | 1.07 s | clean |
+
+The alternating-depth input emits a piece per quote block, as list items already do, and
+stops at the same cap.
+
 ## Not established
 
 Synthetic fixtures and one Linux host. No Office, PDF, RTF, SVG, or notebook application was used
