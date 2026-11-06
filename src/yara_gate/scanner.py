@@ -24,6 +24,7 @@ from yara_gate.content import (
     markdown_texts,
     notebook_texts,
     ooxml_cell_texts,
+    ooxml_comment_texts,
     ooxml_text_views,
     pdf_streams,
     pdf_views,
@@ -403,6 +404,9 @@ def _scan_file(
             # lines are each one piece of text to the reader.
             pieces = _with_folded_pieces(
                 "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget)
+            )
+            pieces += _with_folded_pieces(
+                "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget)
             )
             if decoded is not None:
                 pieces += _with_folded_pieces(

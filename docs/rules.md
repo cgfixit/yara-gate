@@ -210,6 +210,27 @@ The scanner also reports these checks without a YARA rule. `heuristic_pickle_red
 
 On the generated 324-file corpus (`docs/verification/measure_precision.py`, run by CI), 81 of the 85 YARA rules hit 0 files, and no heuristic id hit. The rate is files hit divided by files scanned. The four that hit are tagged Windows shortcut-family collisions, each one file: `win_library_unc_location` blocked a file-server library, `win_library_remote_location` matched an https search connector, `win_shortcut_remote_icon` a file-server folder icon, and `win_internet_shortcut_launch` a `.url` to a local `file:` URL. The corpus's 31 agent-facing files (one-time-code notices, README lines that run a command, committed agent settings that keep approval on, unattended CI agent steps), 12 platform files (inline MSBuild tasks, Connection Manager and driver INFs, a local JXA script, a `dscl -authonly` test, standard `.pth` files), 14 ecosystem files (five GitHub Actions workflows, five Keras models), and four checkout files (`.git/config` with LFS, git-crypt, Watchman, and Husky entries, a `devcontainer.json`, a nix-direnv `.envrc`) hit nothing. See [Precision with Windows shortcut-family files](verification/precision-windows-shortcuts.md) and the earlier [Precision after the local pack grew](verification/precision-after-growth.md); the near-miss pairs in `docs/verification/check_rule_pairs.py` remain the tighter benign boundary. Vendor rule bodies stay out of git; the license reasons are in [Vendor pack review](verification/vendor-pack-review.md).
 
+## Phase 1c-small reader boundaries
+
+Excel `xl/comments\d*.xml` and PowerPoint `ppt/comments/*.xml` rich-text comments
+are scanned one comment at a time as `ooxml-comment`, and as
+`ooxml-comment+text-folded` when folding changes the text. Runs are joined within
+that comment; paragraphs and explicit breaks become newlines. Two comments cannot
+complete or suppress each other's phrase. One-run comments remain covered by raw
+and entity-decoded views. The same bounded tokenizer serves worksheet cells.
+Drawings, Word glossary parts, and Excel threaded-comment parts are not added here.
+
+The existing `html-text` reader also accepts `.svg` or an SVG root, including one
+after an XML declaration. `tspan` and `textPath` stay inline; each `text` element is
+its own piece. This is lexical extraction: coordinates, CSS, visibility, and visual
+line layout are not interpreted. Positioning tspans within one text element can
+still form a phrase. Latin small capitals with a direct ASCII letter equivalent
+fold in `text-folded` and the joined/decoded views that already fold; this is a
+fixed table, not general phonetic transliteration or a new finding severity.
+
+[Verification](verification/2026-11-06-phase1c-small.md) records the targeted gaps,
+benign boundaries, and remaining Phase 1c work in [#171](https://github.com/cgfixit/yara-gate/issues/171).
+
 ## Limits
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
