@@ -290,6 +290,20 @@ def cases() -> list[Case]:
         ),
         Case(
             "G4",
+            "ansi-dense-glued",
+            "out.log",
+            b"\x1b[1m\x1b[0m" * 40 + b"\x1b[1m" + phrase + b"\x1b[0m\n",
+            PHRASE_RULE,
+        ),
+        Case(
+            "G4",
+            "ansi-dense log as .txt (benign)",
+            "ci.txt",
+            b"\x1b[32m\x1b[1mPASS\x1b[0m t\n" * 200,
+            "clean",
+        ),
+        Case(
+            "G4",
             "ansi glued in utf-16",
             "out.log",
             ("\x1b[1m" + PHRASE).encode("utf-16"),
