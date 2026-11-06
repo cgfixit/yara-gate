@@ -138,6 +138,34 @@ def tag_findings(text: str) -> list[Finding]:
     ]
 
 
+# Eight or more variation selectors in a row. A variation sequence is one base character and one
+# selector (an emoji's U+FE0F, a CJK ideograph's U+E0100), so a run has no ordinary meaning; it
+# is how bytes are hidden after an emoji, one selector each (the GlassWorm encoding).
+_VARIATION_RUN = re.compile("[\ufe00-\ufe0f\U000e0100-\U000e01ef]{8,}")
+
+
+def variation_findings(text: str) -> list[Finding]:
+    """Block a run of eight or more variation selectors, which renders as nothing.
+
+    Two in a row turn up in pasted emoji, so the threshold is a run long enough to carry eight
+    hidden bytes. The offset is the run's first selector in the UTF-8 encoding of ``text``.
+    """
+    if text.isascii():
+        return []
+    found = _VARIATION_RUN.search(text)
+    if found is None:
+        return []
+    return [
+        Finding(
+            rule_id="heuristic_variation_selector_run",
+            offset=len(text[: found.start()].encode("utf-8")),
+            length=len(found.group().encode("utf-8")),
+            severity=Severity.block,
+            source=FindingSource.heuristic,
+        )
+    ]
+
+
 _CONTEXT = 16
 
 # The Unicode-control signals that are notes on their own.

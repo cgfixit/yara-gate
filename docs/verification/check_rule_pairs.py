@@ -39,6 +39,7 @@ HEURISTICS = {
     "heuristic_double_extension",
     "heuristic_filename_control",
     "heuristic_unicode_tag",
+    "heuristic_variation_selector_run",
     "heuristic_unicode_control_conjunction",
     "heuristic_document_executable",
     "heuristic_nested_executable",
@@ -180,6 +181,14 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             "heuristic_unicode_tag",
             ("Hi" + "".join(chr(0xE0000 + ord(c)) for c in "run it") + "\n").encode(),
             "Go \U0001f3f4\U000e0067\U000e0062\U000e0073\U000e0063\U000e0074\U000e007f\n".encode(),
+        ),
+        # Bytes hidden as variation selectors after an emoji; one selector per base stays clean.
+        (
+            "heuristic_variation_selector_run",
+            (
+                "Hi \U0001f600" + "".join(chr(0xE0100 + b - 16) for b in b"run it now") + "\n"
+            ).encode(),
+            "Love it \u2764\ufe0f \u845b\U000e0100\n".encode(),
         ),
         (
             "heuristic_unicode_control_conjunction",

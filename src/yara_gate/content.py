@@ -116,7 +116,9 @@ _CONFUSABLES = str.maketrans(
 _LEET = str.maketrans(
     {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
 )
-_WORD = re.compile(r"[^\W_]+")
+# A whole word that holds a non-ASCII letter or digit: the only words a mixed-script fold can
+# change. An ASCII word fails at its first character after the lazy prefix, so this is linear.
+_NON_ASCII_WORD = re.compile(r"(?<![^\W_])[^\W_]*?[^\W_\x00-\x7f][^\W_]*")
 # A maximal run of letters, digits, @, and $ that holds at least one of 0134578@$. The match
 # starts only at a run's first character, so a run is read from one start and not rescanned from
 # every position inside it. Every repeat is a single character class: the regex engine runs
@@ -129,6 +131,21 @@ _SPACERS = re.compile(r"[ .\-_*]")
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
 _ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
+# Every format (Cf) and control (Cc) character other than tab, LF, and CR, plus the variation
+# selectors U+FE00-FE0F, in Unicode 15.0 (Python 3.12): what text-folded removes. One
+# str.translate replaces a per-character category lookup; tests/test_text_fast_paths.py
+# compares the table with unicodedata for every code point.
+_FOLD_DELETE_RANGES = (
+    (0x0, 0x8), (0xB, 0xC), (0xE, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x600, 0x605),
+    (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891), (0x8E2, 0x8E2),
+    (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
+    (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
+    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+)  # fmt: skip
+FOLD_DELETE = dict.fromkeys(
+    code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)
+)
 
 # Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
 # proofing boundary, so the joined text is what the lexical rules need.
@@ -819,7 +836,7 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if _json_shaped(stripped) and "\\" in stripped:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
-            yield "json-unescaped", _derived(decoded, budget)
+            yield from _with_folded("json-unescaped", decoded, budget)
     # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
     # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
     # A MIME message's base64 parts are already decoded as its members; its headers' RFC 2047
@@ -827,13 +844,13 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if _mime_message(data):
         headers = mime_header_text(data)
         if headers is not None:
-            yield "mime-headers-decoded", _derived(headers, budget)
+            yield from _with_folded("mime-headers-decoded", headers, budget)
     else:
         for encoded in base64_texts(text, budget):
-            yield "base64-decoded", _derived(encoded, budget)
+            yield from _with_folded("base64-decoded", encoded, budget)
     unquoted = percent_text(text)
     if unquoted is not None:
-        yield "percent-decoded", _derived(unquoted, budget)
+        yield from _with_folded("percent-decoded", unquoted, budget)
     # ASCII cannot contain Cf characters or Unicode variation selectors.
     # Check after unescaping: an ASCII entity can introduce either one.
     normalized = unescaped
@@ -853,17 +870,42 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         yield "text-folded", _derived(folded, budget)
 
 
+FOLDED_SUFFIX = "+text-folded"
+
+
+def _with_folded(view: str, text: str, budget: Budget) -> Iterator[tuple[str, bytes]]:
+    """``view`` itself, then its folded spelling as ``<view>+text-folded`` when that differs.
+
+    Obfuscations stack: an escape or an encoding hides a word whose letters are also swapped
+    for look-alikes. Folding once more is one step deeper, not a recursion.
+    """
+    yield view, _derived(text, budget)
+    folded = folded_text(text)
+    if folded != text:
+        budget.check()
+        yield view + FOLDED_SUFFIX, _derived(folded, budget)
+
+
+# ECMA-48 control sequences: CSI (7-bit or C1), an intermediate escape such as ESC ( B, and a
+# two-byte escape, which includes the openers of OSC, DCS, and APC strings. A terminal draws
+# none of them, so ESC [ 1 m before a word is not a separate word to the reader.
+_ANSI = re.compile(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b[ -/]+[0-~]|\x1b[@-_]")
+
+
 def folded_text(text: str) -> str:
     """Return ``text`` with look-alike spellings folded to plain letters, for a derived view.
 
-    NFKC compatibility normalization (fullwidth and other presentation forms), removal of format
-    controls and of control characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
+    Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
+    (fullwidth and other presentation forms), removal of format controls and of control
+    characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
     folded to Latin inside mixed-script tokens, letters spaced one apart rejoined, and digit or
     symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
     numbers stay as written. The result is a view; the original bytes are scanned unchanged.
     """
     if not text.strip(" \t\r\n"):
         return text
+    if "\x1b" in text or "\x9b" in text:
+        text = _ANSI.sub("", text)
     folded = unicodedata.normalize("NFKC", text)
     if folded.isascii():
         # Same result as the per-character filter below, without a Python loop over every
@@ -871,16 +913,9 @@ def folded_text(text: str) -> str:
         if _ASCII_CONTROL.search(folded) is not None:
             folded = folded.translate(_ASCII_CONTROL_DELETE)
     else:
-        folded = "".join(
-            char
-            for char in folded
-            if char in "\t\r\n"
-            or (
-                unicodedata.category(char) not in ("Cf", "Cc") and not 0xFE00 <= ord(char) <= 0xFE0F
-            )
-        )
+        folded = folded.translate(FOLD_DELETE)
     if not folded.isascii():
-        folded = _WORD.sub(_fold_confusables, folded)
+        folded = _NON_ASCII_WORD.sub(_fold_confusables, folded)
     folded = _SPACED.sub(lambda match: _SPACERS.sub("", match.group()), folded)
     return _LEET_TOKEN.sub(_fold_leet, folded)
 
@@ -902,7 +937,8 @@ def _script(char: str) -> str:
 
 def _fold_leet(match: re.Match[str]) -> str:
     word = match.group()
-    if any(char.isalpha() for char in word):
+    # A number such as 1337 or the 4 in 3.4.5 has no letter to fold.
+    if not word.isdecimal() and any(char.isalpha() for char in word):
         return word.translate(_LEET)
     return word
 
@@ -948,7 +984,7 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         else:
             parts.append("\n")
     if runs >= 2:
-        yield "ooxml-text", _derived("".join(parts), budget)
+        yield from _with_folded("ooxml-text", "".join(parts), budget)
 
 
 @dataclass

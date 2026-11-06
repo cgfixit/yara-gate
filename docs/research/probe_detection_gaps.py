@@ -41,16 +41,10 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 
 # Gaps that still miss on this tree, by case label. Remove a label when its fix lands.
 OPEN: dict[str, str] = {
-    "json-escape+leet": "#145.3",
-    "docx-run-split+leet": "#145.3",
     "xlsx-inline-rich-text": "#145.4",
     "html-inline-formatting": "#145.5",
     "svg-onbegin": "#145.6",
     "svg-onerror": "#145.6",
-    "base64+leet": "G1",
-    "percent+leet": "G1",
-    "ansi-bold-glued": "G4",
-    "variation-selector-smuggling": "G5",
 }
 
 
@@ -287,6 +281,35 @@ def cases() -> list[Case]:
             b"\x1b[32mPASS\x1b[0m tests/test_a.py\n\x1b[1;31mFAIL\x1b[0m tests/test_b.py\n",
             "clean",
         ),
+        Case(
+            "G4",
+            "osc hyperlink and tput reset (benign)",
+            "out.log",
+            b"See \x1b]8;;https://example.com/docs\x1b\\the docs\x1b]8;;\x1b\\ \x1b(B\x1b[m done\n",
+            "clean",
+        ),
+        Case(
+            "G4",
+            "ansi glued in utf-16",
+            "out.log",
+            ("\x1b[1m" + PHRASE).encode("utf-16"),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G1",
+            "json leet handle (benign)",
+            "m.json",
+            b'{"user": "h4x0r", "msg": "\\u0048ello, build 1337 passed"}',
+            "clean",
+        ),
+        Case(
+            "G1",
+            "base64 of text with digits (benign)",
+            "m.txt",
+            b"note "
+            + base64.b64encode(b"Version 2.0 build 1234 shipped on 2026-11-06 to 3 regions"),
+            "clean",
+        ),
         Case("G5", "tag-character control", "m.txt", ("Hi " + tags(PHRASE)).encode(), "any"),
         Case(
             "G5",
@@ -301,6 +324,28 @@ def cases() -> list[Case]:
             "m.txt",
             "葛\U000e0100城市 ❤️".encode(),
             "clean",
+        ),
+        Case(
+            "G5",
+            "doubled emoji selector (benign)",
+            "m.txt",
+            "Love it \u2764\ufe0f\ufe0f".encode(),
+            "clean",
+        ),
+        Case("G5", "seven selectors (benign)", "m.txt", ("x" + "\ufe0f" * 7).encode(), "clean"),
+        Case(
+            "G5",
+            "selector run as JSON escapes",
+            "m.json",
+            json.dumps({"m": variation_selectors("Hi \U0001f600", phrase)}).encode(),
+            "heuristic_variation_selector_run",
+        ),
+        Case(
+            "G5",
+            "selector run as HTML entities",
+            "p.html",
+            b"<p>Hi " + b"&#xE0110;" * 12 + b"</p>",
+            "heuristic_variation_selector_run",
         ),
         Case("G6", "7z control", "a.7z", b"7z\xbc\xaf\x27\x1c" + PAD, "incomplete:unsupported"),
         Case("G6", "zstd", "a.tar.zst", b"\x28\xb5\x2f\xfd" + PAD, "incomplete:unsupported"),

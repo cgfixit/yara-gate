@@ -1,9 +1,11 @@
 """Guard transformed text and joiner decisions at the scanner boundary."""
 
+import unicodedata
 from pathlib import Path
 
 import pytest
 
+from yara_gate.content import FOLD_DELETE
 from yara_gate.scanner import scan_file
 
 
@@ -212,3 +214,14 @@ def test_a_base64_png_after_an_equals_sign_stays_clean(tmp_path: Path, rules_cop
     note.write_bytes(b"image=" + png + b"\n")
     result = scan_file(note, rules_dir=rules_copy, policy="agent-ingest")
     assert result.verdict.value == "clean"
+
+
+def test_fold_delete_matches_unicodedata() -> None:
+    """text-folded removes exactly the Cf and Cc characters (not tab, LF, CR) and U+FE00-FE0F."""
+    expected = {
+        code
+        for code in range(0x110000)
+        if code not in (9, 10, 13)
+        and (unicodedata.category(chr(code)) in ("Cf", "Cc") or 0xFE00 <= code <= 0xFE0F)
+    }
+    assert set(FOLD_DELETE) == expected
