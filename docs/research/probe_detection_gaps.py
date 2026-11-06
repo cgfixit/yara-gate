@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import io
 import json
 import shutil
@@ -49,13 +50,8 @@ OPEN: dict[str, str] = {
     "pdf-with-trailing-zip": "G3",
     "ansi-bold-glued": "G4",
     "variation-selector-smuggling": "G5",
-    "zstd": "G6",
-    "cab": "G6",
-    "chm": "G6",
-    "lz4": "G6",
-    "ar": "G6",
-    "cpio": "G6",
-    "xar": "G6",
+    "deb-with-gzip-member": "G6",
+    "cpio-with-gzip-member": "G6",
 }
 
 
@@ -129,6 +125,28 @@ def with_signing_block(archive: bytes) -> bytes:
     moved = (start + len(block)).to_bytes(4, "little")
     shifted = archive[: end + 16] + moved + archive[end + 20 :]
     return shifted[:start] + block + shifted[start:]
+
+
+def ar_archive(members: dict[str, bytes]) -> bytes:
+    """A System V ar archive (the outer layer of a .deb) with short member names."""
+    output = bytearray(b"!<arch>\n")
+    for name, data in members.items():
+        header = f"{name + '/':16}{0:<12}{0:<6}{0:<6}{0o100644:<8o}{len(data):<10}`\n"
+        output += header.encode() + data + (b"\n" if len(data) % 2 else b"")
+    return bytes(output)
+
+
+def cpio_newc(members: dict[str, bytes]) -> bytes:
+    """A newc cpio archive (an initramfs or RPM payload) of regular files."""
+    output = bytearray()
+    entries = [*members.items(), ("TRAILER!!!", b"")]
+    for ino, (name, data) in enumerate(entries, 1):
+        raw = name.encode() + b"\0"
+        mode = 0o100644 if name != "TRAILER!!!" else 0
+        fields = (ino, mode, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(raw), 0)
+        output += b"070701" + b"".join(f"{field:08X}".encode() for field in fields) + raw
+        output += b"\0" * (-len(output) % 4) + data + b"\0" * (-len(data) % 4)
+    return bytes(output)
 
 
 PDF_SHELL = (
@@ -246,12 +264,47 @@ def cases() -> list[Case]:
         ),
         Case("G6", "7z control", "a.7z", b"7z\xbc\xaf\x27\x1c" + PAD, "incomplete:unsupported"),
         Case("G6", "zstd", "a.tar.zst", b"\x28\xb5\x2f\xfd" + PAD, "incomplete:unsupported"),
+        Case(
+            "G6",
+            "zstd skippable frame",
+            "a.zst",
+            b"\x50\x2a\x4d\x18" + PAD,
+            "incomplete:unsupported",
+        ),
         Case("G6", "cab", "a.cab", b"MSCF\0\0\0\0" + PAD, "incomplete:unsupported"),
         Case("G6", "chm", "help.chm", b"ITSF\x03\x00\x00\x00" + PAD, "incomplete:unsupported"),
         Case("G6", "lz4", "a.lz4", b"\x04\x22\x4d\x18" + PAD, "incomplete:unsupported"),
-        Case("G6", "ar", "a.deb", b"!<arch>\ndebian-binary   " + PAD, "incomplete:unsupported"),
-        Case("G6", "cpio", "a.cpio", b"070701" + b"0" * 104, "incomplete:unsupported"),
+        Case("G6", "wim", "install.wim", b"MSWIM\0\0\0" + PAD, "incomplete:unsupported"),
         Case("G6", "xar", "a.pkg", b"xar!\x00\x1c\x00\x01" + PAD, "incomplete:unsupported"),
+        Case("G6", "ace", "a.ace", b"\0" * 7 + b"**ACE**" + PAD, "incomplete:unsupported"),
+        Case("G6", "lha", "a.lzh", b"\x20\x00-lh5-" + PAD, "incomplete:unsupported"),
+        Case("G6", "thin ar", "a.a", b"!<thin>\n" + PAD, "incomplete:unsupported"),
+        Case("G6", "odc cpio", "a.cpio", b"070707" + b"0" * 70 + PAD, "incomplete:unsupported"),
+        Case(
+            "G6",
+            "deb-with-gzip-member",
+            "a.deb",
+            ar_archive({"debian-binary": b"2.0\n", "control.tar.gz": gzip.compress(phrase)}),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G6",
+            "cpio-with-gzip-member",
+            "initrd.cpio",
+            cpio_newc({"etc/motd.gz": gzip.compress(phrase)}),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G6",
+            "static library (benign)",
+            "libx.a",
+            ar_archive({"x.o": b"\x7fELF" + b"\0" * 60}),
+            "clean",
+        ),
+        Case(
+            "G6", "cpio of a text file (benign)", "a.cpio", cpio_newc({"a.txt": b"hi\n"}), "clean"
+        ),
+        Case("G6", "ls -lh output (benign)", "ls.txt", b"$ ls -lh-ish -lh5- MSWIM xar!", "clean"),
         Case(
             "G6",
             "text naming the magic (benign)",

@@ -263,9 +263,39 @@ def _mime_message(data: bytes) -> bool:
     return b"multipart/" in headers or _MIME_ENCODED.search(headers) is not None
 
 
+# Containers recognized from their header that the scanner cannot open. Their members are
+# compressed, encrypted, or stored by reference, so a clean verdict would describe only the
+# outer bytes. Each prefix is the format's full fixed header, not a 2-byte guess, so ordinary
+# binaries and text that name a format stay readable.
+_UNSUPPORTED_PREFIXES = (
+    b"7z\xbc\xaf\x27\x1c",  # 7-Zip
+    b"Rar!\x1a\x07",  # RAR 1.5 to 5
+    b"BZh",  # bzip2
+    b"\xfd7zXZ\x00",  # xz
+    b"\x28\xb5\x2f\xfd",  # Zstandard frame
+    b"\x04\x22\x4d\x18",  # LZ4 frame
+    b"\x02\x21\x4c\x18",  # LZ4 legacy frame
+    b"MSCF\x00\x00\x00\x00",  # Windows cabinet
+    b"ITSF\x02\x00\x00\x00",  # Compiled HTML Help 2
+    b"ITSF\x03\x00\x00\x00",  # Compiled HTML Help 3
+    b"MSWIM\x00\x00\x00",  # Windows imaging
+    b"xar!\x00\x1c",  # xar, as in macOS .pkg installers
+    b"!<thin>\n",  # thin ar: its members are other files
+)
+# A Zstandard skippable frame, an odc cpio header, an ACE header, and an LHA level 0-2 header.
+_UNSUPPORTED_PATTERN = re.compile(
+    rb"[\x50-\x5f]\x2a\x4d\x18|070707[0-7]{70}|.{7}\*\*ACE\*\*|..-lh[0-7d]-", re.DOTALL
+)
+
+
+def unsupported_container(data: bytes) -> bool:
+    """True for a container format the scanner recognizes but cannot open."""
+    return data.startswith(_UNSUPPORTED_PREFIXES) or _UNSUPPORTED_PATTERN.match(data) is not None
+
+
 def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator[ContentUnit]:
     budget.check()
-    if unit.data.startswith((b"7z\xbc\xaf\x27\x1c", b"Rar!\x1a\x07", b"BZh", b"\xfd7zXZ\x00")):
+    if unsupported_container(unit.data):
         raise ContentLimit("unsupported archive")
     kind = archive_kind(unit.data)
     if kind is None:
