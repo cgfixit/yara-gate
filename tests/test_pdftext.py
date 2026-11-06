@@ -71,7 +71,7 @@ def test_same_rule_ids_from_two_namespaces_are_both_kept(
 ) -> None:
     monkeypatch.setattr(scanner, "pdf_text", lambda *a, **k: pdftext.PdfText(blocks=["text"]))
 
-    def yara(rules: object, data: bytes, ext: str, view: str) -> list[Finding]:
+    def yara(rules: object, data: bytes, ext: str, view: str, name: str = "") -> list[Finding]:
         return [
             Finding(
                 rule_id="Same_Id",
@@ -88,7 +88,16 @@ def test_same_rule_ids_from_two_namespaces_are_both_kept(
         ]
 
     unit = ContentUnit("d.pdf", b"%PDF-")
-    found = scanner._pdf_text_findings(None, unit, [], None, Budget(float("inf")), yara, "pdf")  # type: ignore[arg-type]
+    found = scanner._pdf_text_findings(
+        None,
+        unit,
+        [],
+        None,
+        Budget(float("inf")),
+        yara,
+        "pdf",
+        "d.pdf",  # type: ignore[arg-type]
+    )
     assert {(f.namespace, f.severity) for f in found} == {
         ("gate_0", Severity.note),
         ("gate_7", Severity.block),
