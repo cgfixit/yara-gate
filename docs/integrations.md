@@ -348,6 +348,8 @@ and the review queue it lacks are in the
 
 ## PDFs and other compressed documents
 
+The [detection-method map](../rules/README.md) links the reader, structural, and policy code; a derived text view exposes bytes to existing rules rather than certifying a document as safe.
+
 A PDF verdict covers the file's raw bytes, the `pdf-flate` view (every
 `/FlateDecode` stream that inflates to text, after any ASCIIHex or ASCII85 stage
 and PNG or TIFF predictor, handed to the text rules and the PDF name checks), and
