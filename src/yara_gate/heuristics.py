@@ -51,11 +51,15 @@ _VARIATION = frozenset({0xFE0E, 0xFE0F})
 
 
 def heuristic_findings(
-    path: Path, data: bytes, objects: PdfObjectLookup | None = None
+    path: Path,
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    check: Callable[[], None] | None = None,
 ) -> tuple[list[Finding], str | None]:
+    """Structural findings and an incomplete reason; ``check`` enforces the scan deadline."""
     findings = pdf_findings(data, objects)
     findings.extend(embedded_findings(data))
-    pickled, pickle_error = pickle_reduce_findings(path, data)
+    pickled, pickle_error = pickle_reduce_findings(path, data, check)
     findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
     keras, keras_error = keras_config_findings(path, data)
@@ -926,12 +930,18 @@ _HIDDEN_INSTRUCTION = re.compile(
 )
 
 
-def pickle_reduce_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
-    """A call to a dangerous global, or an incomplete reason when the walk cannot finish."""
+def pickle_reduce_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
+    """A call to a dangerous global, or an incomplete reason when the walk cannot finish.
+
+    ``check`` is called every few thousand opcodes; the scanner passes its deadline check,
+    which raises when the scan's time is up.
+    """
     if not _pickle_candidate(path, data):
         return [], None
     try:
-        offset = _pickle_reduce_offset(data)
+        offset = _pickle_reduce_offset(data, check)
     except _PickleLimit:
         # A walk that stops early has not seen the rest of the stream: hold it, not clean.
         return [], _PICKLE_TOO_LARGE
@@ -1226,10 +1236,11 @@ class _PickleLimit(Exception):
     pass
 
 
-def _pickle_reduce_offset(data: bytes) -> int | None:
+def _pickle_reduce_offset(data: bytes, check: Callable[[], None] | None = None) -> int | None:
     """Offset of the first call to a dangerous global, walking opcodes without loading them.
 
-    ``pickletools.genops`` parses every protocol's opcodes and arguments and runs nothing. The
+    ``_pickle_ops`` parses every protocol's opcodes with ``pickletools``' own tables and runs
+    nothing; byte payloads, long strings, and big integers are skipped, not built. The
     stack is simulated from each opcode's documented stack effect, so a dict, a set, a big
     integer, an object's state, or a memo reference before the call does not end the walk.
     Strings and globals are tracked through the memo, because STACK_GLOBAL can take its module
@@ -1244,10 +1255,12 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
         stack: list[object] = []
         memo: dict[object, object] = {}
         try:
-            for opcode, arg, position in pickletools.genops(stream):
+            for opcode, arg, position in _pickle_ops(stream, data):
                 steps += 1
                 if steps > _PICKLE_MAX_OPS:
                     raise _PickleLimit
+                if check is not None and steps % 4096 == 0:
+                    check()
                 hit = _pickle_step(opcode, arg, stack, memo)
                 if len(memo) > _PICKLE_MAX_MEMO or len(stack) > _PICKLE_MAX_STACK:
                     raise _PickleLimit
@@ -1256,6 +1269,75 @@ def _pickle_reduce_offset(data: bytes) -> int | None:
         except (ValueError, IndexError, EOFError, UnicodeError, OverflowError):
             return None
     return None
+
+
+# Opcodes whose argument is a counted payload the walk never needs whole: byte strings are
+# not callables, a module or attribute name longer than _PICKLE_KEEP_TEXT is not a dangerous
+# global, and a big integer's value is irrelevant. Name -> (length width, signed length).
+_PICKLE_COUNTED = {
+    "BINBYTES": (4, False),
+    "BINBYTES8": (8, False),
+    "BYTEARRAY8": (8, False),
+    "BINSTRING": (4, True),
+    "BINUNICODE": (4, False),
+    "BINUNICODE8": (8, False),
+    "LONG4": (4, True),
+}
+_PICKLE_KEEP_TEXT = 4096
+_PICKLE_CODES = {op.code.encode("latin-1"): op for op in pickletools.opcodes}
+
+
+def _pickle_ops(stream: io.BytesIO, data: bytes) -> Iterator[tuple[Any, object, int]]:
+    """``pickletools.genops`` for one pickle, without building large payloads.
+
+    The opcode table and argument readers are ``pickletools``' own. A counted payload larger
+    than ``_PICKLE_KEEP_TEXT``, any byte payload, and a newline-terminated argument longer than
+    that are skipped and yield no argument. A GLOBAL or INST name that long ends the walk: no
+    module has such a name, so a loader stops there too. A truncated or unknown opcode raises
+    ValueError, as ``genops`` does.
+    """
+    size = len(data)
+    while True:
+        position = stream.tell()
+        code = stream.read(1)
+        opcode = _PICKLE_CODES.get(code)
+        if opcode is None:
+            raise ValueError("pickle opcode missing or unknown")
+        counted = _PICKLE_COUNTED.get(opcode.name)
+        arg: object = None
+        if counted is not None and opcode.arg is not None:
+            width, signed = counted
+            raw = stream.read(width)
+            if len(raw) != width:
+                raise ValueError("pickle length truncated")
+            length = int.from_bytes(raw, "little", signed=signed)
+            if length < 0 or length > size - stream.tell():
+                raise ValueError("pickle length out of range")
+            if length > _PICKLE_KEEP_TEXT or opcode.name in {"BINBYTES", "BINBYTES8", "BYTEARRAY8"}:
+                stream.seek(length, 1)
+            else:
+                stream.seek(-width, 1)
+                arg = opcode.arg.reader(stream)
+        elif opcode.arg is not None and opcode.arg.n == pickletools.UP_TO_NEWLINE:
+            start = stream.tell()
+            lines = 2 if opcode.name in {"GLOBAL", "INST"} else 1
+            end = start
+            for _ in range(lines):
+                end = data.find(b"\n", end, end + _PICKLE_KEEP_TEXT + 1)
+                if end < 0:
+                    break
+                end += 1
+            if end >= 0:
+                arg = opcode.arg.reader(stream)
+            elif lines == 2 or data.find(b"\n", start) < 0:
+                raise ValueError("pickle name line too long or unterminated")
+            else:
+                stream.seek(data.find(b"\n", start) + 1)
+        elif opcode.arg is not None:
+            arg = opcode.arg.reader(stream)
+        yield opcode, arg, position
+        if opcode.name == "STOP":
+            return
 
 
 def _pickle_step(opcode: Any, arg: object, stack: list[object], memo: dict[object, object]) -> bool:

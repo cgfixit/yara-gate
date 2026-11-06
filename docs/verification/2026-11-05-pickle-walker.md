@@ -62,3 +62,26 @@ under 0.7 s (106 MB peak at the memo cap). CPython's pickler batches list and di
 at a time, and the 65 joblib test pickles give results identical to `main`.
 `tests/test_heuristics.py` gains a test for each cap; the full pytest suite in one run passes
 (407 passed, 5 skipped).
+
+## Codex security review fix (2026-11-06)
+
+A Codex security review of `20c56e8` found that the walk ignored the scan deadline (20M
+attacker-chosen opcodes ran regardless of `timeout_s`) and that `pickletools.genops` built every
+large argument. Reproduced and fixed in the next commit:
+
+- `heuristic_findings` takes the scan's deadline check, and the walk calls it every 4,096
+  opcodes. A 19 MB `NONE`/`POP` stream with `timeout_s=1` now stops at 1.0 s as incomplete,
+  `timeout`.
+- A small reader replaces `genops`, using `pickletools`' own opcode table and argument readers.
+  It seeks over byte payloads, counted strings and `LONG4` over 4 KB, and newline-terminated
+  arguments over 4 KB without building them; a `GLOBAL` or `INST` name that long ends the walk.
+  On 62 real and generated pickles it yields the same opcodes, positions, and arguments as
+  `genops`, except the byte payloads it drops on purpose.
+- Walker-only cost for a 96 MB `STRING` or `BINUNICODE` payload: 0.02 s and no memory beyond
+  the input. The full scan of such a file takes 32 to 38 s and about 1.7 GB on `main` as well,
+  in the text views and YARA, not the walker.
+- A dangerous call after a skipped 100 KB `STRING`, `BINUNICODE`, `BINBYTES`, `LONG4`, or a
+  10,000-digit `PUT` index still blocks.
+
+`tests/test_heuristics.py` gains a deadline test; the full pytest suite in one run passes
+(408 passed, 5 skipped), and the 65 joblib pickles still match `main`.

@@ -535,3 +535,22 @@ def test_pickle_memo_and_stack_caps_are_incomplete(
     findings, error = heuristics.pickle_reduce_findings(Path("m.pkl"), data)
     assert findings == []
     assert error == "pickle exceeds walk limit"
+
+
+def test_pickle_walk_calls_the_deadline_check() -> None:
+    from yara_gate import heuristics
+
+    calls: list[int] = []
+
+    class Deadline(Exception):
+        pass
+
+    def check() -> None:
+        calls.append(1)
+        if len(calls) >= 2:
+            raise Deadline
+
+    data = b"\x80\x04" + b"N0" * 10_000 + b"."
+    with pytest.raises(Deadline):
+        heuristics.pickle_reduce_findings(Path("m.pkl"), data, check)
+    assert len(calls) == 2
