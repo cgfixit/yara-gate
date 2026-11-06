@@ -49,8 +49,6 @@ OPEN: dict[str, str] = {
     "svg-onerror": "#145.6",
     "base64+leet": "G1",
     "percent+leet": "G1",
-    "concatenated-zip": "G2",
-    "pdf-with-trailing-zip": "G3",
     "ansi-bold-glued": "G4",
     "variation-selector-smuggling": "G5",
 }
@@ -65,12 +63,16 @@ class Case:
     want: str
 
 
-def zipped(members: dict[str, bytes]) -> bytes:
+def zipped(members: dict[str, bytes], method: int = zipfile.ZIP_DEFLATED) -> bytes:
     output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output, "w", method) as archive:
         for name, data in members.items():
             archive.writestr(name, data)
     return output.getvalue()
+
+
+def stored(members: dict[str, bytes]) -> bytes:
+    return zipped(members, zipfile.ZIP_STORED)
 
 
 _CONTENT_TYPES = (
@@ -238,8 +240,36 @@ def cases() -> list[Case]:
         Case("G2", "zip control", "a.zip", HIDDEN, PHRASE_RULE),
         Case("G2", "concatenated-zip", "a.zip", HIDDEN + BENIGN, PHRASE_RULE),
         Case("G2", "concatenated-zip reversed", "a.zip", BENIGN + HIDDEN, PHRASE_RULE),
+        Case(
+            "G2", "three zips, phrase in the middle", "a.zip", BENIGN + HIDDEN + BENIGN, PHRASE_RULE
+        ),
+        Case(
+            "G2",
+            "stored nested zip",
+            "outer.zip",
+            stored({"inner.zip": HIDDEN, "notes.txt": b"ok"}),
+            PHRASE_RULE,
+        ),
+        Case("G2", "two benign zips (benign)", "a.zip", BENIGN + BENIGN, "clean"),
         Case("G2", "signing-block zip (benign)", "a.apk", with_signing_block(BENIGN), "clean"),
         Case("G3", "pdf-with-trailing-zip", "invoice.pdf", PDF_SHELL + HIDDEN, PHRASE_RULE),
+        Case(
+            "G3",
+            "jpeg-with-trailing-zip",
+            "photo.jpg",
+            b"\xff\xd8\xff\xe0" + PAD + HIDDEN,
+            PHRASE_RULE,
+        ),
+        Case(
+            "G3", "script-with-trailing-zip", "run.sh", b"#!/bin/sh\nexit 0\n" + HIDDEN, PHRASE_RULE
+        ),
+        Case(
+            "G3",
+            "end record in text (benign)",
+            "n.txt",
+            b"Notes on zip structure. " * 8 + b"The end signature is PK\x05\x06 at the end.",
+            "clean",
+        ),
         Case(
             "G3",
             "zipapp with shebang (benign)",

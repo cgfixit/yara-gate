@@ -265,7 +265,100 @@ def archive_kind(data: bytes) -> str | None:
         return "tar"
     if _mime_message(data):
         return "mime"
+    if _trailing_zip(data):
+        return "zip"
     return None
+
+
+_ZIP_END = b"PK\x05\x06"
+_ZIP_END_SIZE = 22
+_ZIP_LOCAL_SIZE = 30
+MAX_ZIP_ARCHIVES = 16
+MAX_ZIP_END_RECORDS = 64
+
+
+def _trailing_zip(data: bytes) -> bool:
+    """True when a zip archive ends ``data`` that does not start with one.
+
+    A PDF, image, or script with an archive appended is still a zip to an unzip tool, and a
+    Python zipapp starts with a ``#!`` line. Only the members are read; the shape itself is not
+    a finding.
+    """
+    if _ZIP_END not in data[-(0xFFFF + _ZIP_END_SIZE) :]:
+        return False
+    # Not readable as a zip, so not one: the bytes stay a single unit, as before.
+    opened = _open_zip(data)
+    if opened is None:
+        return False
+    with opened:
+        return bool(opened.infolist())
+
+
+def _zip_archives(data: bytes, budget: Budget) -> Iterator[zipfile.ZipFile]:
+    """Each zip archive in ``data``, open while its members are read.
+
+    ``zipfile`` reads the archive whose end record comes last. Concatenated archives put
+    another before it, and 7-Zip opens the first, so every earlier end record outside the
+    members already read is tried as an archive of its own. A record inside a member's bytes
+    belongs to a stored nested zip, which is read as that member. The main archive's errors
+    propagate as before; an earlier record that does not open is ignored.
+    """
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        covered = _zip_spans(data, archive)
+        position = archive.start_dir
+        yield archive
+    starts = {position}
+    tried = 0
+    while True:
+        position = data.rfind(_ZIP_END, 0, position)
+        if position < 0:
+            return
+        budget.check()
+        span = next((start for start, stop in covered if start <= position < stop), None)
+        if span is not None:
+            position = span
+            continue
+        tried += 1
+        if tried > MAX_ZIP_END_RECORDS:
+            raise ContentLimit("zip end records exceed 64")
+        comment = int.from_bytes(data[position + 20 : position + 22], "little")
+        end = position + _ZIP_END_SIZE + comment
+        if end > len(data):
+            continue
+        earlier = _open_zip(data[:end])
+        if earlier is None:
+            continue
+        with earlier:
+            if not earlier.infolist() or earlier.start_dir in starts:
+                continue
+            if len(starts) >= MAX_ZIP_ARCHIVES:
+                raise ContentLimit("zip archives exceed 16")
+            starts.add(earlier.start_dir)
+            covered.extend(_zip_spans(data, earlier))
+            yield earlier
+
+
+def _open_zip(data: bytes) -> zipfile.ZipFile | None:
+    """``data`` as a zip archive, or None when it does not open as one."""
+    try:
+        return zipfile.ZipFile(io.BytesIO(data))
+    except Exception:
+        return None
+
+
+def _zip_spans(data: bytes, archive: zipfile.ZipFile) -> list[tuple[int, int]]:
+    """The byte ranges of each member (local header through its data) and of the directory."""
+    spans = [(archive.start_dir, len(data))]
+    for info in archive.infolist():
+        start = info.header_offset
+        header = data[start : start + _ZIP_LOCAL_SIZE]
+        extra = 0
+        if len(header) == _ZIP_LOCAL_SIZE:
+            extra = int.from_bytes(header[26:28], "little") + int.from_bytes(
+                header[28:30], "little"
+            )
+        spans.append((start, start + _ZIP_LOCAL_SIZE + extra + info.compress_size))
+    return spans
 
 
 def _mime_message(data: bytes) -> bool:
@@ -338,10 +431,12 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
 
 def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
     if kind == "zip":
-        with zipfile.ZipFile(io.BytesIO(unit.data)) as archive:
-            if len(archive.infolist()) + budget.members > MAX_MEMBERS:
+        base = 0
+        for opened in _zip_archives(unit.data, budget):
+            entries = opened.infolist()
+            if len(entries) + budget.members > MAX_MEMBERS:
                 raise ContentLimit("archive members exceed 1000")
-            for index, info in enumerate(archive.infolist()):
+            for index, info in enumerate(entries, base):
                 budget.member()
                 # orig_filename keeps the NUL and backslashes that ZipInfo.filename rewrites.
                 _check_member_name(info.orig_filename)
@@ -353,8 +448,9 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                     raise ContentLimit("archive member exceeds 100MB")
                 if info.flag_bits & 1:
                     raise ContentLimit("archive unreadable or encrypted")
-                with archive.open(info) as stream:
+                with opened.open(info) as stream:
                     yield index, info.filename, budget.read(stream)
+            base += len(entries)
     elif kind == "mime":
         yield from _mime_members(unit, budget)
     elif kind == "tar":
