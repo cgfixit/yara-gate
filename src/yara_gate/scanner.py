@@ -391,27 +391,31 @@ def _pdf_text_findings(
     as the note ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
-    views: dict[str, dict[str, Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
+    # Keyed by namespace and rule: two rule files may share an id with different severities.
+    views: dict[str, dict[tuple[str, str], Finding]] = {"pdf-text": {}, "pdf-paragraph": {}}
     _SCANNERS.reuse = True
     try:
         for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
             for piece in pieces:
                 budget.check()
                 for finding in yara(rules, _derived(piece, budget), ext, view):
-                    views[view].setdefault(finding.rule_id, finding)
+                    # Base64 runs are judged in pdf-flate, where image samples are told apart.
+                    if finding.rule_id in _RAW_ONLY_RULES:
+                        continue
+                    views[view].setdefault((finding.rule_id, finding.namespace or ""), finding)
     finally:
         _SCANNERS.reuse = False
         _SCANNERS.pair = None
     if text.unmapped:
-        views["pdf-text"]["heuristic_pdf_text_unmapped"] = Finding(
+        views["pdf-text"][("heuristic_pdf_text_unmapped", "")] = Finding(
             rule_id="heuristic_pdf_text_unmapped",
             severity=Severity.note,
             source=FindingSource.heuristic,
         )
     ordered: list[Finding] = []
     for view, found in views.items():
-        for rule_id in sorted(found):
-            finding = found[rule_id]
+        for key in sorted(found):
+            finding = found[key]
             finding.member_path = list(unit.member_path)
             finding.view = view
             ordered.append(finding)

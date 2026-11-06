@@ -130,3 +130,26 @@ pytest (heuristics, scanner, report, policies, CLI JSON, text fast paths, demo: 
 The third-party set is library test PDFs, not a sample of what users send; no scanned-image PDF has text to read, and Word-authored PDFs are represented only through these sets.
 Column layouts that share a baseline join without a space; Type 3 fonts and fonts whose codes
 need the font program are not decoded.
+
+## Codex review fixes (2026-11-06)
+
+Codex code and security reviews of `0f6228c` raised six findings (two describe the same array
+issue); all reproduced on that head and are fixed:
+
+| Finding | Before | After |
+| --- | --- | --- |
+| A `TJ` array was built whole before any deadline or token check | a 4M-item array ran 3.55 s past a 10 ms deadline | every token, array items included, counts toward the deadline and the token cap; an array over 100,000 items is incomplete; stops at 0.01 s |
+| Text past 64K characters was cut off silently | miss | overlapping 64K chunks |
+| `Q` restored only the CTM, not the selected font | miss (decoded with the inner font) | `q`/`Q` save and restore font, size, and leading too |
+| A later `/Contents` stream without its own `BT` was skipped | miss | streams with `Tj` or `TJ` are read |
+| Findings were deduplicated by rule id alone, so a note could hide a same-id block from another namespace | a block dropped | keyed by rule id and namespace |
+
+Reading `BT`-less streams made `test_pdf_image_samples_are_not_base64_but_a_payload_is` fail: an
+image-labelled stream used as `/Contents` now also gave `agent_base64_blob` in `pdf-text`. Base64
+runs are judged in `pdf-flate`, which tells image samples apart, so the two base64 rules are
+now raw-only for the PDF text views as for the other decoded views, and the test passes.
+
+`tests/test_pdftext.py` adds a test for each finding; all fail on `0f6228c` and pass now. After
+the fixes the 132 third-party PDFs show no new finding or verdict change against `main`, the 200
+host-document PDFs no introduced finding or note, the planted phrases 40/40, and the full pytest
+suite in one run passes (410 passed, 5 skipped).

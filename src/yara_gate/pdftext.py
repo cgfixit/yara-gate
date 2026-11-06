@@ -22,7 +22,10 @@ from yara_gate.content import Budget, ContentLimit, PdfStream
 
 MAX_TEXT_BLOCKS = 20_000
 MAX_BLOCK_CHARS = 64 * 1024
+_CHUNK_OVERLAP = 1024
 MAX_TOKENS = 4_000_000
+# A TJ array holds a few hundred items; one this long is not text a reader shows.
+MAX_ARRAY_ITEMS = 100_000
 MAX_CMAP_ENTRIES = 1 << 17
 MAX_FONT_VARIANTS = 4
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
@@ -106,7 +109,8 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     state = _TextState()
     for stream in streams:
         body = stream.text
-        if body is None or b"BT" not in body:
+        # A page's later /Contents stream can continue a text object begun in an earlier one.
+        if body is None or (b"BT" not in body and b"Tj" not in body and b"TJ" not in body):
             continue
         tokens = _blocks(body, fonts, result, budget, tokens, state)
     return result
@@ -370,7 +374,12 @@ class _Paragraphs:
     def _emit(self, target: list[str], text: str) -> None:
         if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
             raise ContentLimit("pdf text blocks exceed 20000")
-        target.append(text[:MAX_BLOCK_CHARS])
+        # Longer text is scanned in overlapping chunks, so nothing past the cap goes unread.
+        step = MAX_BLOCK_CHARS - _CHUNK_OVERLAP
+        for start in range(0, max(len(text) - _CHUNK_OVERLAP, 1), step):
+            if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
+                raise ContentLimit("pdf text blocks exceed 20000")
+            target.append(text[start : start + MAX_BLOCK_CHARS])
 
 
 @dataclass
@@ -401,7 +410,8 @@ def _blocks(
     size = state.size
     leading = 0.0
     ctm = _IDENTITY_MATRIX
-    saved: list[Matrix] = []
+    # q saves, and Q restores, the whole graphics state: the CTM and the text state with it.
+    saved: list[tuple[Matrix, list[Font], float, float]] = []
     line = _IDENTITY_MATRIX
     paragraphs = _Paragraphs(result)
 
@@ -420,12 +430,17 @@ def _blocks(
         scale = max(abs(device[1]), abs(device[3]), 1e-6)
         paragraphs.show(current, strings, device[5], abs(size) * scale)
 
-    for token in _tokens(body):
+    def tick() -> None:
+        # Every token counts, elements of a TJ array included, so one huge array cannot
+        # outrun the deadline or the token cap before it is yielded.
+        nonlocal tokens
         tokens += 1
         if tokens % 4096 == 0:
             budget.check()
         if tokens > MAX_TOKENS:
             raise ContentLimit("pdf content exceeds token limit")
+
+    for token in _tokens(body, tick):
         if not isinstance(token, _Operator):
             operands.append(token)
             continue
@@ -437,9 +452,11 @@ def _blocks(
             paragraphs.end_block()
         elif op == b"q":
             if len(saved) < 64:
-                saved.append(ctm)
+                saved.append((ctm, current, size, leading))
         elif op == b"Q":
-            ctm = saved.pop() if saved else ctm
+            if saved:
+                ctm, current, size, leading = saved.pop()
+                state.fonts, state.size = current, size
         elif op == b"cm" and (values := numbers(6)) is not None:
             ctm = _multiply((values[0], values[1], values[2], values[3], values[4], values[5]), ctm)
         elif op == b"Tf" and len(operands) >= 2 and isinstance(operands[-2], _Name):
@@ -496,7 +513,7 @@ _TOKEN = re.compile(
 )
 
 
-def _tokens(data: bytes) -> Iterable[object]:
+def _tokens(data: bytes, tick: Callable[[], None] = lambda: None) -> Iterable[object]:
     """Content-stream tokens: bytes for a string, float, _Name, list for an array, _Operator."""
     position = 0
     size = len(data)
@@ -507,6 +524,7 @@ def _tokens(data: bytes) -> Iterable[object]:
         if match is None or match.end() == position:
             break
         position = match.end()
+        tick()
         group = match.lastindex
         item: object
         if group == 1 or group == 9 or group is None:
@@ -542,6 +560,8 @@ def _tokens(data: bytes) -> Iterable[object]:
                 item = _Operator(word)
         if stack:
             stack[-1].append(item)
+            if len(stack[-1]) > MAX_ARRAY_ITEMS:
+                raise ContentLimit("pdf array exceeds 100000 items")
         else:
             yield item
     while stack:
