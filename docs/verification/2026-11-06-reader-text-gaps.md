@@ -52,7 +52,7 @@ hidden text without a phrase match.
 - A PDF phrase over two `Tj` operators, or as a hex string inside the content stream: read by
   `pdf-text`.
 - Markdown `Ignore all.** Previous instructions apply.` (a `**` closing a sentence): clean. This
-  is the G7 boundary from #171; G7 itself stays open.
+  is the G7 boundary from #171; G7 itself stayed open until Phase 1b below.
 
 ## Recorded as boundaries, not planned
 
@@ -136,6 +136,72 @@ block on its own keeps the rule's reading. The benign corpus pass is unchanged (
 
 The incomplete row is the shared 100,000-piece cap that `html-text` and `pdf-text` already use.
 No file in the sweep came near it.
+
+## Phase 1b on `claude/festive-curie-up7rx3-phase1b`: `markdown-text` and hyphenated wraps
+
+Same host and toolchain, on `1408686`, stacked on Phase 1a. The probe gives 151 `ok`, 10 `open`
+(the #171.4 to #171.8 and #110 cases), and no `FAIL` or `STALE`. G7 and #171.3 are `ok`, and
+every detection stays a note.
+
+- **`markdown-text`** reads each paragraph, list item, or heading that inline markup splits.
+  Seven cases read, all labeled `markdown-text`: bold, a code span, strikethrough, underscore
+  emphasis, link text, a phrase split over two blockquote lines, and a suffixless `README` that
+  opens with a heading. These stay clean: the halves in two list items, `snake_case` with task
+  checkboxes, a `**` closing a sentence, ordinary emphasis, and the phrase inside a fenced code
+  block. The fenced case is recorded as a boundary, because a fence's markers are literal; a
+  model reading the raw file would still see the sentence, so this is a choice, not a proof.
+- **The hyphen join** in `folded_text` rejoins a letter, `-`, a line break, and a lowercase
+  letter. The wrap is read through `text-folded`, with CRLF and indentation, and through
+  `comment-text+text-folded` inside comment lines. `well-`/`known`, `self-`/`contained`, and
+  `e-`/`mail` stay clean, and so does `previ-` before a capital, the documented limit.
+
+Checks on the branch head, all exit 0: Ruff, `mypy --strict src`, `lint_rules.py`,
+`check_rule_pairs.py`, `check_added_rules.py`, `check_text_controls.py`, `check_scan_only.py`,
+both probes with `--verify`, and `yara-gate selftest`. `measure_precision.py --fail-over` gives
+the same report as Phase 1a apart from its timing line. The Pages recorder matches its reviewed
+baseline. The first commit wrote the Markdown opener's byte-order mark as a literal character,
+which `check_text_controls.py` caught; the next commit writes it as an escape.
+
+### Host sweep
+
+The 91,196 files of the Phase 1a sweep plus 5,932 `.txt`, `.rst`, `.markdown`, and `README`
+files: 97,128 in all. The baseline is the same process with `markdown-text` returning nothing
+and the hyphen pattern unable to match, which is the Phase 1a head. Every finding was compared,
+not only verdicts.
+
+| Measure | Baseline | Branch |
+| --- | --- | --- |
+| Verdict or incomplete-reason changes | | 0 |
+| Incomplete | 0 | 0 |
+| Files whose findings changed | | 27 |
+| Of those, a rule new to the file | | 4 |
+| Findings added by the hyphen join | | 0 |
+| Summed scan time, 4 worker processes | 607 s | 629 s |
+
+Every added finding is in `markdown-text` or `markdown-text+text-folded`. 22 of the 27 files are
+this repository's own docs, which quote attack text in code spans and emphasis; the other five
+are host files (an agent prompt, a skill file, a README, and two Markdown files with shell
+examples) whose rules already fired in another view. The four files with a rule new to them are
+`docs/rules.md` (`win_msbuild_inline_task`), two verification records, and a session copy of
+`docs/rules.md`; each was already `advisory` or `block`. 1,343 of the 1,605 Markdown files
+produced 60,053 pieces; the most in one file was 4,544 (Node's `CHANGELOG.md`).
+
+### Adversarial inputs
+
+| Input | Size | Baseline | Branch | Branch outcome |
+| --- | --- | --- | --- | --- |
+| list items with emphasis, past the piece cap | 4 MiB | 0.81 s | 0.96 s | incomplete, `text pieces exceed 100000` |
+| one line of `*` | 4 MiB | 0.68 s | 0.73 s | clean |
+| unclosed `[` | 4 MiB | 0.71 s | 1.08 s | clean |
+| unclosed link targets `[a](` | 4 MiB | 0.63 s | 1.38 s | clean |
+| backtick runs | 4 MiB | 0.69 s | 1.54 s | clean |
+| underscores at word edges | 4 MiB | 0.71 s | 1.90 s | clean |
+| an unclosed fence, then text | 4 MiB | 1.14 s | 1.59 s | clean |
+| one 4 MiB paragraph with emphasis | 4 MiB | 0.99 s | 2.43 s | clean |
+| nested quote leaders | 4 MiB | 0.65 s | 1.52 s | clean |
+| a hyphen at every line end | 4 MiB | 0.65 s | 0.66 s | clean |
+
+The hyphen pattern alone takes 0.07 s to 0.15 s over 4 MiB, with or without hyphens.
 
 ## Not established
 
