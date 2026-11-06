@@ -42,3 +42,10 @@ separate drafts; this branch documents the implemented behavior of its base and
 links #171 for ongoing work. Full local suites, native/browser UI acceptance,
 and exhaustive external-link availability checks were not needed for this
 prose-only change. Hosted CI is separate.
+
+## PR review follow-up
+
+Corrected the map's candidate location after tracing `hunt()` to its write:
+`<rules-root>/local/hunt_<12 hex chars>.yar`, with `status = "candidate"` metadata.
+There is no generated `candidates/` directory. The loader excludes candidates
+by metadata until explicit promotion. No runtime behavior changed.
