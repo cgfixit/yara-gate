@@ -1,6 +1,6 @@
 # yara-gate user guide
 
-Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox, inbox intake through `yara-gate scan`, and the Python `scan_file` and `scan_bytes` calls are supported; `watch` needs macOS or Linux (see the README's install notes). On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
+Use this when you want to scan a file on a Mac or a Linux machine before anything else reads it. The tool is a command-line program. There is no application window. On Windows, `yara-gate scan` of a file outside the inbox, inbox intake through `yara-gate scan`, and the Python `scan_file` and `scan_bytes` calls are supported; `watch` and `install-agent` need macOS or Linux. On any host, the rules inspect Windows shortcuts, scripts, and Office files before they reach a Windows machine.
 
 The project lives at `~/Projects/yara-gate`. The holding folders live at `~/YaraGate`.
 
@@ -16,7 +16,7 @@ You should see `yara-gate 0.2.0`.
 
 The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
 
-To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, and `rules/local/`. Leave out `.venv/`, `rules/.cache/` (only older versions wrote it; the compiled cache now lives in the user cache directory), and the downloaded files under `rules/vendor/`. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last update could not compile.
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, `rules/local/`, `rules/rules.lock`, and `rules/vendor-overrides.json`. Leave out `.venv/` and the downloaded files under `rules/vendor/`; the compiled-rule cache lives in the user cache directory, not in the tree. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last install could not compile.
 
 Check the install with the built-in fixture run:
 
@@ -28,23 +28,13 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-After a successful install or update, `vendor.installed.json` beside `vendor/`
-records the installed vendor filenames. It is not tracked by git, so a checkout stays
-clean, and an older lock that holds the list is still read. Losing any recorded file
-makes scans incomplete (exit 2) and keeps inbox files in quarantine. Run `yara-gate
-setup` again to restore the locked packs. Local-only offline scans
-remain available before installation. Older installations need one successful
-install or update to establish this record; scans do not enroll them automatically.
-
-Scanning works offline with the shipped local rules before this optional step. Update your repository checkout to receive changes to those rules. An installed copy keeps those packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules install` downloads the packs named in `rules.lock`. `rules update` resolves newer vendor packs and does not update `rules/local/`. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit. The token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds. The curated packs add known-malware signatures.
-
-Run this once, right after `uv sync`:
+Scanning works offline with the 84 shipped local rules before this optional step. The curated packs (YARA Forge core, signature-base, and Elastic protections-artifacts) add known-malware signatures. Run this once, right after `uv sync`:
 
 ```bash
 uv run yara-gate setup
 ```
 
-`setup` downloads the packs pinned in `rules.lock`, checks each sha256, and compiles them before it replaces anything. Running it again prints `already set up` without touching the network while every recorded vendor file is present; `--force` downloads again. Until it has run, a scan on a terminal prints `note: vendor packs not installed; run 'yara-gate setup' once` on stderr and still scans with the shipped rules. Pipes, hooks, and `--json` callers do not see that line unless stderr is a terminal. The scan path itself never downloads anything.
+`setup` downloads the packs pinned in `rules.lock`, checks each sha256, and compiles them before it replaces anything. Running it is the consent to use the network. Running it again prints `already set up` without touching the network while every recorded vendor file is present; `--force` downloads again. Until it has run, a scan on a terminal prints `note: vendor packs not installed; run 'yara-gate setup' once` on stderr and still scans with the shipped rules. Pipes, hooks, and `--json` callers do not see that line. The scan path itself never downloads anything.
 
 `rules install` does the same download on demand, but only with the flag; without it, it exits 2 and prints `refusing: pass --allow-network`:
 
@@ -52,15 +42,17 @@ uv run yara-gate setup
 uv run yara-gate rules install --allow-network
 ```
 
-`rules install` downloads the pins already recorded in `rules.lock` and checks each sha256, so you get the reviewed set. The command prints one line per pack (`pin` and `sha256`) and then `compiled_rules=... skipped_rules=...`. A `rules update` run on 2026-10-04 printed `compiled_rules=13535 skipped_rules=13`. The 13 names are in `rules/vendor/SKIPPED.md`. Most of those signature-base files need external variables that yara-x does not have here, so they are skipped instead of failing the whole scan.
+Either command prints one line per pack (`pin` and `sha256`) and then `compiled_rules=... skipped_rules=...`. The November 1 [vendor setup record](docs/verification/2026-11-01-vendor-setup.md) printed `compiled_rules=13631 skipped_rules=13`; the 13 names are in `rules/vendor/SKIPPED.md`. Most of those signature-base files need external variables that yara-x does not have here, so they are skipped instead of failing the whole scan. If the lock does not match a download, the command prints `incomplete: sha256 mismatch for <pack>`, exits 2, and keeps the previous vendor tree. Set `GITHUB_TOKEN` (or `GH_TOKEN`) to raise the GitHub API limit; the token is sent only to `api.github.com` and is not printed. A rate limit, a missing URL, another HTTP status, or a network failure is printed as a sentence and the command exits 2.
 
-If the lock does not match a download, the command prints `incomplete: sha256 mismatch for <pack>`, exits 2, and keeps the previous vendor tree.
+After a successful install or update, `vendor.installed.json` beside `vendor/` records the installed vendor filenames. It is not tracked by git, so a checkout stays clean, and an older lock that holds the list is still read. Losing any recorded file makes scans incomplete (exit 2) and keeps inbox files in quarantine; run `yara-gate setup` again to restore the locked packs. Older installations need one successful install or update to establish this record; scans do not enroll them automatically.
+
+An installed copy keeps the packaged rules even after `hunt` creates `<user-data>/local/`. A file there with the same name as a packaged rule is skipped (`local/<name>: shadowed by bundled`). If the packaged rules cannot be read, scans exit 2 with `bundled rules missing`. `rules update` resolves newer vendor packs and rewrites `rules.lock`; it does not update `rules/local/`, which changes only with the checkout. If the download or the compile fails, the vendor tree and `rules.lock` stay as they were. An installed copy ships `rules.lock` and copies it into the user-data directory when install succeeds.
 
 ### How vendor matches are graded
 
-Every vendor match blocks unless `rules/vendor-overrides.json` lists that rule for the pack it came from. The list is reviewed and committed, and each entry gives one rule, its pack, an action (`skip`, `note`, or `advisory`), a review date, and the reason. An entry applies only to that rule name in that pack's `vendor/` directory (`yara-forge-core` installs as `vendor/yara-forge`); the same name in another pack still blocks, and the lint fails on a pack that `rules.lock` does not install. yara-gate does not turn a vendor rule's own `score` into a severity. Today the list has two signature-base `.url` rules: one skipped as noisy (it blocked `mailto:` and `steam://` shortcuts), one lowered to advisory. With that list, the benign corpus gets the same verdicts as with the shipped rules alone. A vendor rule may still hold a file you trust. To change that, add an entry with a reason and check the list with `uv run python docs/verification/lint_rules.py`. Do not edit the vendor rule files: `setup --force` and `rules update` replace them. A missing list makes every vendor match block. A malformed list makes every scan exit 2 with `invalid vendor-overrides.json`.
+Every vendor match blocks unless `rules/vendor-overrides.json` lists that rule for the pack it came from. Each committed entry gives one rule, its pack, an action (`skip`, `note`, or `advisory`), a review date, and the reason, and applies only to that rule name in that pack's `vendor/` directory (`yara-forge-core` installs as `vendor/yara-forge`). yara-gate does not turn a vendor rule's own `score` into a severity. Today the list has two signature-base `.url` rules: one skipped as noisy (it blocked `mailto:` and `steam://` shortcuts), one lowered to advisory. When a vendor rule holds a file you trust, add an entry with a reason and check the list with `uv run python docs/verification/lint_rules.py`; do not edit the vendor rule files, which `setup --force` and `rules update` replace. A missing list makes every vendor match block. A malformed list makes every scan exit 2 with `invalid vendor-overrides.json`.
 
-Run `uv run yara-gate rules update --allow-network` when you want newer pins. It resolves the current upstream release and commits, replaces the vendor files, and rewrites `rules/rules.lock`. Either command leaves the previous vendor tree and lock in place if anything fails.
+Run `uv run yara-gate rules update --allow-network` when you want newer pins. It resolves the current upstream release and commits, replaces the vendor files, and rewrites `rules/rules.lock`. Check the rules with `uv run python docs/verification/lint_rules.py` after an update; it only reads the lock and the override list.
 
 ## 3. Watch the inbox
 
@@ -88,13 +80,13 @@ Then look up that hash:
 | Printed verdict | Folder | Exit code you would get from `scan` |
 | --- | --- | --- |
 | `clean` | `~/YaraGate/clean/<sha256>/` | 0 |
-| `advisory` | `~/YaraGate/clean/<sha256>/` | 0 |
-| `block` | `~/YaraGate/blocked/<sha256>/` | 1 |
+| `advisory` (default policy, or notes only under `agent-document`) | `~/YaraGate/clean/<sha256>/` | 0 |
+| `block` (including a held advisory or note under `agent-ingest`) | `~/YaraGate/blocked/<sha256>/` | 1 |
 | `incomplete` | `~/YaraGate/quarantine/<sha256>/` | 2 |
 
-Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` means a rule fired and the report explains which one, and the file was still allowed through. Read that report before you treat the file as ordinary.
+Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` means a rule fired and the file was still allowed through; read the report before you treat it as ordinary.
 
-For an agent or indexer that must hold every advisory, use `yara-gate scan <path> --policy agent-ingest` or `yara-gate watch --policy agent-ingest`. Advisory findings then produce `block`, exit 1, and `blocked/` for inbox files; their original finding severity remains advisory in the report. Use a dedicated `--home` for that consumer. Existing files are not automatically rescanned when a policy changes. A repeated inbox submission returns the existing slot to quarantine before it is scanned and relocated again.
+For an agent or indexer that must hold every advisory and note, use `yara-gate scan <path> --policy agent-ingest` or `yara-gate watch --policy agent-ingest`. Those findings then produce `block`, exit 1, and `blocked/` for inbox files; their original severity stays in the report. `--policy agent-document` holds advisories and lets a file with notes only through; the README's [policy table](README.md#verdicts-and-policies) compares the three. Use a dedicated `--home` for each consumer. Existing files are not automatically rescanned when a policy changes. A repeated inbox submission returns the existing slot to quarantine before it is scanned and relocated again, under the name it was submitted with this time.
 
 Stop watch with Control-C. If a previous watch crashed, the next start takes over a dead pid in `~/YaraGate/.watch.pid`.
 
@@ -117,7 +109,7 @@ uv run yara-gate scan ~/Downloads/notes.txt --home ~/YaraGate
 echo $?
 ```
 
-Exit codes are 0, 1, and 2 as in the table above. This does not relocate `~/Downloads/notes.txt`. The report still appears in `~/YaraGate/reports/`. You can name several files or folders at once, or feed a list with `--paths-from list.txt` (or `--paths-from - --null` after `find ... -print0`); the exit code is the worst one, and a missing path is reported without stopping the others.
+Exit codes are 0, 1, and 2 as in the table above. This does not relocate `~/Downloads/notes.txt`. The report still appears in `~/YaraGate/reports/`. You can name several files or folders at once, or feed a list with `--paths-from list.txt` (or `--paths-from - --null` after `find ... -print0`); the exit code is the worst one, and a missing path is reported without stopping the others. A symlinked file outside the inbox is `symlink not followed` (exit 2) unless you pass `--follow-symlinks`; a symlinked directory is never followed. `--timeout` (default 30 seconds) is the deadline for one file.
 
 To run the same check from Python, without moving the file and without a network call:
 
@@ -134,7 +126,7 @@ To check a message or other text you already have in memory, without writing a f
 
 To make an agent runtime refuse to read a file that has not scanned clean, register the [fail-closed pre-read hook](docs/integrations.md#a-pre-read-hook-that-fails-closed).
 
-`scan_file(path, policy="agent-ingest")` applies the same conservative advisory policy as the CLI. Without that argument, the default policy retains advisory/exit 0 behavior.
+`scan_file(path, policy="agent-ingest")` and `scan_bytes(data, name=..., policy="agent-ingest")` apply the same policy as the CLI flag. Without that argument, the default policy retains advisory/exit 0 behavior.
 
 ## 5. Read a report
 
@@ -142,11 +134,11 @@ Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. O
 
 A home-directory path is shown as `~/...`. The path is where the file was while it was scanned, which is the quarantine slot, even if the file was then moved to `clean/` or `blocked/`.
 
-Reports include policy, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive members by ordinal, without disclosing their names; `view` identifies raw bytes or derived text (`decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` for look-alike spellings folded to plain letters, `pdf-flate` for inflated PDF streams, or `ooxml-text` for the joined text runs of a Word, Excel, or PowerPoint part). Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
+Reports include policy and `policy_reason`, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive and mail members by ordinal (`zip:0`, `mime:2`), without disclosing their names; `view` identifies raw bytes or derived text: `decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` (look-alike spellings folded to plain letters), `base64-decoded` and `percent-decoded` (encoded runs that spell readable text), `mime-headers-decoded`, `pdf-flate` (inflated PDF streams), `pdf-text` and `pdf-paragraph` (the text a PDF shows, per text block and per paragraph), or `ooxml-text` (the joined text runs of a Word, Excel, or PowerPoint part). Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
-For a delivery-pattern finding, compare its `rule_id` with the [README rule table](README.md#what-this-catches-and-what-it-does-not) and the [documented match boundaries](docs/research/modern-delivery-rules.md#rule-boundaries-and-benign-collisions). These delivery rules have advisory severity. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
+For any rule finding, look up its `rule_id` in [docs/rules.md](docs/rules.md), which gives the indicators each rule needs and its known benign collisions. Most rules are advisory. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 
-If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
+If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `archive members exceed 1000`, `archive unreadable or encrypted`, `encrypted pdf`, `encrypted office file`, `pickle exceeds walk limit`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
 ## 6. After you confirm a file is bad
 
@@ -159,7 +151,7 @@ uv run yara-gate hunt \
   --scope ~/Documents
 ```
 
-`--reason` is required. It is collapsed to one line, cut at 300 characters, then escaped, so a trailing backslash still compiles. Control characters are removed and non-ASCII text is kept. The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
+`--reason` is required. It is collapsed to one line, cut at 300 characters, then escaped, so a trailing backslash still compiles. Control characters are removed and non-ASCII text is kept. `--confirmed-by` labels the candidate with who confirmed it (default `operator`). The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
 
 When you want that rule to block later scans:
 
@@ -171,22 +163,22 @@ Promote compiles the edited rule before it writes the file. If the compile fails
 
 ## 7. What a normal file will and will not trip
 
-Expect a block on the EICAR test string, on an Office file with an auto-run macro, on a PDF that contains `/OpenAction` or `/JavaScript`, on a PE/ELF/Mach-O header pasted into another file, on bidi controls (overrides, embeddings, and isolates), and on invisible characters (a zero-width space, a left-to-right or right-to-left mark, a word joiner, a BOM after the first byte, or a Unicode tag). A ZWJ inside an emoji sequence, and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters, are allowed; any other ZWNJ or ZWJ blocks.
+Expect a block on the EICAR test string, on an Office file with an auto-run macro or DDE, on a PDF that contains `/JavaScript`, `/Launch`, or an `/OpenAction` that does more than open a page, on a PE/ELF/Mach-O header pasted into another file or a document, on a double extension such as `invoice.pdf.lnk`, on a file name with a bidi or zero-width character, on a Unicode tag outside an emoji flag, on any bidi control in a source or script file, on a base64 run that decodes to an executable, and on a pickle, safetensors, GGUF, or Keras model file that would run code when loaded.
 
-Expect an advisory, exit 0, on a long base64 blob in a text file, on phrases such as "ignore previous instructions", "forget all of your prior directions", or "repeat your system prompt verbatim", on the same override sentence in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, or Russian, and on hidden HTML that contains those phrases. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch.
+Expect a note, exit 0 under the default policy, on phrases such as "ignore previous instructions", "forget all of your prior directions", or "repeat your system prompt verbatim", on the same override sentence in Spanish, Portuguese, French, German, Italian, Chinese, Japanese, or Russian, on an order such as "disable your filters" or "you are no longer bound by", on the same phrase inside a base64 run, and on a lone invisible or bidi character in text (a zero-width space, a directional mark or isolate, a word joiner, an internal BOM). A ZWJ inside an emoji sequence and a ZWNJ or ZWJ between Arabic, Persian, or Indic letters stay clean. A lone control is a paste artifact as often as an attack; when the same unit also carries another note (a phrase split by a zero-width space, say), the scanner adds an advisory `heuristic_unicode_control_conjunction` finding.
 
-The default policy also reports authority/action spoofing, secret-transfer requests, selected encoded instructions, external templates, download/execute chains, persistent approval-bypass instructions, and tool-result command overrides as advisory. A bare “you are now” status message stays clean; an accompanying override/action, unrestricted-role or jailbreak-persona term (for example `DAN`, `developer mode`) still matches. See the [agent-rule verification](docs/verification/agent-rule-coverage.md) for exact boundaries and corpus limits. Agent-ingest turns every advisory into a block, including benign security examples. ZIP/tar/gzip members receive the same rules and document heuristics; recognized unsupported or encrypted archives remain incomplete. See the README for exact resource and decoding limits.
+Expect an advisory, exit 0, on a long base64 blob in a text file, on hidden HTML near an instruction phrase, on authority or role spoofing, secret-transfer and one-time-code relay requests, tool-result command overrides, persistent approval-bypass requests, Markdown exfiltration, external templates, download-and-execute chains, encoded PowerShell with concealment flags, ClickFix verification-and-paste pages, Windows shortcut, script-host, and document lures, Defender and AMSI tampering, reverse shells, macOS stealer bootstraps, credential uploads, and project files that turn off a coding agent's approvals or run a command when a folder is opened. A file named `.pdf` whose bytes are a zip is also an advisory type mismatch. A bare "you are now" status message stays clean; an accompanying override, unrestricted-role, or jailbreak-persona term (`DAN`, `developer mode`) still matches. An ordinary CAPTCHA, copy widget, or encoded command alone is not enough for the delivery rules, and legitimate administration code using the full combination can still be advisory.
 
-The local pack also reports macOS and Linux persistence and credential prompts (a password dialog with a hidden answer, keychain secret dumps, `NOPASSWD` sudoers appends, `ld.so.preload` writes, downloaded SSH keys, TCC database edits, shell-history wipes), Windows script-host and document lures (HTA shell objects, remote WSF scripts, MSC consoles with URLs, `.reg` logon entries, OneNote attachments that are programs or scripts, spreadsheet DDE and web-query cells, `ms-msdt:` and `ms-appinstaller:` links, and `certutil`, `bitsadmin`, `msiexec`, or `finger … | cmd` downloads), Windows defense evasion (Defender switched off or excluded from a drive root, temp folder, or interpreter; AMSI or ETW patching; shadow-copy, backup, or recovery deletion), reverse shells (`/dev/tcp`, `nc -e`, the `mkfifo` relay, `socat`, Python and PowerShell socket shells), macOS Gatekeeper switched off and the `ditto`-then-`curl` upload a stealer uses to send what it collected, a VS Code `tasks.json` that runs a downloading or hidden task when a cloned or synced project folder is opened, combined ClickFix verification/clipboard/shell instructions, HTML payload assembly with a script/archive download name, encoded PowerShell with concealment or policy-bypass flags, and HTTP(S) or inline-script `mshta` launches. An ordinary CAPTCHA, copy widget, or encoded command alone is insufficient for these new rules. Legitimate code using the full combination can still be advisory. The [delivery-rule notes](docs/research/modern-delivery-rules.md) list the supported spellings, benign collisions, and source references.
+`agent-ingest` holds every advisory and note as block, including benign security examples; `agent-document` holds the advisories and records the notes. ZIP, tar, gzip, and MIME members receive the same rules and document heuristics; recognized unsupported or encrypted containers remain incomplete. [docs/rules.md](docs/rules.md) lists every rule's required indicators, its benign collisions, and the resource and decoding limits.
 
 Do not expect a block on a brand-new payload that no rule mentions. Updating the packs helps for signatures that have been published. It does not make YARA understand a file.
 
 ## 8. When something looks wrong
 
-- Exit 2 and the file still in `quarantine/` is the fail-closed result. Fix the cause (install `yara-x`, raise nothing past the size cap, or remove a broken rules directory) and scan again.
-- `rules update` without `--allow-network` is supposed to exit 2.
+- Exit 2 and the file still in `quarantine/` is the fail-closed result. Fix the cause (run `uv sync --frozen` again, remove a broken user rule, run `setup` to restore a missing vendor file) and scan again. A file over the size cap or an encrypted document stays incomplete by design.
+- `rules install` or `rules update` without `--allow-network` is supposed to exit 2.
 - Two watches at once: the second exits 2 with `incomplete: RuntimeError`.
-- Vendor files that fail to compile are skipped. The scan still runs if at least one rule compiled. Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
+- Vendor files that fail to compile are skipped and counted in the report's `skipped_rule_files`. A shipped local rule that fails to compile is fatal (exit 2). Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
 
 ## 9. Try a verdict in the browser
 
@@ -214,36 +206,21 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    in a tool result, a glyph-id PDF, a model checkpoint that calls `os.system`,
    a dev container that downloads on the host) with a twin of the same shape:
    scan both to see the attack held and the twin clean.
-3. Read the decision and original finding severities. **View result** jumps to
-   the result on a small screen. **Coverage & provenance** shows the loaded-rule
-   count, skipped files, derived views, and fingerprints. A completed bundled-only
-   scan does not mean vendor packs were installed. **Demo response JSON** shows
-   preview fields without the input or matched bytes; it is not the full CLI
-   integration record.
-4. Changing input, example, or policy clears the old result. **Clear input &
-   result** removes the visible paste and response. Connection failures and
-   rejected requests leave no current verdict. A scan already running on the
-   server may finish after the page clears it.
+3. Read the decision and original finding severities. **Coverage & provenance**
+   shows the loaded-rule count, skipped files, derived views, and fingerprints; a
+   completed bundled-only scan does not mean vendor packs were installed. **Demo
+   response JSON** shows preview fields without the input or matched bytes; it is
+   not the full CLI integration record.
+4. Changing input, example, or policy clears the old result, as do connection
+   failures and rejected requests (HTTP 400 `bad json`, which are not scanned).
 
 No input, scan reports, or history are saved by the app, and no file is moved or
-released. Compiled rules may be cached locally. The page has no external assets,
-analytics, browser storage, or cloud calls; its GitHub guide link is an explicit
-navigation out of the app. Clear does not erase the clipboard or guarantee memory
-erasure. Review fingerprints before sharing them. Use the
+released. The page has no external assets, analytics, browser storage, or cloud
+calls; compiled rules may be cached locally. Clear does not erase the clipboard or
+guarantee memory erasure. Review fingerprints before sharing them. Use the
 [integration guide](docs/integrations.md#previewing-policies-in-the-local-workbench)
 for actual CyClaw/Harness callers; a preview never authorizes following content.
 
-Malformed JSON syntax or byte encoding returns HTTP 400 with `bad json`. Rejected
-requests are not scanned. The browser clears its previous verdict when a new
-submission fails; see the [request-validation verification](docs/verification/demo-json-encoding.md).
+## Verification records
 
-## Verification already done on this machine
-
-The [October 19 dependency refresh](docs/verification/dependency-refresh.md) passed
-120 library cases, 24 CLI operations, nine benign-corpus observations and three
-failure-path checks with 20 compiled rules and no skips. It also records live
-browser acceptance and the current hosted CI billing blocker.
-
-The [October 8 delivery-rule verification](docs/research/modern-delivery-rules.md#executed-verification) covers the 16-rule pack with 70 direct library cases, 16 CLI intake/rescan operations, and three compilation/deadline checks. Those runs used inert inputs and disposable gate homes. The [earlier intake record](docs/verification/intake-coverage.md) includes browser evidence and the observed macOS watcher shutdown limitation; it predates the four delivery rules.
-
-A run on 2026-10-04 created `~/YaraGate` and left the local fixtures there. EICAR and the synthetic macro, PDF, and Unicode samples are under `blocked/` or `clean/` as their verdicts required. `big.bin` is a sparse file over the 100 MB cap and it stayed in `quarantine/`. Those are test files, not documents you dropped. Delete `~/YaraGate` if you want the folders empty before you start using them. Deleting it does not remove the rules in `~/Projects/yara-gate`.
+Every change ships with a dated record under [docs/verification/](docs/verification/) that names the source revision, engine version, rule count, commands, and observed outcomes. The most recent, as of this guide: the [November 6 demo showcase](docs/verification/2026-11-06-demo-showcase.md), the [YARA-X 1.23.0 upgrade](docs/verification/2026-11-06-yara-x-1.23.0.md), the [PDF text view](docs/verification/2026-11-05-pdf-text-view.md), the [encoded-text views](docs/verification/2026-11-05-encoded-text-views.md), the [pickle walker](docs/verification/2026-11-05-pickle-walker.md), and the [intake resubmission](docs/verification/2026-11-02-intake-resubmission.md) records. Older records describe smaller rule trees and earlier engines; read their revision line before relying on a number. `uv run yara-gate selftest` and `uv run python docs/research/probe_rule_coverage.py --verify` reproduce the library and CLI behavior on your machine with disposable homes, so `~/YaraGate` is never touched by verification.

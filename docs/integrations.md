@@ -66,13 +66,10 @@ Several files in one process cost one startup instead of one per file:
 `--null` for NUL-separated names). Each path is handled exactly as a single
 path is, in argument order; the exit code is the worst one; a missing path
 writes no record and does not stop the rest; an exact duplicate path is
-scanned once; an empty list exits 0 with no records. The batch form of the
-check above: every record must pass its policy's read rule (a complete `clean`
-with exit 0, or for `agent-document` the exact notes-only record), the record
-count must equal the number of distinct paths you passed, and the process
-exit must be 0. Correlate records with inputs by their `path` field, which is
-the scan-time location (the quarantine slot for an inbox file). Under default policy, advisory is exit 0; choosing `agent-ingest`
-holds those findings as block/exit 1 without changing finding severity.
+scanned once; an empty list exits 0 with no records. In a batch, every record must pass its policy's read rule, the record count must
+equal the number of distinct paths you passed, and the process exit must be 0.
+Correlate records with inputs by their `path` field, which is the scan-time
+location (the quarantine slot for an inbox file).
 
 Inbox inputs still pass through quarantine, receive reports, and move only
 after scanning. The reported `path` is the scan-time quarantine location,
@@ -107,12 +104,11 @@ preview into permission to read changed content. The browser paste is always
 named `paste.txt`; use the original type/name when gating a real file.
 
 Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The app stores no
-scan history or content and sends scans only to its loopback server. The compiler
-may write its local rule cache. Clear removes the page's input/result, not the
-clipboard or all memory copies; an in-flight scan may still finish. Expanding
+scan history or content and sends scans only to its loopback server. Expanding
 JSON reveals hashes and metadata, which can identify known content even without
-matched bytes. The GitHub documentation link leaves the local app only when
-opened. This UI is neither an authenticated multi-user service nor a remote API.
+matched bytes. This UI is neither an authenticated multi-user service nor a remote
+API; the [user guide](../user-guide.md#9-try-a-verdict-in-the-browser) covers its
+controls and privacy limits.
 
 ## Which entry point to use
 
@@ -129,18 +125,13 @@ Pick the row by where the content lives when the caller first sees it.
 | A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
 | An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | Whatever the hook allowed |
 
-Two read rules cover every row. **A message is read only when its own input has
-exactly one complete `clean` record** (`verdict == "clean"`, `incomplete_reason is
-None`, `policy == "agent-ingest"`) **and the process did not exit 2**. **A document
-is read on the same terms, or on exactly one complete notes-only `agent-document`
-record** that meets every condition in
-[Documents that quote attacks](#documents-that-quote-attacks), and on nothing
-broader: not "exit 0", not "any advisory", not "no block finding". `--json` writes one
-record per line. For a single input, that means exit 0. A batch exits with its worst
-result, so exit 1 still lets a path with its own complete `clean` record through,
-while exit 2 means read nothing from that batch. No record, a malformed line, a
-crash, or a timeout all mean "not scanned, do not read". A caller must not turn
-"the scanner failed" into "nothing was found".
+The two read rules from the top of this guide cover every row: a message needs
+exactly one complete `clean` record and no exit 2; a document needs that or the
+exact notes-only `agent-document` record, and nothing broader (not "exit 0", not
+"any advisory", not "no block finding"). A batch exits with its worst result, so
+exit 1 still lets a path with its own complete `clean` record through, while exit
+2 means read nothing from that batch. No record, a malformed line, a crash, or a
+timeout all mean "not scanned, do not read".
 
 Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
@@ -201,15 +192,10 @@ directory may instead be the gate's own `inbox/`, which adds the quarantine and
 intake above). A `conflicted copy` file (two
 devices edited one file offline) is scanned like any other and named in the log;
 whether to allow such files is the consumer's policy. A direct run on 2026-10-29
-against a fake sync folder holding a clean file, an injected file, a `.dropbox`
-marker, `desktop.ini`, an Office lock file, a `.crdownload`, a zero-byte `.pdf`, a
-symlink, a conflicted copy with injected text, and a file still being appended:
-the two injected files and the conflicted copy were held, the clean file allowed,
-every metadata, link, and placeholder entry skipped with a reason, the growing
-file skipped as `changing` and allowed whole on the next pass, the sync folder's
-listing and bytes unchanged afterwards, the allowed copies' SHA-256 equal to their
-records, no file content in the ledger or records, and a gate home inside the sync
-folder refused with exit 2.
+against a fake sync folder (clean, injected, metadata, lock, placeholder, symlink,
+conflicted-copy, and still-growing entries) held the injected files, allowed the
+clean one whole once it stopped changing, skipped every other entry with a reason,
+left the sync folder unchanged, and refused a gate home inside it with exit 2.
 
 Not established here: how the Dropbox client itself writes (temporary name and
 rename, or in place), how its online-only placeholders look on each OS, whether it
@@ -262,10 +248,7 @@ Set `YARA_GATE_HOME` to a gate home used only by this consumer,
 `YARA_GATE_RULES_ROOT` to the rules tree, and `YARA_GATE_BIN` to the `yara-gate`
 executable when it is not on `PATH`. Other agent runtimes with a pre-tool command
 hook can call the same script with the path as its first argument. Direct runs on
-2026-10-25 with a disposable home and copied rules: a clean file exited 0; an
-advisory file, the EICAR test string, a missing path, a scanner killed with
-SIGKILL, a scanner that printed two records, one that printed garbage, truncated
-hook JSON, and a `PATH` without `python3` each exited 2 with a reason; a Bash tool input exited 0 with no output. The hook does
+2026-10-25 with a disposable home exercised each of those exits. The hook does
 not scan the bytes the agent later reads; a change between the scan and the read
 is the consumer's problem to prevent, as above. A clean verdict is not permission
 to execute instructions found in the file.
@@ -323,30 +306,22 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 `sha256` covers only the bytes read. To scan a file literally named `-`, pass
 `./-`.
 
-A JSON body (text that opens with `{` or `[` followed by a JSON token, not an INI header such as `[Section]`) is read twice: as raw bytes and as a `json-unescaped` view in which
-`\u0049gnore`, `\n`, and surrogate pairs are decoded, so an escape cannot hide a
-phrase from the lexical rules. Any text body also gets a `text-folded` view when
-fullwidth letters, a Cyrillic or Greek look-alike inside a Latin word, leet digits,
-spaced-out letters, or a control character would otherwise keep a phrase from the
-rules. A base64 run that decodes to readable text (UTF-8, or UTF-16LE as PowerShell's
-`-EncodedCommand` writes it) gets a `base64-decoded` view, and `%XX` or `+`-joined
-query text gets a `percent-decoded` view, so encoding a phrase does not hide it either.
-PDFs are covered below.
+A JSON body is also read as a `json-unescaped` view, any text body gets a
+`text-folded` view when look-alike, leet, or spaced-out spellings would hide a
+phrase, a base64 run that decodes to readable text (UTF-8, or UTF-16LE as
+PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
+`percent-decoded` view, so escaping or encoding a phrase does not hide it from the
+lexical rules. The exact view rules are under [Limits](rules.md#limits).
 
 A mail message with a MIME body (an `.eml` file, or the raw bytes a mail hook or
-IMAP client holds) is opened as a container, like a zip: each decoded leaf part, a
-quoted-printable or base64 body, an attachment, the leaves of a forwarded message,
-is scanned as a member `mime:N`, where `N` is the part's position in the message and
-never its name. The attachment's own file name drives the name and type checks, so
-an `Invoice.pdf.exe` attachment blocks and a `report.pdf` that is really a program
-is a `filetype_mismatch_pe`, and a soft line break or base64 wrapping cannot split a
-phrase from the lexical rules. A text part declared in a legacy charset
-(`iso-8859-1`, `windows-1252`) is transcoded to UTF-8 for its member view. The raw
-message is scanned as well. Plain text with mail-like headers but no encoded or
-multipart body, an HTTP response, and prose that mentions `Content-Type:` are not
-containers. A message that carries an executable attachment blocks as
-`heuristic_document_executable`, as a `.docx` carrying an `.exe` does, and the
-shared size, count, depth, and deadline limits apply to the decoded parts.
+IMAP client holds) is opened as a container, like a zip: each decoded leaf part is
+scanned as a member `mime:N`, where `N` is the part's position and never its name.
+The attachment's own file name drives the name and type checks, so an
+`Invoice.pdf.exe` attachment blocks and a `report.pdf` that is really a program is a
+`filetype_mismatch_pe`; a message that carries an executable attachment blocks as
+`heuristic_document_executable`. Plain text with mail-like headers but no encoded
+or multipart body is not a container. The shared size, count, depth, and deadline
+limits apply to the decoded parts.
 
 A message gate is a hold decision, not authorization. Treat every inbound
 message as untrusted data, keep it fenced in the prompt, and keep the
@@ -368,36 +343,23 @@ and the review queue it lacks are in the
 
 ## PDFs and other compressed documents
 
-A PDF verdict covers the file's raw bytes and the `pdf-flate` view: every
-`/FlateDecode` stream that inflates to text (content streams and object streams)
-is handed to the text rules and to the PDF name checks, so a prompt-injection
-phrase or a `/JavaScript` action inside compressed text is seen. The filter is
-read from the stream's own dictionary after `#xx` decoding, so `/Fl#61teDecode`
-or a nested `/DecodeParms << … >>` does not hide a stream; `ASCIIHexDecode` and
-`ASCII85Decode` stages before Flate are decoded; and a PNG predictor (10 to 15)
-or TIFF predictor 2 is undone before the text rules run. Predictor
-parameters the view will not apply leave the inflated bytes as they are, so a
-stream that inflates is never dropped from the view. A Word, Excel,
-or PowerPoint verdict covers each XML member and an `ooxml-text` view that joins
-the text runs of the body, headers, footers, notes, comments, shared strings, and
-slides, so a sentence Word split across formatting runs (the usual case) is seen
-whole. A PDF also gets a `pdf-text` view: the strings of each content stream's `Tj`,
-`TJ`, `'`, and `"` operators (literal and hex) are decoded through the font that shows
-them (a simple font as WinAnsi, a font with a `ToUnicode` map through that map, which is
-how Chrome, LibreOffice, and Word store text as glyph IDs). Each text object (`BT` ...
-`ET`) is joined, so a kerned `TJ` array or a hex string reads as written, and scanned on its
-own. Generators start a new text object at every font change or line, so a paragraph whose
-words span several objects (a word in bold, a wrapped line) is also scanned whole as
-`pdf-paragraph`. A jump of more than 1.7 font sizes between baselines ends a paragraph and
-cuts a text object, so two paragraphs cannot form one phrase. A composite font with no readable `ToUnicode`
-map leaves text unread; that is the note `heuristic_pdf_text_unmapped`, so
-`agent-ingest` holds the file instead of passing text it could not read. Not covered:
-text placed out of reading order or in columns on one baseline (joined in stream
-order), a sentence split across two paragraphs, Type 3 and other fonts whose codes need
-the font program, other stream filters (LZW, RunLength, an ASCII chain without Flate),
-images, ODT text split by spans, RTF text split by control words, and Office parts a
-reader does not see (settings, styles). The PDF and Office structure checks still run on the
-raw file.
+A PDF verdict covers the file's raw bytes, the `pdf-flate` view (every
+`/FlateDecode` stream that inflates to text, after any ASCIIHex or ASCII85 stage
+and PNG or TIFF predictor, handed to the text rules and the PDF name checks), and
+the `pdf-text` and `pdf-paragraph` views (the strings a reader shows, decoded
+through each font's `ToUnicode` map or as WinAnsi, joined per text object and per
+paragraph, so a kerned array, a hex string, glyph-ID text from Chrome, LibreOffice,
+or Word, a word in bold, or a wrapped line reads as written). A composite font with
+no readable `ToUnicode` map leaves text unread; that is the note
+`heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
+text it could not read. A Word, Excel, or PowerPoint verdict covers each XML member
+and an `ooxml-text` view that joins the text runs of the body, headers, footers,
+notes, comments, shared strings, and slides, so a sentence Word split across
+formatting runs is seen whole. Not covered: text out of reading order or in columns,
+a sentence split across two paragraphs, Type 3 fonts, LZW and RunLength streams,
+images, ODT spans, RTF control words, and Office parts a reader does not see. The
+exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
+structure checks still run on the raw file.
 
 A consumer that extracts text itself should gate that text too, since the
 extractor's output is what the model reads: scan the original file, then pass
@@ -417,10 +379,12 @@ Allow the document only when both verdicts are clean. Name the text `.txt`
 A threat report, a red-team corpus, or a rule's own test file quotes the phrases
 the override rules match. Under `agent-ingest` those files are held, which is
 right for a message and wrong for a document a person wrote about attacks. The
-`agent-document` policy records a `note` finding (the four phrase rules:
-`agent_prompt_injection_phrases`, its multilingual and base64-encoded forms, and
-`agent_override_imperative`) without changing the verdict, and still holds every
-`advisory` finding: a settings file that turns off approvals, a code-relay
+`agent-document` policy records a `note` finding (the three phrase rules,
+`agent_prompt_injection_phrases`, `agent_prompt_injection_multilingual`, and
+`agent_override_imperative`, the same phrase in a decoded base64 run,
+`agent_encoded_instruction`, a lone Unicode control, a page-open `/OpenAction`, or
+PDF text the font map could not decode) without changing the verdict, and still
+holds every `advisory` finding: a settings file that turns off approvals, a code-relay
 request, a request to send the system prompt, an order to exfiltrate or to call a
 tool and hide it from the user (`agent_tool_hijack_directive`), a hidden-text run,
 or a role-spoof header. The verdict is `advisory` with `policy_reason` set to
@@ -497,14 +461,9 @@ content fences, approval checks, and memory review. A clean scan is not permissi
 to execute instructions found in a file or to persist them as agent guidance.
 
 The [agent-rule coverage record](verification/agent-rule-coverage.md) ties this
-use case to inspected consumer revisions and scans of their current documents.
-Persistent-instruction and textual tool-result rules are advisory by design, so
-both policies hold those findings. Legitimate security documentation can match;
-for a corpus of such documents, `agent-document` passes a file whose only findings
-are notes, under the exact predicate above, and still holds the rest. Release other held files
-through explicit review rather than a filename or repository-wide allowlist. These are integration requirements, not a claim that
-either consumer now calls yara-gate automatically. The
-[integration-readiness review](reviews/2026-11-02-integration-readiness.md) maps both
-consumers at named commits: where CyClaw's indexer can call the gate (at load time, so
-`rclone copy` cannot restore a moved file), and what the harness would need for an
-inbound SMS channel.
+use case to inspected consumer revisions and scans of their current documents, and
+the [integration-readiness review](reviews/2026-11-02-integration-readiness.md) maps
+both consumers at named commits: where CyClaw's indexer can call the gate (at load
+time, so `rclone copy` cannot restore a moved file), and what the harness would need
+for an inbound SMS channel. These are integration requirements, not a claim that
+either consumer now calls yara-gate automatically.

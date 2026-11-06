@@ -17,12 +17,11 @@ PDF paragraph rejoined across text blocks). A static section summarizes the
 measured false-positive evidence and links to its records.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
-deployment ran on November 1, 2026 at 20:29 UTC
+deployment ran on November 1, 2026
 ([pages-demo run 3](https://github.com/cgfixit/yara-gate/actions/runs/41347105100),
-manual dispatch on `main` at `1d13547`); its deploy job reported that environment
-URL. A merge to `main` now redeploys it automatically once every check on the merged
-commit is green, re-recording the results at that commit (see [Deployment](#deployment)).
-Before that change, merges built the demo without publishing it.
+manual dispatch on `main` at `1d13547`). A merge to `main` now redeploys it
+automatically once every check on the merged commit is green, re-recording the
+results at that commit (see [Deployment](#deployment)).
 
 Use `yara-gate demo` on loopback to inspect your own content. This public companion
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
@@ -45,19 +44,16 @@ it is not the Pages entrypoint.
 `scripts/record_pages_demo.py` produces `recordings.json` from real scans, and
 `scripts/pages_deploy_gate.py` decides whether a `main` commit may deploy (see
 [Deployment](#deployment)); neither is part of the artifact.
-The builder never recursively copies the repository. Rule bodies, sample files,
-screenshots, docs, logs, credentials, and unrelated files are excluded. It rejects
-linked source files, extra recording fields, content-entry elements, unexpected
-assets, and changes to the browser policy. It also rejects a dataset that mixes
-rulesets or runtimes across completed recordings, records different inputs for
-one scenario, carries severity flags that disagree with its findings, or has
-non-integer counters and offsets. It also holds each scenario to its `kind`: a
-`control` (benign twin) must be clean with no findings under every policy, a
-`detection` must be held by `agent-ingest`, and the `failure` must be incomplete
-under every policy. A `pair` must join one detection and one control that name each
-other, and `channel` must be one of a fixed set of labels. These checks catch accidental
-regressions; review the actual public strings before publishing. They are not a
-secret detector or a sandbox for malicious source changes.
+The builder never recursively copies the repository: rule bodies, sample files,
+screenshots, docs, logs, and credentials are excluded. It rejects linked source
+files, extra recording fields, content-entry elements, unexpected assets, changes
+to the browser policy, and a dataset that mixes rulesets or runtimes, records
+different inputs for one scenario, or carries severity flags that disagree with its
+findings. It holds each scenario to its `kind`: a `control` (benign twin) must be
+clean with no findings under every policy, a `detection` must be held by
+`agent-ingest`, the `failure` must be incomplete under every policy, and a `pair`
+must join one detection and one control that name each other. These checks catch
+accidental regressions; review the actual public strings before publishing.
 
 The page has no analytics, cookies, browser storage, service worker, remote
 dependencies, or API calls. Its early meta CSP permits only same-origin scripts
@@ -151,8 +147,9 @@ that, so a change to what the page claims always arrives as a reviewed commit. T
 published page names the exact `main` commit it was recorded from.
 
 The committed baseline (schema 2) holds 17 inert examples, recorded with the 84
-bundled rules only and no vendor packs (Python 3.12.3, YARA-X 1.23.0, captured on
-the branch that added the twins; each deploy refreshes the revision and time).
+bundled rules only and no vendor packs (Python 3.12.3, YARA-X 1.23.0, captured at
+`5059d03` on the branch that added the twins; each deploy refreshes the revision
+and time).
 
 | Kind | Examples |
 | --- | --- |

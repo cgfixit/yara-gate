@@ -2,9 +2,9 @@
 
 The repository is [cgfixit/yara-gate](https://github.com/cgfixit/yara-gate) and is public. Do not assume an issue, attachment, or Pages artifact is private. Use GitHub's private vulnerability reporting option if it is enabled; otherwise arrange a private reporting channel with the maintainer before sharing sensitive details.
 
-Do not open an issue that contains a malware sample, a matched snippet, or a file from `blocked/`.
+Do not open an issue that contains a malware sample, a matched snippet, or a file from `blocked/`. Reports under `reports/` carry rule IDs, offsets, hashes, and the scan-time path, never the matched bytes; still read one before attaching it, because only the home-directory prefix is abbreviated.
 
-The demo listens on `127.0.0.1` only. `setup`, `rules install`, and `rules update` are the only commands that use the network. `setup` downloads only the URLs and sha256 values pinned in `rules.lock`, and running it is the consent; the other two require `--allow-network`. Scans, the demo, and the watcher never download. A failed install or update leaves the previous vendor tree in place.
+The demo listens on `127.0.0.1` only. `setup`, `rules install`, and `rules update` are the only commands that use the network. `setup` downloads only the URLs and sha256 values pinned in `rules.lock`, and running it is the consent; the other two require `--allow-network`. A `GITHUB_TOKEN` or `GH_TOKEN` is sent only to `api.github.com` and is dropped on a redirect to another host. Scans, the demo, and the watcher never download, execute a target, or fetch a URL found in it. A failed install or update leaves the previous vendor tree and lock in place.
 
 The separate [Pages demo](docs/pages-demo.md) serves public static files and
 curated recordings, with no scanner backend or content-entry controls. It does
