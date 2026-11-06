@@ -179,9 +179,10 @@ not only verdicts.
 | Summed scan time, 4 worker processes | 607 s | 629 s |
 
 Every added finding is in `markdown-text` or `markdown-text+text-folded`. 22 of the 27 files are
-this repository's own docs, which quote attack text in code spans and emphasis; the other five
-are host files (an agent prompt, a skill file, a README, and two Markdown files with shell
-examples) whose rules already fired in another view. The four files with a rule new to them are
+this repository's own docs, which quote attack text in code spans and emphasis. The other five
+are axios's `CHANGELOG.md`, nvm's `README.md`, a plugin `README.md`, an agent skill file, and a
+session copy of `docs/rules.md` saved as `.txt` that opens with a heading. In the first four, the
+same rules already fired in another view. The four files with a rule new to them are
 `docs/rules.md` (`win_msbuild_inline_task`), two verification records, and a session copy of
 `docs/rules.md`; each was already `advisory` or `block`. 1,343 of the 1,605 Markdown files
 produced 60,053 pieces; the most in one file was 4,544 (Node's `CHANGELOG.md`).
