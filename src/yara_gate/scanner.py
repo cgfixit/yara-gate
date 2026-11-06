@@ -338,8 +338,11 @@ def _scan_file(
             for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view)
-                # An action dictionary inside an object stream is invisible to the raw check.
-                view_findings.extend(pdf_token_findings(derived, pdf_objects))
+                if view in _RAW_ONLY_VIEWS:
+                    view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
+                else:
+                    # An action dictionary inside an object stream is invisible to the raw check.
+                    view_findings.extend(pdf_token_findings(derived, pdf_objects))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
@@ -366,7 +369,9 @@ def _scan_file(
 
 
 _RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
-_RAW_ONLY_VIEWS = frozenset({"text-folded", "base64-decoded", "percent-decoded"})
+_RAW_ONLY_VIEWS = frozenset(
+    {"text-folded", "base64-decoded", "percent-decoded", "mime-headers-decoded"}
+)
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:

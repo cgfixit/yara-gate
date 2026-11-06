@@ -4,6 +4,7 @@ import base64
 import binascii
 import email
 import email.errors
+import email.header
 import email.message
 import email.policy
 import gzip
@@ -407,10 +408,13 @@ _JSON_START = re.compile(r"[\[{]\s*(?:[\"{\[\]}\d-]|(?:true|false|null)\b)")
 # wrapped at line ends the way mail and PEM-style tools wrap it. Possessive, so ordinary words
 # fail fast and a long run is read once.
 _B64_TOKEN = re.compile(
-    r"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{16,}+=*+(?:\r?\n[A-Za-z0-9+/_-]{4,}+=*+)*+"
+    r"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{16,}+(?:\r?\n[A-Za-z0-9+/_-]{4,}+)*+=*+"
 )
 _B64_WRAP = re.compile(r"\r?\n")
-MAX_B64_RUNS = 4096
+# Readable decoded runs, each scanned on its own; more is incomplete, never dropped.
+MAX_B64_TEXTS = 1024
+_MIME_HEADER_BYTES = 64 * 1024
+_ENCODED_WORD = re.compile(r"=\?[^?\s]{1,40}\?[BbQq]\?[^?\s]*\?=")
 _B64_PROBE = 256
 _PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
 _PERCENT_MIN = 3
@@ -421,29 +425,58 @@ _PLUS_RUN = re.compile(r"\+[A-Za-z]{1,64}\+[A-Za-z]{1,64}\+")
 _B64_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
 
 
-def base64_text(text: str, budget: Budget) -> str | None:
-    """Base64 runs in ``text`` that decode to readable text, one decoded run per line.
+def base64_texts(text: str, budget: Budget) -> list[str]:
+    """Base64 runs in ``text`` that decode to readable text, each as its own string.
 
     A reader or model decodes an encoded instruction as easily as it reads a plain one, so each
     run that decodes to UTF-8, or to UTF-16LE (PowerShell's -EncodedCommand form), and reads as
     text with at least one space is kept. Images, keys, hashes, and identifiers decode to
-    binary and are dropped after a short probe. Runs are not joined, so two runs cannot form
-    one phrase, and the count is capped; the caller charges the result to the shared budget.
+    binary and are dropped after a short probe. The caller scans each run apart, so two runs
+    cannot form one phrase. Every candidate is read, under the scan deadline; more than
+    ``MAX_B64_TEXTS`` readable runs is incomplete. A wrapped run that does not decode whole is
+    tried line by line, because a following line of ordinary text can join the token.
     """
     pieces: list[str] = []
     for count, match in enumerate(_B64_TOKEN.finditer(text)):
-        if count >= MAX_B64_RUNS:
-            break
         if count % 256 == 255:
             budget.check()
-        run = _B64_WRAP.sub("", match.group())
-        urlsafe = "-" in run or "_" in run
-        if urlsafe and ("+" in run or "/" in run):
-            continue  # Neither alphabet: a path, a slug, or an identifier.
-        decoded = _b64_readable(run, b"-_" if urlsafe else None)
-        if decoded is not None:
-            pieces.append(decoded)
-    return "\n".join(pieces) or None
+        token = match.group()
+        decoded = _b64_token_text(_B64_WRAP.sub("", token))
+        found = [decoded] if decoded is not None else []
+        if decoded is None and "\n" in token:
+            for line in token.splitlines():
+                if len(line) >= 16 and (each := _b64_token_text(line)) is not None:
+                    found.append(each)
+        for piece in found:
+            pieces.append(piece)
+            if len(pieces) > MAX_B64_TEXTS:
+                raise ContentLimit("base64 text runs exceed 1024")
+    return pieces
+
+
+def _b64_token_text(run: str) -> str | None:
+    urlsafe = "-" in run or "_" in run
+    if urlsafe and ("+" in run or "/" in run):
+        return None  # Neither alphabet: a path, a slug, or an identifier.
+    return _b64_readable(run, b"-_" if urlsafe else None)
+
+
+def mime_header_text(data: bytes) -> str | None:
+    """A MIME message's headers with RFC 2047 encoded words decoded, when it has any."""
+    head = data[:_MIME_HEADER_BYTES]
+    blank = _MIME_BLANK.search(head)
+    raw = (head[: blank.start()] if blank else head).decode("latin-1")
+    unfolded = re.sub(r"\r?\n[ \t]+", " ", raw)
+    if _ENCODED_WORD.search(unfolded) is None:
+        return None
+    lines = []
+    for line in unfolded.splitlines():
+        try:
+            lines.append(str(email.header.make_header(email.header.decode_header(line))))
+        except (LookupError, ValueError, UnicodeError, email.errors.HeaderParseError):
+            lines.append(line)
+    decoded = "\n".join(lines)
+    return decoded if decoded != unfolded else None
 
 
 def _b64_readable(run: str, altchars: bytes | None) -> str | None:
@@ -548,10 +581,15 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
             yield "json-unescaped", _derived(decoded, budget)
     # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
     # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
-    # A MIME message's base64 parts are already decoded as its members.
-    encoded = None if _mime_message(data) else base64_text(text, budget)
-    if encoded is not None:
-        yield "base64-decoded", _derived(encoded, budget)
+    # A MIME message's base64 parts are already decoded as its members; its headers' RFC 2047
+    # encoded words are not parts, so they get their own view.
+    if _mime_message(data):
+        headers = mime_header_text(data)
+        if headers is not None:
+            yield "mime-headers-decoded", _derived(headers, budget)
+    else:
+        for encoded in base64_texts(text, budget):
+            yield "base64-decoded", _derived(encoded, budget)
     unquoted = percent_text(text)
     if unquoted is not None:
         yield "percent-decoded", _derived(unquoted, budget)
@@ -710,7 +748,11 @@ def pdf_views(
         if inflated and sniff(inflated) == "text":
             parts.append(inflated)
     if parts:
-        yield "pdf-flate", b"\n".join(parts)
+        joined = b"\n".join(parts)
+        yield "pdf-flate", joined
+        # Text a PDF shows can itself be base64; its streams are not otherwise decoded.
+        for encoded in base64_texts(joined.decode("latin-1"), budget):
+            yield "base64-decoded", _derived(encoded, budget)
 
 
 def _pdf_stream_bytes(

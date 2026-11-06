@@ -67,3 +67,25 @@ report, policies, CLI JSON, heuristics, SMS bridge, pages, demo, rules: 324 pass
 ## Not established
 
 Hex, ROT13, and nested encodings are not decoded. No real mail or chat corpus was measured.
+
+## Codex review fixes (2026-11-06)
+
+Codex code and security reviews of `184088a` raised five findings; all reproduced on that head
+and are fixed. Four were cases the retired fixed-phrase rule caught through YARA's `base64`
+modifier in raw bytes:
+
+| Finding | Before | After |
+| --- | --- | --- |
+| A padded run followed by a line of text joined into one token that did not decode | miss | padding ends a token; a wrapped token that does not decode is tried line by line |
+| Decoded runs joined with one newline let two JSON fields form one phrase | false positive | each decoded run is its own YARA pass |
+| Runs after the first 4,096 candidates were dropped silently | miss | every candidate is read under the scan deadline; more than 1,024 readable runs is incomplete |
+| Base64 inside a PDF's inflated text stream was not decoded | miss | the `pdf-flate` text gets the same base64 view |
+| An RFC 2047 encoded `Subject` in a `.eml` was skipped with the message's base64 view | miss | headers' encoded words get a `mime-headers-decoded` view |
+
+`check_added_rules.py` gains five cases; with `content.py` and `scanner.py` reverted they give
+four misses and one false positive. Precision per-rule counts match `main` (less the retired
+rule), the 200 host-document PDFs and texts show no new finding, a base64 mail body still gives
+one finding at `mime:0`, and the full pytest suite in one run passes (404 passed, 5 skipped).
+
+Cost: with no candidate cap, a 4 MiB file of long identifiers takes 0.81 s against 0.52 s
+before (every token is probed); ASCII prose, UTF-16, and base64 runs are unchanged.
