@@ -1250,6 +1250,15 @@ _MARKDOWN_INLINE = re.compile(
 )
 
 
+# One line at a time, ending where str.splitlines ends one, without building a list of every line.
+_MARKDOWN_LINE = re.compile(
+    r"([^\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]*+)"
+    r"(?:\r\n|[\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]|\Z)"
+)
+# A long paragraph's lines are joined into a chunk this often, so memory follows its length.
+_MARKDOWN_JOIN_EVERY = 1024
+
+
 def _markdown_inline(match: re.Match[str]) -> str:
     return match.group(1) or ""
 
@@ -1276,23 +1285,26 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
         return []
     blocks: list[str] = []
     parts: list[str] = []
+    chunks: list[str] = []
     changed = False
     fence = ""
     depth = 0
 
     def flush() -> None:
         nonlocal changed, depth
-        if changed and parts:
+        if changed and (parts or chunks):
             if len(blocks) >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
-            blocks.append("\n".join(parts))
+            blocks.append("\n".join(chunks + parts))
         parts.clear()
+        chunks.clear()
         changed = False
         depth = 0
 
-    for count, line in enumerate(text.splitlines()):
+    for count, found in enumerate(_MARKDOWN_LINE.finditer(text)):
         if count % 4096 == 0:
             budget.check()
+        line = found.group(1)
         opener = _MARKDOWN_FENCE.match(line)
         if fence:
             # A closing fence is the opener's character, at least as long, and nothing after it.
@@ -1333,6 +1345,9 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
         shown = _MARKDOWN_INLINE.sub(_markdown_inline, body)
         changed = changed or shown != body
         parts.append(shown.strip(" \t"))
+        if len(parts) >= _MARKDOWN_JOIN_EVERY:
+            chunks.append("\n".join(parts))
+            parts.clear()
         if heading is not None:
             flush()
     flush()

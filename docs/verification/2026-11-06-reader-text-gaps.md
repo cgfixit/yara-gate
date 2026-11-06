@@ -244,6 +244,22 @@ findings. The reader took 2.82 s old and 2.67 s new over the set.
 The alternating-depth input emits a piece per quote block, as list items already do, and
 stops at the same cap.
 
+Codex's security review then found that `markdown_texts` built `text.splitlines()` (every line
+as its own string) before its first deadline check, and kept every line of a long paragraph in
+a list. Reproduced on `f2777d3` with `# T` and then `ab\n` repeated, measuring peak RSS of the
+reader alone:
+
+| Input | `f2777d3` | Fix | Time, `f2777d3` / fix |
+| --- | --- | --- | --- |
+| 16 MiB | 394 MiB (50 MiB before the call) | 51 MiB (51 MiB before) | 7.2 s / 8.4 s |
+| 64 MiB | 1,451 MiB (146 MiB before) | 147 MiB (146 MiB before) | 30.0 s / 32.5 s |
+
+Lines are now read one at a time with a regex that ends a line where `str.splitlines` does,
+and a long paragraph's lines are joined into a chunk every 1,024 lines. 20,000 random inputs
+mixing every separator `splitlines` honors give the same pieces as `f2777d3`, as do the 15,544
+host files above. The time is unchanged and is bounded by the scan deadline, which the reader
+checks every 4,096 lines.
+
 ## Not established
 
 Synthetic fixtures and one Linux host. No Office, PDF, RTF, SVG, or notebook application was used
