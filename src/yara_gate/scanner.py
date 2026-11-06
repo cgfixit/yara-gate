@@ -5,7 +5,7 @@ import math
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from yara_gate.content import (
@@ -170,7 +170,13 @@ def _scan_file(
     yara_time = 0.0
 
     def yara(
-        rules: object, payload: bytes, ext: str, view: str | None, *, samples: bool = False
+        rules: object,
+        payload: bytes,
+        ext: str,
+        view: str | None,
+        *,
+        samples: bool = False,
+        name: str = "",
     ) -> list[Finding]:
         nonlocal scanned_bytes, yara_time
         if view is not None:
@@ -189,6 +195,7 @@ def _scan_file(
                 samples=samples,
                 overrides=overrides,
                 vendor_dirs=vendor_dirs,
+                name=name,
             )
         finally:
             scanned_bytes += len(payload)
@@ -298,16 +305,21 @@ def _scan_file(
                         )
                     )
             ext = path.suffix.lower().removeprefix(".")
+            # The final name component, for rules about files known by name (.envrc,
+            # devcontainer.json) that have no telling suffix. An archive member named with
+            # backslashes is a directory path on Windows, wherever the scan runs, and Windows
+            # drops trailing dots and spaces from a name it creates.
+            base = PurePosixPath(unit.name.replace("\\", "/")).name.rstrip(". ").lower()
             # A .bmp, .tif, .emf, or .wmf whose header validates holds image samples. Its raw
             # bytes and every text view are still scanned, in the same samples mode as the
             # pdf-flate view: a base64 run must hold data beyond repeats and grain, and a
             # Unicode control must sit in UTF-8 text. Text a reader or interpreter would see
             # (a script, a phrase, a real payload) is checked as in any other unit.
             image = raster_image(path.suffix, unit.data)
-            extra.extend(yara(rules, unit.data, ext, None, samples=image))
+            extra.extend(yara(rules, unit.data, ext, None, samples=image, name=base))
             # Object streams are indexed on first use, for an /OpenAction reference only.
             pdf_objects = PdfObjects(unit.data, budget)
-            heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects)
+            heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects, budget.check)
             extra.extend(heuristic)
             decoded = _decoded_text(unit.data)
             if decoded is not None:
@@ -322,12 +334,16 @@ def _scan_file(
                 return finish(office_error)
             for view, derived in text_views(unit.data, budget):
                 budget.check()
-                view_findings = yara(rules, derived, ext, view, samples=image)
-                if view == "text-folded":
+                view_findings = yara(rules, derived, ext, view, samples=image, name=base)
+                if view in _RAW_ONLY_VIEWS:
                     # Folding rewrites digits inside base64 (0 to o), which breaks the media
                     # exemptions; the raw bytes already carry the base64 verdict, and folding
-                    # cannot create a real encoded payload that the raw view missed.
+                    # cannot create a real encoded payload that the raw view missed. The
+                    # decoded views are the text a base64 or percent run spells, judged by
+                    # the lexical rules; the run itself was judged in the raw view.
                     view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
+                if view == "base64-decoded":
+                    view_findings.extend(_encoded_phrase_findings(derived, view_findings))
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
@@ -341,20 +357,24 @@ def _scan_file(
             streams = pdf_streams(unit.data, budget, pdf_objects.decoded)
             for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded, streams):
                 budget.check()
-                view_findings = yara(rules, derived, ext, view)
-                # An action dictionary inside an object stream is invisible to the raw check.
-                view_findings.extend(pdf_token_findings(derived, pdf_objects))
+                view_findings = yara(rules, derived, ext, view, name=base)
+                if view in _RAW_ONLY_VIEWS:
+                    view_findings = [f for f in view_findings if f.rule_id not in _RAW_ONLY_RULES]
+                    view_findings.extend(_encoded_phrase_findings(derived, view_findings))
+                else:
+                    # An action dictionary inside an object stream is invisible to the raw check.
+                    view_findings.extend(pdf_token_findings(derived, pdf_objects))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
             findings.extend(
-                _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext)
+                _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext, base)
             )
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
-                for finding in yara(rules, derived, ext, view):
+                for finding in yara(rules, derived, ext, view, name=base):
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
@@ -380,6 +400,7 @@ def _pdf_text_findings(
     budget: Budget,
     yara: Callable[..., list[Finding]],
     ext: str,
+    name: str,
 ) -> list[Finding]:
     """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
     spans blocks (``pdf-paragraph``), one YARA pass apiece.
@@ -398,7 +419,7 @@ def _pdf_text_findings(
         for view, pieces in (("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)):
             for piece in pieces:
                 budget.check()
-                for finding in yara(rules, _derived(piece, budget), ext, view):
+                for finding in yara(rules, _derived(piece, budget), ext, view, name=name):
                     # Base64 runs are judged in pdf-flate, where image samples are told apart.
                     if finding.rule_id in _RAW_ONLY_RULES:
                         continue
@@ -423,7 +444,36 @@ def _pdf_text_findings(
 
 
 _SCANNERS = threading.local()
+
+
+# The phrases the retired YARA rule agent_encoded_instruction matched in base64 (its id and
+# note severity are kept). It matched raw substrings, so a phrase run into the word before it
+# was still found; the lexical rules need a word boundary. Encoded text keeps that stricter
+# reading on purpose: plain text with the same glued phrase is not reported.
+_ENCODED_PHRASES = (b"ignore previous instructions", b"ignore all previous instructions")
+
+
+def _encoded_phrase_findings(derived: bytes, found: Sequence[Finding]) -> list[Finding]:
+    """The retired encoded-instruction note, when a decoded run holds a phrase as a substring
+    and the lexical rules did not already report one there."""
+    if any(f.rule_id == "agent_prompt_injection_phrases" for f in found):
+        return []
+    lowered = derived.lower()
+    if not any(phrase in lowered for phrase in _ENCODED_PHRASES):
+        return []
+    return [
+        Finding(
+            rule_id="agent_encoded_instruction",
+            severity=Severity.note,
+            source=FindingSource.heuristic,
+        )
+    ]
+
+
 _RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
+_RAW_ONLY_VIEWS = frozenset(
+    {"text-folded", "base64-decoded", "percent-decoded", "mime-headers-decoded"}
+)
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:
@@ -486,8 +536,9 @@ def _yara_findings(
     samples: bool = False,
     overrides: Mapping[tuple[str, str], str] | None = None,
     vendor_dirs: Mapping[str, str] | None = None,
+    name: str = "",
 ) -> list[Finding]:
-    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples)
+    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples, name=name)
     findings: list[Finding] = []
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
@@ -542,7 +593,7 @@ def _first_match(
 
 
 def _invoke_scan(
-    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False, name: str = ""
 ) -> object:
     import yara_x
 
@@ -559,14 +610,15 @@ def _invoke_scan(
             _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
     blob, exe = base64_run_signals(data, samples=samples)
-    for name, value in (
+    for global_name, value in (
         ("yara_gate_ext", ext),
+        ("yara_gate_name", name),
         ("yara_gate_text", sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
     ):
         try:
-            scanner.set_global(name, value)
+            scanner.set_global(global_name, value)
         except (TypeError, ValueError):
             pass
     try:

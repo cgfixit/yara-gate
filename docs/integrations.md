@@ -328,7 +328,10 @@ A JSON body (text that opens with `{` or `[` followed by a JSON token, not an IN
 phrase from the lexical rules. Any text body also gets a `text-folded` view when
 fullwidth letters, a Cyrillic or Greek look-alike inside a Latin word, leet digits,
 spaced-out letters, or a control character would otherwise keep a phrase from the
-rules. PDFs are covered below.
+rules. A base64 run that decodes to readable text (UTF-8, or UTF-16LE as PowerShell's
+`-EncodedCommand` writes it) gets a `base64-decoded` view, and `%XX` or `+`-joined
+query text gets a `percent-decoded` view, so encoding a phrase does not hide it either.
+PDFs are covered below.
 
 A mail message with a MIME body (an `.eml` file, or the raw bytes a mail hook or
 IMAP client holds) is opened as a container, like a zip: each decoded leaf part, a

@@ -419,7 +419,13 @@ def test_timeout_is_incomplete(
     from yara_gate import scanner
 
     def boom(
-        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+        rules: object,
+        data: bytes,
+        timeout_s: int,
+        ext: str,
+        *,
+        samples: bool = False,
+        name: str = "",
     ) -> object:
         raise ScanTimeout
 
