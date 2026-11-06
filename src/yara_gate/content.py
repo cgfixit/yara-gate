@@ -1232,7 +1232,7 @@ def comment_texts(text: str, budget: Budget) -> list[str]:
 
 _MARKDOWN_SUFFIXES = frozenset({"md", "markdown", "mdown", "mkd", "mkdn", "mdx"})
 # A heading or YAML front matter at the start of a text file with no suffix or .txt.
-_MARKDOWN_OPENER = re.compile(r"\A﻿?\s*+(?:#{1,6}[ \t]++\S|---[ \t]*+\r?\n)")
+_MARKDOWN_OPENER = re.compile(r"\A\ufeff?\s*+(?:#{1,6}[ \t]++\S|---[ \t]*+\r?\n)")
 _MARKDOWN_FENCE = re.compile(r"[ \t]{0,3}+(`{3,}+|~{3,}+)")
 _MARKDOWN_QUOTE = re.compile(r"[ \t]{0,3}+(?:>[ \t]?+)++")
 _MARKDOWN_HEADING = re.compile(r"[ \t]{0,3}+#{1,6}+(?:[ \t]++|$)")
