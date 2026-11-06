@@ -482,6 +482,50 @@ def _ecosystem_files() -> list[tuple[str, bytes]]:
     )
     for index, workflow in enumerate(workflows):
         files.append((f"repo/.github/workflows/ci-{index:02d}.yml", workflow))
+    # A repository's own git config, dev container, and direnv file, as a synced or zipped
+    # checkout carries them: LFS and git-crypt filters, Watchman, Husky, delta, and installers.
+    files.append(
+        (
+            "repo/.git/config",
+            b"[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n"
+            b"\tfsmonitor = .git/hooks/fsmonitor-watchman\n\thooksPath = .husky/_\n"
+            b"\tsshCommand = ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes\n\tpager = delta\n"
+            b'[remote "origin"]\n\turl = https://github.com/example/repo.git\n'
+            b'[filter "lfs"]\n\tclean = git-lfs clean -- %f\n\tsmudge = git-lfs smudge -- %f\n'
+            b"\tprocess = git-lfs filter-process\n\trequired = true\n"
+            b'[diff "sopsdiffer"]\n\ttextconv = sops -d\n'
+            b"[alias]\n\tup = !sh -c 'git fetch && git rebase'\n",
+        )
+    )
+    files.append(
+        (
+            "crypt/.git/config",
+            b'[filter "git-crypt"]\n\tsmudge = "git-crypt" smudge\n\tclean = "git-crypt" clean\n'
+            b'[diff "git-crypt"]\n\ttextconv = "git-crypt" diff\n[pager]\n\tlog = less -FRX\n',
+        )
+    )
+    files.append(
+        (
+            "repo/.devcontainer/devcontainer.json",
+            b'{\n  "name": "Python 3",\n'
+            b'  "image": "mcr.microsoft.com/devcontainers/python:3.12",\n'
+            b'  "initializeCommand": "mkdir -p ${localEnv:HOME}/.aws",\n'
+            b'  "onCreateCommand": "npm ci",\n'
+            b'  "postCreateCommand": {"deps": "uv sync --frozen", "hooks": "pre-commit install"},\n'
+            b'  "postStartCommand": "bash ${containerWorkspaceFolder}/.devcontainer/start.sh"\n}\n',
+        )
+    )
+    files.append(
+        (
+            "repo/.envrc",
+            b"if ! has nix_direnv_version || ! nix_direnv_version 3.0.4; then\n"
+            b'  source_url "https://raw.githubusercontent.com/nix-community/nix-direnv/3.0.4/direnvrc"'
+            b' "sha256-DzlYZ33mWF/Gs8DDeyjr8mnVmQGx7ASYqA5WlxwvBG4="\nfi\nuse flake\n'
+            b"layout python3\ndotenv_if_exists .env.local\nPATH_add node_modules/.bin\n"
+            b'eval "$(pyenv init -)"\n'
+            b"export PYTHONPATH=$(python3 -c 'import sys; print(sys.prefix)')\n",
+        )
+    )
 
     def layer(name: str, extra: dict[str, object]) -> dict[str, object]:
         return {

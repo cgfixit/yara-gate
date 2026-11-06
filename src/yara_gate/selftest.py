@@ -174,7 +174,13 @@ def _forced_timeout(root: Path, rules: Path) -> bool:
     original = scanner._invoke_scan
 
     def boom(
-        rules: object, data: bytes, timeout_s: int, ext: str, *, samples: bool = False
+        rules: object,
+        data: bytes,
+        timeout_s: int,
+        ext: str,
+        *,
+        samples: bool = False,
+        name: str = "",
     ) -> object:
         raise ScanTimeout
 

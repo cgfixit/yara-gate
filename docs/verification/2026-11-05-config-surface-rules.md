@@ -1,0 +1,113 @@
+# Checkout configuration that runs commands (2026-11-05)
+
+Source: `main` at `7f9934c`, branch `rules/config-surface-exec`. Linux x86_64, Python 3.12,
+locked YARA-X 1.22.1, a disposable copy of the shipped rules (85 local rules after this change,
+no vendor packs). Nothing was executed; every command in a fixture is inert text.
+
+## What was missing
+
+On `main`, a `.git/config` with `core.fsmonitor`, `sshCommand`, a pager, or a filter driver that
+fetches or decodes, a `devcontainer.json` `initializeCommand` that downloads to a file and runs
+it, and an `.envrc` that downloads, decodes, or opens a socket all scanned clean unless the text
+also happened to hold a `curl ... | sh` pipe (`script_download_execute`).
+
+## Change
+
+- A `yara_gate_name` scan global: the lowercased final component of the submitted or member
+  name. It is declared with the other globals in `rules.define_scan_globals`, so vendor
+  validation and the cache compile it the same way.
+- `rules/local/dev_config_surface.yar`, three advisory rules:
+  `dev_git_config_exec` (needs a `[core]`, `[pager]`, `[filter "..."]`, or `[diff "..."]`
+  section, any name), `dev_devcontainer_lifecycle` (`devcontainer.json` or
+  `.devcontainer.json`), and `dev_envrc_exec` (`.envrc`).
+- `npx -y <package>` is not matched: it is how MCP and dev container configs normally start a
+  server.
+
+## Outcomes
+
+| Probe | Result |
+| --- | --- |
+| 10 git config hits (fsmonitor, sshCommand, pager, LFS smudge, textconv, `[pager] log`, `/tmp` and UNC `hooksPath`, encoded PowerShell, UTF-16) | advisory, `dev_git_config_exec` only of the three |
+| 8 git config controls (origin remote, Git LFS, git-crypt, Watchman, `ssh -i`, delta, Husky `hooksPath`, sops `textconv`, `[alias] !sh -c`, `[color]`, a Markdown mention) | clean |
+| 5 dev container hits (host download, host PowerShell array, base64 decode, `/dev/tcp`, inline Python socket) | advisory |
+| 5 dev container controls (Python template, `docker network create`, `npm ci`, object form, an installer piped to `sh` inside the container, the same host command in `settings.json`) | none of the three rules |
+| 5 `.envrc` hits and 5 controls (nix-direnv `source_url`, `use flake`, `layout`, `pyenv init`, `python3 -c` printing `sys.prefix`, the same download in `setup.sh`) | as expected |
+
+The 38-case probe had one miss on the first pass: git stores a UNC `hooksPath` with each
+backslash doubled. The regex now accepts the escaped form.
+
+Zipped checkouts (`repo/.git/config`, `repo/.devcontainer/devcontainer.json`, `repo/.envrc`)
+report the rule with member path `zip:0`. CLI intake of a zipped repository under `default`,
+`agent-ingest`, and `default` again: exit 0 to `clean/`, exit 1 to `blocked/`, exit 0 to
+`clean/`, finding severity `advisory` each time.
+
+## Checks
+
+- `lint_rules.py` (85 rules), `check_rule_pairs.py` (112, six new pairs),
+  `check_added_rules.py` (103 cases, including zip members and the same bytes under another
+  name), `check_rules_lock.py`, `check_scan_only.py`, `check_intake.py`,
+  `check_text_controls.py`, `probe_rule_coverage.py --verify`, `yara-gate selftest`: pass.
+- `measure_precision.py --fail-over`: exit 0 on 324 files. The four new checkout files (two git
+  configs, a dev container, an `.envrc`) hit no rule under `default` or `agent-ingest`.
+- `ruff check .`, `ruff format --check .`, `mypy --strict src`, and
+  `pytest tests/test_scanner.py tests/test_rules.py tests/test_cli.py tests/test_pages_*.py`
+  (171 passed, 1 skipped): pass. Ruff caught one regression in the first draft: the loop
+  variable that sets globals shadowed the new `name` argument. The two `_invoke_scan`
+  stand-ins in `selftest.py` and `tests/test_scanner.py` gained the keyword.
+- The full pytest run was killed by the container (exit 137) and is left to hosted CI.
+
+## Not established
+
+No real-world corpus of `.git/config` or direnv files was measured (the published-package
+corpus below holds only two git config files and one `.envrc`), and `textconv = sh -c ...` is a
+legitimate shape some teams use; it is reported as advisory. Package tarballs are not operator
+upload traffic, so the dev container figure below is not a production false-positive rate.
+
+## Codex review fixes (2026-11-06)
+
+A Codex code review of `d348f38` raised four findings; all reproduced on that head (seven
+failing probe cases) and are fixed:
+
+| Finding | Before | After |
+| --- | --- | --- |
+| Any `[core]` header satisfied the section check, so `[alias] process = !sh -c ...` after it matched | false positive | each key must sit in its own section, with no other header between |
+| A pretty-printed `initializeCommand` object or `["sh", "-c", "wget ..."]` array, and a multiline container-command object, were not read | miss | indicators are read inside any JSON string of the key's value, across lines |
+| In compact JSON the host match ran past `initializeCommand`'s value into a later `postCreateCommand` | false positive | the indicator must sit inside the key's own string; escaped quotes stay inside |
+| A zip member named `repo\.devcontainer\devcontainer.json` kept the whole path as `yara_gate_name` on Linux and macOS | miss | backslashes are normalized before the final component is taken |
+
+`check_added_rules.py` gains five cases for these (108 total); with the rule and scanner
+reverted they give two false positives and three misses. The 38-case probe, rule pairs (112),
+`measure_precision.py --fail-over` (0 hits for the three rules), the seven real git config
+files on the host (clean under `agent-ingest`), selftest, and the full pytest suite in one run
+(404 passed, 5 skipped) pass.
+
+A Codex security review of `d348f38` added that Windows also drops trailing dots and spaces
+when it creates a file, so `devcontainer.json.` and `.envrc.` extract as the names the rules
+look for. Reproduced: both name-scoped rules missed them. The scan name now drops trailing dots
+and spaces too; two fixtures fail without the change and pass with it.
+
+## Published-package corpus (2026-11-06)
+
+Real configuration files were collected from the latest published tarballs of 4,584 npm
+packages (the top 250 by popularity for 20 search terms) and 261 well-known PyPI sdists, read
+in memory with `tarfile`/`zipfile` and never extracted or executed. That gave 112
+`devcontainer.json` files from 80 packages (62 with a lifecycle command key), two `gitconfig`
+files, and one `.envrc`. Each file was scanned with `scan_bytes` under the default policy, with
+the file's own name and a disposable copy of the shipped local rules (no vendor packs), on
+`main` `7f9934c`, this branch `04e8661`, and `views/base64-percent-text` `14a7c72`
+(YARA-X 1.22.1).
+
+| Revision | Clean | Advisory | Rules |
+| --- | --- | --- | --- |
+| `main` | 113 | 2 | `script_download_execute` 1, `script_chmod_execute` 1 |
+| this branch | 112 | 3 | the same two, plus `dev_devcontainer_lifecycle` 1 |
+| `views/base64-percent-text` | 113 | 2 | the same two as `main` |
+
+No file was incomplete and no verdict other than the one below changed. The one new advisory
+is `package/template/devcontainer.json` in the npm package `aicontainer`: its
+`initializeCommand` is `sh -c '...'`, an inline host script that searches `PATH` and several
+home-directory locations for the `aic` CLI and runs it with `exec`. That is the host-side
+command shape the rule describes (`sh -c` in `initializeCommand`), so the match is intended; the
+script is benign, and the advisory is the review signal the rule is meant to give. None of the
+other 61 lifecycle commands (installers, `npm ci`, `pip install`, setup scripts, firewall
+toggles) matched. The two git config files and the `.envrc` were clean on every revision.

