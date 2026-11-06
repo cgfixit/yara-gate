@@ -64,7 +64,7 @@ the branch, changed only these results:
 | Files | `main` | Branch |
 | --- | --- | --- |
 | 13 `.zst` (Go test data) | clean | incomplete, `unsupported archive` |
-| 24 `.bz2` and 1 `.xz` | incomplete, `unsupported archive` | read: 17 clean; 4 advisory from content rules (`agent_base64_blob` on digit dumps, as the same text gets uncompressed); 1 corrupt stream and 1 that runs past the 30 s deadline incomplete |
+| 22 `.bz2` (Go test data) and 1 `.xz` (an apt log) | incomplete, `unsupported archive` | read: 15 clean; 4 advisory from a content rule (`agent_base64_blob` on the digits of e and a long tar header run, as the same bytes get uncompressed); 2 corrupt streams and 2 that run past the 30 s deadline incomplete |
 | 3 empty Nix `.drv.bz2` logs | incomplete, `unsupported archive` | advisory `heuristic_empty_file`, as a gzipped empty `.drv` already is |
 | `libc.a` | block (`heuristic_embedded_elf`) | incomplete, `archive members exceed 1000` |
 | 1 corrupt Go test archive (`test_go1.11_999b.a`) | clean | incomplete, `archive unreadable or encrypted` |
