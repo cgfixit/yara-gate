@@ -1,6 +1,7 @@
 # PDF paragraph view (2026-11-05)
 
-Stacked on `views/pdf-text-operators` (#162). Linux x86_64, Python 3.12, locked YARA-X 1.22.1, a
+Proposed as #163 on top of `views/pdf-text-operators` (#162) and folded into #162 at the owner's
+choice. Linux x86_64, Python 3.12, locked YARA-X 1.22.1, a
 disposable copy of the shipped rules (82 local rules, no vendor packs). Nothing was rendered or
 opened in a viewer.
 

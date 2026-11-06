@@ -37,7 +37,10 @@ paragraphs. Cutting only narrows the unit.
 The cost of the unit, measured below: Chrome and LibreOffice start a new text object at every
 font change, and Chrome at every line, so a phrase with a word in bold or a wrap inside it is
 split and missed. A view that also scans paragraphs spanning several blocks closes that gap;
-it is proposed separately in a stacked draft PR so it can be accepted or declined on its own.
+it was first proposed separately (#163) and then, at the owner's choice, folded into this
+branch as the `pdf-paragraph` view; its own record is
+[`2026-11-05-pdf-paragraph-view.md`](2026-11-05-pdf-paragraph-view.md). The rows below
+labelled per-block measure `pdf-text` alone.
 
 A first draft also added a space at every `Td`; Chrome positions single glyphs with a
 same-line `Td`, which gave "W e fixed". Same-baseline moves now add nothing.
@@ -60,7 +63,7 @@ generators:
 | Generator | Plain text | `main` | Branch |
 | --- | --- | --- | --- |
 | LibreOffice | 20/20 | 0/20 | 20/20 |
-| Chromium, bold every seventh word | 20/20 | 0/20 | 0/20: every planted phrase is split by bold |
+| Chromium, bold every seventh word | 20/20 | 0/20 | 0/20 per block (split by bold); 20/20 with `pdf-paragraph` |
 
 ## Outcomes
 
@@ -71,7 +74,7 @@ generators:
 | Identity-H without `ToUnicode`; unresolved two-byte font | clean | `heuristic_pdf_text_unmapped` |
 | Two paragraphs 300 points apart; benign kerned text; benign glyph-ID text | clean | clean |
 | Chrome `page.pdf()` and LibreOffice: a contiguous phrase, and a LibreOffice paragraph narrower than the phrase | clean | detected |
-| Chrome and LibreOffice: a word in bold or italic inside the phrase; Chrome wrapped at 120 px | clean | clean (split across text objects) |
+| Chrome and LibreOffice: a word in bold or italic inside the phrase; Chrome wrapped at 120 px | clean | clean per block; detected by `pdf-paragraph` |
 | Chrome and LibreOffice benign letters, a 200-section report, a table, a two-paragraph near miss, and two real third-party PDFs on the host | clean or a raw `heuristic_pdf_OpenAction_goto` note as on `main` | the same, no new finding |
 
 `check_added_rules.py` gains 10 PDF cases; with `src/` reverted, the 7 hits miss and the 3
