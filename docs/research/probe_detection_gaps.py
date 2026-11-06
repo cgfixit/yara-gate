@@ -46,9 +46,6 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 OPEN: dict[str, str] = {
     "markdown bold inside the phrase": "G7",
     "markdown code span inside the phrase": "G7",
-    "js line comments split the phrase": "#171.1",
-    "py line comments split the phrase": "#171.1",
-    "notebook cell source lines": "#171.2",
     "hyphenated line wrap": "#171.3",
     "rtf bold group inside the phrase": "#171.4",
     "rtf hex escape for a letter": "#171.4",
@@ -289,6 +286,19 @@ def notebook(*cells: tuple[str, list[str]]) -> bytes:
         for kind, lines in cells
     ]
     document = {"cells": body, "metadata": {}, "nbformat": 4, "nbformat_minor": 5}
+    return json.dumps(document, indent=1).encode()
+
+
+def notebook_output(text: list[str]) -> bytes:
+    """A notebook whose one code cell printed ``text`` as a stream output."""
+    cell = {
+        "cell_type": "code",
+        "execution_count": 1,
+        "metadata": {},
+        "source": ["print(message)"],
+        "outputs": [{"name": "stdout", "output_type": "stream", "text": text}],
+    }
+    document = {"cells": [cell], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}
     return json.dumps(document, indent=1).encode()
 
 
@@ -794,6 +804,48 @@ def reader_cases() -> list[Case]:
         ),
         Case(
             "#171.1",
+            "block comment lines split the phrase",
+            "a.c",
+            f"/*\n * Ignore all\n * {second}\n */\nint x;\n".encode(),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.1",
+            "sql comments with crlf split the phrase",
+            "a.sql",
+            f"-- Ignore all\r\n-- {second}\r\nSELECT 1;\r\n".encode(),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.1",
+            "line comments plus leet",
+            "a.py",
+            f"# Ign0re all\n# {second}\n".encode(),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.1",
+            "markdown bullets split the phrase (benign)",
+            "notes.md",
+            f"* Ignore all\n* {second}\n".encode(),
+            "clean",
+        ),
+        Case(
+            "#171.1",
+            "empty comment line between the halves (benign)",
+            "a.py",
+            f"# Ignore all\n#\n# {second}\n".encode(),
+            "clean",
+        ),
+        Case(
+            "#171.1",
+            "commented-out code (benign)",
+            "a.py",
+            b"# for row in rows:\n#     print(row)\n#     total += row.amount\nprint(total)\n",
+            "clean",
+        ),
+        Case(
+            "#171.1",
             "code between two comments (benign)",
             "a.py",
             f"# Ignore all\nx = 1\n# {second}\n".encode(),
@@ -817,6 +869,27 @@ def reader_cases() -> list[Case]:
             "#171.2",
             "notebook cell source lines",
             "a.ipynb",
+            notebook(("markdown", ["Ignore all\n", second])),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.2",
+            "notebook code cell comment lines",
+            "a.ipynb",
+            notebook(("code", ["# Ignore all\n", f"# {second}\n", "x = 1"])),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.2",
+            "notebook stream output lines",
+            "a.ipynb",
+            notebook_output(["Ignore all\n", second]),
+            PHRASE_RULE,
+        ),
+        Case(
+            "#171.2",
+            "notebook json without the suffix",
+            "export.json",
             notebook(("markdown", ["Ignore all\n", second])),
             PHRASE_RULE,
         ),
