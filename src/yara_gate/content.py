@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import bz2
 import email
 import email.errors
 import email.header
@@ -10,6 +11,7 @@ import email.policy
 import gzip
 import html
 import io
+import lzma
 import re
 import stat
 import tarfile
@@ -114,7 +116,9 @@ _CONFUSABLES = str.maketrans(
 _LEET = str.maketrans(
     {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
 )
-_WORD = re.compile(r"[^\W_]+")
+# A whole word that holds a non-ASCII letter or digit: the only words a mixed-script fold can
+# change. An ASCII word fails at its first character after the lazy prefix, so this is linear.
+_NON_ASCII_WORD = re.compile(r"(?<![^\W_])[^\W_]*?[^\W_\x00-\x7f][^\W_]*")
 # A maximal run of letters, digits, @, and $ that holds at least one of 0134578@$. The match
 # starts only at a run's first character, so a run is read from one start and not rescanned from
 # every position inside it. Every repeat is a single character class: the regex engine runs
@@ -127,6 +131,21 @@ _SPACERS = re.compile(r"[ .\-_*]")
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
 _ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
+# Every format (Cf) and control (Cc) character other than tab, LF, and CR, plus the variation
+# selectors U+FE00-FE0F, in Unicode 15.0 (Python 3.12): what text-folded removes. One
+# str.translate replaces a per-character category lookup; tests/test_text_fast_paths.py
+# compares the table with unicodedata for every code point.
+_FOLD_DELETE_RANGES = (
+    (0x0, 0x8), (0xB, 0xC), (0xE, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x600, 0x605),
+    (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891), (0x8E2, 0x8E2),
+    (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
+    (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
+    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+)  # fmt: skip
+FOLD_DELETE = dict.fromkeys(
+    code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)
+)
 
 # Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
 # proofing boundary, so the joined text is what the lexical rules need.
@@ -239,16 +258,125 @@ class ContentUnit:
     member_path: tuple[str, ...] = ()
 
 
+# A bzip2 stream: the header, then the first block's magic or the empty-stream end marker.
+_BZIP2 = re.compile(rb"BZh[1-9](?:1AY&SY|\x17rE8P\x90)")
+# A newc or crc cpio header: the magic and thirteen 8-digit hex fields.
+_CPIO_NEWC = re.compile(rb"07070[12][0-9A-Fa-f]{104}")
+_CPIO_PADDING = re.compile(rb"\0*")
+_AR_MAGIC = b"!<arch>\n"
+
+
 def archive_kind(data: bytes) -> str | None:
     if data.startswith((b"PK\x03\x04", b"PK\x05\x06")):
         return "zip"
     if data.startswith(b"\x1f\x8b"):
         return "gzip"
+    if data.startswith(b"\xfd7zXZ\x00"):
+        return "xz"
+    if _BZIP2.match(data):
+        return "bzip2"
+    if data.startswith(_AR_MAGIC):
+        return "ar"
+    if _CPIO_NEWC.match(data):
+        return "cpio"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
     if _mime_message(data):
         return "mime"
+    if _trailing_zip(data):
+        return "zip"
     return None
+
+
+_ZIP_END = b"PK\x05\x06"
+_ZIP_END_SIZE = 22
+_ZIP_LOCAL_SIZE = 30
+MAX_ZIP_ARCHIVES = 16
+MAX_ZIP_END_RECORDS = 64
+
+
+def _trailing_zip(data: bytes) -> bool:
+    """True when a zip archive ends ``data`` that does not start with one.
+
+    A PDF, image, or script with an archive appended is still a zip to an unzip tool, and a
+    Python zipapp starts with a ``#!`` line. Only the members are read; the shape itself is not
+    a finding.
+    """
+    if _ZIP_END not in data[-(0xFFFF + _ZIP_END_SIZE) :]:
+        return False
+    # Not readable as a zip, so not one: the bytes stay a single unit, as before.
+    opened = _open_zip(data)
+    if opened is None:
+        return False
+    with opened:
+        return bool(opened.infolist())
+
+
+def _zip_archives(data: bytes, budget: Budget) -> Iterator[zipfile.ZipFile]:
+    """Each zip archive in ``data``, open while its members are read.
+
+    ``zipfile`` reads the archive whose end record comes last. Concatenated archives put
+    another before it, and 7-Zip opens the first, so every earlier end record outside the
+    members already read is tried as an archive of its own. A record inside a member's bytes
+    belongs to a stored nested zip, which is read as that member. The main archive's errors
+    propagate as before; an earlier record that does not open is ignored.
+    """
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        covered = _zip_spans(data, archive)
+        position = archive.start_dir
+        yield archive
+    starts = {position}
+    tried = 0
+    while True:
+        position = data.rfind(_ZIP_END, 0, position)
+        if position < 0:
+            return
+        budget.check()
+        span = next((start for start, stop in covered if start <= position < stop), None)
+        if span is not None:
+            position = span
+            continue
+        tried += 1
+        if tried > MAX_ZIP_END_RECORDS:
+            raise ContentLimit("zip end records exceed 64")
+        comment = int.from_bytes(data[position + 20 : position + 22], "little")
+        end = position + _ZIP_END_SIZE + comment
+        if end > len(data):
+            continue
+        earlier = _open_zip(data[:end])
+        if earlier is None:
+            continue
+        with earlier:
+            if not earlier.infolist() or earlier.start_dir in starts:
+                continue
+            if len(starts) >= MAX_ZIP_ARCHIVES:
+                raise ContentLimit("zip archives exceed 16")
+            starts.add(earlier.start_dir)
+            covered.extend(_zip_spans(data, earlier))
+            yield earlier
+
+
+def _open_zip(data: bytes) -> zipfile.ZipFile | None:
+    """``data`` as a zip archive, or None when it does not open as one."""
+    try:
+        return zipfile.ZipFile(io.BytesIO(data))
+    except Exception:
+        return None
+
+
+def _zip_spans(data: bytes, archive: zipfile.ZipFile) -> list[tuple[int, int]]:
+    """The byte ranges of each member (local header through its data) and of the directory."""
+    spans = [(archive.start_dir, len(data))]
+    for info in archive.infolist():
+        start = info.header_offset
+        header = data[start : start + _ZIP_LOCAL_SIZE]
+        extra = 0
+        if len(header) == _ZIP_LOCAL_SIZE:
+            extra = int.from_bytes(header[26:28], "little") + int.from_bytes(
+                header[28:30], "little"
+            )
+        spans.append((start, start + _ZIP_LOCAL_SIZE + extra + info.compress_size))
+    return spans
 
 
 def _mime_message(data: bytes) -> bool:
@@ -263,9 +391,37 @@ def _mime_message(data: bytes) -> bool:
     return b"multipart/" in headers or _MIME_ENCODED.search(headers) is not None
 
 
+# Containers recognized from their header that the scanner cannot open. Their members are
+# compressed, encrypted, or stored by reference, so a clean verdict would describe only the
+# outer bytes. Each prefix is the format's full fixed header, not a 2-byte guess, so ordinary
+# binaries and text that name a format stay readable.
+_UNSUPPORTED_PREFIXES = (
+    b"7z\xbc\xaf\x27\x1c",  # 7-Zip
+    b"Rar!\x1a\x07",  # RAR 1.5 to 5
+    b"\x28\xb5\x2f\xfd",  # Zstandard frame
+    b"\x04\x22\x4d\x18",  # LZ4 frame
+    b"\x02\x21\x4c\x18",  # LZ4 legacy frame
+    b"MSCF\x00\x00\x00\x00",  # Windows cabinet
+    b"ITSF\x02\x00\x00\x00",  # Compiled HTML Help 2
+    b"ITSF\x03\x00\x00\x00",  # Compiled HTML Help 3
+    b"MSWIM\x00\x00\x00",  # Windows imaging
+    b"xar!\x00\x1c",  # xar, as in macOS .pkg installers
+    b"!<thin>\n",  # thin ar: its members are other files
+)
+# A Zstandard skippable frame, an odc cpio header, an ACE header, and an LHA level 0-2 header.
+_UNSUPPORTED_PATTERN = re.compile(
+    rb"[\x50-\x5f]\x2a\x4d\x18|070707[0-7]{70}|.{7}\*\*ACE\*\*|..-lh[0-7d]-", re.DOTALL
+)
+
+
+def unsupported_container(data: bytes) -> bool:
+    """True for a container format the scanner recognizes but cannot open."""
+    return data.startswith(_UNSUPPORTED_PREFIXES) or _UNSUPPORTED_PATTERN.match(data) is not None
+
+
 def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator[ContentUnit]:
     budget.check()
-    if unit.data.startswith((b"7z\xbc\xaf\x27\x1c", b"Rar!\x1a\x07", b"BZh", b"\xfd7zXZ\x00")):
+    if unsupported_container(unit.data):
         raise ContentLimit("unsupported archive")
     kind = archive_kind(unit.data)
     if kind is None:
@@ -285,6 +441,7 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
         zipfile.BadZipFile,
         tarfile.TarError,
         email.errors.MessageError,
+        lzma.LZMAError,
     ):
         raise ContentLimit("archive unreadable or encrypted") from None
     yield unit
@@ -292,10 +449,12 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
 
 def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
     if kind == "zip":
-        with zipfile.ZipFile(io.BytesIO(unit.data)) as archive:
-            if len(archive.infolist()) + budget.members > MAX_MEMBERS:
+        base = 0
+        for opened in _zip_archives(unit.data, budget):
+            entries = opened.infolist()
+            if len(entries) + budget.members > MAX_MEMBERS:
                 raise ContentLimit("archive members exceed 1000")
-            for index, info in enumerate(archive.infolist()):
+            for index, info in enumerate(entries, base):
                 budget.member()
                 # orig_filename keeps the NUL and backslashes that ZipInfo.filename rewrites.
                 _check_member_name(info.orig_filename)
@@ -307,8 +466,9 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                     raise ContentLimit("archive member exceeds 100MB")
                 if info.flag_bits & 1:
                     raise ContentLimit("archive unreadable or encrypted")
-                with archive.open(info) as stream:
+                with opened.open(info) as stream:
                     yield index, info.filename, budget.read(stream)
+            base += len(entries)
     elif kind == "mime":
         yield from _mime_members(unit, budget)
     elif kind == "tar":
@@ -328,13 +488,123 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                     raise ContentLimit("archive member unreadable")
                 with extracted:
                     yield index, entry.name, budget.read(extracted)
+    elif kind == "ar":
+        yield from _ar_members(unit, budget)
+    elif kind == "cpio":
+        yield from _cpio_members(unit, budget)
     else:
+        # gzip, xz, and bzip2 hold one stream; a .tar.gz names its member by the stem.
         budget.member()
         name = Path(unit.name).stem
-        if unit.name.lower().endswith(".tgz"):
+        if unit.name.lower().endswith((".tgz", ".txz", ".tbz", ".tbz2")):
             name += ".tar"
-        with gzip.GzipFile(fileobj=io.BytesIO(unit.data)) as compressed:
+        stream = io.BytesIO(unit.data)
+        compressed: IO[bytes] | gzip.GzipFile
+        if kind == "gzip":
+            compressed = gzip.GzipFile(fileobj=stream)
+        elif kind == "xz":
+            compressed = lzma.LZMAFile(stream)
+        else:
+            compressed = bz2.BZ2File(stream)
+        with compressed:
             yield 0, name, budget.read(compressed)
+
+
+def _ar_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
+    """Members of a System V or BSD ar archive (a .deb's outer layer, a static library).
+
+    Members are stored, not compressed. The symbol table and GNU long-name table are read as
+    metadata; a malformed header or a size past the end is an unreadable archive.
+    """
+    data = unit.data
+    position = len(_AR_MAGIC)
+    names = b""
+    index = 0
+    while position < len(data):
+        budget.check()
+        header = data[position : position + 60]
+        if len(header) < 60 or header[58:60] != b"`\n":
+            raise ValueError("ar header")
+        size = int(header[48:58].strip() or b"0")
+        start = position + 60
+        end = start + size
+        if size < 0 or end > len(data):
+            raise ValueError("ar member size")
+        position = end + (end & 1)
+        raw = header[:16].rstrip(b" ")
+        body = data[start:end]
+        if raw == b"//":
+            names = body
+            continue
+        if raw in (b"/", b"/SYM64/"):
+            continue
+        if raw.startswith(b"#1/"):
+            length = int(raw[3:])
+            if not 0 <= length <= len(body):
+                raise ValueError("ar member name")
+            raw, body = body[:length].rstrip(b"\0"), body[length:]
+        elif raw.startswith(b"/") and raw[1:].isdigit():
+            raw = names[int(raw[1:]) :].split(b"\n", 1)[0].removesuffix(b"/")
+        else:
+            raw = raw.removesuffix(b"/")
+        budget.member()
+        name = raw.decode("utf-8", errors="replace")
+        _check_member_name(name)
+        if size > MAX_FILE_BYTES:
+            raise ContentLimit("archive member exceeds 100MB")
+        yield index, name, budget.read(io.BytesIO(body))
+        index += 1
+
+
+def _cpio_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
+    """Regular-file members of a newc or crc cpio archive (an initramfs, an RPM payload).
+
+    Directories are skipped; a symlink, device, or other special member is unsupported, as in
+    tar. Hard links store their data once, on the last link, so earlier links are empty. The
+    walk goes on past each trailer, as the kernel reads a concatenated initramfs.
+    """
+    data = unit.data
+    position = 0
+    index = 0
+    while True:
+        budget.check()
+        header = data[position : position + 110]
+        if _CPIO_NEWC.fullmatch(header) is None:
+            raise ValueError("cpio header")
+        fields = [int(header[6 + 8 * slot : 14 + 8 * slot], 16) for slot in range(13)]
+        mode, size, name_size = fields[1], fields[6], fields[11]
+        name_start = position + 110
+        start = (name_start + name_size + 3) & ~3
+        end = start + size
+        if name_size < 1 or end > len(data):
+            raise ValueError("cpio member size")
+        raw = data[name_start : name_start + name_size].rstrip(b"\0")
+        position = (end + 3) & ~3
+        if raw == b"TRAILER!!!":
+            # An initramfs concatenates archives: early microcode, then a compressed main
+            # archive, or two archives after one xz stream decodes. Padding zeros are skipped;
+            # another header continues the walk, and any other tail is a member of its own.
+            position = _CPIO_PADDING.match(data, position).end()  # type: ignore[union-attr]
+            if position >= len(data):
+                return
+            if _CPIO_NEWC.match(data, position) is not None:
+                continue
+            budget.member()
+            yield index, "cpio-tail", budget.read(io.BytesIO(data[position:]))
+            return
+        budget.member()
+        name = raw.decode("utf-8", errors="replace")
+        _check_member_name(name)
+        kind = stat.S_IFMT(mode)
+        if kind == stat.S_IFDIR:
+            index += 1
+            continue
+        if kind != stat.S_IFREG:
+            raise ContentLimit("archive contains unsupported member")
+        if size > MAX_FILE_BYTES:
+            raise ContentLimit("archive member exceeds 100MB")
+        yield index, name, budget.read(io.BytesIO(data[start:end]))
+        index += 1
 
 
 def _check_member_name(name: str) -> None:
@@ -578,7 +848,7 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if _json_shaped(stripped) and "\\" in stripped:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
-            yield "json-unescaped", _derived(decoded, budget)
+            yield from _with_folded("json-unescaped", decoded, budget)
     # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
     # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
     # A MIME message's base64 parts are already decoded as its members; its headers' RFC 2047
@@ -586,13 +856,13 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if _mime_message(data):
         headers = mime_header_text(data)
         if headers is not None:
-            yield "mime-headers-decoded", _derived(headers, budget)
+            yield from _with_folded("mime-headers-decoded", headers, budget)
     else:
         for encoded in base64_texts(text, budget):
-            yield "base64-decoded", _derived(encoded, budget)
+            yield from _with_folded("base64-decoded", encoded, budget)
     unquoted = percent_text(text)
     if unquoted is not None:
-        yield "percent-decoded", _derived(unquoted, budget)
+        yield from _with_folded("percent-decoded", unquoted, budget)
     # ASCII cannot contain Cf characters or Unicode variation selectors.
     # Check after unescaping: an ASCII entity can introduce either one.
     normalized = unescaped
@@ -612,17 +882,42 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
         yield "text-folded", _derived(folded, budget)
 
 
+FOLDED_SUFFIX = "+text-folded"
+
+
+def _with_folded(view: str, text: str, budget: Budget) -> Iterator[tuple[str, bytes]]:
+    """``view`` itself, then its folded spelling as ``<view>+text-folded`` when that differs.
+
+    Obfuscations stack: an escape or an encoding hides a word whose letters are also swapped
+    for look-alikes. Folding once more is one step deeper, not a recursion.
+    """
+    yield view, _derived(text, budget)
+    folded = folded_text(text)
+    if folded != text:
+        budget.check()
+        yield view + FOLDED_SUFFIX, _derived(folded, budget)
+
+
+# ECMA-48 control sequences: CSI (7-bit or C1), an intermediate escape such as ESC ( B, and a
+# two-byte escape, which includes the openers of OSC, DCS, and APC strings. A terminal draws
+# none of them, so ESC [ 1 m before a word is not a separate word to the reader.
+_ANSI = re.compile(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b[ -/]+[0-~]|\x1b[@-_]")
+
+
 def folded_text(text: str) -> str:
     """Return ``text`` with look-alike spellings folded to plain letters, for a derived view.
 
-    NFKC compatibility normalization (fullwidth and other presentation forms), removal of format
-    controls and of control characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
+    Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
+    (fullwidth and other presentation forms), removal of format controls and of control
+    characters other than tab, CR, and LF, Cyrillic and Greek look-alikes
     folded to Latin inside mixed-script tokens, letters spaced one apart rejoined, and digit or
     symbol stand-ins folded inside tokens that mix them with letters. Russian, Greek, and ordinary
     numbers stay as written. The result is a view; the original bytes are scanned unchanged.
     """
     if not text.strip(" \t\r\n"):
         return text
+    if "\x1b" in text or "\x9b" in text:
+        text = _ANSI.sub("", text)
     folded = unicodedata.normalize("NFKC", text)
     if folded.isascii():
         # Same result as the per-character filter below, without a Python loop over every
@@ -630,16 +925,9 @@ def folded_text(text: str) -> str:
         if _ASCII_CONTROL.search(folded) is not None:
             folded = folded.translate(_ASCII_CONTROL_DELETE)
     else:
-        folded = "".join(
-            char
-            for char in folded
-            if char in "\t\r\n"
-            or (
-                unicodedata.category(char) not in ("Cf", "Cc") and not 0xFE00 <= ord(char) <= 0xFE0F
-            )
-        )
+        folded = folded.translate(FOLD_DELETE)
     if not folded.isascii():
-        folded = _WORD.sub(_fold_confusables, folded)
+        folded = _NON_ASCII_WORD.sub(_fold_confusables, folded)
     folded = _SPACED.sub(lambda match: _SPACERS.sub("", match.group()), folded)
     return _LEET_TOKEN.sub(_fold_leet, folded)
 
@@ -661,7 +949,8 @@ def _script(char: str) -> str:
 
 def _fold_leet(match: re.Match[str]) -> str:
     word = match.group()
-    if any(char.isalpha() for char in word):
+    # A number such as 1337 or the 4 in 3.4.5 has no letter to fold.
+    if not word.isdecimal() and any(char.isalpha() for char in word):
         return word.translate(_LEET)
     return word
 
@@ -707,7 +996,7 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         else:
             parts.append("\n")
     if runs >= 2:
-        yield "ooxml-text", _derived("".join(parts), budget)
+        yield from _with_folded("ooxml-text", "".join(parts), budget)
 
 
 @dataclass

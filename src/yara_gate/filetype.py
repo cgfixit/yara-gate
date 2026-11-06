@@ -275,7 +275,9 @@ def _mostly_text(data: bytes) -> bool:
     if not data:
         return True
     sample = data[:4096]
-    odd = sum(1 for byte in sample if byte < 9 or (13 < byte < 32))
+    # ESC (27) opens the colour and cursor sequences of terminal output, so a coloured log is
+    # text; text-folded removes the sequences whole.
+    odd = sum(1 for byte in sample if byte < 9 or (13 < byte < 32 and byte != 27))
     return odd / len(sample) < 0.05
 
 

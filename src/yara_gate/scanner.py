@@ -9,15 +9,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from yara_gate.content import (
-    MAX_ARCHIVE_DEPTH as MAX_ARCHIVE_DEPTH,
-)
-from yara_gate.content import (
-    MAX_EXTRACT_BYTES as MAX_EXTRACT_BYTES,
-)
-from yara_gate.content import (
-    MAX_FILE_BYTES as MAX_FILE_BYTES,
-)
-from yara_gate.content import (
+    FOLDED_SUFFIX,
     Budget,
     ContentLimit,
     ContentUnit,
@@ -29,6 +21,15 @@ from yara_gate.content import (
     pdf_streams,
     pdf_views,
     text_views,
+)
+from yara_gate.content import (
+    MAX_ARCHIVE_DEPTH as MAX_ARCHIVE_DEPTH,
+)
+from yara_gate.content import (
+    MAX_EXTRACT_BYTES as MAX_EXTRACT_BYTES,
+)
+from yara_gate.content import (
+    MAX_FILE_BYTES as MAX_FILE_BYTES,
 )
 from yara_gate.filetype import (
     double_extension,
@@ -49,6 +50,7 @@ from yara_gate.heuristics import (
     joiner_findings,
     pdf_token_findings,
     tag_findings,
+    variation_findings,
 )
 from yara_gate.models import (
     DOCUMENT_HOLD,
@@ -324,7 +326,11 @@ def _scan_file(
             decoded = _decoded_text(unit.data)
             if decoded is not None:
                 text, view = decoded
-                for finding in [*joiner_findings(text), *tag_findings(text)]:
+                for finding in [
+                    *joiner_findings(text),
+                    *tag_findings(text),
+                    *variation_findings(text),
+                ]:
                     finding.view = view
                     extra.append(finding)
             for finding in extra:
@@ -335,7 +341,7 @@ def _scan_file(
             for view, derived in text_views(unit.data, budget):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, samples=image, name=base)
-                if view in _RAW_ONLY_VIEWS:
+                if _raw_only(view):
                     # Folding rewrites digits inside base64 (0 to o), which breaks the media
                     # exemptions; the raw bytes already carry the base64 verdict, and folding
                     # cannot create a real encoded payload that the raw view missed. The
@@ -348,8 +354,11 @@ def _scan_file(
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
                     view_findings.extend(joiner_findings(derived.decode("utf-8")))
                 if view in {"html-unescaped", "json-unescaped"}:
-                    # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold.
-                    view_findings.extend(tag_findings(derived.decode("utf-8")))
+                    # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold,
+                    # and an escaped run of variation selectors is hidden the same way.
+                    view_text = derived.decode("utf-8")
+                    view_findings.extend(tag_findings(view_text))
+                    view_findings.extend(variation_findings(view_text))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
@@ -374,7 +383,10 @@ def _scan_file(
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
-                for finding in yara(rules, derived, ext, view, name=base):
+                found = yara(rules, derived, ext, view, name=base)
+                if _raw_only(view):
+                    found = [f for f in found if f.rule_id not in _RAW_ONLY_RULES]
+                for finding in found:
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
@@ -474,6 +486,12 @@ _RAW_ONLY_RULES = frozenset({"agent_base64_blob", "agent_base64_executable"})
 _RAW_ONLY_VIEWS = frozenset(
     {"text-folded", "base64-decoded", "percent-decoded", "mime-headers-decoded"}
 )
+
+
+def _raw_only(view: str) -> bool:
+    """True for a view in which the base64 rules are left to the raw bytes: a decoded view,
+    and every folded view, whose look-alike folding rewrites digits inside base64."""
+    return view in _RAW_ONLY_VIEWS or view.endswith(FOLDED_SUFFIX)
 
 
 def _name_findings(parts: Sequence[str]) -> list[Finding]:
