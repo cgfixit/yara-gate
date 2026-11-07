@@ -120,3 +120,20 @@ study was exercised. Snapshots need consumer-owned storage and lifecycle cleanup
 `--bytes` consumers must wait for success before using captured output. Hosted CI
 and review status are reported separately on the draft PR. No merge or deployment
 is part of this verification.
+
+## Hosted follow-up
+
+The first hosted run on `b7eb9bb` passed Windows intake, CodeQL (no new alerts),
+recorded-demo building, and both platforms' scan/timing probes, then failed the
+selftest's old oversized-file location assertion. It still expected a digest slot.
+The selftest now requires `_rejected/`, incomplete/exit 2, the size-limit reason,
+the same filesystem identity and size, both reports, and a consumed inbox entry.
+Its changed `_oversize` path passed direct execution locally, followed by Ruff
+and strict mypy; the full selftest and pytest remain hosted checks. No gate was
+removed or weakened. This change does not alter the scanner, intake or hook
+source hashes recorded above.
+
+Final caller probes also ran the sync-folder example as a process: it allowed a
+nested clean file, logged its metadata skip and oversized hold, exited 2, left
+staging empty and preserved the source. Explicit recursive inbox CLI scanning
+still consumed and relocated a nested dotfile with clean/exit 0.
