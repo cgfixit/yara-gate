@@ -92,3 +92,9 @@ performance records describe their stated revisions; installed packs may differ.
 No semantic classifier, OCR, sandbox execution, URL inspection, or general
 document renderer runs here. A clean result means that completed checks found no
 configured indicators. It is never permission to follow instructions in the data.
+
+RTF reader text reaches the existing phrase rules as `rtf-text` and, when needed,
+`rtf-text+text-folded`. Formatting and hex/Unicode escapes are decoded within a
+paragraph; cells and separate stories remain separate. This adds no rule or
+severity change. See [reader limits](../docs/rules.md#rtf-reader-boundaries) and
+[verification](../docs/verification/2026-11-07-rtf-reader.md).
