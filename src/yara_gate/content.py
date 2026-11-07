@@ -1785,6 +1785,10 @@ def pdf_streams(
             inflated = decoded[start.start()]
         else:
             inflated = _pdf_stream_bytes(data, start, budget, objects)
+            if decoded is not None:
+                # Object-stream indexing reads this same dict. Recording the bytes
+                # keeps the expansion budget from counting the stream a second time.
+                decoded[start.start()] = inflated
         inflated = inflated if inflated and sniff(inflated) == "text" else None
         text = inflated
         if text is None:

@@ -73,6 +73,9 @@ def _tokens(
 ) -> Iterator[tuple[bytes, int]]:
     """Keep string tokens intact so names written inside them never become dictionaries."""
     position = count = 0
+    # Set when a missing or unaligned /Length resumes at an object header. A literal
+    # that then holds an annotation is not a boundary a reader committed to.
+    unaligned = False
     while position < len(data):
         budget.check()
         count += 1
@@ -104,6 +107,8 @@ def _tokens(
                 elif char == 41:
                     depth -= 1
             token = data[start:position] if depth == 0 else b"("
+            if unaligned and (depth != 0 or b"/Contents" in token or b"/Annot" in token):
+                raise ContentLimit("pdf annotation stream length unaligned")
         elif token.startswith(b"/"):
             token = _decode_pdf_name(token)
         yield token, position
@@ -127,6 +132,7 @@ def _tokens(
             end = _END_STREAM.search(data, position)
             header = _PDF_OBJ_HEADER.search(data, position)
             if header is not None and (end is None or header.start() < end.start()):
+                unaligned = True
                 position = header.start()
                 continue
             position = end.end() if end else len(data)

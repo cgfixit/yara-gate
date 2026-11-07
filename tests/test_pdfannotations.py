@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import MAX_EXTRACT_BYTES, Budget, ContentLimit, PdfObjects
+from yara_gate.content import MAX_EXTRACT_BYTES, Budget, ContentLimit, PdfObjects, pdf_streams
 from yara_gate.heuristics import PdfRawObjects
 from yara_gate.pdfannotations import _text, pdf_annotation_texts
 from yara_gate.report import write_reports
@@ -126,6 +126,61 @@ def test_annotations_never_join_each_other_or_unrelated_contents(rules_copy: Pat
     assert (
         scan_bytes(separate_paragraphs, name="a.pdf", rules_dir=rules_copy).verdict.value == "clean"
     )
+
+
+def _swallowed(prefix: bytes) -> bytes:
+    hidden = annot(encoded(PHRASE, "hex"))
+    return pdf(prefix + hidden + b") >>\nendstream")
+
+
+def test_unaligned_length_cannot_hide_an_annotation_in_a_string(rules_copy: Path) -> None:
+    attacks = (
+        _swallowed(b"<< /Subtype /Image >>\nstream\n9 0 obj (<< /Foo "),
+        _swallowed(b"<< /Length 1 /Subtype /Image >>\nstream\n9 0 obj\n<< /Foo ("),
+    )
+    for data in attacks:
+        try:
+            texts = read(data)
+        except ContentLimit:
+            texts = None
+        result = scan_bytes(data, name="a.pdf", rules_dir=rules_copy)
+        assert result.verdict.value != "clean"
+        if texts is not None:
+            assert PHRASE in texts
+    look = b"9 0 obj (" + annot(encoded(PHRASE, "hex")) + b")"
+    aligned = (
+        b"%PDF-1.7\n1 0 obj\n<< /Length "
+        + str(len(look)).encode()
+        + b" >>\nstream\n"
+        + look
+        + b"\nendstream\nendobj\n2 0 obj\n"
+        + annot(encoded(PHRASE, "hex"))
+        + b"\nendobj\n%%EOF\n"
+    )
+    assert read(aligned) == [PHRASE]
+    kept = scan_bytes(aligned, name="a.pdf", rules_dir=rules_copy)
+    assert kept.incomplete_reason is None
+    assert kept.verdict.value == "advisory"
+
+
+def test_object_stream_inflation_is_charged_once() -> None:
+    header = b"2 0 0 "
+    raw = header + annot(b"(Hi)")
+    body = zlib.compress(raw)
+    data = pdf(
+        b"<< /Type /ObjStm /N 1 /First %d /Length %d /Filter /FlateDecode >>\nstream\n"
+        % (len(header), len(body))
+        + body
+        + b"\nendstream"
+    )
+    budget = Budget(time.monotonic() + 30)
+    objects = PdfObjects(data, budget)
+    assert budget.expanded == 0
+    pdf_streams(data, budget, objects.decoded)
+    charged = budget.expanded
+    assert charged > 0
+    list(objects.stream_members())
+    assert budget.expanded == charged
 
 
 def test_missing_stream_length_does_not_hide_the_next_object(rules_copy: Path) -> None:

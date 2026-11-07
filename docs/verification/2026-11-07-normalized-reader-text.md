@@ -182,7 +182,8 @@ Full local suites, native PDF/Office rendering, vendor packs, and live consumer
 integration are outside this run. On the pre-merge head, six gap-probe cases
 were still open: RTF formatting/hex, PDF annotation hex, and three hidden
 Office/PDF cases owned by #182. Main `c1d6f50` already contains the RTF reader
-and those hidden-text fixes. The merged tree leaves one OPEN marker, the PDF
-annotation hex string, which is still unmerged on #187. These synthetic results
+and those hidden-text fixes. The PDF annotation hex string is decoded by
+`pdfannotations.py` on this branch. The gap probe's OPEN set does not list it.
+These synthetic results
 and corpus comparisons establish no production recall or false-positive rate
 and no comprehensive prompt-injection defense.
