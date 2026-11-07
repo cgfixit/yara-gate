@@ -94,12 +94,20 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     )
     stream = b"%PDF-1.4\n1 0 obj<</Length 0>>stream\n"
     # One invisible stretch: every string goes to both the shown and the hidden grouping.
-    yield "pdf-hidden-stretch.pdf", _filled(stream + b"BT /F1 12 Tf 3 Tr ", b"(a) Tj "), None
+    yield (
+        "pdf-hidden-stretch.pdf",
+        _filled(stream + b"BT /F1 12 Tf 3 Tr ", b"(a) Tj "),
+        "pdf annotation stream length unaligned",
+    )
     # White text that moves on every string, inside the union of the most painted areas a
     # stream keeps but on none of them, so no answer is reused.
     areas = b"".join(b"%d 0 1 1 re f " % (index * 100) for index in range(31))
     white = stream + b"0 g " + areas + b"0 9000 1 1 re f BT /F1 12 Tf 50 4000 Td 1 1 1 rg "
-    yield "pdf-white-areas.pdf", _filled(white, b"0 1 Td (a) Tj "), None
+    yield (
+        "pdf-white-areas.pdf",
+        _filled(white, b"0 1 Td (a) Tj "),
+        "pdf annotation stream length unaligned",
+    )
     # Hidden and shown strings in turn reach the text block cap.
     yield (
         "pdf-hidden-blocks.pdf",
@@ -112,9 +120,17 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         b"%PDF-1.4\n7 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
         b"8 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
     )
-    yield "pdf-contents-arrays.pdf", _filled(streams, b"/Contents["), None
+    yield (
+        "pdf-contents-arrays.pdf",
+        _filled(streams, b"/Contents["),
+        "pdf annotation stream length unaligned",
+    )
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
-    yield "pdf-page-objects.pdf", _filled(streams, page), None
+    yield (
+        "pdf-page-objects.pdf",
+        _filled(streams, page),
+        "pdf annotation stream length unaligned",
+    )
 
 
 def _filled(prefix: bytes, token: bytes) -> bytes:

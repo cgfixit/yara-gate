@@ -128,39 +128,133 @@ def test_annotations_never_join_each_other_or_unrelated_contents(rules_copy: Pat
     )
 
 
-def _swallowed(prefix: bytes) -> bytes:
-    hidden = annot(encoded(PHRASE, "hex"))
-    return pdf(prefix + hidden + b") >>\nendstream")
-
-
-def test_unaligned_length_cannot_hide_an_annotation_in_a_string(rules_copy: Path) -> None:
-    attacks = (
-        _swallowed(b"<< /Subtype /Image >>\nstream\n9 0 obj (<< /Foo "),
-        _swallowed(b"<< /Length 1 /Subtype /Image >>\nstream\n9 0 obj\n<< /Foo ("),
+def _stream_file(dictionary: bytes, body: bytes, *, tail: bytes = b"") -> bytes:
+    return (
+        b"%PDF-1.7\n1 0 obj\n"
+        + dictionary
+        + b"\nstream\n"
+        + body
+        + b"\nendstream\nendobj\n"
+        + tail
+        + b"%%EOF\n"
     )
-    for data in attacks:
-        try:
-            texts = read(data)
-        except ContentLimit:
-            texts = None
-        result = scan_bytes(data, name="a.pdf", rules_dir=rules_copy)
-        assert result.verdict.value != "clean"
-        if texts is not None:
-            assert PHRASE in texts
-    look = b"9 0 obj (" + annot(encoded(PHRASE, "hex")) + b")"
-    aligned = (
+
+
+def _real_after(body: bytes) -> bytes:
+    return body + b"\nendstream\nendobj\n2 0 obj\n" + annot(encoded(PHRASE, "hex")) + b"\nendobj\n"
+
+
+def _file(dictionary: bytes, body: bytes) -> bytes:
+    return b"%PDF-1.7\n1 0 obj\n" + dictionary + b"\nstream\n" + body + b"%%EOF\n"
+
+
+# expect: incomplete = uncertain /Length must not scan clean; read = phrase found and complete;
+# clean = no phrase and complete. Rows marked bypass are clean at eb5430c.
+_BOUNDARY = (
+    ("comment-missing", "incomplete", True),
+    ("comment-unaligned", "incomplete", True),
+    ("literal-missing", "incomplete", True),
+    ("literal-unaligned", "incomplete", False),
+    ("hex-missing", "incomplete", True),
+    ("hex-unaligned", "incomplete", True),
+    ("fake-header-missing", "incomplete", False),
+    ("fake-header-unaligned", "incomplete", False),
+    ("next-object-missing-length", "incomplete", False),
+    ("aligned-literal-lookalike", "read", False),
+    ("aligned-comment-lookalike", "read", False),
+    ("aligned-hex-lookalike", "read", False),
+    ("aligned-fake-header", "read", False),
+    ("benign-no-stream", "clean", False),
+    ("benign-annotation", "clean", False),
+    ("benign-lengthless-stream", "incomplete", False),
+    ("benign-unaligned-length", "incomplete", False),
+)
+
+
+def _boundary_pdf(name: str) -> bytes:
+    hidden = annot(encoded(PHRASE, "hex"))
+    no_length = b"<< /Subtype /Image >>"
+    short = b"<< /Length 1 /Subtype /Image >>"
+    if name == "comment-missing":
+        return _stream_file(no_length, b"9 0 obj % " + hidden)
+    if name == "comment-unaligned":
+        return _stream_file(short, b"9 0 obj % " + hidden)
+    if name == "literal-missing":
+        return _stream_file(no_length, b"9 0 obj (" + hidden + b")")
+    if name == "literal-unaligned":
+        return _stream_file(short, b"9 0 obj\n<< /Foo (" + hidden + b") >>")
+    if name == "hex-missing":
+        return _stream_file(no_length, b"9 0 obj <" + hidden.hex().encode() + b">")
+    if name == "hex-unaligned":
+        return _stream_file(short, b"9 0 obj <" + hidden.hex().encode() + b">")
+    if name == "fake-header-missing":
+        return _stream_file(no_length, b"9 0 obj\n" + hidden)
+    if name == "fake-header-unaligned":
+        return _stream_file(short, b"9 0 obj\n" + hidden)
+    if name == "next-object-missing-length":
+        return _file(no_length, _real_after(b"hello"))
+    if name == "aligned-literal-lookalike":
+        look = b"9 0 obj (" + hidden + b")"
+        return _length_then(look, hidden)
+    if name == "aligned-comment-lookalike":
+        look = b"9 0 obj % " + hidden
+        return _length_then(look, hidden)
+    if name == "aligned-hex-lookalike":
+        look = b"9 0 obj <" + hidden.hex().encode() + b">"
+        return _length_then(look, hidden)
+    if name == "aligned-fake-header":
+        look = b"9 0 obj\n" + hidden
+        return _length_then(look, hidden)
+    if name == "benign-no-stream":
+        return b"%PDF-1.7\n1 0 obj\n<< /Title (note) >>\nendobj\n%%EOF\n"
+    if name == "benign-annotation":
+        return pdf(annot(encoded("Hello.", "hex")))
+    if name == "benign-lengthless-stream":
+        return _stream_file(no_length, b"hello")
+    if name == "benign-unaligned-length":
+        return _stream_file(short, b"hello")
+    raise AssertionError(name)
+
+
+def _length_then(look: bytes, real: bytes) -> bytes:
+    return (
         b"%PDF-1.7\n1 0 obj\n<< /Length "
         + str(len(look)).encode()
         + b" >>\nstream\n"
         + look
         + b"\nendstream\nendobj\n2 0 obj\n"
-        + annot(encoded(PHRASE, "hex"))
+        + real
         + b"\nendobj\n%%EOF\n"
     )
-    assert read(aligned) == [PHRASE]
-    kept = scan_bytes(aligned, name="a.pdf", rules_dir=rules_copy)
-    assert kept.incomplete_reason is None
-    assert kept.verdict.value == "advisory"
+
+
+@pytest.mark.parametrize(("name", "expect", "bypass"), _BOUNDARY)
+def test_stream_boundary_matrix(name: str, expect: str, bypass: bool, rules_copy: Path) -> None:
+    data = _boundary_pdf(name)
+    try:
+        texts = read(data)
+    except ContentLimit as exc:
+        texts = exc
+    result = scan_bytes(data, name="a.pdf", rules_dir=rules_copy)
+    if expect == "read":
+        assert texts == [PHRASE]
+        assert result.incomplete_reason is None
+        assert result.verdict.value == "advisory"
+        assert any(f.view == "pdf-annotation" for f in result.findings)
+    elif expect == "incomplete":
+        assert isinstance(texts, ContentLimit)
+        assert result.verdict.value == "incomplete"
+        assert result.incomplete_reason == "pdf annotation stream length unaligned"
+    elif expect == "clean":
+        assert result.incomplete_reason is None
+        assert result.verdict.value == "clean"
+        if name == "benign-annotation":
+            assert texts == ["Hello."]
+        else:
+            assert texts == []
+    else:
+        raise AssertionError(expect)
+    assert isinstance(bypass, bool)
 
 
 def test_object_stream_inflation_is_charged_once() -> None:
@@ -181,23 +275,6 @@ def test_object_stream_inflation_is_charged_once() -> None:
     assert charged > 0
     list(objects.stream_members())
     assert budget.expanded == charged
-
-
-def test_missing_stream_length_does_not_hide_the_next_object(rules_copy: Path) -> None:
-    hidden = pdf(
-        b"<< /Subtype /Image >>\nstream\nimage-bytes-without-keyword",
-        annot(encoded(PHRASE, "hex")),
-    )
-    bounded = pdf(
-        b"<< /Subtype /Image >>\nstream\nhello\nendstream",
-        annot(encoded(PHRASE, "hex")),
-    )
-    assert read(hidden) == [PHRASE]
-    assert read(bounded) == [PHRASE]
-    result = scan_bytes(hidden, name="a.pdf", rules_dir=rules_copy)
-    assert result.incomplete_reason is None
-    assert result.verdict.value == "advisory"
-    assert any(f.view == "pdf-annotation" for f in result.findings)
 
 
 @pytest.mark.parametrize("indirect_length", [False, True])

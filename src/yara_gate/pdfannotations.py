@@ -4,7 +4,6 @@ import re
 from collections.abc import Iterator
 
 from yara_gate.content import (
-    _PDF_OBJ_HEADER,
     MAX_EXTRACT_BYTES,
     MAX_TEXT_PIECES,
     Budget,
@@ -23,7 +22,6 @@ _SUBTYPES = frozenset(
     b"/Squiggly /StrikeOut /Stamp /Caret /Ink /FileAttachment /Sound /Redact /Link "
     b"/Widget /Screen /Popup /Watermark /3D /RichMedia /Projection".split()
 )
-_END_STREAM = re.compile(rb"\bendstream\b")
 _LANGUAGE = re.compile("\x1b[a-z]{2}(?:[A-Z]{2})?")
 # PDFDocEncoding differs from Latin-1 in these slots (ISO 32000, Annex D).
 _PDFDOC = dict(enumerate("\u02d8\u02c7\u02c6\u02d9\u02dd\u02db\u02da\u02dc", 24))
@@ -73,9 +71,6 @@ def _tokens(
 ) -> Iterator[tuple[bytes, int]]:
     """Keep string tokens intact so names written inside them never become dictionaries."""
     position = count = 0
-    # Set when a missing or unaligned /Length resumes at an object header. A literal
-    # that then holds an annotation is not a boundary a reader committed to.
-    unaligned = False
     while position < len(data):
         budget.check()
         count += 1
@@ -107,8 +102,6 @@ def _tokens(
                 elif char == 41:
                     depth -= 1
             token = data[start:position] if depth == 0 else b"("
-            if unaligned and (depth != 0 or b"/Contents" in token or b"/Annot" in token):
-                raise ContentLimit("pdf annotation stream length unaligned")
         elif token.startswith(b"/"):
             token = _decode_pdf_name(token)
         yield token, position
@@ -126,16 +119,10 @@ def _tokens(
                 if ending:
                     position = end_at + ending.end()
                     continue
-            # A length that misses endstream cannot prove where the stream ends.
-            # The next object header, when it comes first, is still an object.
-            # A reader that trusts the xref shows it. This does not rebuild the xref.
-            end = _END_STREAM.search(data, position)
-            header = _PDF_OBJ_HEADER.search(data, position)
-            if header is not None and (end is None or header.start() < end.start()):
-                unaligned = True
-                position = header.start()
-                continue
-            position = end.end() if end else len(data)
+            # Length did not land on endstream, so the boundary is unknown.
+            # Resuming the lexer there is not safe: a comment, a literal, or a hex
+            # string can hide an annotation, and an object header can be fake.
+            raise ContentLimit("pdf annotation stream length unaligned")
 
 
 def _annotation(value: dict[bytes, PdfValue]) -> bool:

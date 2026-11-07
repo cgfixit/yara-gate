@@ -267,10 +267,12 @@ paragraph is a separate piece; folded spelling reaches the same existing rules
 as `pdf-annotation+text-folded`. Encoded text alone is no finding.
 
 The reader skips comments, literal-string contents, and stream bodies while
-looking for annotation dictionaries; a valid direct or indirect stream length
-protects against an `endstream` lookalike inside its body. A missing or unaligned
-length ends that skip at the next object header when the header appears before
-`endstream`, so the object is still read. This is not xref reconstruction.
+looking for annotation dictionaries. A direct or indirect `/Length` that lands
+on `endstream` skips that body, so a comment, literal, hex string, or object
+header inside it is not an annotation. A missing or unaligned length does not
+resume lexical parsing. The scan is incomplete
+(`pdf annotation stream length unaligned`). An apparent object header after
+that boundary is not treated as an object.
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an
 unresolved `/Contents` reference, duplicate dictionary keys, malformed string,
