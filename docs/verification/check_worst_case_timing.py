@@ -58,16 +58,66 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     token = b'"ab\\n",'
     count, rest = divmod(SIZE - len(prefix) - len(suffix), len(token))
     yield "notebook-lines.ipynb", prefix + token * count + b" " * rest + suffix, None
-    # A stored member keeps the actual scan input exactly 4 MiB, including ZIP metadata.
+    yield (
+        "ooxml-comment.zip",
+        _stored(
+            "xl/comments1.xml",
+            b"<comments><comment><text>",
+            b"<r><t>a</t></r>",
+            b"</text></comment></comments>",
+        ),
+        None,
+    )
+    # Hidden and shown Word runs in turn: the most hidden-text pieces a part can hold.
+    yield (
+        "ooxml-hidden-runs.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document><w:body><w:p>",
+            b"<w:r><w:rPr><w:vanish/></w:rPr><w:t>a</w:t></w:r><w:r><w:t>b</w:t></w:r>",
+            b"</w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    stream = b"%PDF-1.4\n1 0 obj<</Length 0>>stream\n"
+    # One invisible stretch: every string goes to both the shown and the hidden grouping.
+    yield "pdf-hidden-stretch.pdf", _filled(stream + b"BT /F1 12 Tf 3 Tr ", b"(a) Tj "), None
+    # White text that moves on every string, inside the union of the most painted areas a
+    # stream keeps but on none of them, so no answer is reused.
+    areas = b"".join(b"%d 0 1 1 re f " % (index * 100) for index in range(31))
+    white = stream + b"0 g " + areas + b"0 9000 1 1 re f BT /F1 12 Tf 50 4000 Td 1 1 1 rg "
+    yield "pdf-white-areas.pdf", _filled(white, b"0 1 Td (a) Tj "), None
+    # Hidden and shown strings in turn reach the text block cap.
+    yield (
+        "pdf-hidden-blocks.pdf",
+        _filled(stream + b"BT /F1 12 Tf ", b"3 Tr (a) Tj 0 Tr (b) Tj "),
+        "pdf text blocks exceed 20000",
+    )
+    # Two content streams, so the /Contents continuation index runs over every match: once a
+    # rescanned 4 KiB window per match (a 30 s timeout here), and once a page object apiece.
+    streams = (
+        b"%PDF-1.4\n7 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
+        b"8 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
+    )
+    yield "pdf-contents-arrays.pdf", _filled(streams, b"/Contents["), None
+    page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
+    yield "pdf-page-objects.pdf", _filled(streams, page), None
+
+
+def _filled(prefix: bytes, token: bytes) -> bytes:
+    count, rest = divmod(SIZE - len(prefix), len(token))
+    return prefix + token * count + b" " * rest
+
+
+def _stored(name: str, prefix: bytes, token: bytes, suffix: bytes) -> bytes:
+    """A one-member stored ZIP of exactly 4 MiB, ZIP metadata included."""
     stream = io.BytesIO()
-    info = zipfile.ZipInfo("xl/comments1.xml", date_time=(2026, 1, 1, 0, 0, 0))
+    info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
     overhead = 22 + 30 + 46 + 2 * len(info.filename)
-    prefix, suffix = b"<comments><comment><text>", b"</text></comment></comments>"
-    token = b"<r><t>a</t></r>"
     count, rest = divmod(SIZE - overhead - len(prefix) - len(suffix), len(token))
     with zipfile.ZipFile(stream, "w") as archive:
         archive.writestr(info, prefix + token * count + b" " * rest + suffix)
-    yield "ooxml-comment.zip", stream.getvalue(), None
+    return stream.getvalue()
 
 
 def scan_case(name: str, rules: Path) -> dict[str, object]:
@@ -103,6 +153,9 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "comment-block.py": "comment-text",
         "markdown-lines.md": "markdown-text",
         "notebook-lines.ipynb": "notebook-text",
+        "ooxml-hidden-runs.zip": "ooxml-hidden-text",
+        "pdf-hidden-stretch.pdf": "pdf-hidden-text",
+        "pdf-white-areas.pdf": "pdf-hidden-text",
     }.get(name)
     if view is not None and not result.views_scanned.get(view):
         raise RuntimeError(f"{name}: required reader {view} did not run")
@@ -154,7 +207,7 @@ def main() -> None:
                 raise SystemExit(f"FAIL {name}: process exceeded {PROCESS_SECONDS}s") from None
             except subprocess.CalledProcessError:
                 raise SystemExit(f"FAIL {name}: worker failed") from None
-    print("PASS: 16 adversarial inputs, each exactly 4 MiB", flush=True)
+    print(f"PASS: {len(list(cases()))} adversarial inputs, each exactly 4 MiB", flush=True)
 
 
 if __name__ == "__main__":

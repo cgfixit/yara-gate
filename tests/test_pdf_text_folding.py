@@ -96,3 +96,28 @@ def test_folded_pdf_keeps_member_and_namespace_identity(tmp_path: Path, rules_co
     assert "private-document" not in report.read_text()
     for entry in json.loads(sarif.read_text())["runs"][0]["results"]:
         assert entry["locations"][0]["physicalLocation"]["region"] == {}
+
+
+def test_pdf_folding_stops_after_scan_deadline(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from yara_gate import scanner
+
+    original = scanner.folded_text
+    calls = 0
+
+    def slow_fold(text: str) -> str:
+        nonlocal calls
+        if text.startswith("Sl0w"):
+            calls += 1
+            if calls == 1:
+                time.sleep(1.1)
+        return original(text)
+
+    monkeypatch.setattr(scanner, "folded_text", slow_fold)
+    pdf = samples._glyph_pdf(tuple(("F1", f"Sl0w item {n}") for n in range(4)))
+    result = scan_bytes(pdf, name="input.pdf", rules_dir=rules_copy, timeout_s=1)
+    assert result.incomplete_reason == "timeout"
+    assert calls == 1
