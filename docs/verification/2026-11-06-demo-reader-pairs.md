@@ -27,3 +27,17 @@ The separate 324-file generated corpus passed its existing precision gate:
 zero incomplete, 81 of 85 rules with no hits, and the four documented
 Windows shortcut collisions at one file each. These are curated and
 generated inputs, not an estimate of a production false-positive rate.
+
+Review before merge corrected the Pages explanations for `ooxml-comment`,
+SVG `html-text`, and small capitals in `text-folded`; the findings and decisions
+did not change. The existing HTTP showcase regression now covers all 13
+workbench pairs and passed, including exact attack rule/view provenance and
+clean twins under all three policies. Re-recording all 123 results matched
+the baseline. The Pages build, module syntax, Ruff on the changed test, and
+tracked-text control check passed.
+
+Browser review of this correction used the real workbench to scan the Excel
+attack, switch to its clean twin, and switch back under document policy;
+the paired control preserved the selected policy. The built Pages preview
+rendered the corrected Excel and SVG explanations. Deployment verification
+is separate from these local checks.
