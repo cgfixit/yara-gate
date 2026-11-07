@@ -193,7 +193,7 @@ See the [showcase verification](docs/verification/2026-11-06-demo-showcase.md) a
 
 ## Verification and CI
 
-The [CI workflow](.github/workflows/ci.yml) runs lint, type checks, rule compilation and boundary checks, synthetic precision checks, direct runtime probes, selftest, and pytest on Ubuntu 24.04 and macOS 15. A separate Windows Server 2025 job covers rule, scan-only, and intake checks. See [Actions](https://github.com/cgfixit/yara-gate/actions) for current status and [dated verification records](docs/verification/) for source-specific evidence. Actions are pinned to commit SHAs; the Pages deployment job alone receives Pages/OIDC write permissions. CodeQL runs through GitHub's default setup on Python, Actions, and JavaScript; the `CodeQL` check is the one that reports new alerts.
+The [CI workflow](.github/workflows/ci.yml) runs lint, type checks, rule compilation and boundary checks, synthetic precision checks, direct runtime probes, a [4 MiB worst-case timing tripwire](docs/verification/worst-case-timing.md), selftest, and pytest on Ubuntu 24.04 and macOS 15. A separate Windows Server 2025 job covers rule, scan-only, and intake checks. See [Actions](https://github.com/cgfixit/yara-gate/actions) for current status and [dated verification records](docs/verification/) for source-specific evidence. Actions are pinned to commit SHAs; the Pages deployment job alone receives Pages/OIDC write permissions. CodeQL runs through GitHub's default setup on Python, Actions, and JavaScript; the `CodeQL` check is the one that reports new alerts.
 
 ```bash
 uv run python docs/research/probe_rule_coverage.py --verify   # real library and CLI scans in disposable homes
