@@ -292,19 +292,52 @@ uncompressed page text that includes the word, and a JPEG comment that includes
 it. The Flate encoding of the same prose does not contain the keyword, and the
 annotation after that stream is still read.
 
+A keyword-delimited object header in the raw bytes of a landed stream makes
+the scan incomplete (`pdf object header inside stream`). The header is
+`N G obj` with PDF whitespace (`NUL`, TAB, LF, FF, CR, or space, including a
+run of them) between the tokens. The number starts the span or follows
+whitespace or a delimiter `()<>[]{}/%`. `obj` ends on whitespace, one of those
+delimiters, or `<<`. This does not depend on an xref entry, a page reference,
+or the generation. Decoded object-stream members are not this check. They are
+read on their own, and a type-2 xref entry stays an index into that stream.
+The incompletes are conservative. A header written as stream data, including
+one after a `/Length` that lands on `endstream`, still stops the scan, and a
+real annotation after that stream is not read. A header that no viewer displays
+still stops the scan. Measured on 2026-11-07, none of these files had such a header
+in a landed span: `rfbproto-3.3.pdf` (Acrobat Distiller 3.02, 110778 bytes),
+`rfbproto-3.7.pdf` (GNU Ghostscript 5.10, 165552 bytes), `rfbproto-3.8.pdf`
+(GPL Ghostscript 8.61, 143840 bytes), `gnus-logo.pdf` (GPL Ghostscript 8.54,
+3658 bytes), and the two Microsoft Word hybrids
+`CL2020 EMEAR DEVWKS-1542 Intersight Ansible Lab Guide.pdf` (1030061 bytes)
+and `Impact DNW07 UCS Ansible Collection Lab Guide.pdf` (433208 bytes). The
+same header pattern was absent from 348 fonts under `/usr/share/fonts` and
+454 PNG or JPEG files under `/usr/share/pixmaps` and `/usr/share/icons`.
+
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. Classic 20-byte tables, Flate `/Type /XRef` streams (`/W`,
-`/Index`, and a PNG or TIFF predictor), hybrid `/XRefStm`, and `/Prev` chains
-are read. A newer section overrides an older one. At one trailer, a classic
-offset and a stream offset for the same object are both checked. A type-1
-offset inside a landed span makes the scan incomplete
-(`pdf annotation xref offset inside stream`). A type-2 entry is an object-stream
-index, not a file offset, so object streams stay readable. No `startxref`
-leaves the sequential reader in place. A malformed table or stream
-(`pdf xref malformed`), a filter or predictor this reader does not decode
-(`pdf xref unsupported`), more than 100000 entries
-(`pdf xref entries exceed 100000`), or a spent deadline is incomplete. Chains
-stop at 32 sections. Flate output is charged to the shared 500MB budget.
+can be clean. A candidate is a `startxref` keyword at the start of a line,
+outside comments and literal or hex strings, with or without a following
+`%%EOF`. A comment or string that contains the word is not a candidate. A
+candidate that is present and does not parse still makes the scan incomplete.
+Each candidate includes its `/Prev` chain. Classic 20-byte tables,
+Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
+hybrid `/XRefStm` are read. A newer section overrides an older one inside one
+candidate. At one trailer, a classic offset and a stream offset for the same
+object are both checked. The landed span includes the newline and `endstream`
+the length ends on, so an offset on those bytes is inside the span. A type-1
+offset from any candidate inside that span makes the scan incomplete
+(`pdf annotation xref offset inside stream`). A type-1 offset that does not
+begin an object header is malformed, which covers a `/W` width that does not
+match the packed fields and a stream whose decoded length is not an exact
+multiple of the row width. A type-2 entry is an object-stream index, not a
+file offset, so object streams stay readable. An object that only a later
+candidate lists is kept when its offset begins an object header outside every
+span. No `startxref` leaves the sequential reader in place. A malformed table
+or stream (`pdf xref malformed`), a filter or predictor this reader does not
+decode (`pdf xref unsupported`), more than 100000 entries
+(`pdf xref entries exceed 100000`), more than 32 `startxref` candidates, or a
+spent deadline is incomplete. Chains stop at 32 sections. Flate output is
+charged to the shared 500MB budget, and a stream `pdf_streams` already inflated
+is not inflated again.
 
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an
