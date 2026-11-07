@@ -6,6 +6,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 
 - `src/yara_gate/cli.py`: Typer commands, recursive path scans, exit aggregation.
 - `scanner.py`, `content.py`, `filetype.py`, `heuristics.py` in that package: scan orchestration, bounded member/text views, type checks, PDF/Office indicators.
+- `rtftext.py`: bounded RTF reader text, scoped formatting/codepages, and paragraph/cell boundaries.
 - `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
 - `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is a launcher for the local workbench and public replay.

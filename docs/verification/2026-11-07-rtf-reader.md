@@ -2,7 +2,8 @@
 
 Base: `05f94caaf596413a2011612821f3d7d2916e3e16`. Exercised scanner and demo
 source: `b7d679990367`; the following evidence commit changes only this record
-and the recorded Pages results. macOS 27.2 arm64, Python 3.12.12, YARA-X 1.23.0,
+and the recorded Pages results. A later documentation-only follow-up also
+corrects the detailed catalog counts/table and adds the reader to the source map. macOS 27.2 arm64, Python 3.12.12, YARA-X 1.23.0,
 85 bundled rules, zero skips, no vendor download. Ruleset SHA-256:
 `4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985`.
 
