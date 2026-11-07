@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "24c50f83ca4766014457e07a864089e24f0a7315",
-  "captured_at": "2026-11-07T17:42:53+00:00",
+  "source_revision": "0a5ea158de0bf083d37c0a463d1725173d10634d",
+  "captured_at": "2026-11-07T18:22:46+00:00",
   "cases": [
     {
       "id": "note",
@@ -4107,6 +4107,182 @@
             "text-folded": 1
           },
           "bytes_scanned": 213,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_annotation_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "pdf_annotation_benign",
+      "title": "Encoded text in a PDF annotation",
+      "description": "An override phrase in a UTF-16BE hexadecimal annotation string. The annotation reader decodes it for the existing phrase rule.",
+      "results": {
+        "default": {
+          "sha256": "d5ef2ed6437a941d82fbfb4093530796768b796693457b9b190a3b81625b7db9",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 743,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "d5ef2ed6437a941d82fbfb4093530796768b796693457b9b190a3b81625b7db9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 743,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "d5ef2ed6437a941d82fbfb4093530796768b796693457b9b190a3b81625b7db9",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 743,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_annotation_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "pdf_annotation_override",
+      "title": "Same PDF annotation, ordinary revision note",
+      "description": "The same encoded annotation structure around an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "d726be99ee8cf3558990242af32031ea24b7d8b08ab7cb9f93c6c73c351685ff",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 738,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "d726be99ee8cf3558990242af32031ea24b7d8b08ab7cb9f93c6c73c351685ff",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 738,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "d726be99ee8cf3558990242af32031ea24b7d8b08ab7cb9f93c6c73c351685ff",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 738,
           "exit_code": 0
         }
       }

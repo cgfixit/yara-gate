@@ -60,6 +60,8 @@ class DemoSample(StrEnum):
     small_caps_benign = "small_caps_benign"
     rtf_override = "rtf_override"
     rtf_benign = "rtf_benign"
+    pdf_annotation_override = "pdf_annotation_override"
+    pdf_annotation_benign = "pdf_annotation_benign"
 
 
 # Each sample is scanned under the name its type implies; the attacks and their benign twins
@@ -100,6 +102,8 @@ _SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
     DemoSample.small_caps_benign: ("note.txt", samples.small_caps_benign),
     DemoSample.rtf_override: ("review.rtf", samples.rtf_override),
     DemoSample.rtf_benign: ("review.rtf", samples.rtf_benign),
+    DemoSample.pdf_annotation_override: ("review.pdf", samples.pdf_annotation_override),
+    DemoSample.pdf_annotation_benign: ("review.pdf", samples.pdf_annotation_benign),
 }
 
 

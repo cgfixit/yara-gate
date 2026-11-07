@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-11-07T21:58:00Z	frame	left main unmerged into the branch	the branch was 17 commits ahead of main fe985c8 and 0 behind	git rev-list --left-right --count	no merge commit
+2026-11-07T22:05:00Z	frame	decode xref streams instead of failing closed on them	a classic-only check leaves a clean Flate xref bypass, and failing closed incompletes Poppler's own /Type /XRef output	PR 187 decision trail	scope set by Christopher
+2026-11-07T22:20:00Z	red	added hiding fixtures before the resolver	classic, Flate, predictor, hybrid, and incremental all scanned clean	tests/test_pdfxref.py	5 failed, benign twins already advisory
+2026-11-07T22:45:00Z	resolver	one module owns resolved, free, and compressed entries	the fault is seeking an offset inside a length-proven span	src/yara_gate/pdfxref.py	xref and annotation tests passed
+2026-11-07T22:50:00Z	benign	scanned three installed PDFs	a false incomplete would show up as the new reason	gnus-logo.pdf and two Word 1.7 files	all clean, reason None
+2026-11-07T22:55:00Z	cli	ran yara-gate scan on hiding and outside-annotation files	exit 2 for classic and Flate hiding, exit 0 for the outside annotation	/tmp/hide.out /tmp/ok.out /tmp/flate.out	matched
+2026-11-07T22:56:00Z	demo	compared 49 recorded scenarios	regenerate only if outcomes change	scripts/record_pages_demo.py outcome_changes	0 changes

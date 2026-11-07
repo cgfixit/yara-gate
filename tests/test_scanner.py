@@ -306,7 +306,7 @@ def test_encrypt_named_in_prose_or_metadata_flag_stays_clean(
 ) -> None:
     data = (
         b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /EncryptMetadata false >>\nendobj\n"
-        b"2 0 obj\n<< /Length 40 >>\nstream\nBT (the /Encrypt key is a dict) Tj ET\n"
+        b"2 0 obj\n<< /Length 38 >>\nstream\nBT (the /Encrypt key is a dict) Tj ET\n"
         b"endstream\nendobj\n%%EOF\n"
     )
     assert _scan(tmp_path, rules_copy, "plain.pdf", data).verdict is Verdict.clean

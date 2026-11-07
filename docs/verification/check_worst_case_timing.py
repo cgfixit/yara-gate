@@ -47,12 +47,25 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ("markdown-brackets.md", b"# Heading\n", b"[", None),
         ("markdown-lines.md", b"", b"**ab**\n", None),
         ("rtf-controls.rtf", b"{\\rtf1 ", b"{\\b ", "rtf group depth exceeds 128"),
+        (
+            "pdf-annotation-dictionary.pdf",
+            b"%PDF-1.7\n<< /Type /Annot /Rect [",
+            b"0 ",
+            "pdf annotation dictionary exceeds 100000 tokens",
+        ),
         ("svg-spans.svg", b"<svg><text>", b"<tspan>a</tspan>", None),
         ("small-capitals.txt", b"", "\u026a\u0262\u0274\u1d0f\u0280\u1d07 ".encode(), None),
     )
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
         yield name, prefix + token * count + b" " * rest, reason
+    prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
+    count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
+    yield (
+        "pdf-annotation-string.pdf",
+        prefix + b"41" * count + b" " * rest + suffix,
+        "pdf annotation string exceeds 1MiB",
+    )
     prefix = b'{"nbformat":4,"cells":[{"cell_type":"markdown","source":['
     suffix = b'"last line"]}]}'
     token = b'"ab\\n",'
@@ -79,15 +92,26 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         None,
     )
-    stream = b"%PDF-1.4\n1 0 obj<</Length 0>>stream\n"
     # One invisible stretch: every string goes to both the shown and the hidden grouping.
-    yield "pdf-hidden-stretch.pdf", _filled(stream + b"BT /F1 12 Tf 3 Tr ", b"(a) Tj "), None
+    # /Length lands on endstream so the annotation reader skips the body and the
+    # page-text path is what the tripwire measures.
+    yield (
+        "pdf-hidden-stretch.pdf",
+        _content_pdf(b"BT /F1 12 Tf 3 Tr ", b"(a) Tj "),
+        None,
+    )
     # White text that moves on every string, inside the union of the most painted areas a
     # stream keeps but on none of them, so no answer is reused.
     areas = b"".join(b"%d 0 1 1 re f " % (index * 100) for index in range(31))
-    white = stream + b"0 g " + areas + b"0 9000 1 1 re f BT /F1 12 Tf 50 4000 Td 1 1 1 rg "
-    yield "pdf-white-areas.pdf", _filled(white, b"0 1 Td (a) Tj "), None
-    # Hidden and shown strings in turn reach the text block cap.
+    white = b"0 g " + areas + b"0 9000 1 1 re f BT /F1 12 Tf 50 4000 Td 1 1 1 rg "
+    yield (
+        "pdf-white-areas.pdf",
+        _content_pdf(white, b"0 1 Td (a) Tj "),
+        None,
+    )
+    # Hidden and shown strings in turn reach the text block cap. This /Length does not
+    # land; the block cap is raised by the page-text reader before annotations run.
+    stream = b"%PDF-1.4\n1 0 obj<</Length 0>>stream\n"
     yield (
         "pdf-hidden-blocks.pdf",
         _filled(stream + b"BT /F1 12 Tf ", b"3 Tr (a) Tj 0 Tr (b) Tj "),
@@ -95,13 +119,40 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     )
     # Two content streams, so the /Contents continuation index runs over every match: once a
     # rescanned 4 KiB window per match (a 30 s timeout here), and once a page object apiece.
+    # Each /Length is the body `BT ET \\n` and lands on that stream's own endstream.
     streams = (
-        b"%PDF-1.4\n7 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
-        b"8 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
+        b"%PDF-1.4\n7 0 obj<</Length 7>>stream\nBT ET \nendstream endobj\n"
+        b"8 0 obj<</Length 7>>stream\nBT ET \nendstream endobj\n"
     )
-    yield "pdf-contents-arrays.pdf", _filled(streams, b"/Contents["), None
+    yield (
+        "pdf-contents-arrays.pdf",
+        _filled(streams, b"/Contents["),
+        None,
+    )
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
-    yield "pdf-page-objects.pdf", _filled(streams, page), None
+    yield (
+        "pdf-page-objects.pdf",
+        _filled(streams, page),
+        None,
+    )
+
+
+def _content_pdf(prelude: bytes, token: bytes) -> bytes:
+    """A 4 MiB content stream whose `/Length` lands on the only `endstream`."""
+    marker = b"\nendstream\nendobj\n%%EOF\n"
+    for digits in range(1, 9):
+        header_len = len(b"%PDF-1.4\n1 0 obj<</Length ") + digits + len(b">>stream\n")
+        body_len = SIZE - header_len - len(marker)
+        if body_len <= len(prelude) or len(str(body_len)) != digits:
+            continue
+        header = b"%PDF-1.4\n1 0 obj<</Length " + str(body_len).encode() + b">>stream\n"
+        filler_len = body_len - len(prelude)
+        count, rest = divmod(filler_len, len(token))
+        body = prelude + token * count + b" " * rest
+        if len(body) != body_len or b"endstream" in body:
+            raise RuntimeError("content stream is not one landed span")
+        return header + body + marker
+    raise RuntimeError("content stream length does not fit")
 
 
 def _filled(prefix: bytes, token: bytes) -> bytes:

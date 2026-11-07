@@ -404,7 +404,13 @@ The original bytes, paragraph boundaries, and finding severity are preserved;
 these notes still pass the notes-only `agent-document` read rule. A composite font with
 no readable `ToUnicode` map leaves text unread; that is the note
 `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
-text it could not read. Text a reader hides (render mode 3 or 7, white on nothing
+text it could not read. Annotation `/Contents` strings are decoded separately
+as `pdf-annotation` (literal/octal, hexadecimal, PDFDocEncoding, UTF-16BE or
+UTF-8 with BOM, including indirect and supported object-stream members), then
+folded when spelling changes. Annotations and blank-line-separated paragraphs
+are never joined. Unreadable supported annotation contents are incomplete; rich
+text `/RC`, form-field values, and unsupported stream filters are not decoded
+by this reader. Text a reader hides (render mode 3 or 7, white on nothing
 painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
 hidden shapes or slides in Office) is also scanned on its own, and an override
 phrase there adds the advisory `heuristic_hidden_text`, so `agent-document` holds a

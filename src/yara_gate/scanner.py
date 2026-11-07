@@ -73,6 +73,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
+from yara_gate.pdfannotations import pdf_annotation_texts
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
@@ -408,6 +409,9 @@ def _scan_file(
                 "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
             )
             pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
+            pieces += _with_folded_pieces(
+                "pdf-annotation", pdf_annotation_texts(unit.data, pdf_objects, budget), budget
+            )
             if decoded is not None:
                 pieces += _with_folded_pieces(
                     "html-text", html_text_blocks(unit.name, decoded[0], budget), budget
