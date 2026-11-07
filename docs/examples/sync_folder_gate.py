@@ -18,6 +18,21 @@ placeholders, which a read would hydrate), zero-length files (a placeholder or a
 progress), and files whose size or mtime changed between two looks. ``conflicted copy`` files
 are scanned like any other and named in the log so the operator can decide a policy.
 
+Each admission is bound to the detector that made it. A run first scans a fixed probe from
+stdin and takes the policy, ``ruleset_sha256``, ``engine_version``, ``tool_version``, and
+``detector_sha256`` from its record; a file whose ledger entry carries another identity is
+rescanned even when its size and mtime are unchanged. At the end of the run, every
+``allowed/`` copy that no ledger entry admits under the current identity, whether it was
+superseded by a new version, held or failed on a rescan, or not revalidated after a scanner,
+rules, or policy change, moves to ``withdrawn/<sha256>/`` with a ``withdrawn.json`` reason.
+So ``allowed/`` holds only what the current detector admits; a downstream index built from it
+must drop entries that leave it. If the probe fails, nothing is scanned or moved and the run
+exits 2.
+
+Each scan has a hard parent timeout (``--timeout`` plus 30 seconds): a scanner that does not
+exit is killed, its partial output is ignored, the staged copy is held, and the next run
+retries it. A scan that produced no record is always retried.
+
 Stdlib only. Nothing here executes a target or fetches a URL. The ledger holds paths, sizes,
 times, and hashes, never content. Works on Windows, macOS, and Linux because it uses in-place
 scans. Staging must stay outside a watched inbox, which also processes dotfiles.
@@ -44,6 +59,8 @@ SKIP_PREFIXES = (".", "~$")
 _REPARSE = 0x400
 _SETTLE_SECONDS = 1.0
 MAX_FILE_BYTES = 100 * 1024 * 1024
+# The scanner's own deadline cannot preempt every parser; the parent kills it this much later.
+_KILL_GRACE = 30
 
 
 def main() -> int:
@@ -62,13 +79,17 @@ def main() -> int:
     args = parser.parse_args()
 
     home = args.gate_home.resolve()
-    for name in ("staging", "allowed", "held", "reports"):
+    for name in ("staging", "allowed", "held", "reports", "withdrawn"):
         (home / name).mkdir(parents=True, exist_ok=True)
     ledger_path = home / "ledger.json"
     ledger = _load_ledger(ledger_path)
     sync_root = args.sync_folder.resolve()
     if home == sync_root or home.is_relative_to(sync_root):
         print("gate home must be outside the sync folder", file=sys.stderr)
+        return 2
+    identity = _identity(args, home)
+    if identity is None:
+        _log("error", "-", "identity probe failed; nothing scanned or moved")
         return 2
 
     worst = 0
@@ -82,7 +103,8 @@ def main() -> int:
             continue
         info = path.stat()
         key = f"{info.st_size}:{info.st_mtime_ns}"
-        if ledger.get(relative, {}).get("key") == key:
+        previous = ledger.get(relative, {})
+        if previous.get("key") == key and previous.get("identity") == identity:
             continue
         if not _settled(path, info):
             _log("skip", relative, "changing")
@@ -107,11 +129,80 @@ def main() -> int:
         (destination / "record.json").write_text(
             json.dumps(record or {"exit_code": code}, indent=2) + "\n", encoding="utf-8"
         )
-        ledger[relative] = {"key": key, "sha256": digest, "allowed": allowed}
+        ledger[relative] = {
+            # No record (a crash, a timeout, unreadable output): the next run retries it.
+            "key": key if record is not None else None,
+            "sha256": digest,
+            "name": path.name,
+            "allowed": allowed,
+            "identity": identity,
+        }
         _save_ledger(ledger_path, ledger)
         _log("allowed" if allowed else "held", relative, digest)
         worst = max(worst, code if record is not None else 2)
+    _withdraw_stale(home, ledger, identity)
     return worst
+
+
+def _identity(args: argparse.Namespace, home: Path) -> str | None:
+    """The detector a record comes from: one in-memory scan of a fixed probe through stdin."""
+    command = [args.yara_gate, "scan", "-", "--json", "--name", "identity-probe.txt"]
+    command += ["--policy", args.policy, "--home", str(home / "reports")]
+    command += ["--timeout", str(args.timeout)]
+    if args.rules is not None:
+        command += ["--rules", str(args.rules)]
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed argv built above, no shell
+            command,
+            input="yara-gate sync identity probe\n",
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=args.timeout + _KILL_GRACE,
+        )
+        record = json.loads(completed.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    if completed.returncode != 0 or not isinstance(record, dict):
+        return None
+    if record.get("verdict") != "clean" or not record.get("ruleset_sha256"):
+        return None
+    fields = ("policy", "ruleset_sha256", "engine_version", "tool_version", "detector_sha256")
+    identity = json.dumps({field: record.get(field) for field in fields}, sort_keys=True)
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
+def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str) -> None:
+    """Move every allowed copy the current identity does not admit out of the read set."""
+    admitted = {
+        (entry.get("sha256"), entry.get("name"))
+        for entry in ledger.values()
+        if entry.get("allowed") is True and entry.get("identity") == identity
+    }
+    allowed = home / "allowed"
+    for directory in sorted(allowed.iterdir()):
+        if not directory.is_dir() or directory.is_symlink():
+            continue
+        for copy in sorted(directory.iterdir()):
+            if copy.name == "record.json" or (directory.name, copy.name) in admitted:
+                continue
+            target = home / "withdrawn" / directory.name
+            target.mkdir(parents=True, exist_ok=True)
+            os.replace(copy, target / copy.name)
+            (target / "withdrawn.json").write_text(
+                json.dumps(
+                    {"name": copy.name, "identity": identity, "withdrawn_at": int(time.time())},
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            _log("withdrawn", copy.name, directory.name)
+        if all(item.name == "record.json" for item in directory.iterdir()):
+            record = directory / "record.json"
+            if record.exists():
+                os.replace(record, home / "withdrawn" / directory.name / "record.json")
+            directory.rmdir()
 
 
 NOTES_ONLY = "agent-document records note findings"
@@ -233,10 +324,18 @@ def _scan(args: argparse.Namespace, home: Path, staged: Path) -> tuple[int, dict
         command += ["--rules", str(args.rules)]
     try:
         completed = subprocess.run(  # noqa: S603 - fixed argv built above, no shell
-            command, capture_output=True, text=True, check=False
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=args.timeout + _KILL_GRACE,
         )
     except OSError as exc:
         _log("error", staged.name, f"yara-gate did not start: {exc.__class__.__name__}")
+        return 2, None
+    except subprocess.TimeoutExpired:
+        # run() has killed the child; its partial output is never parsed.
+        _log("error", staged.name, f"yara-gate exceeded {args.timeout + _KILL_GRACE}s; killed")
         return 2, None
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     if completed.returncode not in (0, 1) or len(lines) != 1:

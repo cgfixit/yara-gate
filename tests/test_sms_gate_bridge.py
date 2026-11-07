@@ -148,3 +148,19 @@ def test_acl_failure_refuses_startup_and_append(
             assert path.read_bytes() == b'{"earlier": 1}\n'
     finally:
         os.close(gate.dir_fd)
+
+
+def test_each_message_sid_is_processed_once(tmp_path: Path, rules_copy: Path) -> None:
+    queue = tmp_path / "queue"
+    fields = {"MessageSid": "SM1", "From": "+15550100", "Body": "See you at 6.", "NumMedia": "0"}
+    gate = bridge.Gate(queue, rules_copy)
+    assert gate.decide(fields) == "allowed"
+    # A Twilio retry or a replayed signed request, then the same after a restart.
+    assert gate.decide(fields) == "duplicate"
+    gate.db.close()
+    assert bridge.Gate(queue, rules_copy).decide(fields) == "duplicate"
+    assert (queue / "allowed.jsonl").read_text(encoding="utf-8").count('"SM1"') == 1
+    assert stat.S_IMODE((queue / bridge.PROCESSED).stat().st_mode) == 0o600
+    # Without an ID a replay cannot be told apart, so the message is held.
+    unnamed = {key: value for key, value in fields.items() if key != "MessageSid"}
+    assert bridge.Gate(queue, rules_copy).decide(unnamed) == "held"

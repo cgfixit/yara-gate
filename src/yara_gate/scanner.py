@@ -1,6 +1,8 @@
 """Scan raw bytes, archive members and derived text without moving files."""
 
+import functools
 import hashlib
+import importlib.metadata
 import math
 import threading
 import time
@@ -109,6 +111,38 @@ def scan_file(
         )
 
 
+# Third-party parsers whose behavior reaches a verdict; YARA-X is also reported on its own.
+_DETECTOR_PACKAGES = ("olefile", "oletools", "yara-x")
+
+
+@functools.cache
+def detector_digest() -> str | None:
+    """SHA-256 over this package's Python sources and the parser versions a verdict depends on.
+
+    ``ruleset_sha256`` names the rules and ``tool_version`` the release, but a reader or
+    heuristic change can alter verdicts under both unchanged; this digest changes with it. It
+    identifies the code that produced a record, so a consumer that caches admissions can rescan
+    when it changes. None when the sources cannot be read.
+    """
+    root = Path(__file__).resolve().parent
+    hasher = hashlib.sha256()
+    try:
+        for path in sorted(root.rglob("*.py")):
+            name = path.relative_to(root).as_posix().encode()
+            body = path.read_bytes()
+            hasher.update(b"%d:%s%d:" % (len(name), name, len(body)))
+            hasher.update(body)
+    except OSError:
+        return None
+    for package in _DETECTOR_PACKAGES:
+        try:
+            version = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            version = ""
+        hasher.update(b"%s=%s;" % (package.encode(), version.encode()))
+    return hasher.hexdigest()
+
+
 def scan_bytes(
     data: bytes,
     *,
@@ -213,6 +247,7 @@ def _scan_file(
         result.skipped_rule_files = skip_count
         result.compiled_rules = compiled
         result.tool_version = __version__
+        result.detector_sha256 = detector_digest()
         result.scan_seconds = round(time.monotonic() - started, 3)
         result.units_scanned = units
         result.views_scanned = dict(sorted(views.items()))

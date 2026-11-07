@@ -41,7 +41,7 @@ For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between stagi
 
 **For the business**
 - **It closes the cheapest attack path.** Anyone who can text a number, email an address, or share a folder is the attacker you meet first. A deterministic local gate holds known shapes with no cloud classifier, no per-scan fee, and no third party that sees your users' content.
-- **Every decision leaves a record.** CLI scans write SARIF 2.1.0 and JSON with the rule ID, severity, policy, content view, ruleset fingerprint, engine version, and coverage counters, never the matched bytes. Library calls return a record; the caller decides whether to persist it. See [reports](user-guide.md#5-read-a-report).
+- **Every decision leaves a record.** CLI scans write SARIF 2.1.0 and JSON with the rule ID, severity, policy, content view, ruleset fingerprint, engine version, a detector digest that changes with the scanner's own code, and coverage counters, never the matched bytes. Library calls return a record; the caller decides whether to persist it. See [reports](user-guide.md#5-read-a-report).
 - **No lock-in.** MIT-licensed, the rules are YARA you can read, and candidate rules block only once you promote them.
 
 **For engineering**

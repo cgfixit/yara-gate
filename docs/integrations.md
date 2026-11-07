@@ -30,6 +30,8 @@ For one message-like file, an ingestion caller requires a complete clean verdict
 import json
 import subprocess
 
+# The scanner's own deadline cannot preempt every parser, so the parent's is hard.
+# subprocess.run kills the child and raises TimeoutExpired: treat that as a hold.
 completed = subprocess.run(
     [
         "yara-gate",
@@ -42,10 +44,13 @@ completed = subprocess.run(
         gate_home,
         "--rules",
         rules_root,
+        "--timeout",
+        "30",
     ],
     capture_output=True,
     text=True,
     check=False,
+    timeout=60,
 )
 records = [json.loads(line) for line in completed.stdout.splitlines()]
 allowed = (
@@ -187,9 +192,23 @@ directory the gate owns, and reads only what the gate allowed:
    changed source arrives as a new SHA-256 on the next pass.
 5. Keep a ledger of path, size, mtime, and SHA-256 so unchanged files are not
    rescanned. The ledger and the records hold no file content.
+6. Bind each admission to the detector that made it. `ruleset_sha256` and
+   `tool_version` can stay the same while a reader or heuristic changes a verdict,
+   so also record the report's `detector_sha256`, the policy, and the engine
+   version, and rescan an unchanged file when any of them differ. Then withdraw
+   every `allowed/` copy the current detector has not admitted: a superseded
+   version, a copy whose rescan held or failed, or one not yet revalidated. Move it
+   outside the read set and drop it from any index built from `allowed/`.
+7. Give each scan a hard parent timeout a little longer than `--timeout`, since
+   the scanner's deadline cannot preempt every parser. Kill a scan that overruns,
+   ignore its partial output, hold the staged copy, and retry it on the next pass.
 
 [docs/examples/sync_folder_gate.py](examples/sync_folder_gate.py) does exactly
-this with the standard library, on Windows, macOS, and Linux. Oversized
+this with the standard library, on Windows, macOS, and Linux. It reads the
+detector identity from one in-memory scan of a fixed probe at the start of each
+run (if that fails, nothing is scanned or moved), withdraws to
+`withdrawn/<sha256>/` with a `withdrawn.json` reason, and kills a scan 30 seconds
+after its `--timeout`. Oversized
 sources are logged and make the run exit 2 without being copied. Staging must
 stay outside a watched inbox: dot-prefixed names are scanned too. For a separate
 inbox producer, finish writing outside the inbox and atomically rename the
@@ -379,7 +398,13 @@ bridge for a Twilio number. It verifies `X-Twilio-Signature` against the auth to
 and the public URL, and holds every MMS (the gate never fetches media, and image text
 is not read). It scans each body and the sender's recent messages joined together, so
 an instruction split across two texts is held on the second, and it writes allowed and
-held messages to owner-only queues. It sends no automatic reply. The first half of a
+held messages to owner-only queues. It processes each `MessageSid` once: a valid
+signature proves origin, not freshness, so a Twilio retry or a replayed signed
+request is dropped before it is scanned, including after a restart. An owner-only
+SQLite file records each message in the same transaction as its queue line, so a
+failed write is retried cleanly; a crash between the two can still repeat a line,
+so the consumer must also skip a `message_sid` it has consumed. A message without
+a `MessageSid` is held. It sends no automatic reply. The first half of a
 split instruction has already been allowed by the time the second arrives; it is
 harmless alone, but the consumer should still read messages as one sender's thread,
 not as instructions. Measured gaps for this channel, the consumer changes it needs,

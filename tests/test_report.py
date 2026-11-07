@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,9 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
     assert compact["compiled_rules"] == compiled
     assert compact["tool_version"] == __version__
     assert compact["scan_seconds"] == result.scan_seconds
+    # The detector digest names the scanner code itself, so a reader change alters it.
+    assert result.detector_sha256 == compact["detector_sha256"]
+    assert re.fullmatch(r"[0-9a-f]{64}", result.detector_sha256 or "")
     sarif = json.loads(_sarif_path.read_text(encoding="utf-8"))
     assert sarif["runs"][0]["properties"]["compiled_rules"] == compiled
     assert compact["units_scanned"] == 1
