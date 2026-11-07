@@ -123,7 +123,7 @@ Pick the row by where the content lives when the caller first sees it.
 | A file the gate should take over | Drop it in the gate `inbox/`; `scan` or `watch` quarantines it | `clean/<sha256>/` only |
 | A message, webhook body, or tool result in memory | `scan_bytes(body, name=..., policy="agent-ingest")` or `scan - --name ...` | The same `body` bytes, never a re-read or re-encode |
 | A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
-| An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | Whatever the hook allowed |
+| An agent runtime's file-read tool | The [pre-read hook](#a-pre-read-hook-that-fails-closed) | The returned snapshot path; a byte consumer uses `--bytes PATH` and consumes stdout only on exit 0 |
 
 The two read rules from the top of this guide cover every row: a message needs
 exactly one complete `clean` record and no exit 2; a document needs that or the
@@ -144,8 +144,9 @@ A sync client's folder is never the gate's inbox. Inbox intake copies its input
 into `quarantine/<sha256>/<name>` and then removes the inbox entry (unless another
 file has replaced it during the copy); a sync client would
 treat that as a deletion and propagate it to every other device and shared-folder
-member. A directory scan of an inbox also consumes client metadata (`.dropbox`,
-`.DS_Store`, `desktop.ini`); only `watch` skips dotfiles. The inbox settle logic
+member. Both `watch` and an explicit inbox scan consume dotfiles and client
+metadata (`.dropbox`, `.DS_Store`, `desktop.ini`). The watcher holds a dropped
+directory intact as incomplete; explicit `scan DIRECTORY` still recurses. The inbox settle logic
 also takes a file whose last write is a second old, so a writer that pauses longer
 than that is scanned truncated and the rest of its write is lost with the removed
 inbox entry. On Windows, intake has no `O_NOFOLLOW`: it refuses a symlink,
@@ -165,8 +166,9 @@ directory the gate owns, and reads only what the gate allowed:
    the client download them, which is a network side effect the gate must not
    cause), and zero-length files (a placeholder, or a write in progress).
 2. Take a file only when two looks at least a second apart agree on its size and
-   mtime, then copy it through a temporary name and rename it into the gate's
-   staging directory, so no watcher sees a partial copy. Compare the source's size
+   mtime, then copy it through a temporary name in private, unwatched staging.
+   Reject files over 100 MiB before copying and cap the copy at 100 MiB even if
+   the source grows. Compare the source's size
    and mtime again after the copy and drop the copy if they changed.
 3. Scan the staged copy with `yara-gate scan STAGED --json --policy POLICY
    --home GATE_REPORTS --rules RULES`, and allow it only on exit 0, exactly one
@@ -186,10 +188,11 @@ directory the gate owns, and reads only what the gate allowed:
    rescanned. The ledger and the records hold no file content.
 
 [docs/examples/sync_folder_gate.py](examples/sync_folder_gate.py) does exactly
-this with the standard library, on Windows, macOS, and Linux. The staging
-directory may instead be the gate's own `inbox/`, which adds the quarantine and
-`clean/` slot semantics on top (on Windows through the `lstat`-then-identity
-intake above). A `conflicted copy` file (two
+this with the standard library, on Windows, macOS, and Linux. Oversized
+sources are logged and make the run exit 2 without being copied. Staging must
+stay outside a watched inbox: dot-prefixed names are scanned too. For a separate
+inbox producer, finish writing outside the inbox and atomically rename the
+completed file into it on the same filesystem. A `conflicted copy` file (two
 devices edited one file offline) is scanned like any other and named in the log;
 whether to allow such files is the consumer's policy. A direct run on 2026-10-29
 against a fake sync folder (clean, injected, metadata, lock, placeholder, symlink,
@@ -206,23 +209,34 @@ before relying on it; the skip rules above fail closed when in doubt.
 
 ## A pre-read hook that fails closed
 
-An instruction to an agent ("scan files before reading them") is a soft control.
-A hook that the agent runtime executes before the read is a hard one: the file is
-not read unless the hook allows it, and a hook that cannot run is a hold, not an
-allow. [docs/examples/yara_gate_pre_read_hook.sh](examples/yara_gate_pre_read_hook.sh)
-is such a hook. It reads the hook's JSON from stdin (or a path from its first
-argument), runs `yara-gate scan PATH --json --policy agent-ingest` against its
-own gate home, and exits 0 only for exactly one complete `clean` record with exit
-0. Anything else, including an advisory, an incomplete scan, a missing path, no
-record, two records, malformed output, a scanner that was killed, hook input that
-is not valid JSON, or no `python3` on `PATH`, exits 2 with a one-line reason on stderr. Input that is not a file read (no `tool_input.file_path`)
-prints nothing and exits 0, which means "no decision".
+A path check cannot authorize a later read of mutable bytes. The
+[shell entry point](examples/yara_gate_pre_read_hook.sh) invokes the adjacent
+[Python implementation](examples/yara_gate_pre_read_hook.py), which captures one
+local regular file into a bounded byte buffer, scans that buffer through
+`yara-gate scan - --name ORIGINAL_NAME --json`, and checks its SHA-256 and policy.
+It never reopens the source after scanning. Links, devices, directories, cloud
+placeholders, files over 100 MiB, and invalid or missing read inputs are held.
 
-For Claude Code, register it as a `PreToolUse` command hook on the `Read` tool.
-Exit 2 is the blocking exit for command hooks; `"onFailure": "block"` (Claude Code
-v2.1.295 or later) makes a hook that cannot start, exits with another code, or
-times out block as well, instead of letting the read proceed. The field names
-below are from the current hooks reference.
+The default `agent-document` policy permits a complete clean record or the exact
+notes-only record defined below. `YARA_GATE_POLICY=agent-ingest` permits only
+complete clean records. A scan failure, malformed output, missing scanner,
+wrong digest, wrong policy, or timeout exits 2 without output content.
+
+For a Claude Code `Read` hook, success writes the scanned buffer to a **new
+private, read-only snapshot** and emits `hookSpecificOutput.updatedInput` with
+that path. Other read arguments (offset, limit, pages) are preserved. The original
+path is never authorized for a later reopen. Replacing or editing the source
+before the tool runs does not change the snapshot. Each read gets a new directory;
+later hook calls do not replace prior snapshots. The hook does not return
+`permissionDecision: allow`. Runtime permissions apply to the rewritten path,
+not necessarily the original source: the integration must authorize the original
+read before capture (for example, in the owning read-tool wrapper or an OS
+sandbox that restricts the hook too). Do not use a snapshot rewrite to bypass a
+source-path deny rule. This scanner decides content policy, not filesystem
+access rights; an unrestricted hook is not a substitute for the caller's read
+authorization.
+
+Register it on the `Read` tool with failure blocking:
 
 ```json
 {
@@ -244,14 +258,38 @@ below are from the current hooks reference.
 }
 ```
 
-Set `YARA_GATE_HOME` to a gate home used only by this consumer,
-`YARA_GATE_RULES_ROOT` to the rules tree, and `YARA_GATE_BIN` to the `yara-gate`
-executable when it is not on `PATH`. Other agent runtimes with a pre-tool command
-hook can call the same script with the path as its first argument. Direct runs on
-2026-10-25 with a disposable home exercised each of those exits. The hook does
-not scan the bytes the agent later reads; a change between the scan and the read
-is the consumer's problem to prevent, as above. A clean verdict is not permission
-to execute instructions found in the file.
+The [Claude Code hooks reference](https://code.claude.com/docs/en/hooks#pretooluse-decision-control)
+defines `updatedInput`; failure blocking requires v2.1.295 or later. The runtime
+must honor rewritten arguments and block hook failures. Auto mode can deny a
+rewritten call; retain that denial rather than bypassing permission checks. A
+runtime that only checks the exit status and reopens the original path is **not
+compatible**. Test the actual runtime before deployment; this repository's
+subprocess checks do not establish an installed Claude Code integration.
+
+Keep the shell script, Python script, and `sync_folder_gate.py` beside one another.
+Set `YARA_GATE_HOME` to a private consumer-owned home outside the source tree,
+`YARA_GATE_RULES_ROOT` to the rules tree, and `YARA_GATE_BIN` to the installed
+scanner. `YARA_GATE_SCAN_TIMEOUT` defaults to 30 seconds; set the runtime hook
+timeout above it. The hook needs Python 3 and the scanner needs its locked Python
+environment. It does not install vendor packs.
+
+Snapshots under `YARA_GATE_HOME/read-*/` contain file content, unlike reports.
+They are created in mode-0700 directories with mode-0400 files on POSIX; on
+Windows, isolate the home with a private ACL. Retain snapshots until all reads
+finish, then remove this consumer's `read-*` directories during session cleanup.
+Do not delete them from a concurrent hook. Read-only mode protects against
+accidental writes, not a process that controls the same OS account or the home.
+For that threat model, enforce OS isolation or use the direct byte handoff below.
+
+**Direct byte handoff:** callers that can implement their own read tool should run
+`sh docs/examples/yara_gate_pre_read_hook.sh --bytes PATH`, capture stdout as bytes,
+wait for exit 0, then pass that exact buffer to the consumer. A nonzero exit means
+discard all output. This mode creates no snapshot path and does not depend on a
+second filesystem read; source replacement during or after the scan cannot
+change the returned buffer. A direct `sh .../yara_gate_pre_read_hook.sh PATH`
+without `--bytes` returns the same snapshot-rewrite JSON as hook mode, not a bare
+permission to read PATH. Consumers migrating from the old exit-only hook must
+use one of these handoffs. Content remains untrusted data even after clearance.
 
 ## Messages and other in-memory content
 
@@ -303,7 +341,7 @@ printf '%s' "$BODY" | yara-gate scan - --name sms.txt --json --policy agent-inge
 That emits one JSON record, writes the usual report pair under `--home`, and
 exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 100 MiB plus one byte; larger input is incomplete (`file exceeds 100MB`) and its
-`sha256` covers only the bytes read. To scan a file literally named `-`, pass
+`sha256` is unknown (64 zeroes), not a hash of a truncated prefix. To scan a file literally named `-`, pass
 `./-`.
 
 A JSON body is also read as a `json-unescaped` view, any text body gets a

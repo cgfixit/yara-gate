@@ -174,7 +174,7 @@ def watch_inbox(
     rules: Path | None = typer.Option(None, "--rules"),
     policy: ScanPolicy = typer.Option(ScanPolicy.default, "--policy"),
 ) -> None:
-    """Watch inbox/ and move each file to clean/ or blocked/."""
+    """Watch inbox entries, including dotfiles. Hold directories and incomplete scans."""
     from yara_gate.quarantine import GatePaths, watch
 
     try:
@@ -472,7 +472,7 @@ def _scan_stdin(
     policy: ScanPolicy,
     json_output: bool,
 ) -> int:
-    """Scan stdin in memory. Over 100 MiB is incomplete; its sha256 covers what was read."""
+    """Scan stdin in memory. Over 100 MiB is incomplete, with an unknown (zero) digest."""
     from yara_gate.report import write_reports
     from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes
 

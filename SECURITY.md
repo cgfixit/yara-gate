@@ -15,3 +15,10 @@ outputs are deployed, and only from `main`: automatically after a merge once eve
 check on that commit is green, or by a manual run on `main` through the same gate.
 Each deploy re-records the results with the real scanner and stops if any verdict or
 finding differs from the reviewed recordings.
+
+The pre-read example captures a bounded buffer and scans those exact bytes. Its
+`--bytes` mode returns that buffer on success; snapshot mode rewrites the tool
+input to a new private, read-only copy. Never treat its exit status as permission
+to reopen the original source. The consumer must authorize the source read and
+protect its snapshot home; read-only permissions do not isolate a hostile process
+running under the same account. See the [handoff and storage contract](docs/integrations.md#a-pre-read-hook-that-fails-closed).
