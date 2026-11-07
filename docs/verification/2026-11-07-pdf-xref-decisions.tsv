@@ -6,3 +6,8 @@ ts	phase	decision	why	evidence	result
 2026-11-07T22:50:00Z	benign	scanned three installed PDFs	a false incomplete would show up as the new reason	gnus-logo.pdf and two Word 1.7 files	all clean, reason None
 2026-11-07T22:55:00Z	cli	ran yara-gate scan on hiding and outside-annotation files	exit 2 for classic and Flate hiding, exit 0 for the outside annotation	/tmp/hide.out /tmp/ok.out /tmp/flate.out	matched
 2026-11-07T22:56:00Z	demo	compared 49 recorded scenarios	regenerate only if outcomes change	scripts/record_pages_demo.py outcome_changes	0 changes
+2026-11-07T22:30:00Z	xref-candidates	union every startxref instead of the last one	readers diverge on %%EOF and repair	tests/test_pdfxref.py decoy	red clean then incomplete
+2026-11-07T22:31:00Z	disagree	did not fail closed on every map difference	two Word files add 2 and 1 ObjStm objects only in the later startxref	scan_bytes of those files	still clean
+2026-11-07T22:32:00Z	repair	offset on endstream or the length newline is inside the span	pypdf 7.0.0 finds the phrase in the body	tests/test_pdfxref.py terminator	incomplete
+2026-11-07T22:33:00Z	width	decoded length must match /W and a type-1 offset must start an object	pypdf 7.0.0 shows the phrase for declared [1 1 2] packed as [1 2 1]	tests/test_pdfxref.py width	malformed
+2026-11-07T22:34:00Z	budget	reuse pdf_streams inflation	benign flate xref was charged 49 then 98	test_flate_xref_is_not_inflated_twice	charged once
