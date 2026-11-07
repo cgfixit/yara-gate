@@ -172,3 +172,29 @@ def test_expanded_pdf_fold_stops_between_capped_pieces(
     )
     assert result.incomplete_reason == "timeout"
     assert sizes == [MAX_BLOCK_CHARS]
+
+
+def test_shared_piece_fold_stops_at_the_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    start = 1_000_000.0
+    clock = {"t": start}
+
+    def now() -> float:
+        return clock["t"]
+
+    monkeypatch.setattr(content.time, "monotonic", now)
+    calls = 0
+    original = scanner.folded_text
+
+    def record(text: str) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            clock["t"] = start + 10_000
+        return original(text)
+
+    monkeypatch.setattr(scanner, "folded_text", record)
+    with pytest.raises(content.ContentLimit, match="timeout"):
+        scanner._with_folded_pieces(
+            "pdf-hidden-text", ["И" * 64, "И" * 64], content.Budget(start + 30)
+        )
+    assert calls == 1
