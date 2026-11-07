@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterator
 
 from yara_gate.content import (
+    _PDF_OBJ_HEADER,
     MAX_EXTRACT_BYTES,
     MAX_TEXT_PIECES,
     Budget,
@@ -120,9 +121,14 @@ def _tokens(
                 if ending:
                     position = end_at + ending.end()
                     continue
-            # shortcut: malformed/missing stream lengths use the existing endstream convention;
-            # replace with xref-aware parsing before claiming complete PDF rendering fidelity.
+            # A length that misses endstream cannot prove where the stream ends.
+            # The next object header, when it comes first, is still an object.
+            # A reader that trusts the xref shows it. This does not rebuild the xref.
             end = _END_STREAM.search(data, position)
+            header = _PDF_OBJ_HEADER.search(data, position)
+            if header is not None and (end is None or header.start() < end.start()):
+                position = header.start()
+                continue
             position = end.end() if end else len(data)
 
 

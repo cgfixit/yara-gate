@@ -128,6 +128,23 @@ def test_annotations_never_join_each_other_or_unrelated_contents(rules_copy: Pat
     )
 
 
+def test_missing_stream_length_does_not_hide_the_next_object(rules_copy: Path) -> None:
+    hidden = pdf(
+        b"<< /Subtype /Image >>\nstream\nimage-bytes-without-keyword",
+        annot(encoded(PHRASE, "hex")),
+    )
+    bounded = pdf(
+        b"<< /Subtype /Image >>\nstream\nhello\nendstream",
+        annot(encoded(PHRASE, "hex")),
+    )
+    assert read(hidden) == [PHRASE]
+    assert read(bounded) == [PHRASE]
+    result = scan_bytes(hidden, name="a.pdf", rules_dir=rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
+    assert any(f.view == "pdf-annotation" for f in result.findings)
+
+
 @pytest.mark.parametrize("indirect_length", [False, True])
 def test_strings_comments_and_stream_bytes_are_not_annotation_dictionaries(
     indirect_length: bool, rules_copy: Path

@@ -4,7 +4,7 @@ import hashlib
 import math
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -403,25 +403,27 @@ def _scan_file(
             # sentence wrapped over two comment lines, and a notebook cell stored as a list of
             # lines are each one piece of text to the reader.
             pieces = _with_folded_pieces(
-                "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget)
+                "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget), budget
             )
             pieces += _with_folded_pieces(
-                "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget)
+                "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
             )
-            pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget))
+            pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
             pieces += _with_folded_pieces(
-                "pdf-annotation", pdf_annotation_texts(unit.data, pdf_objects, budget)
+                "pdf-annotation", pdf_annotation_texts(unit.data, pdf_objects, budget), budget
             )
             if decoded is not None:
                 pieces += _with_folded_pieces(
-                    "html-text", html_text_blocks(unit.name, decoded[0], budget)
+                    "html-text", html_text_blocks(unit.name, decoded[0], budget), budget
                 )
                 pieces += _with_folded_pieces(
-                    "markdown-text", markdown_texts(unit.name, decoded[0], budget)
+                    "markdown-text", markdown_texts(unit.name, decoded[0], budget), budget
                 )
                 cells = notebook_texts(unit.name, decoded[0], budget)
                 pieces += _with_folded_pieces(
-                    "notebook-text", [text for text, lines, _ in cells if lines >= 2]
+                    "notebook-text",
+                    [text for text, lines, _ in cells if lines >= 2],
+                    budget,
                 )
                 # A comment inside a code cell is inside a JSON string in the raw text.
                 comments = comment_texts(decoded[0], budget)
@@ -430,7 +432,7 @@ def _scan_file(
                         comments += comment_texts(text, budget)
                         if len(comments) > MAX_TEXT_PIECES:
                             raise ContentLimit("text pieces exceed 100000")
-                pieces += _with_folded_pieces("comment-text", comments)
+                pieces += _with_folded_pieces("comment-text", comments, budget)
             if any(texts for _, texts in pieces):
                 findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
             conjunction = control_conjunction(findings[unit_start:])
@@ -458,7 +460,7 @@ def _pdf_text_findings(
     name: str,
 ) -> list[Finding]:
     """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
-    spans blocks (``pdf-paragraph``), one YARA pass apiece.
+    spans blocks (``pdf-paragraph``), including each piece's folded spelling when different.
 
     A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
     assembled from two paragraphs. A paragraph view exists only when a word in bold or a
@@ -477,7 +479,12 @@ def _pdf_text_findings(
                 view="pdf-text",
             )
         )
-    pieces = [("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)]
+    pieces = [
+        ("pdf-text", text.blocks),
+        ("pdf-text" + FOLDED_SUFFIX, _fold_pdf_pieces(text.blocks, budget)),
+        ("pdf-paragraph", text.paragraphs),
+        ("pdf-paragraph" + FOLDED_SUFFIX, _fold_pdf_pieces(text.paragraphs, budget)),
+    ]
     found = _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
     hidden = _hidden_text_findings(
         rules, unit, "pdf-hidden-text", text.hidden, budget, yara, ext, name
@@ -511,7 +518,7 @@ def _hidden_text_findings(
     """
     if not texts:
         return []
-    for label, pieces in _with_folded_pieces(view, texts):
+    for label, pieces in _with_folded_pieces(view, texts, budget):
         for found in _piece_findings(rules, unit, [(label, pieces)], budget, yara, ext, name):
             if (
                 found.rule_id.startswith("agent_")
@@ -533,7 +540,7 @@ def _hidden_text_findings(
 def _piece_findings(
     rules: object,
     unit: ContentUnit,
-    pieces: Sequence[tuple[str, Sequence[str]]],
+    pieces: Sequence[tuple[str, Iterable[str]]],
     budget: Budget,
     yara: Callable[..., list[Finding]],
     ext: str,
@@ -573,9 +580,24 @@ def _piece_findings(
     return ordered
 
 
-def _with_folded_pieces(view: str, texts: Sequence[str]) -> list[tuple[str, Sequence[str]]]:
+def _fold_pdf_pieces(texts: Sequence[str], budget: Budget) -> Iterator[str]:
+    for piece in texts:
+        budget.check()
+        folded = folded_text(piece)
+        if folded != piece:
+            yield folded
+
+
+def _with_folded_pieces(
+    view: str, texts: Sequence[str], budget: Budget
+) -> list[tuple[str, Sequence[str]]]:
     """``view``'s pieces, then each one whose folded spelling differs, as ``<view>+text-folded``."""
-    folded = [result for piece in texts if (result := folded_text(piece)) != piece]
+    folded: list[str] = []
+    for piece in texts:
+        budget.check()
+        result = folded_text(piece)
+        if result != piece:
+            folded.append(result)
     return [(view, texts), (view + FOLDED_SUFFIX, folded)] if folded else [(view, texts)]
 
 

@@ -35,6 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from yara_gate import samples
 from yara_gate.models import ScanResult
 from yara_gate.scanner import scan_bytes
 
@@ -1200,6 +1201,34 @@ def reader_cases() -> list[Case]:
             "clean",
         ),
         Case("#171.8", "small capitals", "m.txt", small_caps(PHRASE).encode(), PHRASE_RULE),
+        Case(
+            "fold",
+            "uppercase Russian override",
+            "m.txt",
+            samples.uppercase_russian_override(),
+            "agent_prompt_injection_multilingual",
+        ),
+        Case(
+            "fold",
+            "uppercase Russian review (benign)",
+            "m.txt",
+            samples.uppercase_russian_benign(),
+            "clean",
+        ),
+        Case(
+            "fold",
+            "glyph PDF with spelling substitutions",
+            "a.pdf",
+            samples.glyph_pdf_folded_override(),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fold",
+            "glyph PDF substituted review (benign)",
+            "a.pdf",
+            samples.glyph_pdf_folded_benign(),
+            "clean",
+        ),
         Case(
             "#171.8",
             "small-capital heading (benign)",
