@@ -149,7 +149,11 @@ evidence; the maintained tests and gap probe carry the durable regression cases.
 ## Demos and remaining limits
 
 Two new attack/twin pairs bring Pages to **45 scenarios / 135 policy outcomes**
-and the local workbench to 15 pairs. All 22 Pages twins are clean without findings.
+and the local workbench to 15 pairs on that head. Merging main `c1d6f50`
+adds the RTF pair already shipped there, so the combined catalog is 47
+scenarios (23 pairs and one incomplete scan, 141 policy outcomes) and 16
+workbench pairs. All 22 Pages twins in the pre-merge recording are clean
+without findings.
 All original 123 verdict/finding/exit outcomes are unchanged. The old benign
 Russian SMS now also runs a folded view: `bytes_scanned` changes from 98 to 196
 under each policy. The reviewed recordings retain that coverage change.
@@ -175,7 +179,10 @@ no stale verdict. The owned browser and both servers were stopped. Local evidenc
 remain local and do not replace the repository's historical screenshot evidence.
 
 Full local suites, native PDF/Office rendering, vendor packs, and live consumer
-integration are outside this run. The six existing OPEN gap-probe cases remain:
-RTF formatting/hex, PDF annotation hex, and three hidden Office/PDF cases owned
-by #182. These synthetic results and corpus comparisons establish no production
-recall or false-positive rate and no comprehensive prompt-injection defense.
+integration are outside this run. On the pre-merge head, six gap-probe cases
+were still open: RTF formatting/hex, PDF annotation hex, and three hidden
+Office/PDF cases owned by #182. Main `c1d6f50` already contains the RTF reader
+and those hidden-text fixes. The merged tree leaves one OPEN marker, the PDF
+annotation hex string, which is still unmerged on #187. These synthetic results
+and corpus comparisons establish no production recall or false-positive rate
+and no comprehensive prompt-injection defense.

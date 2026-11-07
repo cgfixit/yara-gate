@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "6fe62e337e6385d5fc29244674147fddf71e036d",
-  "captured_at": "2026-11-07T10:13:39+00:00",
+  "source_revision": "24c50f83ca4766014457e07a864089e24f0a7315",
+  "captured_at": "2026-11-07T17:42:53+00:00",
   "cases": [
     {
       "id": "note",
@@ -3925,6 +3925,188 @@
             "pdf-text+text-folded": 2
           },
           "bytes_scanned": 1414,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "rtf_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "rtf_benign",
+      "title": "RTF formatting and encoded letters",
+      "description": "An override phrase split by bold formatting and a hex-escaped letter. The RTF reader recovers one paragraph for the existing phrase rule.",
+      "results": {
+        "default": {
+          "sha256": "3abcf4ffcdaad5630a8d3d5c436b39621c4dfd81986ee3b29fe28d926da006a7",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "rtf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 216,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "3abcf4ffcdaad5630a8d3d5c436b39621c4dfd81986ee3b29fe28d926da006a7",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "rtf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 216,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "3abcf4ffcdaad5630a8d3d5c436b39621c4dfd81986ee3b29fe28d926da006a7",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "rtf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 216,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "rtf_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "rtf_override",
+      "title": "Same RTF, ordinary revision note",
+      "description": "The same formatting and hex escape around an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "e3d7e00ed3da9f8128b847c4cd7a457ed3a9d456c43e5e4104bc6d16146ae72e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 213,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "e3d7e00ed3da9f8128b847c4cd7a457ed3a9d456c43e5e4104bc6d16146ae72e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 213,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "e3d7e00ed3da9f8128b847c4cd7a457ed3a9d456c43e5e4104bc6d16146ae72e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "rtf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 213,
           "exit_code": 0
         }
       }

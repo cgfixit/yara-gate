@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import pytest
 
-from yara_gate import samples
+from yara_gate import content, samples, scanner
 from yara_gate.models import exit_code
+from yara_gate.pdftext import MAX_BLOCK_CHARS
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_bytes, scan_file
 
@@ -101,10 +103,6 @@ def test_folded_pdf_keeps_member_and_namespace_identity(tmp_path: Path, rules_co
 def test_pdf_folding_stops_after_scan_deadline(
     rules_copy: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import time
-
-    from yara_gate import scanner
-
     original = scanner.folded_text
     calls = 0
 
@@ -121,3 +119,56 @@ def test_pdf_folding_stops_after_scan_deadline(
     result = scan_bytes(pdf, name="input.pdf", rules_dir=rules_copy, timeout_s=1)
     assert result.incomplete_reason == "timeout"
     assert calls == 1
+
+
+def _expanded_cmap_pdf(repeats: int) -> bytes:
+    """One glyph repeated through a ToUnicode map, so decoded text outgrows one piece."""
+    expansion = "АБВ "
+    dest = expansion.encode("utf-16-be").hex().upper().encode()
+    content = b"BT /F1 12 Tf 72 700 Td <" + (b"0001" * repeats) + b"> Tj ET\n"
+    cmap = (
+        b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+        b"1 beginbfchar\n<0001> <" + dest + b">\nendbfchar\nendcmap\n"
+    )
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Arial /Encoding /Identity-H "
+        b"/ToUnicode 6 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream",
+    )
+    out = bytearray(b"%PDF-1.7\n")
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def test_expanded_pdf_fold_stops_between_capped_pieces(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = 1_000_000.0
+    clock = {"t": start}
+
+    def now() -> float:
+        return clock["t"]
+
+    monkeypatch.setattr(scanner.time, "monotonic", now)
+    monkeypatch.setattr(content.time, "monotonic", now)
+    sizes: list[int] = []
+    original = scanner.folded_text
+
+    def record(text: str) -> str:
+        sizes.append(len(text))
+        if len(sizes) == 1:
+            clock["t"] = start + 10_000
+        return original(text)
+
+    monkeypatch.setattr(scanner, "folded_text", record)
+    result = scan_bytes(
+        _expanded_cmap_pdf(20_000), name="expand.pdf", rules_dir=rules_copy, timeout_s=30
+    )
+    assert result.incomplete_reason == "timeout"
+    assert sizes == [MAX_BLOCK_CHARS]
