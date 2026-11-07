@@ -48,6 +48,12 @@ class DemoSample(StrEnum):
     svg_handler_benign = "svg_handler_benign"
     selector_run = "selector_run"
     selector_run_benign = "selector_run_benign"
+    svg_cdata_override = "svg_cdata_override"
+    svg_cdata_benign = "svg_cdata_benign"
+    xlsx_comment_override = "xlsx_comment_override"
+    xlsx_comment_benign = "xlsx_comment_benign"
+    small_caps_override = "small_caps_override"
+    small_caps_benign = "small_caps_benign"
 
 
 # Each sample is scanned under the name its type implies; the attacks and their benign twins
@@ -76,6 +82,12 @@ _SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
     DemoSample.svg_handler_benign: ("logo.svg", samples.svg_declarative_benign),
     DemoSample.selector_run: ("extension.js", samples.variation_selector_payload),
     DemoSample.selector_run_benign: ("extension.js", samples.variation_selector_benign),
+    DemoSample.svg_cdata_override: ("logo.svg", samples.svg_cdata_override),
+    DemoSample.svg_cdata_benign: ("logo.svg", samples.svg_cdata_benign),
+    DemoSample.xlsx_comment_override: ("review.xlsx", samples.xlsx_comment_override),
+    DemoSample.xlsx_comment_benign: ("review.xlsx", samples.xlsx_comment_benign),
+    DemoSample.small_caps_override: ("note.txt", samples.small_caps_override),
+    DemoSample.small_caps_benign: ("note.txt", samples.small_caps_benign),
 }
 
 
