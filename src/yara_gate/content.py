@@ -123,8 +123,8 @@ _SMALL_CAPS = str.maketrans(
     "\u1d0d\u0274\u1d0f\u1d18\u0280\ua731\u1d1b\u1d1c\u1d20\u1d21\u028f\u1d22",
     "abcdefghijklmnoprstuvwyz",
 )
-# A whole word that holds a non-ASCII letter or digit: the only words a mixed-script fold can
-# change. An ASCII word fails at its first character after the lazy prefix, so this is linear.
+# A whole word that holds a non-ASCII letter or digit: eligible for script or Cyrillic case
+# folding. An ASCII word fails at its first character after the lazy prefix, so this is linear.
 _NON_ASCII_WORD = re.compile(r"(?<![^\W_])[^\W_]*?[^\W_\x00-\x7f][^\W_]*")
 # A maximal run of letters, digits, @, and $ that holds at least one of 0134578@$. The match
 # starts only at a run's first character, so a run is read from one start and not rescanned from
@@ -919,10 +919,11 @@ def folded_text(text: str) -> str:
     Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
     (fullwidth and other presentation forms), removal of format controls and of control
     characters other than tab, CR, and LF, Latin small capitals folded to ASCII, and Cyrillic
-    and Greek look-alikes folded to Latin inside
-    mixed-script tokens, a word hyphenated at a line end rejoined (``previ-`` then ``ous``),
+    and Greek look-alikes folded to Latin inside mixed-script tokens, Cyrillic-only words
+    lowercased for the multilingual rule, a word hyphenated at a line end rejoined
+    (``previ-`` then ``ous``),
     letters spaced one apart rejoined, and digit or symbol stand-ins folded inside tokens that
-    mix them with letters. Russian, Greek, and ordinary numbers stay as written. The result is a
+    mix them with letters. Native scripts and ordinary numbers are preserved. The result is a
     view; the original bytes are scanned unchanged.
     """
     if not text.strip(" \t\r\n"):
@@ -954,6 +955,9 @@ def _fold_confusables(match: re.Match[str]) -> str:
     scripts = {_script(char) for char in word if char.isalpha()}
     if "LATIN" in scripts and len(scripts) > 1:
         return word.translate(_CONFUSABLES)
+    if scripts == {"CYRILLIC"}:
+        # YARA's nocase is ASCII-only; preserve Latin case for case-sensitive rules such as DAN.
+        return word.lower()
     return word
 
 
