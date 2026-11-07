@@ -97,3 +97,9 @@ RTF reader text reaches the existing phrase rules as `rtf-text` and, when needed
 paragraph; cells and separate stories remain separate. This adds no rule or
 severity change. See [reader limits](../docs/rules.md#rtf-reader-boundaries) and
 [verification](../docs/verification/2026-11-07-rtf-reader.md).
+
+Encoded PDF annotation `/Contents` strings reach the same rules as
+`pdf-annotation` and `pdf-annotation+text-folded`; each annotation/paragraph is
+scanned separately. A phrase retains its note severity and policy behavior.
+See [annotation limits](../docs/rules.md#pdf-annotation-boundaries) and
+[verification](../docs/verification/2026-11-07-pdf-annotations.md).

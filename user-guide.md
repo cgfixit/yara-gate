@@ -193,7 +193,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 The root [`demo.html`](demo.html) is a launcher for the two demos.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 43 inert examples, each of 21 attacks beside a benign
+replays saved results for 45 inert examples, each of 22 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -210,9 +210,9 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
-   The two paired groups contain 14 attacks and their benign twins. Start with
+   The two paired groups contain 15 attacks and their benign twins. Start with
    **New reader examples** for split Excel comments, SVG CDATA and spans, and
-   small capitals, or the RTF formatting/escape pair. Click **Scan paired example** to run the other input without
+   small capitals, the RTF formatting/escape pair, or an encoded PDF annotation. Click **Scan paired example** to run the other input without
    changing policy. Under `agent-ingest` the attacks are held and the benign
    twins are clean; changing the policy can change the verdict on a note.
 3. Read the decision and original finding severities. **Coverage & provenance**

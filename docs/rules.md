@@ -253,6 +253,31 @@ fixed table, not general phonetic transliteration or a new finding severity.
 [Verification](verification/2026-11-06-phase1c-small.md) records the targeted gaps,
 benign boundaries, and remaining Phase 1c work in [#171](https://github.com/cgfixit/yara-gate/issues/171).
 
+## PDF annotation boundaries
+
+`pdf-annotation` reads `/Contents` text strings from dictionaries declaring
+`/Type /Annot`, or a standard annotation `/Subtype` and `/Rect`. It scans each
+definition, including inactive revisions; it does not resolve the active xref
+revision or prove that a viewer displays the annotation. Literal and octal
+escapes, hexadecimal strings (including odd final nibbles), PDFDocEncoding,
+UTF-16BE BOM and PDF 2.0 UTF-8 BOM strings are decoded. Indirect text strings and
+members of already supported object streams are included. Language tags inside
+Unicode strings are removed. Each annotation and each blank-line-separated
+paragraph is a separate piece; folded spelling reaches the same existing rules
+as `pdf-annotation+text-folded`. Encoded text alone is no finding.
+
+The reader skips comments, literal-string contents, and stream bodies while
+looking for annotation dictionaries; a valid direct or indirect stream length
+protects against an `endstream` lookalike inside its body. Missing/malformed
+lengths use the existing endstream convention, not full PDF rendering semantics.
+Rich text `/RC`, form-field values, and filters the existing object-stream reader
+does not support remain outside this view. A recognized annotation with an
+unresolved `/Contents` reference, duplicate dictionary keys, malformed string,
+or unreadable encoding makes the scan incomplete. Each source is limited to
+4,000,000 tokens, each dictionary to 100,000 tokens and the existing 64-level
+parser depth, encoded strings to 1 MiB, and objects/pieces to 100,000, under the
+shared deadline and expansion budget. See [verification](verification/2026-11-07-pdf-annotations.md).
+
 ## RTF reader boundaries
 
 RTF data beginning with `{\rtf1` is read even under a renamed filename or inside

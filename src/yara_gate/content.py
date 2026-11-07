@@ -1639,6 +1639,15 @@ class PdfObjects:
             return [b""]
         return found
 
+    def stream_members(self) -> Iterator[tuple[int, memoryview]]:
+        """Bounded, already budgeted object-stream members; no raw-header lookalikes."""
+        if self._members is None:
+            self._members = self._index()
+        for number, definitions in self._members.items():
+            for stream, begin, stop in definitions:
+                self._budget.check()
+                yield number, memoryview(self._streams[stream])[begin:stop]
+
     def _index(self) -> dict[int, list[tuple[int, int, int]]]:
         members: dict[int, list[tuple[int, int, int]]] = {}
         data = self._data
@@ -1770,7 +1779,9 @@ def _pdf_string_end(data: bytes, position: int, stop: int) -> int:
     return -1
 
 
-def _pdf_value(tokens: list[bytes], index: int, nesting: int = 0) -> tuple[PdfValue, int]:
+def _pdf_value(
+    tokens: list[bytes], index: int, nesting: int = 0, *, reject_duplicates: bool = False
+) -> tuple[PdfValue, int]:
     """Parse one object at ``tokens[index]``. Raises IndexError or ValueError when malformed."""
     if nesting > _PDF_MAX_NESTING:
         raise ValueError("nesting")
@@ -1782,13 +1793,19 @@ def _pdf_value(tokens: list[bytes], index: int, nesting: int = 0) -> tuple[PdfVa
             key = tokens[index]
             if not key.startswith(b"/"):
                 raise ValueError("key")
-            entries[key], index = _pdf_value(tokens, index + 1, nesting + 1)
+            if reject_duplicates and key in entries:
+                raise ValueError("duplicate key")
+            entries[key], index = _pdf_value(
+                tokens, index + 1, nesting + 1, reject_duplicates=reject_duplicates
+            )
         return entries, index + 1
     if token == b"[":
         items: list[PdfValue] = []
         index += 1
         while tokens[index] != b"]":
-            item, index = _pdf_value(tokens, index, nesting + 1)
+            item, index = _pdf_value(
+                tokens, index, nesting + 1, reject_duplicates=reject_duplicates
+            )
             items.append(item)
         return items, index + 1
     if token in (b">>", b"]"):

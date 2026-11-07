@@ -47,12 +47,25 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ("markdown-brackets.md", b"# Heading\n", b"[", None),
         ("markdown-lines.md", b"", b"**ab**\n", None),
         ("rtf-controls.rtf", b"{\\rtf1 ", b"{\\b ", "rtf group depth exceeds 128"),
+        (
+            "pdf-annotation-dictionary.pdf",
+            b"%PDF-1.7\n<< /Type /Annot /Rect [",
+            b"0 ",
+            "pdf annotation dictionary exceeds 100000 tokens",
+        ),
         ("svg-spans.svg", b"<svg><text>", b"<tspan>a</tspan>", None),
         ("small-capitals.txt", b"", "\u026a\u0262\u0274\u1d0f\u0280\u1d07 ".encode(), None),
     )
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
         yield name, prefix + token * count + b" " * rest, reason
+    prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
+    count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
+    yield (
+        "pdf-annotation-string.pdf",
+        prefix + b"41" * count + b" " * rest + suffix,
+        "pdf annotation string exceeds 1MiB",
+    )
     prefix = b'{"nbformat":4,"cells":[{"cell_type":"markdown","source":['
     suffix = b'"last line"]}]}'
     token = b'"ab\\n",'
@@ -154,7 +167,7 @@ def main() -> None:
                 raise SystemExit(f"FAIL {name}: process exceeded {PROCESS_SECONDS}s") from None
             except subprocess.CalledProcessError:
                 raise SystemExit(f"FAIL {name}: worker failed") from None
-    print("PASS: 16 adversarial inputs, each exactly 4 MiB", flush=True)
+    print("PASS: 18 adversarial inputs, each exactly 4 MiB", flush=True)
 
 
 if __name__ == "__main__":
