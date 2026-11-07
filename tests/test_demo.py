@@ -277,6 +277,16 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     expected = {
         "b64_tool": ("b64_tool_benign", "agent_override_imperative", {"base64-decoded"}),
         "pdf_glyph": ("pdf_glyph_benign", "agent_override_imperative", {"pdf-paragraph"}),
+        "pdf_glyph_folded": (
+            "pdf_glyph_folded_benign",
+            "agent_prompt_injection_phrases",
+            {"pdf-paragraph+text-folded"},
+        ),
+        "uppercase_russian": (
+            "uppercase_russian_benign",
+            "agent_prompt_injection_multilingual",
+            {"text-folded"},
+        ),
         "pickle_call": ("pickle_benign", "heuristic_pickle_reduce", {"raw"}),
         "devcontainer": ("devcontainer_benign", "dev_devcontainer_lifecycle", {"raw"}),
         "zip_concat": ("zip_concat_benign", "agent_prompt_injection_phrases", {"raw"}),

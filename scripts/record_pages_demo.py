@@ -549,6 +549,55 @@ CASES: tuple[dict[str, Any], ...] = (
         CLEAN,
     ),
     _case(
+        "uppercase_russian",
+        "detection",
+        "Message",
+        "uppercase_russian_benign",
+        "An uppercase Russian override",
+        "The same known Russian override phrase in uppercase. Cyrillic case is folded "
+        "without transliterating the language or changing ASCII case-sensitive tokens.",
+        "message.txt",
+        samples.uppercase_russian_override(),
+        NOTE,
+    ),
+    _case(
+        "uppercase_russian_benign",
+        "control",
+        "Message",
+        "uppercase_russian",
+        "An ordinary uppercase Russian message",
+        "The same language and capitalization asking the reader to ignore noise and "
+        "review earlier notes. Capital letters alone are not a finding.",
+        "message.txt",
+        samples.uppercase_russian_benign(),
+        CLEAN,
+    ),
+    _case(
+        "pdf_glyph_folded",
+        "detection",
+        "Document",
+        "pdf_glyph_folded_benign",
+        "A glyph-id PDF with respelled instructions",
+        "The override uses a zero and a Cyrillic look-alike, then stores its letters as "
+        "font glyph numbers across three text objects. The recovered paragraph receives "
+        "the same spelling fold as other reader text.",
+        "review.pdf",
+        samples.glyph_pdf_folded_override(),
+        NOTE,
+    ),
+    _case(
+        "pdf_glyph_folded_benign",
+        "control",
+        "Document",
+        "pdf_glyph_folded",
+        "The same respelled PDF with ordinary review text",
+        "The same glyph encoding, bold-word layout, digit substitution, and Cyrillic "
+        "look-alike in a request to review previous release notes.",
+        "review.pdf",
+        samples.glyph_pdf_folded_benign(),
+        CLEAN,
+    ),
+    _case(
         "incomplete",
         "failure",
         "Rules",

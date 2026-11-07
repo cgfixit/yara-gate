@@ -439,7 +439,7 @@ def _pdf_text_findings(
     name: str,
 ) -> list[Finding]:
     """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
-    spans blocks (``pdf-paragraph``), one YARA pass apiece.
+    spans blocks (``pdf-paragraph``), including each piece's folded spelling when different.
 
     A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
     assembled from two paragraphs. A paragraph view exists only when a word in bold or a
@@ -458,7 +458,8 @@ def _pdf_text_findings(
                 view="pdf-text",
             )
         )
-    pieces = [("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)]
+    pieces = _with_folded_pieces("pdf-text", text.blocks)
+    pieces += _with_folded_pieces("pdf-paragraph", text.paragraphs)
     return _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
 
 

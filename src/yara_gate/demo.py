@@ -32,6 +32,10 @@ class DemoSample(StrEnum):
     b64_tool_benign = "b64_tool_benign"
     pdf_glyph = "pdf_glyph"
     pdf_glyph_benign = "pdf_glyph_benign"
+    pdf_glyph_folded = "pdf_glyph_folded"
+    pdf_glyph_folded_benign = "pdf_glyph_folded_benign"
+    uppercase_russian = "uppercase_russian"
+    uppercase_russian_benign = "uppercase_russian_benign"
     pickle_call = "pickle_call"
     pickle_benign = "pickle_benign"
     devcontainer = "devcontainer"
@@ -66,6 +70,10 @@ _SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
     DemoSample.b64_tool_benign: ("tool-result.json", samples.encoded_tool_result_benign),
     DemoSample.pdf_glyph: ("checklist.pdf", samples.glyph_pdf_override),
     DemoSample.pdf_glyph_benign: ("checklist.pdf", samples.glyph_pdf_benign),
+    DemoSample.pdf_glyph_folded: ("review.pdf", samples.glyph_pdf_folded_override),
+    DemoSample.pdf_glyph_folded_benign: ("review.pdf", samples.glyph_pdf_folded_benign),
+    DemoSample.uppercase_russian: ("message.txt", samples.uppercase_russian_override),
+    DemoSample.uppercase_russian_benign: ("message.txt", samples.uppercase_russian_benign),
     DemoSample.pickle_call: ("model.pt", samples.pickle_checkpoint_call),
     DemoSample.pickle_benign: ("model.pt", samples.pickle_checkpoint_benign),
     DemoSample.devcontainer: ("devcontainer.json", samples.devcontainer_host_fetch),
