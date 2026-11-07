@@ -276,7 +276,7 @@ Hidden means, from a run's, shape's, or slide's own properties:
   paragraph shading, table-cell or table shading, or page background
   (`w:background`) paints something else behind it. The earlier properties a tracked
   change keeps (`w:rPrChange` and its siblings) and a paragraph mark's own properties
-  (`w:pPr/w:rPr`) do not count. A text box in a drawing marked `hidden="1"` hides
+  (`w:pPr/w:rPr`) do not count. XML comments do not affect formatting. A text box in a drawing marked `hidden="1"` hides
   its text.
 - **PowerPoint:** a run of 1 pt or less (`a:rPr sz` of 100 or less), every text frame
   of a shape or group whose `p:cNvPr` is `hidden="1"`, and every frame of a slide
@@ -284,9 +284,12 @@ Hidden means, from a run's, shape's, or slide's own properties:
 - **Excel:** a rich-text run in shared strings, an inline-string cell, or a comment
   at 1 pt or less, or in near-white (an RGB value, or theme colour 0 without a
   darkening tint, which Excel maps to the light background).
-- **PDF:** text in render mode 3 (invisible) or 7 (clip only), and text in a
-  near-white fill (`g`, `rg`, `k`, or a three- or four-component `sc`/`scn`) whose
-  first glyph sits on nothing the same content stream painted in another colour.
+- **PDF:** text in render mode 3 (invisible) or 7 (clip only), and text whose active
+  fill or stroke colours are all near-white and whose first glyph sits on nothing
+  the same content stream painted in another colour. Render mode and colour carry
+  across physically adjacent streams linked by a direct `/Contents` array in a raw
+  page dictionary. Indirect arrays and pages stored in compressed object streams
+  do not supply this link.
   A painted area is the bounding box of a filled path, an image placement, or a
   shading; a stream keeps 32, and white text over a later one counts as hidden. In a
   page's own content stream, text under 1 pt and text that lies wholly outside the

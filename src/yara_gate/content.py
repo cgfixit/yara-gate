@@ -1052,8 +1052,10 @@ def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
 # and bounded, so a tag that never closes costs one bounded attempt at its ``<``; text outside
 # a text element is skipped by the regex engine.
 _XML_TOKEN = re.compile(
+    rb"<!--.*?(?:-->|\Z)|"
     rb"<(?:([A-Za-z][\w.-]{0,32}+):)?t(?:\s[^<>]{0,4096}+)?>([^<]*+)</(?:[A-Za-z][\w.-]{0,32}+:)?t>"
-    rb"|<(/?)(?:([A-Za-z][\w.-]{0,32}+):)?([A-Za-z][\w.-]{0,64}+)([^<>]{0,4096}+)>"
+    rb"|<(/?)(?:([A-Za-z][\w.-]{0,32}+):)?([A-Za-z][\w.-]{0,64}+)([^<>]{0,4096}+)>",
+    re.DOTALL,
 )
 # The text-element prefix each family reads: Word's own runs, DrawingML runs, SpreadsheetML.
 _TEXT_PREFIXES = {b"w": (b"w",), b"a": (b"a",), b"x": (b"", b"x")}
@@ -1196,11 +1198,15 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
             run = runs[-1] if runs else _Run()
             hidden = (
                 part_hidden
-                or any(shapes)
+                or (shapes and shapes[-1])
                 or run.hidden
                 or (
                     run.white
-                    and not (run.shaded or (paragraphs and paragraphs[-1]) or any(containers))
+                    and not (
+                        run.shaded
+                        or (paragraphs and paragraphs[-1])
+                        or (containers and containers[-1])
+                    )
                     and not page_shaded
                 )
             )
@@ -1215,6 +1221,8 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
         closing = bool(match.group(3))
         prefix = match.group(4) or b""
         local = match.group(5)
+        if local is None:
+            continue  # XML comments do not change the document's formatting state.
         raw = match.group(6)
         empty = raw.endswith(b"/")
         if family == b"x" and prefix not in (b"", b"x"):
@@ -1275,11 +1283,11 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
         elif local == b"p" and prefix in (b"w", b"a") and not empty:
             paragraphs.append(False)
         elif local in (b"tc", b"tbl") and prefix == b"w" and not empty:
-            containers.append(False)
+            containers.append(bool(containers and containers[-1]))
         elif (local in _PPT_SHAPES and prefix == b"p" or local in (b"anchor", b"inline")) and (
             not empty
         ):
-            shapes.append(False)
+            shapes.append(bool(shapes and shapes[-1]))
         elif local in (b"cNvPr", b"docPr") and shapes:
             flag = attributes(raw).get(b"hidden", b"0").lower()
             shapes[-1] = shapes[-1] or flag in (b"1", b"true", b"on")

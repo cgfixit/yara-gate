@@ -197,6 +197,28 @@ def pdf_hex(text: str) -> str:
     return f"<{text.encode().hex().upper()}>"
 
 
+def pdf_visibility_streams(*, same_page: bool, setup: bytes) -> bytes:
+    """Put the instruction after a visibility setup stream, on the same or another page."""
+    data = pdf_page(f"({PHRASE}) Tj")
+    if same_page:
+        data = data.replace(b"/Contents 4 0 R", b"/Contents [6 0 R 4 0 R]")
+    else:
+        data = data.replace(b"/Kids[3 0 R]/Count 1", b"/Kids[7 0 R 3 0 R]/Count 2")
+        data = data.replace(
+            b"4 0 obj",
+            b"7 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 6 0 R"
+            b"/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj",
+        )
+    first_stream = (
+        b"6 0 obj<</Length "
+        + str(len(setup)).encode()
+        + b">>stream\n"
+        + setup
+        + b"\nendstream\nendobj\n"
+    )
+    return data.replace(b"4 0 obj", first_stream + b"4 0 obj")
+
+
 def pdf_note(contents: str) -> str:
     return f"/Annots[<</Type/Annot/Subtype/Text/Rect[0 0 10 10]/Contents {contents}>>]"
 
@@ -1300,6 +1322,8 @@ def hidden_text_cases() -> list[Case]:
     """#110: each hiding signal holding the phrase, beside shown and benign boundaries."""
     white = '<w:color w:val="FFFFFF"/>'
     shown = f"{PHRASE_RULE} without {HIDDEN_TEXT}"
+    # Keep the phrase outside the raw HTML comment rule's 256-byte context window.
+    comment_pad = "formatting note " * 20
     return [
         Case(
             "#110", "docx white run", "a.docx", docx_paragraph(styled(PHRASE, white)), HIDDEN_TEXT
@@ -1358,6 +1382,20 @@ def hidden_text_cases() -> list[Case]:
                 )
             ),
             shown,
+        ),
+        Case(
+            "#110",
+            "docx commented vanish does not hide a run",
+            "a.docx",
+            docx_paragraph(styled(PHRASE, f"<!-- <w:vanish/> {comment_pad} -->")),
+            shown,
+        ),
+        Case(
+            "#110",
+            "docx commented end tag does not end a hidden run",
+            "a.docx",
+            docx_paragraph(styled(PHRASE, f"<w:vanish/><!-- </w:r> {comment_pad} -->")),
+            HIDDEN_TEXT,
         ),
         Case(
             "#110",
@@ -1449,6 +1487,48 @@ def hidden_text_cases() -> list[Case]:
             "pdf half-point text",
             "a.pdf",
             pdf_page(f"/F1 0.5 Tf ({PHRASE}) Tj"),
+            HIDDEN_TEXT,
+        ),
+        Case(
+            "#110",
+            "pdf rotated 1.2 pt text stays above the size threshold",
+            "a.pdf",
+            pdf_page(f"/F1 1.2 Tf .7071 .7071 -.7071 .7071 72 700 Tm ({PHRASE}) Tj"),
+            shown,
+        ),
+        Case(
+            "#110",
+            "pdf stroke-only text with unused white fill (shown)",
+            "a.pdf",
+            pdf_page(f"1 g 0 G 1 Tr ({PHRASE}) Tj"),
+            shown,
+        ),
+        Case(
+            "#110",
+            "pdf white fill and black stroke (shown)",
+            "a.pdf",
+            pdf_page(f"1 g 0 G 2 Tr ({PHRASE}) Tj"),
+            shown,
+        ),
+        Case(
+            "#110",
+            "pdf white stroke with unused dark fill",
+            "a.pdf",
+            pdf_page(f"0 g 1 G 1 Tr ({PHRASE}) Tj"),
+            HIDDEN_TEXT,
+        ),
+        Case(
+            "#110",
+            "pdf invisible render mode does not leak into another page",
+            "a.pdf",
+            pdf_visibility_streams(same_page=False, setup=b"BT /F1 12 Tf 3 Tr (Draft) Tj ET"),
+            shown,
+        ),
+        Case(
+            "#110",
+            "pdf paint-only stream sets white fill for later content on its page",
+            "a.pdf",
+            pdf_visibility_streams(same_page=True, setup=b"1 g"),
             HIDDEN_TEXT,
         ),
         Case(

@@ -12,7 +12,7 @@ of reading order is joined in stream order, and a sentence split across two text
 rejoined. Every loop is bounded and checks the scan deadline.
 
 Text a reader does not show is also collected on its own (``PdfText.hidden``): text drawn in
-render mode 3 (invisible) or 7 (clip only); text in a near-white fill colour whose first glyph
+render mode 3 (invisible) or 7 (clip only); text painted only in near-white whose first glyph
 sits on nothing the same content stream painted in another colour (a filled path, an image, or
 a shading, each taken as its bounding box), so white on a dark header or slide stays shown;
 and, in a page's own content streams, text under 1 pt or placed outside every ``/MediaBox`` in
@@ -23,11 +23,21 @@ and text covered by a later fill are not computed.
 
 from __future__ import annotations
 
+import math
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
-from yara_gate.content import Budget, ContentLimit, PdfStream, _pdf_stream_dict
+from yara_gate.content import (
+    _PDF_OBJ_HEADER,
+    Budget,
+    ContentLimit,
+    PdfStream,
+    _pdf_stream_dict,
+    _pdf_tokens,
+    _pdf_value,
+)
 
 MAX_TEXT_BLOCKS = 20_000
 MAX_BLOCK_CHARS = 64 * 1024
@@ -118,6 +128,8 @@ _MEDIA_BOX = re.compile(
 )
 # Stream dictionary keys of a form XObject, pattern, or other stream drawn through its own matrix.
 _NOT_PAGE_KEYS = frozenset({b"/Subtype", b"/Type", b"/PatternType", b"/BBox", b"/Matrix"})
+_CONTENTS_ARRAY = re.compile(rb"/Contents[\x00\t\n\f\r ]*+\[")
+_PAGE_DICT_WINDOW = 4096
 
 
 def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Budget) -> PdfText:
@@ -131,18 +143,66 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     fonts = _fonts(data, streams, objects, by_number, budget)
     box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
-    # A page's /Contents array is read as one stream, so the font one stream selects stays
-    # selected in the next; a form XObject also inherits its caller's font. The selection is
-    # carried across streams in file order, and so are the render mode and fill colour.
+    # Keep the existing font approximation in file order. Visibility needs stronger evidence
+    # of a continuation because leaking an invisible mode across pages can hold shown text.
+    predecessors = _contents_predecessors(data, budget) if len(streams) > 1 else {}
+    occurrences = Counter(stream.number for stream in streams)
+    previous: int | None = None
     state = _TextState()
     for stream in streams:
         body = stream.text
-        # A page's later /Contents stream can continue a text object begun in an earlier one.
-        if body is None or (b"BT" not in body and b"Tj" not in body and b"TJ" not in body):
+        number = stream.number
+        linked = number in predecessors and occurrences[number] == 1
+        if number is None or not linked or previous is None or predecessors.get(number) != previous:
+            state.render = 0
+            state.white = state.white_stroke = False
+        previous = None
+        if body is None or (
+            not linked and b"BT" not in body and b"Tj" not in body and b"TJ" not in body
+        ):
             continue
         page = _page_content(data, stream)
         tokens = _blocks(body, fonts, result, budget, tokens, state, box if page else None, page)
+        if linked and page:
+            previous = number
     return result
+
+
+def _contents_predecessors(data: bytes, budget: Budget) -> dict[int, int | None]:
+    """Identify adjacent streams in direct /Contents arrays of raw page dictionaries."""
+    predecessors: dict[int, int | None] = {}
+    for match in _CONTENTS_ARRAY.finditer(data):
+        budget.check()
+        headers = list(
+            _PDF_OBJ_HEADER.finditer(data, max(0, match.start() - _PAGE_DICT_WINDOW), match.start())
+        )
+        if not headers:
+            continue
+        start = headers[-1].end()
+        end = data.find(b"endobj", match.end(), start + _PAGE_DICT_WINDOW)
+        if end == -1 or not (tokens := _pdf_tokens(data, start, end)):
+            continue
+        try:
+            page, used = _pdf_value(tokens, 0)
+        except (IndexError, ValueError):
+            continue
+        if used != len(tokens) or not isinstance(page, dict) or page.get(b"/Type") != b"/Page":
+            continue
+        refs = page.get(b"/Contents")
+        if not isinstance(refs, list):
+            continue
+        previous: int | None = None
+        for ref in refs:
+            if not isinstance(ref, tuple) or ref[1] != 0:
+                previous = None
+                continue
+            number = ref[0]
+            # A stream reused in different positions cannot safely inherit either state.
+            predecessors[number] = (
+                previous if predecessors.get(number, previous) == previous else None
+            )
+            previous = number
+    return predecessors
 
 
 def _page_box(sources: list[bytes], budget: Budget) -> Box | None:
@@ -150,7 +210,9 @@ def _page_box(sources: list[bytes], budget: Budget) -> Box | None:
     found: Box | None = None
     for source in sources:
         budget.check()
-        for match in _MEDIA_BOX.finditer(source):
+        for index, match in enumerate(_MEDIA_BOX.finditer(source)):
+            if index % 4096 == 0:
+                budget.check()
             try:
                 a, b, c, d = (float(group) for group in match.groups())
             except ValueError:
@@ -475,6 +537,7 @@ class _TextState:
     selected: bool = False
     render: int = 0
     white: bool = False
+    white_stroke: bool = False
 
 
 # Render modes that paint nothing: 3 is invisible, 7 only adds the glyphs to the clipping path.
@@ -483,10 +546,11 @@ _INVISIBLE_MODES = frozenset({3, 7})
 _LEGIBLE_SIZE = 1.0
 _WHITE_LEVEL = 0.95
 _FILL_OPERATORS = frozenset({b"g", b"rg", b"k", b"sc", b"scn", b"cs"})
+_STROKE_OPERATORS = frozenset(op.upper() for op in _FILL_OPERATORS)
 
 
-def _white_fill(op: bytes, operands: list[object]) -> bool:
-    """True when a fill colour operator selects a near-white colour.
+def _white_color(op: bytes, operands: list[object]) -> bool:
+    """True when a colour operator selects a near-white colour.
 
     Gray (``g``) and RGB (``rg``) at 0.95 or more per component, and CMYK (``k``) at 0.05 or
     less, are white. ``sc`` and ``scn`` are read by their component count, three as RGB and
@@ -604,7 +668,7 @@ def _blocks(
     string's baseline is known in device space; text objects (BT ... ET) do not split text,
     because generators start a new one at every font change or line. The render mode (Tr) and
     fill colour are followed too, and a string drawn so that it is not seen also goes to the
-    hidden grouping: render mode 3 or 7, or a near-white fill over nothing this stream painted
+    hidden grouping: render mode 3 or 7, or near-white text over nothing this stream painted
     in another colour. In ``page`` content, text under 1 pt or outside ``box`` is not seen
     either. A hidden stretch ends at the next string that is seen.
     """
@@ -614,6 +678,7 @@ def _blocks(
     sized = state.selected
     render = state.render
     white = state.white
+    white_stroke = state.white_stroke
     leading = 0.0
     ctm = _IDENTITY_MATRIX
     painted = _Painted()
@@ -621,7 +686,7 @@ def _blocks(
     clip: Box | None = None
     clipping = False
     # q saves, and Q restores, the whole graphics state: the CTM, the clip, and the text state.
-    saved: list[tuple[Matrix, list[Font], float, float, int, bool, Box | None]] = []
+    saved: list[tuple[Matrix, list[Font], float, float, int, bool, bool, Box | None]] = []
     line = _IDENTITY_MATRIX
     paragraphs = _Paragraphs(result)
     hidden = _Paragraphs(result, hidden=True)
@@ -655,13 +720,19 @@ def _blocks(
             return
         readings, printed = decoded
         unseen = render in _INVISIBLE_MODES
-        if white and not unseen:
+        white_text = (
+            (render in (0, 4) and white)
+            or (render in (1, 5) and white_stroke)
+            or (render in (2, 6) and white and white_stroke)
+        )
+        height = abs(size) * math.hypot(device[2], device[3])
+        if white_text:
             # A point inside the first glyph, above the baseline.
-            quarter = 0.25 * shown
+            quarter = 0.25 * height
             unseen = not painted.covers(device[4] + quarter, device[5] + quarter)
         if page and sized and not unseen:
-            unseen = shown < _LEGIBLE_SIZE or (
-                box is not None and _off_page(device, shown, strings, box)
+            unseen = height < _LEGIBLE_SIZE or (
+                box is not None and _off_page(device, height, strings, box)
             )
         if unseen or not printed:
             # A shown space between two hidden strings is part of the hidden text; a stretch
@@ -694,11 +765,12 @@ def _blocks(
             hidden.end_block()
         elif op == b"q":
             if len(saved) < 64:
-                saved.append((ctm, current, size, leading, render, white, clip))
+                saved.append((ctm, current, size, leading, render, white, white_stroke, clip))
         elif op == b"Q":
             if saved:
-                ctm, current, size, leading, render, white, clip = saved.pop()
+                ctm, current, size, leading, render, white, white_stroke, clip = saved.pop()
                 state.fonts, state.size, state.render, state.white = current, size, render, white
+                state.white_stroke = white_stroke
         elif op in (b"m", b"l") and (values := numbers(2)) is not None:
             extend(values)
         elif op == b"c" and (values := numbers(6)) is not None:
@@ -736,8 +808,11 @@ def _blocks(
             render = int(values[0]) if values[0].is_integer() else 0
             state.render = render
         elif op in _FILL_OPERATORS:
-            white = _white_fill(op, operands)
+            white = _white_color(op, operands)
             state.white = white
+        elif op in _STROKE_OPERATORS:
+            white_stroke = _white_color(op.lower(), operands)
+            state.white_stroke = white_stroke
         elif op == b"TL" and (values := numbers(1)) is not None:
             leading = values[0]
         elif op == b"Tm" and (values := numbers(6)) is not None:

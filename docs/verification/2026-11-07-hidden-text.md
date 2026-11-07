@@ -158,3 +158,33 @@ hidden sheets, rows, or columns, DrawingML colours, clipping, transparency, a la
 opaque fill, or a CropBox is not detected, and a bogus `/MediaBox` widens the page
 union. None of this is a recall or false-positive rate, and it is not a general
 prompt-injection defense.
+
+## Review after merging current main into the PR branch
+
+The review started from merge commit `a5337a8` with `main` at `05f94ca`. On
+macOS arm64 with locked Python 3.12.12 and YARA-X 1.23.0, eight new cases
+reproduced visibility errors in the real scanner. The follow-up passed all eight.
+
+- Word comments could introduce a fake `w:vanish` or terminate a real hidden
+  run. The tokenizer skips comments. Inherited shape visibility and container
+  shading use the current stack entry, keeping nested lookups constant time.
+- PDF stroke-only and fill-plus-stroke text could be held because of white fill
+  even with a visible outline. White stroke with dark unused fill could pass.
+  The detector now checks the paint channels active in the rendering mode.
+  The size check uses the length of the transformed vertical axis, so rotating
+  a 1.2 pt text matrix does not put it below the 1 pt threshold.
+- An invisible PDF stream could make a different page's text appear hidden.
+  A paint-only stream could also be skipped on its own page. Visibility state
+  now carries across adjacent streams linked by a direct array in a raw page
+  dictionary. That link does not cover indirect arrays or compressed page
+  dictionaries. See [the rule boundaries](../rules.md#hidden-office-and-pdf-text).
+
+`probe_detection_gaps.py --verify` reported 197 passing cases and three known
+open gaps, with 85 bundled rules and no vendor downloads. Six focused PDF tests
+passed, as did Ruff, strict mypy and the text-control check. The affected 4 MiB
+Office and PDF timing fixtures finished in 1.03, 1.61 and 1.42 seconds against
+the 10-second ceiling. These were single local measurements.
+
+- `src/yara_gate/content.py`: `12222c8c8cbff3f88cb5cf22a1c13520937f4bdc2a919f8710c34416cdb44f14`
+- `src/yara_gate/pdftext.py`: `6db89ec06a42ea455c1e2a477d385a307a05bd6e847b094e8e87d0b588faa2a4`
+- `src/yara_gate/scanner.py`: `04ede7298bd35ae22312d3d61126e986c8811f0279a8502ed067fd36544cfe84`
