@@ -295,7 +295,7 @@ def _fonts(
             slot = references.setdefault(name, set())
             if len(slot) < 64:
                 slot.add((int(ref.group(2)), int(ref.group(3))))
-    cache: dict[tuple[int, int], Font | None] = {}
+    cache: dict[tuple[int, int], list[Font]] = {}
     fonts: dict[bytes, list[Font]] = {}
     _prime(objects, {key for refs in references.values() for key in refs})
     headers: dict[tuple[int, int], int] | None = None
@@ -314,12 +314,17 @@ def _fonts(
 
     for name, refs in references.items():
         found: list[Font] = []
+        alternates: list[Font] = []
         for key in sorted(refs):
             if key not in cache:
                 cache[key] = _font(objects(*key), by_number, budget, raw, key)
-            font = cache[key]
-            if font is not None and font not in found:
-                found.append(font)
+            readings = cache[key]
+            if readings and readings[0] not in found:
+                found.append(readings[0])
+            alternates.extend(each for each in readings[1:] if each not in alternates)
+        # A second reading of one font comes after every font's first, so it never displaces
+        # a font the name also means within MAX_FONT_VARIANTS.
+        found.extend(each for each in alternates if each not in found)
         if found:
             fonts[name] = found
     return fonts
@@ -331,7 +336,8 @@ def _font(
     budget: Budget,
     raw: Callable[[tuple[int, int]], bytes],
     key: tuple[int, int],
-) -> Font | None:
+) -> list[Font]:
+    """The font's readings: one, or two when its ToUnicode map has an overflowing range."""
     for body in bodies:
         if b"/Font" not in body and b"/Subtype" not in body:
             continue
@@ -341,15 +347,19 @@ def _font(
             # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
             # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
             mapping = _TO_UNICODE.search(raw(key))
+        default = (2,) if composite else (1,)
         if mapping is None:
-            return Font(composite, None, (2,) if composite else (1,))
+            return [Font(composite, None, default)]
         cmap_bytes = by_number.get(int(mapping.group(1)))
         if not cmap_bytes:
-            return Font(composite, None, (2,) if composite else (1,))
-        cmap, lengths = _cmap(cmap_bytes, budget)
-        default = (2,) if composite else (1,)
-        return Font(composite, cmap or None, lengths or default)
-    return None
+            return [Font(composite, None, default)]
+        cmap, lengths, carried = _cmap(cmap_bytes, budget)
+        fonts = [Font(composite, cmap or None, lengths or default)]
+        if carried:
+            budget.check()
+            fonts.append(Font(composite, {**cmap, **carried}, lengths or default))
+        return fonts
+    return []
 
 
 _LOOKUP_WINDOW = 4000
@@ -367,9 +377,13 @@ def _prime(objects: Lookup, keys: set[tuple[int, int]]) -> None:
         prime(keys)
 
 
-def _cmap(data: bytes, budget: Budget) -> tuple[dict[bytes, str], tuple[int, ...]]:
-    """bfchar and bfrange entries of a ToUnicode CMap, and its code lengths in bytes."""
+def _cmap(
+    data: bytes, budget: Budget
+) -> tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]]:
+    """bfchar and bfrange entries of a ToUnicode CMap, its code lengths in bytes, and the
+    codes an overflowing bfrange gives a second reading (see ``_cmap_ranges``)."""
     mapping: dict[bytes, str] = {}
+    carried: dict[bytes, str] = {}
     lengths: set[int] = set()
     for section in _CMAP_SECTION.finditer(data):
         budget.check()
@@ -386,12 +400,26 @@ def _cmap(data: bytes, budget: Budget) -> tuple[dict[bytes, str], tuple[int, ...
                     break
                 if source and target not in (b"[", b"]"):
                     mapping[source] = _utf16(target)
+                    if carried:
+                        # A later entry replaces the code in every reader.
+                        carried.pop(source, None)
         else:
-            _cmap_ranges(items, mapping)
-    return mapping, tuple(sorted(lengths, reverse=True))
+            _cmap_ranges(items, mapping, carried)
+    return mapping, tuple(sorted(lengths, reverse=True)), carried
 
 
-def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str]) -> None:
+def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str], carried: dict[bytes, str]) -> None:
+    """Add bfrange entries to ``mapping``.
+
+    ``<lo> <hi> <dst>`` maps each code to ``dst`` plus its offset in the range, carrying into
+    the higher byte. ISO 32000-1 9.10.3 increments only the last byte, but for a one-unit
+    destination PDFium, PDFBox, pdfminer.six, pdf.js, and MuPDF all carry. When the sum no
+    longer fits in ``dst``'s width (``<0000> <00FF> <FFFF>``), they split: PDFium, PDFBox,
+    and pdfminer.six wrap it to that width, while pdf.js and MuPDF keep the untruncated last
+    UTF-16 unit, a code point from U+10000. ``mapping`` gets the wrapped reading and
+    ``carried`` the other one for those codes only, so the text is read both ways
+    (docs/verification/2026-11-07-cmap-range-overflow.md).
+    """
     index = 0
     while index + 2 < len(items) and len(mapping) < MAX_CMAP_ENTRIES:
         low, high, target = items[index], items[index + 1], items[index + 2]
@@ -409,19 +437,31 @@ def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str]) -> None:
                 index += 1
             index += 1
             for offset, each in enumerate(targets[: last - first + 1]):
-                mapping[(first + offset).to_bytes(len(low), "big")] = _utf16(each)
+                code = (first + offset).to_bytes(len(low), "big")
+                mapping[code] = _utf16(each)
+                if carried:
+                    carried.pop(code, None)
             continue
         if target == b"]":
             continue
         base = int.from_bytes(target, "big") if target else 0
         width = max(len(target), 2)
+        limit = (1 << (8 * width)) - 1
+        # The destination as whole UTF-16 units: the units before the last, and the last.
+        units = base.to_bytes(width + width % 2, "big")
+        prefix, unit = _utf16(units[:-2]), int.from_bytes(units[-2:], "big")
         for offset in range(last - first + 1):
             if len(mapping) >= MAX_CMAP_ENTRIES:
                 return
-            # The last byte of the target increments across the range (ISO 32000-1 9.10.3).
-            mapping[(first + offset).to_bytes(len(low), "big")] = _utf16(
-                (base + offset).to_bytes(width, "big")
-            )
+            code = (first + offset).to_bytes(len(low), "big")
+            value = base + offset
+            mapping[code] = _utf16((value & limit).to_bytes(width, "big"))
+            if value > limit:
+                # Only a destination already at its width's maximum prefix overflows, so
+                # unit + offset is from 0x10000 to 0x1FFFE: never a surrogate.
+                carried[code] = prefix + chr(unit + offset)
+            elif carried:
+                carried.pop(code, None)
 
 
 Matrix = tuple[float, float, float, float, float, float]
