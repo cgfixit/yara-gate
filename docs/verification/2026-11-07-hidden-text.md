@@ -193,3 +193,27 @@ A final review bound the continuation index to uniquely identified streams
 already discovered by the PDF reader. The detection probe still reported 197
 passes and three known open gaps. The updated `pdftext.py` SHA-256 is
 `d80e6642930179cfd8632b534b809c59dffeadf3cfa87b117ae0ad3ac44400c9`.
+
+## Linear continuation index
+
+On `91af406`, the continuation index rescanned a 4 KiB window for object headers at every
+`/Contents[` match. In this Linux container (Python 3.12.3, YARA-X 1.23.0), a 4 MiB file of
+two content streams followed by repeated `/Contents[` hit the 30-second scan deadline
+(incomplete, `timeout`). The same file took 2.30 s on `682cf08` and 2.53 s on `5575468`. 4 MiB
+of small page objects, each with a two-stream `/Contents` array, took 11.82 s, against 1.25 s
+and 1.38 s. Profiling put about 9 s per MiB inside the window rescans.
+
+Headers are now indexed once and found by bisection. The `endobj` search moves forward only,
+and each page object is parsed once. One page's references merge idempotently, so the result
+cannot change. The original function, taken from `91af406`, and the new one returned identical
+maps for every PDF in the 538-file sweep, every gap-probe PDF, 3,000 random byte mixtures, and
+4,000 structured documents. The structured documents had random `/Contents` arrays, non-zero
+generations, reused streams, window-edge padding, missing `endobj`, and duplicate keys; 2,705
+of them gave a non-empty map.
+
+The same two inputs now take 2.72 s and 3.17 s. Both join the CI tripwire as
+`pdf-contents-arrays.pdf` and `pdf-page-objects.pdf`, and all 22 inputs passed. Also passed:
+the gap probe (197 ok, 3 open), the coverage probe, `tests/test_pdftext.py` (6 passed), Ruff,
+`mypy --strict src`, and `check_text_controls.py`.
+
+- `src/yara_gate/pdftext.py`: `c65ecdf577a287792174721525c231a6388480c6cf31601ccccf8ad764372df0`

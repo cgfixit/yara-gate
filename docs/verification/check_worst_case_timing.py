@@ -93,6 +93,15 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(stream + b"BT /F1 12 Tf ", b"3 Tr (a) Tj 0 Tr (b) Tj "),
         "pdf text blocks exceed 20000",
     )
+    # Two content streams, so the /Contents continuation index runs over every match: once a
+    # rescanned 4 KiB window per match (a 30 s timeout here), and once a page object apiece.
+    streams = (
+        b"%PDF-1.4\n7 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
+        b"8 0 obj<</Length 8>>stream\nBT ET \nendstream endobj\n"
+    )
+    yield "pdf-contents-arrays.pdf", _filled(streams, b"/Contents["), None
+    page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
+    yield "pdf-page-objects.pdf", _filled(streams, page), None
 
 
 def _filled(prefix: bytes, token: bytes) -> bytes:

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 import re
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -171,18 +172,44 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
 def _contents_predecessors(
     data: bytes, occurrences: Counter[int | None], budget: Budget
 ) -> dict[int, int | None]:
-    """Identify adjacent streams in direct /Contents arrays of raw page dictionaries."""
+    """Identify adjacent streams in direct /Contents arrays of raw page dictionaries.
+
+    The page object around each ``/Contents[`` is the nearest object header that ends before
+    it and starts within ``_PAGE_DICT_WINDOW``, read up to the first ``endobj`` after it inside
+    that window. Headers are indexed once, the ``endobj`` search moves forward only, and each
+    object is parsed once however many matches fall inside it, so the pass is linear in the
+    file: a window rescanned per match cost about 9 s per MiB of repeated ``/Contents[``.
+    Merging one page's references is idempotent, so parsing it once gives the same result.
+    """
     predecessors: dict[int, int | None] = {}
-    for match in _CONTENTS_ARRAY.finditer(data):
-        budget.check()
-        headers = list(
-            _PDF_OBJ_HEADER.finditer(data, max(0, match.start() - _PAGE_DICT_WINDOW), match.start())
-        )
-        if not headers:
+    starts: list[int] = []
+    ends: list[int] = []
+    indexed = False
+    parsed: set[int] = set()
+    next_end = -2  # The first endobj at or after the last search point; -1 when there is none.
+    for count, match in enumerate(_CONTENTS_ARRAY.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        if not indexed:
+            for number, header in enumerate(_PDF_OBJ_HEADER.finditer(data)):
+                if number % 4096 == 0:
+                    budget.check()
+                starts.append(header.start())
+                ends.append(header.end())
+            indexed = True
+        index = bisect_right(ends, match.start()) - 1
+        if index < 0 or starts[index] < match.start() - _PAGE_DICT_WINDOW:
             continue
-        start = headers[-1].end()
-        end = data.find(b"endobj", match.end(), start + _PAGE_DICT_WINDOW)
-        if end == -1 or not (tokens := _pdf_tokens(data, start, end)):
+        start = ends[index]
+        if start in parsed:
+            continue
+        parsed.add(start)
+        if next_end != -1 and next_end < match.end():
+            next_end = data.find(b"endobj", match.end())
+        if next_end == -1 or next_end + len(b"endobj") > start + _PAGE_DICT_WINDOW:
+            continue
+        end = next_end
+        if not (tokens := _pdf_tokens(data, start, end)):
             continue
         try:
             page, used = _pdf_value(tokens, 0)
