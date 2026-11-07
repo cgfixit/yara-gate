@@ -10,6 +10,15 @@ decoded; the caller reports that as a coverage note instead of a silent clean.
 Nothing is rendered and no font program is read. Positions are not tracked, so text placed out
 of reading order is joined in stream order, and a sentence split across two text blocks is not
 rejoined. Every loop is bounded and checks the scan deadline.
+
+Text a reader does not show is also collected on its own (``PdfText.hidden``): text drawn in
+render mode 3 (invisible) or 7 (clip only); text in a near-white fill colour whose first glyph
+sits on nothing the same content stream painted in another colour (a filled path, an image, or
+a shading, each taken as its bounding box), so white on a dark header or slide stays shown;
+and, in a page's own content streams, text under 1 pt or placed outside every ``/MediaBox`` in
+the file. Form XObjects, patterns, and glyph procedures are drawn through a matrix this reader
+does not know, so their size and position are not judged. Clipping, transparency, blend modes,
+and text covered by a later fill are not computed.
 """
 
 from __future__ import annotations
@@ -18,7 +27,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
-from yara_gate.content import Budget, ContentLimit, PdfStream
+from yara_gate.content import Budget, ContentLimit, PdfStream, _pdf_stream_dict
 
 MAX_TEXT_BLOCKS = 20_000
 MAX_BLOCK_CHARS = 64 * 1024
@@ -91,6 +100,24 @@ class PdfText:
     blocks: list[str] = field(default_factory=list)
     paragraphs: list[str] = field(default_factory=list)
     unmapped: bool = False
+    # The same grouping for text drawn so that a reader does not see it.
+    hidden_blocks: list[str] = field(default_factory=list)
+    hidden_paragraphs: list[str] = field(default_factory=list)
+
+    @property
+    def hidden(self) -> list[str]:
+        return self.hidden_blocks + self.hidden_paragraphs
+
+
+Box = tuple[float, float, float, float]
+_BOX_NUMBER = rb"([+-]?(?:\d{1,9}+(?:\.\d{0,9}+)?|\.\d{1,9}+))"
+_MEDIA_BOX = re.compile(
+    rb"/MediaBox[\x00\t\n\f\r ]*+\[[\x00\t\n\f\r ]*+"
+    + rb"[\x00\t\n\f\r ]++".join([_BOX_NUMBER] * 4)
+    + rb"[\x00\t\n\f\r ]*+\]"
+)
+# Stream dictionary keys of a form XObject, pattern, or other stream drawn through its own matrix.
+_NOT_PAGE_KEYS = frozenset({b"/Subtype", b"/Type", b"/PatternType", b"/BBox", b"/Matrix"})
 
 
 def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Budget) -> PdfText:
@@ -102,18 +129,49 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
         stream.number: stream.text for stream in streams if stream.number is not None
     }
     fonts = _fonts(data, streams, objects, by_number, budget)
+    box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
     # A page's /Contents array is read as one stream, so the font one stream selects stays
     # selected in the next; a form XObject also inherits its caller's font. The selection is
-    # carried across streams in file order.
+    # carried across streams in file order, and so are the render mode and fill colour.
     state = _TextState()
     for stream in streams:
         body = stream.text
         # A page's later /Contents stream can continue a text object begun in an earlier one.
         if body is None or (b"BT" not in body and b"Tj" not in body and b"TJ" not in body):
             continue
-        tokens = _blocks(body, fonts, result, budget, tokens, state)
+        page = _page_content(data, stream)
+        tokens = _blocks(body, fonts, result, budget, tokens, state, box if page else None, page)
     return result
+
+
+def _page_box(sources: list[bytes], budget: Budget) -> Box | None:
+    """The union of every ``/MediaBox`` written in the file, or None when there is none."""
+    found: Box | None = None
+    for source in sources:
+        budget.check()
+        for match in _MEDIA_BOX.finditer(source):
+            try:
+                a, b, c, d = (float(group) for group in match.groups())
+            except ValueError:
+                continue
+            box = (min(a, c), min(b, d), max(a, c), max(b, d))
+            if found is None:
+                found = box
+            else:
+                found = (
+                    min(found[0], box[0]),
+                    min(found[1], box[1]),
+                    max(found[2], box[2]),
+                    max(found[3], box[3]),
+                )
+    return found
+
+
+def _page_content(data: bytes, stream: PdfStream) -> bool:
+    """True for a stream whose dictionary marks it as page content, drawn in page space."""
+    dictionary = _pdf_stream_dict(data, stream.offset)
+    return dictionary is not None and not (_NOT_PAGE_KEYS & dictionary.keys())
 
 
 def _fonts(
@@ -297,10 +355,17 @@ def _multiply(left: Matrix, right: Matrix) -> Matrix:
 
 
 class _Paragraphs:
-    """Text shown in one content stream, grouped into paragraphs by baseline position."""
+    """Text shown in one content stream, grouped into paragraphs by baseline position.
 
-    def __init__(self, result: PdfText) -> None:
+    With ``hidden``, the text goes to ``result.hidden_blocks`` and ``hidden_paragraphs``; it is
+    placed with ``add`` from the readings the visible grouping already decoded.
+    """
+
+    def __init__(self, result: PdfText, *, hidden: bool = False) -> None:
         self.result = result
+        self.hidden = hidden
+        self.blocks = result.hidden_blocks if hidden else result.blocks
+        self.paragraphs = result.hidden_paragraphs if hidden else result.paragraphs
         self.variants: list[list[str]] = []
         self.baseline: float | None = None
         self.size = 0.0
@@ -311,7 +376,13 @@ class _Paragraphs:
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
-    ) -> None:
+    ) -> tuple[list[str], bool] | None:
+        """Add one text-showing operator's strings.
+
+        Return the operator's text in each font reading, and whether any of it is more than
+        whitespace once decoded (text a font cannot decode counts as more), or None when the
+        strings cannot be read at all.
+        """
         strings = list(strings)
         variants = fonts or [Font(False)]
         if any(font.unreadable for font in variants):
@@ -320,7 +391,25 @@ class _Paragraphs:
             # A font the file never resolves, whose codes are two bytes wide: decoding them as
             # WinAnsi would yield noise, so the text counts as unread.
             self.result.unmapped = True
-            return
+            return None
+        readings: list[str] = []
+        printed = False
+        for font in variants[:MAX_FONT_VARIANTS]:
+            parts: list[str] = []
+            for item in strings:
+                if isinstance(item, bytes):
+                    # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
+                    decoded = _decode(item, font)
+                    printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
+                    parts.append(decoded)
+                elif isinstance(item, float) and item <= _SPACE_ADJUST:
+                    parts.append(" ")
+            readings.append("".join(parts))
+        self.add(readings, baseline, size)
+        return readings, printed
+
+    def add(self, readings: list[str], baseline: float, size: float) -> None:
+        """Place one operator's already decoded text, one string per font reading."""
         separator = ""
         if self.baseline is not None:
             step = abs(baseline - self.baseline)
@@ -334,18 +423,13 @@ class _Paragraphs:
             self.variants = [[]]
         if self.block_start > len(self.variants[0]):
             self.block_start = len(self.variants[0])
-        while len(self.variants) < min(len(variants), MAX_FONT_VARIANTS):
+        while len(self.variants) < len(readings):
             # A name that means different fonts on different pages: one reading per font.
             self.variants.append(list(self.variants[0]))
         for index, variant in enumerate(self.variants):
-            font = variants[index % len(variants)]
             if separator and variant:
                 variant.append(separator)
-            for item in strings:
-                if isinstance(item, bytes):
-                    variant.append(_decode(item, font))
-                elif isinstance(item, float) and item <= _SPACE_ADJUST:
-                    variant.append(" ")
+            variant.append(readings[index % len(readings)])
 
     def end_block(self) -> None:
         """Close the current text object's piece of this paragraph and emit it as a block."""
@@ -354,7 +438,7 @@ class _Paragraphs:
             text = "".join(variant[self.block_start :]).strip()
             if text:
                 found = True
-                self._emit(self.result.blocks, text)
+                self._emit(self.blocks, text)
         if found:
             self.pieces += 1
         self.block_start = len(self.variants[0]) if self.variants else 0
@@ -365,30 +449,143 @@ class _Paragraphs:
             for variant in self.variants:
                 text = "".join(variant).strip()
                 if text:
-                    self._emit(self.result.paragraphs, text)
+                    self._emit(self.paragraphs, text)
         self.variants = []
         self.baseline = None
         self.block_start = 0
         self.pieces = 0
 
     def _emit(self, target: list[str], text: str) -> None:
-        if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
+        if len(self.blocks) + len(self.paragraphs) >= MAX_TEXT_BLOCKS:
             raise ContentLimit("pdf text blocks exceed 20000")
         # Longer text is scanned in overlapping chunks, so nothing past the cap goes unread.
         step = MAX_BLOCK_CHARS - _CHUNK_OVERLAP
         for start in range(0, max(len(text) - _CHUNK_OVERLAP, 1), step):
-            if len(self.result.blocks) + len(self.result.paragraphs) >= MAX_TEXT_BLOCKS:
+            if len(self.blocks) + len(self.paragraphs) >= MAX_TEXT_BLOCKS:
                 raise ContentLimit("pdf text blocks exceed 20000")
             target.append(text[start : start + MAX_BLOCK_CHARS])
 
 
 @dataclass
 class _TextState:
-    """The selected font and size, which outlive one content stream."""
+    """The selected font and size, render mode, and fill colour, which outlive one stream."""
 
     fonts: list[Font] = field(default_factory=list)
     size: float = 0.0
     selected: bool = False
+    render: int = 0
+    white: bool = False
+
+
+# Render modes that paint nothing: 3 is invisible, 7 only adds the glyphs to the clipping path.
+_INVISIBLE_MODES = frozenset({3, 7})
+# Text whose glyphs are smaller than this in default user space (1/72 inch) is not legible.
+_LEGIBLE_SIZE = 1.0
+_WHITE_LEVEL = 0.95
+_FILL_OPERATORS = frozenset({b"g", b"rg", b"k", b"sc", b"scn", b"cs"})
+
+
+def _white_fill(op: bytes, operands: list[object]) -> bool:
+    """True when a fill colour operator selects a near-white colour.
+
+    Gray (``g``) and RGB (``rg``) at 0.95 or more per component, and CMYK (``k``) at 0.05 or
+    less, are white. ``sc`` and ``scn`` are read by their component count, three as RGB and
+    four as CMYK; one component is a gray, a separation tint, or an index, so it is not judged.
+    ``cs`` resets the fill to its colour space's initial colour, which is never white.
+    """
+    if op == b"cs":
+        return False
+    values = [value for value in operands if isinstance(value, float)]
+    if op in (b"sc", b"scn"):
+        if len(values) == 3:
+            op = b"rg"
+        elif len(values) == 4:
+            op = b"k"
+        else:
+            return False
+    expected = {b"g": 1, b"rg": 3, b"k": 4}[op]
+    if len(values) < expected:
+        return False
+    values = values[-expected:]
+    if op == b"k":
+        return all(value <= 1.0 - _WHITE_LEVEL for value in values)
+    return all(value >= _WHITE_LEVEL for value in values)
+
+
+_FILL_PAINT = frozenset({b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"})
+_PATH_END = _FILL_PAINT | {b"S", b"s", b"n"}
+# Painted areas kept per content stream. Later areas are ignored, so the check stays bounded
+# and white text over them counts as hidden: a few dots cannot widen a box over the page.
+MAX_PAINTED_AREAS = 32
+_EVERYWHERE: Box = (-1e300, -1e300, 1e300, 1e300)
+
+
+class _Painted:
+    """Device-space boxes a content stream painted in a colour other than near-white.
+
+    White text over one of them (a dark table header, a slide background, a photo) is shown.
+    A box is the bounding box of the filled path, image, or shading, so it may be larger than
+    what was painted, which can only make text count as shown. The last answer is kept until
+    the point or the boxes change: string advances are not tracked, so the strings of one line
+    share a point.
+    """
+
+    def __init__(self) -> None:
+        self.boxes: list[Box] = []
+        self.union: Box | None = None
+        self.asked: tuple[float, float] | None = None
+        self.answer = False
+
+    def add(self, box: Box) -> None:
+        if len(self.boxes) >= MAX_PAINTED_AREAS:
+            return
+        self.boxes.append(box)
+        self.union = box if self.union is None else _merge(self.union, box)
+        self.asked = None
+
+    def covers(self, x: float, y: float) -> bool:
+        if self.union is None or not _inside(self.union, x, y):
+            return False
+        if self.asked != (x, y):
+            self.asked = (x, y)
+            self.answer = any(_inside(box, x, y) for box in self.boxes)
+        return self.answer
+
+
+def _merge(left: Box, right: Box) -> Box:
+    return (
+        min(left[0], right[0]),
+        min(left[1], right[1]),
+        max(left[2], right[2]),
+        max(left[3], right[3]),
+    )
+
+
+def _inside(box: Box, x: float, y: float) -> bool:
+    return box[0] <= x <= box[2] and box[1] <= y <= box[3]
+
+
+def _intersect(left: Box, right: Box) -> Box:
+    return (
+        max(left[0], right[0]),
+        max(left[1], right[1]),
+        min(left[2], right[2]),
+        min(left[3], right[3]),
+    )
+
+
+def _off_page(device: Matrix, size: float, strings: list[object], box: Box) -> bool:
+    """True when text starting at ``device``'s origin lies wholly outside ``box``.
+
+    The run's width is not known without font metrics; one em per byte is taken as an upper
+    bound, so text that may reach the page is never called off-page.
+    """
+    x, y = device[4], device[5]
+    width = size * sum(len(item) for item in strings if isinstance(item, bytes))
+    low_x, low_y, high_x, high_y = box
+    return (
+        x > high_x + size or y > high_y + size or y < low_y - 2 * size or x + width < low_x - size
+    )
 
 
 def _blocks(
@@ -398,22 +595,44 @@ def _blocks(
     budget: Budget,
     tokens: int,
     state: _TextState,
+    box: Box | None = None,
+    page: bool = False,
 ) -> int:
     """Append the paragraphs of one content stream to ``result``; return the token count.
 
     The CTM (cm, q, Q) and the text matrix (Tm, Td, TD, T*, TL, ', ") are followed so each
     string's baseline is known in device space; text objects (BT ... ET) do not split text,
-    because generators start a new one at every font change or line.
+    because generators start a new one at every font change or line. The render mode (Tr) and
+    fill colour are followed too, and a string drawn so that it is not seen also goes to the
+    hidden grouping: render mode 3 or 7, or a near-white fill over nothing this stream painted
+    in another colour. In ``page`` content, text under 1 pt or outside ``box`` is not seen
+    either. A hidden stretch ends at the next string that is seen.
     """
     operands: list[object] = []
     current: list[Font] = state.fonts
     size = state.size
+    sized = state.selected
+    render = state.render
+    white = state.white
     leading = 0.0
     ctm = _IDENTITY_MATRIX
-    # q saves, and Q restores, the whole graphics state: the CTM and the text state with it.
-    saved: list[tuple[Matrix, list[Font], float, float]] = []
+    painted = _Painted()
+    path: Box | None = None
+    clip: Box | None = None
+    clipping = False
+    # q saves, and Q restores, the whole graphics state: the CTM, the clip, and the text state.
+    saved: list[tuple[Matrix, list[Font], float, float, int, bool, Box | None]] = []
     line = _IDENTITY_MATRIX
     paragraphs = _Paragraphs(result)
+    hidden = _Paragraphs(result, hidden=True)
+
+    def extend(points: list[float]) -> None:
+        nonlocal path
+        a, b, c, d, e, f = ctm
+        for index in range(0, len(points) - 1, 2):
+            px, py = points[index], points[index + 1]
+            x, y = a * px + c * py + e, b * px + d * py + f
+            path = (x, y, x, y) if path is None else _merge(path, (x, y, x, y))
 
     def numbers(count: int) -> list[float] | None:
         values = operands[-count:]
@@ -428,7 +647,28 @@ def _blocks(
     def show(strings: list[object]) -> None:
         device = _multiply(line, ctm)
         scale = max(abs(device[1]), abs(device[3]), 1e-6)
-        paragraphs.show(current, strings, device[5], abs(size) * scale)
+        shown = abs(size) * scale
+        decoded = paragraphs.show(current, strings, device[5], shown)
+        if decoded is None:
+            # Unread text is reported by the coverage note; it still ends a hidden stretch.
+            hidden.flush()
+            return
+        readings, printed = decoded
+        unseen = render in _INVISIBLE_MODES
+        if white and not unseen:
+            # A point inside the first glyph, above the baseline.
+            quarter = 0.25 * shown
+            unseen = not painted.covers(device[4] + quarter, device[5] + quarter)
+        if page and sized and not unseen:
+            unseen = shown < _LEGIBLE_SIZE or (
+                box is not None and _off_page(device, shown, strings, box)
+            )
+        if unseen or not printed:
+            # A shown space between two hidden strings is part of the hidden text; a stretch
+            # of only spaces is dropped when the block ends.
+            hidden.add(readings, device[5], shown)
+        else:
+            hidden.flush()
 
     def tick() -> None:
         # Every token counts, elements of a TJ array included, so one huge array cannot
@@ -447,22 +687,57 @@ def _blocks(
         op = token.value
         if op == b"BT":
             paragraphs.end_block()
+            hidden.end_block()
             line = _IDENTITY_MATRIX
         elif op == b"ET":
             paragraphs.end_block()
+            hidden.end_block()
         elif op == b"q":
             if len(saved) < 64:
-                saved.append((ctm, current, size, leading))
+                saved.append((ctm, current, size, leading, render, white, clip))
         elif op == b"Q":
             if saved:
-                ctm, current, size, leading = saved.pop()
-                state.fonts, state.size = current, size
+                ctm, current, size, leading, render, white, clip = saved.pop()
+                state.fonts, state.size, state.render, state.white = current, size, render, white
+        elif op in (b"m", b"l") and (values := numbers(2)) is not None:
+            extend(values)
+        elif op == b"c" and (values := numbers(6)) is not None:
+            extend(values)
+        elif op in (b"v", b"y") and (values := numbers(4)) is not None:
+            extend(values)
+        elif op == b"re" and (values := numbers(4)) is not None:
+            x, y, width, height = values
+            extend([x, y, x + width, y, x, y + height, x + width, y + height])
+        elif op in (b"W", b"W*"):
+            clipping = True
+        elif op in _PATH_END:
+            if path is not None and op in _FILL_PAINT and not white:
+                painted.add(path)
+            if clipping and path is not None:
+                clip = path if clip is None else _intersect(clip, path)
+            path, clipping = None, False
+        elif op == b"Do":
+            # An image fills the unit square under the CTM; a form XObject's own fills are in
+            # its stream, so its square here is only a lower bound.
+            extend([0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+            if path is not None:
+                painted.add(path)
+            path = None
+        elif op == b"sh":
+            painted.add(clip or box or _EVERYWHERE)
         elif op == b"cm" and (values := numbers(6)) is not None:
             ctm = _multiply((values[0], values[1], values[2], values[3], values[4], values[5]), ctm)
         elif op == b"Tf" and len(operands) >= 2 and isinstance(operands[-2], _Name):
             current = fonts.get(operands[-2].value, [])
             size = operands[-1] if isinstance(operands[-1], float) else size
+            sized = True
             state.fonts, state.size, state.selected = current, size, True
+        elif op == b"Tr" and (values := numbers(1)) is not None:
+            render = int(values[0]) if values[0].is_integer() else 0
+            state.render = render
+        elif op in _FILL_OPERATORS:
+            white = _white_fill(op, operands)
+            state.white = white
         elif op == b"TL" and (values := numbers(1)) is not None:
             leading = values[0]
         elif op == b"Tm" and (values := numbers(6)) is not None:
@@ -482,6 +757,7 @@ def _blocks(
             show(operands[-1])
         operands = []
     paragraphs.flush()
+    hidden.flush()
     return tokens
 
 

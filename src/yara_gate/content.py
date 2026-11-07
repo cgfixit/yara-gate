@@ -1047,6 +1047,275 @@ def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     return _ooxml_pieces(data, budget, b"comment" if name.lower().startswith("xl/") else b"cm")
 
 
+# A whole text element (``<w:t>``, ``<a:t>``, ``<t>``: its prefix and text), or one other tag
+# (closing slash, prefix, local name, and bounded attributes). Every quantifier is possessive
+# and bounded, so a tag that never closes costs one bounded attempt at its ``<``; text outside
+# a text element is skipped by the regex engine.
+_XML_TOKEN = re.compile(
+    rb"<(?:([A-Za-z][\w.-]{0,32}+):)?t(?:\s[^<>]{0,4096}+)?>([^<]*+)</(?:[A-Za-z][\w.-]{0,32}+:)?t>"
+    rb"|<(/?)(?:([A-Za-z][\w.-]{0,32}+):)?([A-Za-z][\w.-]{0,64}+)([^<>]{0,4096}+)>"
+)
+# The text-element prefix each family reads: Word's own runs, DrawingML runs, SpreadsheetML.
+_TEXT_PREFIXES = {b"w": (b"w",), b"a": (b"a",), b"x": (b"", b"x")}
+_XML_ATTRIBUTE = re.compile(
+    rb"""([\w.-]{1,32}+:)?([\w.-]{1,64}+)\s*+=\s*+(?:"([^"]{0,256}+)"|'([^']{0,256}+)')"""
+)
+_OFF = frozenset({b"0", b"false", b"off"})
+# Word shading values that leave the background as it was.
+_NO_PATTERN = frozenset({b"", b"clear", b"nil"})
+# Shapes whose non-visual properties can carry hidden="1": every text frame inside one is hidden.
+_PPT_SHAPES = frozenset({b"sp", b"grpSp", b"graphicFrame", b"cxnSp", b"pic", b"contentPart"})
+# Substrings of every element or attribute name that can hide text: (spec)Vanish, webHidden,
+# sz, color, hidden, and show.
+_HIDING_NAMES = (b"anish", b"webHidden", b"sz", b"color", b"hidden", b"show")
+# The run properties that can hide text or show white text; every other one is skipped unread.
+_RUN_PROPERTIES = frozenset(
+    {b"vanish", b"specVanish", b"webHidden", b"sz", b"color", b"shd", b"highlight"}
+)
+# Where a hidden piece ends regardless of what follows: a table cell, a text box or shape's text
+# body, a shared or inline string, and a comment. Paragraph ends inside these join with a newline.
+_HIDDEN_FRAME_ENDS = frozenset({b"tc", b"txbxContent", b"txBody", b"si", b"is", b"comment", b"cm"})
+
+
+def _near_white(value: bytes | None) -> bool:
+    """True for an RGB or ARGB hex colour whose every channel is at least 0xF0."""
+    if value is None or len(value) not in (6, 8):
+        return False
+    try:
+        channels = bytes.fromhex(value[-6:].decode("ascii"))
+    except ValueError:
+        return False
+    return min(channels) >= 0xF0
+
+
+def _int_value(value: bytes | None) -> int | None:
+    if value is None or not value.isdigit() or len(value) > 9:
+        return None
+    return int(value)
+
+
+@dataclass
+class _Run:
+    """The explicit properties of one OOXML text run that decide whether it is shown."""
+
+    hidden: bool = False
+    white: bool = False
+    shaded: bool = False
+
+
+def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
+    """The text of runs a reader does not show, one piece per stretch of hidden runs.
+
+    Read from a run's own properties, a shape's, or a slide's: Word ``w:vanish``,
+    ``w:specVanish``, and ``w:webHidden``, a ``w:sz`` of 1 pt or less, and a near-white
+    ``w:color`` unless the run, paragraph, table cell, table, or page is shaded; DrawingML text
+    of 1 pt or less (``a:rPr sz`` up to 100), every text frame of a PowerPoint shape or group
+    marked ``hidden="1"``, and every frame of a slide with ``show="0"``; SpreadsheetML rich-text
+    runs of 1 pt or less or in near-white (an RGB value, or theme colour 0, which Excel maps to
+    the light background). A tracked change's earlier properties (``w:rPrChange``) and a
+    paragraph mark's properties do not count. Styles, list styles, layouts, masters, cell
+    formats, and hidden sheets, rows, and columns live in other parts and are not resolved.
+
+    A piece ends at the next shown text that is not whitespace, at a table cell, text box,
+    shape, string, or comment end, and at the end of the part; paragraph ends inside it are a
+    newline. So hidden text on both sides of a shown word is never joined. One linear pass over
+    bounded tags; no XML parser runs and no entity is expanded beyond the predefined and
+    numeric ones.
+    """
+    lowered = name.lower()
+    if not (_OOXML_TEXT_PART.match(name) or _SHEET_PART.match(name) or _COMMENT_PART.match(name)):
+        return []
+    if b"<" not in data[:1024]:
+        return []
+    # Every signal below needs one of these names in the part; without any, nothing is hidden.
+    if not any(name in data for name in _HIDING_NAMES):
+        return []
+    family = b"w" if lowered.startswith("word/") else b"a" if lowered.startswith("ppt/") else b"x"
+    pieces: list[str] = []
+    current: list[str] = []
+    hidden_chars = False
+    runs: list[_Run] = []
+    paragraphs: list[bool] = []
+    containers: list[bool] = []
+    shapes: list[bool] = []
+    part_hidden = False
+    page_shaded = False
+    rpr = ppr = tcpr = tblpr = change = phonetic = 0
+
+    def flush() -> None:
+        nonlocal hidden_chars
+        if hidden_chars:
+            if len(pieces) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            pieces.append("".join(current).strip())
+        current.clear()
+        hidden_chars = False
+
+    def attributes(raw: bytes) -> dict[bytes, bytes]:
+        found: dict[bytes, bytes] = {}
+        for match in _XML_ATTRIBUTE.finditer(raw):
+            value = match.group(3) if match.group(3) is not None else match.group(4)
+            found.setdefault(match.group(2), value or b"")
+        return found
+
+    def run_property(local: bytes, raw: bytes, run: _Run) -> None:
+        if local not in _RUN_PROPERTIES:
+            return
+        values = attributes(raw)
+        if family == b"w":
+            if local in (b"vanish", b"specVanish", b"webHidden"):
+                run.hidden = run.hidden or values.get(b"val", b"1").lower() not in _OFF
+            elif local == b"sz":
+                size = _int_value(values.get(b"val"))
+                run.hidden = run.hidden or (size is not None and size <= 2)
+            elif local == b"color":
+                run.white = _near_white(values.get(b"val"))
+            elif local == b"shd":
+                run.shaded = run.shaded or _shaded(values)
+            elif local == b"highlight":
+                run.shaded = run.shaded or values.get(b"val", b"none") not in (b"none", b"white")
+        elif family == b"x":
+            if local == b"sz":
+                size = _int_value(values.get(b"val", b"").split(b".")[0])
+                run.hidden = run.hidden or (size is not None and size <= 1)
+            elif local == b"color":
+                theme = values.get(b"theme")
+                tint = values.get(b"tint", b"0")
+                light = theme == b"0" and not tint.startswith(b"-")
+                run.white = _near_white(values.get(b"rgb")) or light
+
+    text_prefixes = _TEXT_PREFIXES[family]
+    for count, match in enumerate(_XML_TOKEN.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        text = match.group(2)
+        if text is not None:
+            if phonetic or change or (match.group(1) or b"") not in text_prefixes:
+                continue
+            piece = html.unescape(text.decode("utf-8", errors="replace"))
+            run = runs[-1] if runs else _Run()
+            hidden = (
+                part_hidden
+                or any(shapes)
+                or run.hidden
+                or (
+                    run.white
+                    and not (run.shaded or (paragraphs and paragraphs[-1]) or any(containers))
+                    and not page_shaded
+                )
+            )
+            if hidden:
+                current.append(piece)
+                hidden_chars = hidden_chars or bool(piece.strip())
+            elif piece.strip():
+                flush()
+            elif hidden_chars:
+                current.append(piece)
+            continue
+        closing = bool(match.group(3))
+        prefix = match.group(4) or b""
+        local = match.group(5)
+        raw = match.group(6)
+        empty = raw.endswith(b"/")
+        if family == b"x" and prefix not in (b"", b"x"):
+            continue
+        if family in (b"w", b"a") and prefix not in (family, b"p", b"wp", b"p188", b"p15"):
+            continue
+        if local.endswith(b"PrChange") and not empty:
+            change += -1 if closing else 1
+            change = max(change, 0)
+            continue
+        if change or local == b"t":
+            # An empty or unclosed text element holds no text this reader takes.
+            continue
+        if closing:
+            if local in (b"r", b"fld") and runs:
+                runs.pop()
+            elif local == b"rPr":
+                rpr = max(rpr - 1, 0)
+            elif local == b"pPr":
+                ppr = max(ppr - 1, 0)
+            elif local == b"tcPr":
+                tcpr = max(tcpr - 1, 0)
+            elif local == b"tblPr":
+                tblpr = max(tblpr - 1, 0)
+            elif local == b"rPh":
+                phonetic = max(phonetic - 1, 0)
+            elif local == b"p" and prefix in (b"w", b"a"):
+                if paragraphs:
+                    paragraphs.pop()
+                if hidden_chars:
+                    current.append("\n")
+            elif local in (b"tc", b"tbl") and prefix == b"w" and containers:
+                containers.pop()
+                if local == b"tc":
+                    flush()
+            elif local in _PPT_SHAPES and prefix == b"p" or local in (b"anchor", b"inline"):
+                if shapes:
+                    shapes.pop()
+            if local in _HIDDEN_FRAME_ENDS:
+                flush()
+            continue
+        if local in (b"r", b"fld") and prefix in (b"w", b"a", b"", b"x") and not empty:
+            runs.append(_Run())
+        elif local == b"rPr":
+            if not empty:
+                rpr += 1
+            if family == b"a" and runs and not ppr:
+                size = _int_value(attributes(raw).get(b"sz"))
+                runs[-1].hidden = runs[-1].hidden or (size is not None and size <= 100)
+        elif local == b"pPr" and not empty:
+            ppr += 1
+        elif local == b"tcPr" and not empty:
+            tcpr += 1
+        elif local == b"tblPr" and not empty:
+            tblpr += 1
+        elif local == b"rPh" and not empty:
+            phonetic += 1
+        elif local == b"p" and prefix in (b"w", b"a") and not empty:
+            paragraphs.append(False)
+        elif local in (b"tc", b"tbl") and prefix == b"w" and not empty:
+            containers.append(False)
+        elif (local in _PPT_SHAPES and prefix == b"p" or local in (b"anchor", b"inline")) and (
+            not empty
+        ):
+            shapes.append(False)
+        elif local in (b"cNvPr", b"docPr") and shapes:
+            flag = attributes(raw).get(b"hidden", b"0").lower()
+            shapes[-1] = shapes[-1] or flag in (b"1", b"true", b"on")
+        elif local == b"sld" and prefix == b"p":
+            part_hidden = attributes(raw).get(b"show", b"1").lower() in _OFF
+        elif local == b"background" and prefix == b"w":
+            color = attributes(raw).get(b"color")
+            page_shaded = color is not None and color != b"auto" and not _near_white(color)
+        elif local in (b"br", b"cr") and runs and not rpr:
+            if hidden_chars:
+                current.append("\n")
+        elif local == b"tab" and runs and not rpr and not ppr:
+            if hidden_chars:
+                current.append("\t")
+        elif rpr and not ppr and runs:
+            run_property(local, raw, runs[-1])
+        elif local == b"shd" and family == b"w":
+            shaded = _shaded(attributes(raw))
+            if ppr and not rpr and paragraphs:
+                paragraphs[-1] = paragraphs[-1] or shaded
+            elif (tcpr or tblpr) and containers:
+                containers[-1] = containers[-1] or shaded
+    flush()
+    return [piece for piece in pieces if piece]
+
+
+def _shaded(values: dict[bytes, bytes]) -> bool:
+    """True when a Word ``w:shd`` paints a background that is not near-white."""
+    fill = values.get(b"fill")
+    if fill is not None and fill.lower() != b"auto" and not _near_white(fill):
+        return True
+    pattern = values.get(b"val", b"").lower()
+    color = values.get(b"color", b"auto")
+    return pattern not in _NO_PATTERN and not _near_white(color)
+
+
 def _ooxml_pieces(data: bytes, budget: Budget, boundary: bytes) -> list[str]:
     cells: list[str] = []
     runs: list[bytes] = []

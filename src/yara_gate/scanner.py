@@ -25,6 +25,7 @@ from yara_gate.content import (
     notebook_texts,
     ooxml_cell_texts,
     ooxml_comment_texts,
+    ooxml_hidden_texts,
     ooxml_text_views,
     pdf_streams,
     pdf_views,
@@ -388,6 +389,18 @@ def _scan_file(
             findings.extend(
                 _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext, base)
             )
+            findings.extend(
+                _hidden_text_findings(
+                    rules,
+                    unit,
+                    "ooxml-hidden-text",
+                    ooxml_hidden_texts(unit.name, unit.data, budget),
+                    budget,
+                    yara,
+                    ext,
+                    base,
+                )
+            )
             for view, derived in ooxml_text_views(unit.name, unit.data, budget):
                 budget.check()
                 # A sentence split across Word runs is one sentence to the reader.
@@ -474,7 +487,56 @@ def _pdf_text_findings(
             )
         )
     pieces = [("pdf-text", text.blocks), ("pdf-paragraph", text.paragraphs)]
-    return _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
+    found = _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
+    hidden = _hidden_text_findings(
+        rules, unit, "pdf-hidden-text", text.hidden, budget, yara, ext, name
+    )
+    return found + hidden
+
+
+# Rules whose match is not an instruction to the reader: Unicode-control notes (their own
+# conjunction covers them) and the base64 rules, which are left to the raw bytes.
+_NOT_INSTRUCTIONS = UNICODE_CONTROL_RULES | {"agent_base64_blob", "agent_base64_executable"}
+
+
+def _hidden_text_findings(
+    rules: object,
+    unit: ContentUnit,
+    view: str,
+    texts: Sequence[str],
+    budget: Budget,
+    yara: Callable[..., list[Finding]],
+    ext: str,
+    name: str,
+) -> list[Finding]:
+    """``heuristic_hidden_text`` when an instruction rule matches text a reader does not show.
+
+    ``texts`` are the hidden pieces of one unit (``ooxml-hidden-text``, ``pdf-hidden-text``),
+    each scanned on its own, then folded as ``<view>+text-folded`` if the plain spelling held
+    nothing. A note or advisory match from an ``agent_`` rule there is the conjunction, reported
+    once per unit as an advisory with the view label; the rule's own finding already comes from
+    the views that read every run. Hidden text with no instruction reports nothing: templates,
+    watermarks, and OCR layers hide text all the time.
+    """
+    if not texts:
+        return []
+    for label, pieces in _with_folded_pieces(view, texts):
+        for found in _piece_findings(rules, unit, [(label, pieces)], budget, yara, ext, name):
+            if (
+                found.rule_id.startswith("agent_")
+                and found.rule_id not in _NOT_INSTRUCTIONS
+                and found.severity in (Severity.note, Severity.advisory)
+            ):
+                return [
+                    Finding(
+                        rule_id="heuristic_hidden_text",
+                        severity=Severity.advisory,
+                        source=FindingSource.heuristic,
+                        member_path=list(unit.member_path),
+                        view=label,
+                    )
+                ]
+    return []
 
 
 def _piece_findings(
