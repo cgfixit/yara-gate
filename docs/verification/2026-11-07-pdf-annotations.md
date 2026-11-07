@@ -111,3 +111,10 @@ outside full reader fidelity. RTF's documented font/layout limits still apply.
 Broad pytest/selftest and platform coverage are left to hosted CI. No real malware,
 vendor-pack accuracy, live consumer integration, or production upload corpus was
 exercised. The two reader drafts are unmerged.
+
+CodeQL default setup was confirmed configured and active, but did not register
+for this draft while its base is `cx/rtf-reader`. GitHub's [default setup trigger
+rules](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types)
+cover PRs targeting the default or protected branches. CodeQL must run when the
+draft targets main after #186; the RTF parent's CodeQL pass does not validate the
+PDF reader. Repository settings and workflow triggers were not changed.
