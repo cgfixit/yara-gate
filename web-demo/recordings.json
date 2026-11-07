@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "b7d67999036791533e91c903f35eb847d4d5db62",
-  "captured_at": "2026-11-07T10:34:42+00:00",
+  "source_revision": "24c50f83ca4766014457e07a864089e24f0a7315",
+  "captured_at": "2026-11-07T17:42:53+00:00",
   "cases": [
     {
       "id": "note",
@@ -457,8 +457,10 @@
           "compiled_rules": 85,
           "tool_version": "0.2.0",
           "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 98,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 196,
           "exit_code": 0
         },
         "agent-ingest": {
@@ -476,8 +478,10 @@
           "compiled_rules": 85,
           "tool_version": "0.2.0",
           "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 98,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 196,
           "exit_code": 0
         },
         "agent-document": {
@@ -495,8 +499,10 @@
           "compiled_rules": 85,
           "tool_version": "0.2.0",
           "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 98,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 196,
           "exit_code": 0
         }
       }
@@ -3549,6 +3555,376 @@
             "text-folded": 1
           },
           "bytes_scanned": 66,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "uppercase_russian",
+      "kind": "detection",
+      "channel": "Message",
+      "pair": "uppercase_russian_benign",
+      "title": "An uppercase Russian override",
+      "description": "The same known Russian override phrase in uppercase. Cyrillic case is folded without transliterating the language or changing ASCII case-sensitive tokens.",
+      "results": {
+        "default": {
+          "sha256": "0e243775e33000448a543fd7f34652fda2b10698512314def64eb5dbd2343428",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_multilingual",
+              "offset": 0,
+              "length": 60,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 122,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "0e243775e33000448a543fd7f34652fda2b10698512314def64eb5dbd2343428",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_multilingual",
+              "offset": 0,
+              "length": 60,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 122,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "0e243775e33000448a543fd7f34652fda2b10698512314def64eb5dbd2343428",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_multilingual",
+              "offset": 0,
+              "length": 60,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 122,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "uppercase_russian_benign",
+      "kind": "control",
+      "channel": "Message",
+      "pair": "uppercase_russian",
+      "title": "An ordinary uppercase Russian message",
+      "description": "The same language and capitalization asking the reader to ignore noise and review earlier notes. Capital letters alone are not a finding.",
+      "results": {
+        "default": {
+          "sha256": "109253db65e3e3a578cd05881915d239ad75c5bfff21b4dd333f5d9a07c56af6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 160,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "109253db65e3e3a578cd05881915d239ad75c5bfff21b4dd333f5d9a07c56af6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 160,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "109253db65e3e3a578cd05881915d239ad75c5bfff21b4dd333f5d9a07c56af6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 160,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_glyph_folded",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "pdf_glyph_folded_benign",
+      "title": "A glyph-id PDF with respelled instructions",
+      "description": "The override uses a zero and a Cyrillic look-alike, then stores its letters as font glyph numbers across three text objects. The recovered paragraph receives the same spelling fold as other reader text.",
+      "results": {
+        "default": {
+          "sha256": "a25793c50eda4e913b9d1b1c8aa731b36242453ce43f4a656c00ddbc8656a22e",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-paragraph+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1393,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "a25793c50eda4e913b9d1b1c8aa731b36242453ce43f4a656c00ddbc8656a22e",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-paragraph+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1393,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "a25793c50eda4e913b9d1b1c8aa731b36242453ce43f4a656c00ddbc8656a22e",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-paragraph+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1393,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_glyph_folded_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "pdf_glyph_folded",
+      "title": "The same respelled PDF with ordinary review text",
+      "description": "The same glyph encoding, bold-word layout, digit substitution, and Cyrillic look-alike in a request to review previous release notes.",
+      "results": {
+        "default": {
+          "sha256": "46c528520be95bd324e342c41403b5d69d6cf44035bce68d3acc021953dd090c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1414,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "46c528520be95bd324e342c41403b5d69d6cf44035bce68d3acc021953dd090c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1414,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "46c528520be95bd324e342c41403b5d69d6cf44035bce68d3acc021953dd090c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "4517a40579c9522edb8ad94babfee8cb338a4aded9fdb62d94f90133b3e35985",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 85,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-paragraph": 1,
+            "pdf-paragraph+text-folded": 1,
+            "pdf-text": 3,
+            "pdf-text+text-folded": 2
+          },
+          "bytes_scanned": 1414,
           "exit_code": 0
         }
       }

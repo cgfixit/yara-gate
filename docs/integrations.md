@@ -352,7 +352,8 @@ PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
 `percent-decoded` view, so escaping or encoding a phrase does not hide it from the
 lexical rules. Each decoded view is also folded, as `json-unescaped+text-folded` and so
 on, so an escape stacked on a look-alike spelling is read too, and `text-folded` drops
-terminal colour codes such as `ESC [ 1 m` whole. A view label is a provenance chain:
+terminal colour codes such as `ESC [ 1 m` whole. Cyrillic-only words are lowercased
+without transliterating ordinary Russian prose. A view label is a provenance chain:
 read a finding's `view` to see which decoding found it, and never treat its offset as
 a position in the body unless the view is `raw`. The exact view rules are under
 [Limits](rules.md#limits).
@@ -395,7 +396,12 @@ and PNG or TIFF predictor, handed to the text rules and the PDF name checks), an
 the `pdf-text` and `pdf-paragraph` views (the strings a reader shows, decoded
 through each font's `ToUnicode` map or as WinAnsi, joined per text object and per
 paragraph, so a kerned array, a hex string, glyph-ID text from Chrome, LibreOffice,
-or Word, a word in bold, or a wrapped line reads as written). A composite font with
+or Word, a word in bold, or a wrapped line reads as written). Each PDF piece is also
+spelling-folded when needed, with `pdf-text+text-folded` or
+`pdf-paragraph+text-folded` provenance. Look-alikes, leet, Latin small capitals,
+and Cyrillic letter case therefore reach the same lexical rules after glyph decoding.
+The original bytes, paragraph boundaries, and finding severity are preserved;
+these notes still pass the notes-only `agent-document` read rule. A composite font with
 no readable `ToUnicode` map leaves text unread; that is the note
 `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
 text it could not read. Text a reader hides (render mode 3 or 7, white on nothing
