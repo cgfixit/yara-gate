@@ -46,7 +46,7 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ("comment-pieces.py", b"", b"# a\n# b\n\n", "text pieces exceed 100000"),
         ("markdown-brackets.md", b"# Heading\n", b"[", None),
         ("markdown-lines.md", b"", b"**ab**\n", None),
-        ("rtf-controls.rtf", b"{\\rtf1 ", b"{\\b ", None),
+        ("rtf-controls.rtf", b"{\\rtf1 ", b"{\\b ", "rtf group depth exceeds 128"),
         ("svg-spans.svg", b"<svg><text>", b"<tspan>a</tspan>", None),
         ("small-capitals.txt", b"", "\u026a\u0262\u0274\u1d0f\u0280\u1d07 ".encode(), None),
     )

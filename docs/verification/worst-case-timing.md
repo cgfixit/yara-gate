@@ -21,8 +21,9 @@ floods; JSON escapes and nested notebook arrays; bare source-comment lines and
 many comment blocks; unmatched Markdown brackets; unclosed RTF groups/control
 words; SVG tspans; Latin small capitals; and stored OOXML comments. No input is
 executed, fetched, or extracted to disk. The ZIP input size includes its metadata.
-The ZIP end-record and comment-piece floods must return their explicit incomplete
-cap reasons. Any other incomplete result, worker failure, timeout, or over-ceiling
+The ZIP end-record, comment-piece, and RTF group-depth floods must return their
+explicit incomplete cap reasons. The RTF reader now rejects the unclosed nesting
+at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
 Output records revision, Python/engine version, input hash/size, scan seconds,

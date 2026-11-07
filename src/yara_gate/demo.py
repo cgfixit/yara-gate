@@ -54,6 +54,8 @@ class DemoSample(StrEnum):
     xlsx_comment_benign = "xlsx_comment_benign"
     small_caps_override = "small_caps_override"
     small_caps_benign = "small_caps_benign"
+    rtf_override = "rtf_override"
+    rtf_benign = "rtf_benign"
 
 
 # Each sample is scanned under the name its type implies; the attacks and their benign twins
@@ -88,6 +90,8 @@ _SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
     DemoSample.xlsx_comment_benign: ("review.xlsx", samples.xlsx_comment_benign),
     DemoSample.small_caps_override: ("note.txt", samples.small_caps_override),
     DemoSample.small_caps_benign: ("note.txt", samples.small_caps_benign),
+    DemoSample.rtf_override: ("review.rtf", samples.rtf_override),
+    DemoSample.rtf_benign: ("review.rtf", samples.rtf_benign),
 }
 
 

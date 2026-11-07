@@ -253,6 +253,25 @@ fixed table, not general phonetic transliteration or a new finding severity.
 [Verification](verification/2026-11-06-phase1c-small.md) records the targeted gaps,
 benign boundaries, and remaining Phase 1c work in [#171](https://github.com/cgfixit/yara-gate/issues/171).
 
+## RTF reader boundaries
+
+RTF data beginning with `{\rtf1` is read even under a renamed filename or inside
+an archive. `rtf-text` removes formatting, decodes hex bytes using the declared
+codepage or font charset, and reads signed Unicode escapes with group-scoped
+fallback lengths. Each paragraph, table cell, and separate header/footer/footnote
+is scanned independently, then folded as `rtf-text+text-folded` when its spelling
+changes. Unknown starred destinations, metadata, font tables, pictures, field
+instructions, and embedded-object bytes are skipped; field results remain text.
+Original bytes are still scanned. Formatting or an encoding alone is no finding.
+
+The existing phrase rule stays a note: default and `agent-document` are advisory
+(exit 0), while `agent-ingest` blocks (exit 1). Malformed groups, escapes, lengths,
+unreadable codepages or font charsets, and resource limits make the scan incomplete
+(exit 2). The reader checks the shared deadline and expansion budget and caps group
+depth at 128, tokens at 4,000,000, and pieces at 100,000. It is not a renderer:
+Symbol-font glyphs, pictures, embedded objects, and visual layout are not decoded.
+See the [synthetic verification](verification/2026-11-07-rtf-reader.md).
+
 ## Limits
 
 It does poorly against a new or targeted payload. YARA matches patterns somebody has already written down. Building a rule from the file you are judging only describes that file, so the tool never does that.
