@@ -188,3 +188,8 @@ the 10-second ceiling. These were single local measurements.
 - `src/yara_gate/content.py`: `12222c8c8cbff3f88cb5cf22a1c13520937f4bdc2a919f8710c34416cdb44f14`
 - `src/yara_gate/pdftext.py`: `6db89ec06a42ea455c1e2a477d385a307a05bd6e847b094e8e87d0b588faa2a4`
 - `src/yara_gate/scanner.py`: `04ede7298bd35ae22312d3d61126e986c8811f0279a8502ed067fd36544cfe84`
+
+A final review bound the continuation index to uniquely identified streams
+already discovered by the PDF reader. The detection probe still reported 197
+passes and three known open gaps. The updated `pdftext.py` SHA-256 is
+`d80e6642930179cfd8632b534b809c59dffeadf3cfa87b117ae0ad3ac44400c9`.

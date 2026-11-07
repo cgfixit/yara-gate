@@ -145,14 +145,14 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     tokens = 0
     # Keep the existing font approximation in file order. Visibility needs stronger evidence
     # of a continuation because leaking an invisible mode across pages can hold shown text.
-    predecessors = _contents_predecessors(data, budget) if len(streams) > 1 else {}
     occurrences = Counter(stream.number for stream in streams)
+    predecessors = _contents_predecessors(data, occurrences, budget) if len(streams) > 1 else {}
     previous: int | None = None
     state = _TextState()
     for stream in streams:
         body = stream.text
         number = stream.number
-        linked = number in predecessors and occurrences[number] == 1
+        linked = number in predecessors
         if number is None or not linked or previous is None or predecessors.get(number) != previous:
             state.render = 0
             state.white = state.white_stroke = False
@@ -168,7 +168,9 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     return result
 
 
-def _contents_predecessors(data: bytes, budget: Budget) -> dict[int, int | None]:
+def _contents_predecessors(
+    data: bytes, occurrences: Counter[int | None], budget: Budget
+) -> dict[int, int | None]:
     """Identify adjacent streams in direct /Contents arrays of raw page dictionaries."""
     predecessors: dict[int, int | None] = {}
     for match in _CONTENTS_ARRAY.finditer(data):
@@ -198,9 +200,10 @@ def _contents_predecessors(data: bytes, budget: Budget) -> dict[int, int | None]
                 continue
             number = ref[0]
             # A stream reused in different positions cannot safely inherit either state.
-            predecessors[number] = (
-                previous if predecessors.get(number, previous) == previous else None
-            )
+            if occurrences[number] == 1:
+                predecessors[number] = (
+                    previous if predecessors.get(number, previous) == previous else None
+                )
             previous = number
     return predecessors
 
