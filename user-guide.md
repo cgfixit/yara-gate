@@ -66,7 +66,13 @@ Leave that process running. Copy or save untrusted files into:
 ~/YaraGate/inbox/
 ```
 
-Watch also scans files that were already in the inbox when it started. When it finishes a file it prints a line like:
+Watch also scans files that were already in the inbox when it started, including
+dotfiles. Dropped directories are held intact as incomplete in
+`quarantine/_rejected/`; use an explicit `scan DIRECTORY` to scan recursively.
+Files over 100 MiB are held there too, without hashing or copying their contents.
+These rejections print a reason and use `reports/rejected-<token>.json`; the token
+is not a content hash. Write outside the inbox and rename completed files into
+it; temporary dotfiles inside the inbox are not exempt. When it finishes a file it prints a line like:
 
 ```text
 clean sha256=<64 hex chars>
@@ -82,7 +88,7 @@ Then look up that hash:
 | `clean` | `~/YaraGate/clean/<sha256>/` | 0 |
 | `advisory` (default policy, or notes only under `agent-document`) | `~/YaraGate/clean/<sha256>/` | 0 |
 | `block` (including a held advisory or note under `agent-ingest`) | `~/YaraGate/blocked/<sha256>/` | 1 |
-| `incomplete` | `~/YaraGate/quarantine/<sha256>/` | 2 |
+| `incomplete` | `~/YaraGate/quarantine/<sha256>/`, or `_rejected/` for intake rejections | 2 |
 
 Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` means a rule fired and the file was still allowed through; read the report before you treat it as ordinary.
 
@@ -124,7 +130,9 @@ print(result.verdict, result.incomplete_reason)
 
 To check a message or other text you already have in memory, without writing a file, pipe it to `yara-gate scan - --name message.txt`, or call `scan_bytes(data, name="message.txt")` from Python. The exit codes are the same.
 
-To make an agent runtime refuse to read a file that has not scanned clean, register the [fail-closed pre-read hook](docs/integrations.md#a-pre-read-hook-that-fails-closed).
+To make an agent runtime refuse to read a file that has not scanned clean, register the [snapshot pre-read hook](docs/integrations.md#a-pre-read-hook-that-fails-closed)
+and make the runtime honor its rewritten path. Consumers that can take bytes
+directly should use the hook's `--bytes PATH` mode and consume stdout only after exit 0.
 
 `scan_file(path, policy="agent-ingest")` and `scan_bytes(data, name=..., policy="agent-ingest")` apply the same policy as the CLI flag. Without that argument, the default policy retains advisory/exit 0 behavior.
 

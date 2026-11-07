@@ -74,16 +74,27 @@ def test_hidden_tags_block(tmp_path: Path, rules_copy: Path) -> None:
     assert (home.blocked / result.sha256).is_dir()
 
 
-def test_oversize_stays_in_quarantine(tmp_path: Path, rules_copy: Path) -> None:
+def test_oversize_stays_in_quarantine_without_reading(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = _home(tmp_path)
     src = home.inbox / "big.bin"
     src.touch()
     with src.open("wb") as handle:
         handle.truncate(100 * 1024 * 1024 + 1)
+
+    def no_read(fd: int, size: int) -> bytes:
+        raise AssertionError("oversized intake must not read file data")
+
+    monkeypatch.setattr(quarantine.os, "read", no_read)
+    before = src.stat()
     result = process_inbox_file(home, src, rules_dir=rules_copy)
     assert result.verdict is Verdict.incomplete
     assert exit_code(result) == 2
-    assert (home.quarantine / result.sha256).is_dir()
+    assert result.incomplete_reason == "file exceeds 100MB"
+    assert Path(result.path).parent == home.quarantine / "_rejected"
+    assert os.path.samestat(before, Path(result.path).stat())
+    assert not src.exists()
     assert not (home.clean / result.sha256).exists()
     assert not (home.blocked / result.sha256).exists()
 
@@ -176,13 +187,88 @@ def test_drain_scans_files_already_in_the_inbox(tmp_path: Path, rules_copy: Path
     assert not src.exists()
 
 
-def test_handler_ignores_dotfiles(tmp_path: Path, rules_copy: Path) -> None:
+def test_handler_scans_dotfiles(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     hidden = home.inbox / ".secret"
-    hidden.write_bytes(clean_text())
+    hidden.write_bytes(eicar_bytes())
     _InboxHandler(home, rules_copy, 30).handle(hidden)
-    assert hidden.is_file()
+    assert not hidden.exists()
     assert list(home.clean.iterdir()) == []
+    assert len(list(home.blocked.rglob(".secret"))) == 1
+
+
+def test_handler_rejects_directories_without_scanning_children(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    from types import SimpleNamespace
+
+    home = _home(tmp_path)
+    folder = home.inbox / ".folder"
+    folder.mkdir()
+    child = folder / "child.txt"
+    child.write_bytes(clean_text())
+    handler = _InboxHandler(home, rules_copy, 30)
+    quarantine._dispatch(SimpleNamespace(src_path=str(folder), is_directory=True), handler)
+    assert not folder.exists()
+    rejected = next((home.quarantine / "_rejected").iterdir())
+    assert (rejected / "child.txt").read_bytes() == clean_text()
+    assert len(list(home.reports.glob("rejected-*.json"))) == 1
+    assert not list(home.clean.iterdir())
+    handler.handle(home.inbox)
+    assert home.inbox.is_dir()
+
+
+@pytest.mark.parametrize("copying", [False, True])
+def test_growing_intake_reads_at_most_limit_plus_one_and_cleans_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copying: bool
+) -> None:
+    src = tmp_path / "growing.bin"
+    src.write_bytes(b"x")
+    dest = tmp_path / "copy.bin"
+    dest.write_bytes(b"previous copy")
+    read = os.read
+    consumed = 0
+
+    def grow_then_read(fd: int, size: int) -> bytes:
+        nonlocal consumed
+        if consumed == 0:
+            with src.open("ab") as writer:
+                writer.truncate(quarantine.MAX_FILE_BYTES + 10)
+        chunk = read(fd, size)
+        consumed += len(chunk)
+        return chunk
+
+    monkeypatch.setattr(quarantine.os, "read", grow_then_read)
+    fd = quarantine._open_regular(src)
+    try:
+        with pytest.raises(quarantine.IntakeRejected, match="file exceeds 100MB"):
+            if copying:
+                quarantine._copy_fd(fd, dest)
+            else:
+                quarantine._hash_fd(fd)
+    finally:
+        os.close(fd)
+    assert consumed == quarantine.MAX_FILE_BYTES + 1
+    assert dest.read_bytes() == b"previous copy"
+    assert not list(tmp_path.glob(".partial-*"))
+
+
+def test_copy_failure_removes_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "source"
+    src.write_bytes(b"original")
+    fd = quarantine._open_regular(src)
+
+    def fail(fd: int, size: int) -> bytes:
+        raise OSError("read failure")
+
+    monkeypatch.setattr(quarantine.os, "read", fail)
+    try:
+        with pytest.raises(OSError, match="read failure"):
+            quarantine._copy_fd(fd, tmp_path / "dest")
+    finally:
+        os.close(fd)
+    assert src.read_bytes() == b"original"
+    assert not list(tmp_path.glob(".partial-*"))
 
 
 def _rejected_report(home: GatePaths, result_sha: str) -> str:
@@ -381,3 +467,20 @@ def test_watch_pass_waits_for_a_file_still_being_written(tmp_path: Path, rules_c
     assert (home.clean / digest).is_dir()
     assert not target.exists()
     assert handler._pending == {}
+
+
+def test_rejection_report_failure_keeps_entry_in_inbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _home(tmp_path)
+    source = home.inbox / "directory"
+    source.mkdir()
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise OSError("report failed")
+
+    monkeypatch.setattr(quarantine, "write_reports", fail)
+    with pytest.raises(OSError, match="report failed"):
+        process_inbox_file(home, source)
+    assert source.is_dir()
+    assert list((home.quarantine / "_rejected").iterdir()) == []
