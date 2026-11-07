@@ -23,6 +23,9 @@ _SUBTYPES = frozenset(
     b"/Widget /Screen /Popup /Watermark /3D /RichMedia /Projection".split()
 )
 _LANGUAGE = re.compile("\x1b[a-z]{2}(?:[A-Z]{2})?")
+_ENDSTREAM = b"endstream"
+# Chunk the span search so a large body still hits the shared deadline.
+_SPAN_CHUNK = 1 << 20
 # PDFDocEncoding differs from Latin-1 in these slots (ISO 32000, Annex D).
 _PDFDOC = dict(enumerate("\u02d8\u02c7\u02c6\u02d9\u02dd\u02db\u02da\u02dc", 24))
 _PDFDOC.update(
@@ -64,6 +67,24 @@ def _text(token: bytes) -> str:
         return "".join(_PDFDOC.get(c, chr(c)) for c in raw)
     except UnicodeError as exc:
         raise ContentLimit("pdf annotation text encoding unreadable") from exc
+
+
+def _earlier_endstream(data: bytes, begin: int, end_at: int, budget: Budget) -> bool:
+    """True when ``data[begin:end_at]`` contains ``endstream`` before the landed keyword."""
+    if end_at > len(data):
+        end_at = len(data)
+    pos = begin
+    while pos < end_at:
+        budget.check()
+        stop = min(end_at, pos + _SPAN_CHUNK)
+        found = data.find(_ENDSTREAM, pos, stop)
+        if found >= 0:
+            return True
+        if stop == end_at:
+            return False
+        # Overlap by one keyword so a match on the chunk edge is not split.
+        pos = stop - (len(_ENDSTREAM) - 1)
+    return False
 
 
 def _tokens(
@@ -116,12 +137,14 @@ def _tokens(
                 begin = position + (2 if data[position : position + 2] == b"\r\n" else 1)
                 end_at = begin + int(length)
                 ending = re.match(rb"[\r\n]*endstream\b", data[end_at : end_at + 32])
-                if ending:
+                # The landed keyword is the boundary only when it is the first
+                # ``endstream`` in the span. An earlier one can hide an object that
+                # a reader stopping there would see. An object header alone does not:
+                # with no earlier keyword, those bytes are inside the body.
+                if ending and not _earlier_endstream(data, begin, end_at, budget):
                     position = end_at + ending.end()
                     continue
-            # Length did not land on endstream, so the boundary is unknown.
-            # Resuming the lexer there is not safe: a comment, a literal, or a hex
-            # string can hide an annotation, and an object header can be fake.
+            # Missing, unaligned, or ambiguous. Resuming the lexer is not safe.
             raise ContentLimit("pdf annotation stream length unaligned")
 
 

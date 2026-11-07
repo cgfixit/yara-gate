@@ -267,12 +267,30 @@ paragraph is a separate piece; folded spelling reaches the same existing rules
 as `pdf-annotation+text-folded`. Encoded text alone is no finding.
 
 The reader skips comments, literal-string contents, and stream bodies while
-looking for annotation dictionaries. A direct or indirect `/Length` that lands
-on `endstream` skips that body, so a comment, literal, hex string, or object
-header inside it is not an annotation. A missing or unaligned length does not
-resume lexical parsing. The scan is incomplete
-(`pdf annotation stream length unaligned`). An apparent object header after
-that boundary is not treated as an object.
+looking for annotation dictionaries. It proves a stream boundary only when a
+direct or indirect `/Length` lands on `endstream` and that keyword is the first
+`endstream` in the counted span. The body is then skipped, so a comment,
+literal, hex string, or object header inside it is not an annotation. An object
+header by itself does not reject the span: with no earlier `endstream`, those
+bytes are body data, and an annotation after the landed keyword is still read.
+
+A missing length, a length that does not land on `endstream`, or a length whose
+span contains an earlier `endstream` does not resume lexical parsing. The scan
+is incomplete (`pdf annotation stream length unaligned`). That earlier keyword
+is not taken as the boundary either. Resuming there is unsafe, and treating the
+first textual `endstream` or an `N G obj` inside opaque bytes as a real object
+would also be unsafe: images, fonts, and compressed streams can carry those
+bytes. The hypothesis of rejecting either sequence was measured. Neither
+appeared in 348 installed font and image files, a random 1 MiB buffer, its
+Flate encoding, or the Flate encoding of prose that contains both phrases.
+Rejecting an object header alone still fails closed on four aligned lookalike
+rows whose bodies contain `N G obj` and whose real annotation follows the
+stream, so that half is not used. A length is refused when the raw span
+contains an earlier `endstream`. That also incompletes two correct lengths:
+uncompressed page text that includes the word, and a JPEG comment that includes
+it. The Flate encoding of the same prose does not contain the keyword, and the
+annotation after that stream is still read.
+
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an
 unresolved `/Contents` reference, duplicate dictionary keys, malformed string,

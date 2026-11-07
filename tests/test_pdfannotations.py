@@ -149,25 +149,54 @@ def _file(dictionary: bytes, body: bytes) -> bytes:
 
 
 # expect: incomplete = uncertain /Length must not scan clean; read = phrase found and complete;
-# clean = no phrase and complete. Rows marked bypass are clean at eb5430c.
+# clean = no phrase and complete.
+# clean_at_eb5430c is the scan verdict at that revision. literal-missing was already
+# incomplete there; only the names in _CLEAN_AT_EB5430C were clean.
+# at_8fc41c5 is the result before the later-endstream landing fix: clean, read, or
+# incomplete. A row whose expect differs from at_8fc41c5 is red on that revision.
+_CLEAN_AT_EB5430C = frozenset(
+    {
+        "comment-missing",
+        "comment-unaligned",
+        "hex-missing",
+        "hex-unaligned",
+        "benign-no-stream",
+        "benign-annotation",
+        "benign-lengthless-stream",
+        "benign-unaligned-length",
+        "later-endstream",
+        "later-endstream-comment-split",
+        "later-endstream-glued",
+    }
+)
 _BOUNDARY = (
-    ("comment-missing", "incomplete", True),
-    ("comment-unaligned", "incomplete", True),
-    ("literal-missing", "incomplete", True),
-    ("literal-unaligned", "incomplete", False),
-    ("hex-missing", "incomplete", True),
-    ("hex-unaligned", "incomplete", True),
-    ("fake-header-missing", "incomplete", False),
-    ("fake-header-unaligned", "incomplete", False),
-    ("next-object-missing-length", "incomplete", False),
-    ("aligned-literal-lookalike", "read", False),
-    ("aligned-comment-lookalike", "read", False),
-    ("aligned-hex-lookalike", "read", False),
-    ("aligned-fake-header", "read", False),
-    ("benign-no-stream", "clean", False),
-    ("benign-annotation", "clean", False),
-    ("benign-lengthless-stream", "incomplete", False),
-    ("benign-unaligned-length", "incomplete", False),
+    ("comment-missing", "incomplete", "incomplete"),
+    ("comment-unaligned", "incomplete", "incomplete"),
+    ("literal-missing", "incomplete", "incomplete"),
+    ("literal-unaligned", "incomplete", "incomplete"),
+    ("hex-missing", "incomplete", "incomplete"),
+    ("hex-unaligned", "incomplete", "incomplete"),
+    ("fake-header-missing", "incomplete", "incomplete"),
+    ("fake-header-unaligned", "incomplete", "incomplete"),
+    ("next-object-missing-length", "incomplete", "incomplete"),
+    ("aligned-literal-lookalike", "read", "read"),
+    ("aligned-comment-lookalike", "read", "read"),
+    ("aligned-hex-lookalike", "read", "read"),
+    ("aligned-fake-header", "read", "read"),
+    ("aligned-random-binary", "read", "read"),
+    ("aligned-flate-keywords", "read", "read"),
+    ("benign-no-stream", "clean", "clean"),
+    ("benign-annotation", "clean", "clean"),
+    ("benign-lengthless-stream", "incomplete", "incomplete"),
+    ("benign-unaligned-length", "incomplete", "incomplete"),
+    # Red at 8fc41c5: /Length lands on a later endstream and the scan stays clean.
+    ("later-endstream", "incomplete", "clean"),
+    ("later-endstream-comment-split", "incomplete", "clean"),
+    ("later-endstream-glued", "incomplete", "clean"),
+    # Red at 8fc41c5: a correct /Length whose body contains the bytes. A length-based
+    # reader still shows the annotation after the stream; rejecting the span incompletes it.
+    ("aligned-prose-endstream", "incomplete", "read"),
+    ("aligned-jpeg-comment-endstream", "incomplete", "read"),
 )
 
 
@@ -213,7 +242,43 @@ def _boundary_pdf(name: str) -> bytes:
         return _stream_file(no_length, b"hello")
     if name == "benign-unaligned-length":
         return _stream_file(short, b"hello")
+    if name == "aligned-random-binary":
+        body = bytes(index * 17 % 251 for index in range(512))
+        assert b"endstream" not in body
+        return _length_then(body, annot(encoded(PHRASE, "hex")))
+    if name == "aligned-flate-keywords":
+        body = zlib.compress(b"endstream 1 0 obj " * 40)
+        assert b"endstream" not in body
+        return _length_then(body, annot(encoded(PHRASE, "hex")))
+    if name == "later-endstream":
+        return _later_endstream(b"2 0 obj\n")
+    if name == "later-endstream-comment-split":
+        return _later_endstream(b"2 0 %c\nobj\n")
+    if name == "later-endstream-glued":
+        return _later_endstream(b"2 0 obj\n", early=b"123456endstream\nendobj\n")
+    if name == "aligned-prose-endstream":
+        return _length_then(b"BT (endstream) Tj ET", annot(encoded(PHRASE, "hex")))
+    if name == "aligned-jpeg-comment-endstream":
+        payload = b"endstream"
+        body = b"\xff\xd8\xff\xfe" + (len(payload) + 2).to_bytes(2, "big") + payload + b"\xff\xd9"
+        return _length_then(body, annot(encoded(PHRASE, "hex")))
     raise AssertionError(name)
+
+
+def _later_endstream(header: bytes, *, early: bytes = b"BT ET\nendstream\nendobj\n") -> bytes:
+    """`/Length 204` lands on a second endstream. The first is inside the span."""
+    prolog = b"%PDF-1.4\n1 0 obj\n<< /Length 204 >>\nstream\n"
+    assert len(prolog) == 42
+    gap = b" " * (40 - len(early))
+    annot_at = early + gap + header + annot(encoded(PHRASE, "hex")) + b"\nendobj\n"
+    assert len(early) <= 40
+    assert len(annot_at) <= 204
+    body = annot_at + b"Q" * (204 - len(annot_at))
+    data = prolog + body + b"\nendstream\nendobj\n%%EOF\n"
+    assert data.find(b"endstream") == 48 or early != b"BT ET\nendstream\nendobj\n"
+    assert data[42 + 204 : 42 + 204 + 10] == b"\nendstream"
+    assert b"2 0 obj" in data or b"\nobj\n" in data
+    return data
 
 
 def _length_then(look: bytes, real: bytes) -> bytes:
@@ -228,8 +293,17 @@ def _length_then(look: bytes, real: bytes) -> bytes:
     )
 
 
-@pytest.mark.parametrize(("name", "expect", "bypass"), _BOUNDARY)
-def test_stream_boundary_matrix(name: str, expect: str, bypass: bool, rules_copy: Path) -> None:
+@pytest.mark.parametrize(("name", "expect", "at_8fc41c5"), _BOUNDARY)
+def test_stream_boundary_matrix(name: str, expect: str, at_8fc41c5: str, rules_copy: Path) -> None:
+    # The flag is the eb5430c verdict, not a type placeholder. literal-missing is absent.
+    assert (name in _CLEAN_AT_EB5430C) is (
+        name.startswith(("comment-", "hex-", "benign-", "later-endstream"))
+    )
+    assert at_8fc41c5 in {"clean", "read", "incomplete"}
+    if expect == "read":
+        assert at_8fc41c5 == "read"
+    if at_8fc41c5 == "clean" and expect == "clean":
+        assert name in {"benign-no-stream", "benign-annotation"}
     data = _boundary_pdf(name)
     try:
         texts = read(data)
@@ -254,7 +328,8 @@ def test_stream_boundary_matrix(name: str, expect: str, bypass: bool, rules_copy
             assert texts == []
     else:
         raise AssertionError(expect)
-    assert isinstance(bypass, bool)
+    if name in _CLEAN_AT_EB5430C and expect == "incomplete":
+        assert result.verdict.value == "incomplete"
 
 
 def test_object_stream_inflation_is_charged_once() -> None:
@@ -282,7 +357,7 @@ def test_strings_comments_and_stream_bytes_are_not_annotation_dictionaries(
     indirect_length: bool, rules_copy: Path
 ) -> None:
     fake = annot(encoded(PHRASE, "hex"))
-    stream = b"ordinary image bytes endstream " + fake + b" more bytes"
+    stream = b"ordinary image bytes " + fake + b" more bytes"
     data = pdf(
         b"(" + fake + b")",
         b"% " + fake + b"\n<< /Title (ordinary) >>",

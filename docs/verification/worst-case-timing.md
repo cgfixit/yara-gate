@@ -24,8 +24,8 @@ executed, fetched, or extracted to disk. The ZIP input size includes its metadat
 The ZIP end-record, comment-piece, and RTF group-depth floods must return their
 explicit incomplete cap reasons. Two added PDF annotation floods require the
 100,000-token dictionary cap and 1 MiB encoded-string cap. Four synthetic PDFs
-whose `/Length` does not land on `endstream` are incomplete
-(`pdf annotation stream length unaligned`). The RTF reader now rejects the unclosed nesting
+use a `/Length` that lands on `endstream`, so the tripwire measures page-text
+cost. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
