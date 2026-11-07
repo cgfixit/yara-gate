@@ -105,16 +105,19 @@ merge the branches without conflicts or that #182 has native visibility acceptan
 
 These synthetic corpora do not establish a production false-positive rate.
 All annotation definitions, including inactive revisions, are inspected; active
-xref reachability and rendering are not resolved. Rich text `/RC`, form values,
-unsupported object-stream filters, and damaged stream-length recovery remain
-outside full reader fidelity. RTF's documented font/layout limits still apply.
-Broad pytest/selftest and platform coverage are left to hosted CI. No real malware,
-vendor-pack accuracy, live consumer integration, or production upload corpus was
-exercised. The two reader drafts are unmerged.
+xref reachability and rendering are not fully resolved. Rich text `/RC`, form values,
+and unsupported object-stream filters remain outside this reader. RTF's documented
+font/layout limits still apply. Broad pytest/selftest and platform coverage are
+left to hosted CI. No real malware, vendor-pack accuracy, live consumer integration,
+or production upload corpus was exercised.
 
-CodeQL default setup was confirmed configured and active, but did not register
-for this draft while its base is `cx/rtf-reader`. GitHub's [default setup trigger
-rules](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types)
-cover PRs targeting the default or protected branches. CodeQL must run when the
-draft targets main after #186; the RTF parent's CodeQL pass does not validate the
-PDF reader. Repository settings and workflow triggers were not changed.
+## Merge onto main
+
+Main `fe985c8` is merged in `0a5ea15`. Annotation pieces use the shared fold helper.
+A lengthless image stream with no `endstream` of its own was placed before a hex
+annotation. pypdf 7.0.0 read the annotation text. The previous skip jumped to a later
+`endstream` and returned no pieces. The skip now stops at the next object header
+when that header comes first. `tests/test_pdfannotations.py` covers that file shape.
+The Pages baseline at `397adf0` has 49 scenarios. CodeQL did not register on the
+push made while the base was still `cx/rtf-reader`. This note is the retarget
+commit, so the default setup can analyze a head whose pull request targets `main`.
