@@ -17,7 +17,7 @@ const kindTag = { detection: 'Attack', control: 'Benign twin', failure: 'Failure
 // Plain-language names for the derived views a finding can come from.
 const viewNames = {
   raw: 'the original bytes',
-  'text-folded': 'the text with look-alike letters, digits, spacing, and terminal escapes folded',
+  'text-folded': 'the text with small capitals, look-alike letters, digits, spacing, and terminal escapes folded',
   'format-controls-removed': 'the text with invisible formatting characters removed',
   'html-unescaped': 'the text with HTML character references decoded',
   'json-unescaped': 'the text with JSON string escapes decoded',
@@ -27,7 +27,8 @@ const viewNames = {
   'decoded-utf16': 'the text decoded from UTF-16',
   'ooxml-text': 'the joined text of an Office document',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
-  'html-text': 'one HTML block read as a browser shows it, inline tags dropped',
+  'ooxml-comment': 'one Office comment with its text runs rejoined',
+  'html-text': 'one HTML block or SVG text element with its inline text rejoined',
   'pdf-flate': 'an inflated PDF stream',
   'pdf-text': 'one PDF text block, read through its font maps',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'

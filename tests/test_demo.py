@@ -289,6 +289,21 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
         ),
         "svg_handler": ("svg_handler_benign", "doc_svg_event_handler", {"raw", "text-folded"}),
         "selector_run": ("selector_run_benign", "heuristic_variation_selector_run", {"raw"}),
+        "svg_cdata_override": (
+            "svg_cdata_benign",
+            "agent_prompt_injection_phrases",
+            {"html-text"},
+        ),
+        "xlsx_comment_override": (
+            "xlsx_comment_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-comment"},
+        ),
+        "small_caps_override": (
+            "small_caps_benign",
+            "agent_prompt_injection_phrases",
+            {"text-folded"},
+        ),
     }
     try:
         for attack, (benign, rule_id, views) in expected.items():

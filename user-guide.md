@@ -183,9 +183,9 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 ## 9. Try a verdict in the browser
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
-The root `demo.html` is a separate, limited JavaScript illustration.
+The root [`demo.html`](demo.html) is a launcher for the two demos.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 35 inert examples, each of 17 attacks beside a benign
+replays saved results for 41 inert examples, each of 20 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -202,13 +202,11 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
-   The **Attack and its benign twin** group pairs ten attacks (a base64 field
-   in a tool result, a glyph-id PDF, a model checkpoint that calls `os.system`,
-   a dev container that downloads on the host, two zips glued into one file, a
-   terminal escape glued to an override, an override split by an HTML bold tag,
-   an Excel cell split across runs with a zero for an o, an SVG animation
-   handler, and text hidden in variation selectors) with a twin of the same
-   shape: scan both to see the attack held and the twin clean.
+   The two paired groups contain 13 attacks and their benign twins. Start with
+   **New reader examples** for split Excel comments, SVG CDATA and spans, and
+   small capitals. Click **Scan paired example** to run the other input without
+   changing policy. Under `agent-ingest` the attacks are held and the benign
+   twins are clean; changing the policy can change the verdict on a note.
 3. Read the decision and original finding severities. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and fingerprints; a
    completed bundled-only scan does not mean vendor packs were installed. **Demo

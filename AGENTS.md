@@ -8,7 +8,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `scanner.py`, `content.py`, `filetype.py`, `heuristics.py` in that package: scan orchestration, bounded member/text views, type checks, PDF/Office indicators.
 - `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
-- `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is only a limited JavaScript illustration.
+- `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is a launcher for the local workbench and public replay.
 - `web-demo/`, `scripts/build_pages.py`, `scripts/record_pages_demo.py`, `scripts/pages_deploy_gate.py`: the static GitHub Pages companion, its allowlisting builder, the recorder that refreshes its data from real scans (and guards deploys against outcome changes), and the gate that deploys a merged `main` commit only after every other check on it is green. See `docs/pages-demo.md`; the site replays recordings and never scans.
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
 - `docs/verification/`: the `check_*.py`, `lint_rules.py`, and `measure_precision.py` scripts CI runs, and dated records. `docs/research/probe_rule_coverage.py` is the direct library/CLI probe. `docs/examples/`: runnable integration scripts.

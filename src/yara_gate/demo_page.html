@@ -125,7 +125,15 @@
               <option value="base64">Base64 blob · advisory</option>
               <option value="pe_pdf">PE saved as PDF · block</option>
             </optgroup>
-            <optgroup label="Attack and its benign twin">
+            <optgroup data-paired label="New reader examples (attack and twin)">
+              <option value="svg_cdata_override">SVG text split across CDATA and a span · note</option>
+              <option value="svg_cdata_benign">Ordinary SVG label · clean</option>
+              <option value="xlsx_comment_override">Instruction split across an Excel comment · note</option>
+              <option value="xlsx_comment_benign">Ordinary Excel review comment · clean</option>
+              <option value="small_caps_override">Instruction disguised with Latin small capitals · note</option>
+              <option value="small_caps_benign">Ordinary small-capital heading · clean</option>
+            </optgroup>
+            <optgroup data-paired label="Attack and its benign twin">
               <option value="b64_tool">Tool result, base64 instruction · note</option>
               <option value="b64_tool_benign">Tool result, ordinary base64 · clean</option>
               <option value="pdf_glyph">PDF glyph-id text, bold word · note</option>
@@ -150,7 +158,9 @@
           </select>
           <button type="button" id="scan-sample" disabled>Scan sample</button>
         </div>
+        <button type="button" id="scan-twin" disabled>Scan paired example</button>
         <form id="paste-form" class="divider" autocomplete="off">
+          <p class="help">Compare an attack and its benign twin under the same policy. Switch to Retrieved document to see how a note can be reported without a hold.</p>
           <label for="paste">Or paste text</label>
           <p id="paste-help" class="help">Up to 64 KiB of UTF-8 text, scanned as paste.txt. Use the CLI for files and their original types. Nothing here is executed.</p>
           <textarea id="paste" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="paste-help byte-count" placeholder="Paste a message, tool response, or short document…"></textarea>
@@ -249,6 +259,8 @@
     function setBusy(value) {
       busy = value;
       for (const id of ["scan-sample", "scan-paste"]) $(id).disabled = value || wrongHost;
+      $("scan-twin").disabled = value || wrongHost ||
+        !$("sample").selectedOptions[0].parentElement.hasAttribute("data-paired");
       $("results-panel").setAttribute("aria-busy", String(value));
     }
     function clearResult(message) {
@@ -365,10 +377,20 @@
         if (current === generation) { controller = null; setBusy(false); }
       }
     }
-    $("scan-sample").addEventListener("click", () => {
+    function scanSelectedSample() {
       const sample = $("sample").value;
       const body = Object.hasOwn(exampleText, sample) ? { text: exampleText[sample] } : { sample };
       postScan(body, "Example: " + $("sample").selectedOptions[0].textContent.split(" · ")[0]);
+    }
+    $("scan-sample").addEventListener("click", scanSelectedSample);
+    $("scan-twin").addEventListener("click", () => {
+      const select = $("sample");
+      const index = select.selectedIndex;
+      const group = select.selectedOptions[0].parentElement;
+      if (!group.hasAttribute("data-paired") || busy || wrongHost) return;
+      const position = Array.from(group.children).indexOf(select.selectedOptions[0]);
+      select.selectedIndex = index + (position % 2 === 0 ? 1 : -1);
+      scanSelectedSample();
     });
     $("paste-form").addEventListener("submit", (event) => {
       event.preventDefault();

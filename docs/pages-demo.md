@@ -1,8 +1,8 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 35
-inert examples under `agent-ingest`, `agent-document`, and `default`: 17
+YARA-X backend. This site therefore replays **real recorded results** for 41
+inert examples under `agent-ingest`, `agent-document`, and `default`: 20
 attacks, each with a benign near-twin, and one failed scan. Selecting an example does
 not start a scan. The UI labels every result as recorded and shows the scanner
 revision, capture time, rule coverage, and engine version.
@@ -29,8 +29,7 @@ Use `yara-gate demo` on loopback to inspect your own content. This public compan
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
 install a CyClaw or CG-agent-harness integration. The
 [integration contract](integrations.md) still governs real callers and same-byte
-checks. The root `demo.html` remains a separate, limited JavaScript illustration;
-it is not the Pages entrypoint.
+checks. The root `demo.html` is a launcher for the local workbench and this public replay.
 
 ## Public artifact and privacy
 
@@ -149,13 +148,16 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The committed baseline (schema 2) holds 35 inert examples, recorded with the 85
-bundled rules only and no vendor packs (Python 3.12.3, YARA-X 1.23.0, captured at
-`ea184f9` on the branch that added the #167–#169 pairs; each deploy refreshes the
-revision and time). Each row is one attack and its benign twin.
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 41 inert
+examples, recorded with 85 bundled rules and YARA-X 1.23.0, without vendor packs.
+Each deployment refreshes the revision and time. See the [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
 | --- | --- | --- |
+| Attachment | SVG text split across a CDATA section and a span | An ordinary SVG chart label in the same layout |
+| Document | A directive divided across Excel comment runs | A review comment about quarterly totals |
+| Message | An override disguised with Latin small capitals | Ordinary small-capital heading and request |
 | Message | A quoted override | An ordinary note |
 | Message | A request to send `.env` to an invalid example address | A request to send a README summary to an example wiki link |
 | SMS | The override with a Cyrillic look-alike letter | An ordinary Russian message naming a Latin brand |
