@@ -179,7 +179,8 @@ directory the gate owns, and reads only what the gate allowed:
    Use `agent-document` and its notes-only rule
    ([below](#documents-that-quote-attacks)) only for a folder whose authors you trust
    to write about attacks. Under `agent-document`, an override phrase in hidden Office
-   or PDF text is still a note (#110).
+   or PDF text (a vanished, white, or 1 pt run, a hidden shape, invisible PDF text)
+   adds the advisory `heuristic_hidden_text` and is held, like hidden HTML.
 4. Move the staged copy into `allowed/<sha256>/` or `held/<sha256>/` with the
    record beside it. The consumer reads `allowed/` only. The sync folder is never
    written, so a later change there cannot reach bytes already allowed, and a
@@ -397,7 +398,14 @@ paragraph, so a kerned array, a hex string, glyph-ID text from Chrome, LibreOffi
 or Word, a word in bold, or a wrapped line reads as written). A composite font with
 no readable `ToUnicode` map leaves text unread; that is the note
 `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
-text it could not read. A Word, Excel, or PowerPoint verdict covers each XML member
+text it could not read. Text a reader hides (render mode 3 or 7, white on nothing
+painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
+hidden shapes or slides in Office) is also scanned on its own, and an override
+phrase there adds the advisory `heuristic_hidden_text`, so `agent-document` holds a
+document whose hidden text instructs the model while it still passes one that
+quotes an attack in plain sight. An OCR text layer is render mode 3, so a scanned
+page that reads as an override phrase is held too
+([boundaries](rules.md#hidden-office-and-pdf-text)). A Word, Excel, or PowerPoint verdict covers each XML member
 and an `ooxml-text` view that joins the text runs of the body, headers, footers,
 notes, comments, shared strings, and slides, so a sentence Word split across
 formatting runs is seen whole; an Excel inline-string cell split across rich-text
