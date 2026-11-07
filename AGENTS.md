@@ -13,6 +13,10 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
 - `docs/verification/`: the `check_*.py`, `lint_rules.py`, and `measure_precision.py` scripts CI runs, and dated records. `docs/research/probe_rule_coverage.py` is the direct library/CLI probe. `docs/examples/`: runnable integration scripts.
 
+`pdftext.py` reconstructs supported PDF text for scanning, including hidden text. `release.py` contains inactive release building blocks, not a CLI release action.
+
+For file-level maps see [source](src/yara_gate/README.md), [scripts](scripts/README.md), [examples](docs/examples/README.md), and [public replay](web-demo/README.md). For trust boundaries and residual risks see [threat model](docs/threat_model.md). For scan, watch, integration, and policy use cases see [README](README.md), [user guide](user-guide.md), and [integrations](docs/integrations.md).
+
 Establish behavior from these callers and models before relying on README examples or dated research. Fetch and detect the actual default branch before starting a publication branch; do not hard-code a historical branch name. Preserve dirty and divergent work. Review applicable nested instructions and any PR template added upstream.
 
 ## Contracts to preserve
