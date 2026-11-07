@@ -1,11 +1,13 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 45
-inert examples under `agent-ingest`, `agent-document`, and `default`: 22
+YARA-X backend. This site therefore replays **real recorded results** for 47
+inert examples under `agent-ingest`, `agent-document`, and `default`: 23
 attacks, each with a benign near-twin, and one failed scan. Selecting an example does
-not start a scan. The UI labels every result as recorded and shows the scanner
-revision, capture time, rule coverage, and engine version.
+not start a scan. These are detected examples at their recorded revision, not
+current bypasses. The catalog covers RTF formatting and encoded letters, uppercase
+Russian, and glyph-encoded PDF spelling. The UI labels every result as recorded and
+shows the scanner revision, capture time, rule coverage, and engine version.
 
 The page is built to show precision as well as detection. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
@@ -39,7 +41,7 @@ model intake (pickle calls), and repository intake (dev-container host commands)
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 22-pair catalog and incomplete scan remain under an expandable section.
+The full 23-pair catalog and incomplete scan remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers the same five shortcuts. Selecting one clears the
@@ -165,13 +167,14 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 45 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 47 inert
 examples, recorded with 85 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
 | --- | --- | --- |
+| Document | An RTF override split by formatting and encoded letters | The same formatted RTF with an ordinary revision note |
 | Attachment | SVG text split across a CDATA section and a span | An ordinary SVG chart label in the same layout |
 | Document | A directive divided across Excel comment runs | A review comment about quarterly totals |
 | Message | An override disguised with Latin small capitals | Ordinary small-capital heading and request |
@@ -220,7 +223,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 45 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 47 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

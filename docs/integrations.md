@@ -421,9 +421,12 @@ A Markdown paragraph or list item split by emphasis, a code span, or a link is r
 as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
 folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment
 lines is read as one `comment-text` piece, and a Jupyter cell stored as a list of lines as
-one `notebook-text` piece. Not covered: text out of reading order or in columns,
+one `notebook-text` piece. RTF formatting, hex bytes, and Unicode escapes are read
+as `rtf-text`, one piece per paragraph, table cell, or separate story; each piece
+is also folded before matching. Malformed RTF or unreadable declared encodings
+are incomplete. Not covered: text out of reading order or in columns,
 a sentence split across two paragraphs, Type 3 fonts, LZW and RunLength streams,
-images, ODT spans, RTF control words, and Office parts a reader does not see. The
+images, ODT spans, RTF embedded-object or picture text, and Office parts a reader does not see. The
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
 structure checks still run on the raw file.
 

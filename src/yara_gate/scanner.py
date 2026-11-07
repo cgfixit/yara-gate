@@ -74,6 +74,7 @@ from yara_gate.models import (
     result_from_findings,
 )
 from yara_gate.pdftext import pdf_text
+from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
     compile_ruleset,
     default_rules_dir,
@@ -406,6 +407,7 @@ def _scan_file(
             pieces += _with_folded_pieces(
                 "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget)
             )
+            pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget))
             if decoded is not None:
                 pieces += _with_folded_pieces(
                     "html-text", html_text_blocks(unit.name, decoded[0], budget)

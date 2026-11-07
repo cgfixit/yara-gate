@@ -275,6 +275,7 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     server, thread = serve_in_thread(rules_copy)
     port = int(server.server_address[1])
     expected = {
+        "rtf_override": ("rtf_benign", "agent_prompt_injection_phrases", {"rtf-text"}),
         "b64_tool": ("b64_tool_benign", "agent_override_imperative", {"base64-decoded"}),
         "pdf_glyph": ("pdf_glyph_benign", "agent_override_imperative", {"pdf-paragraph"}),
         "pdf_glyph_folded": (

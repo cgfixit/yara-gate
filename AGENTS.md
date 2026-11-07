@@ -6,12 +6,17 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 
 - `src/yara_gate/cli.py`: Typer commands, recursive path scans, exit aggregation.
 - `scanner.py`, `content.py`, `filetype.py`, `heuristics.py` in that package: scan orchestration, bounded member/text views, type checks, PDF/Office indicators.
+- `rtftext.py`: bounded RTF reader text, scoped formatting/codepages, and paragraph/cell boundaries.
 - `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
 - `demo.py`, `demo_page.html`: the live loopback UI backed by the real scanner. Root `demo.html` is a launcher for the local workbench and public replay.
 - `web-demo/`, `scripts/build_pages.py`, `scripts/record_pages_demo.py`, `scripts/pages_deploy_gate.py`: the static GitHub Pages companion, its allowlisting builder, the recorder that refreshes its data from real scans (and guards deploys against outcome changes), and the gate that deploys a merged `main` commit only after every other check on it is green. See `docs/pages-demo.md`; the site replays recordings and never scans.
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
 - `docs/verification/`: the `check_*.py`, `lint_rules.py`, and `measure_precision.py` scripts CI runs, and dated records. `docs/research/probe_rule_coverage.py` is the direct library/CLI probe. `docs/examples/`: runnable integration scripts.
+
+`pdftext.py` reconstructs supported PDF text for scanning, including hidden text. `release.py` contains inactive release building blocks, not a CLI release action.
+
+For file-level maps see [source](src/yara_gate/README.md), [scripts](scripts/README.md), [examples](docs/examples/README.md), and [public replay](web-demo/README.md). For trust boundaries and residual risks see [threat model](docs/threat_model.md). For scan, watch, integration, and policy use cases see [README](README.md), [user guide](user-guide.md), and [integrations](docs/integrations.md).
 
 Establish behavior from these callers and models before relying on README examples or dated research. Fetch and detect the actual default branch before starting a publication branch; do not hard-code a historical branch name. Preserve dirty and divergent work. Review applicable nested instructions and any PR template added upstream.
 
