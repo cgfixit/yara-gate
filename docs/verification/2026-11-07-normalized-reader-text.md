@@ -10,7 +10,9 @@ reusing existing phrase rules, severities, and policy decisions.
 ## Scope and baseline
 
 Work used an isolated checkout from refreshed `origin/main`, preserving the
-operator's `cx/detection-review` checkout and other worktrees. Python 3.12.12,
+operator's `cx/detection-review` checkout and other worktrees. The implementation
+and sample source is commit `6fe62e337e6385d5fc29244674147fddf71e036d`; the
+following recording/evidence commit changes no scanner code. Python 3.12.12,
 Unicode database 15.0.0, locked YARA-X 1.23.0, 85 bundled rules, zero skipped files,
 and no vendor downloads. Scans use copied rules and disposable homes.
 
@@ -25,6 +27,15 @@ Open work was inspected before implementation:
 - [#171](https://github.com/cgfixit/yara-gate/issues/171) and
   [#183](https://github.com/cgfixit/yara-gate/issues/183) retain their separate
   RTF, annotation, ingestion, visibility, and scope work.
+
+A `git merge-tree` trial is clean with #184. With #182 it reports conflicts in
+`scanner.py`, `README.md`, `docs/rules.md`, and `rules/README.md`. A disposable
+merge resolved them by retaining the folded PDF pieces and #182's hidden-text
+findings, and preserving both documentation changes. All 37 new tests and the
+combined gap probe passed (201 ok, 3 open, no FAIL or STALE). This is focused
+compatibility evidence, not authority to merge #182 or native-viewer acceptance.
+The PRs remain independently based on main, so whichever lands second needs
+that integration and fresh verification.
 
 Acceptance is narrow: reproduce both misses on main; detect the same bytes on
 the candidate; preserve benign twins, native-language text, case-sensitive ASCII
@@ -96,8 +107,38 @@ not proof of malice. Existing documentary quotation suppression remains intact.
   scans** on either revision. Documentary and source inputs are not asserted clean.
 - The generated precision table remains unchanged: 81 of 85 rules have no hits;
   four documented Windows shortcut collisions each occur once in 324 files.
+- The existing look-alike scan regressions passed (9 cases). The updated gap
+  probe reports 163 ok / 6 open, up from 159 ok / 6 open; no FAIL or STALE.
+- Direct CLI intake passed 16 operations: both new attacks and both twins under
+  default → agent-ingest → agent-document → default, resubmitting identical
+  bytes to the same disposable home. JSON verdict, exit, on-disk destination,
+  source bytes, and unchanged rule files agree.
+- Two 4 MiB synthetic inputs (uppercase Cyrillic prose and mixed-script tokens)
+  remain clean and complete in 0.898 s and 1.079 s respectively on this Mac.
+  The existing 16-input, 4 MiB timing tripwire also passes. These are bounded
+  smoke checks, not a performance improvement claim.
 - The maintained direct rule/intake probe passes. Ruff, formatting, strict mypy,
   text-control and whitespace checks cover the affected files.
+
+Commands run from the candidate root with its locked `.venv` (the same commands
+are available through `uv run`):
+
+```sh
+.venv/bin/pytest -q tests/test_cyrillic_case.py tests/test_pdf_text_folding.py
+.venv/bin/pytest -q tests/test_scanner.py::test_look_alike_spellings_are_folded_as_a_view
+.venv/bin/python docs/research/probe_rule_coverage.py --verify
+.venv/bin/python docs/research/probe_detection_gaps.py --verify
+.venv/bin/python docs/verification/measure_precision.py --fail-over
+.venv/bin/python docs/verification/check_worst_case_timing.py
+.venv/bin/mypy --strict src
+.venv/bin/python docs/verification/check_text_controls.py
+.venv/bin/python scripts/record_pages_demo.py --output web-demo/recordings.json
+.venv/bin/python scripts/build_pages.py --output <new-disposable-site-directory>
+.venv/bin/pytest -q tests/test_pages_build.py
+```
+
+Ruff check and format ran on changed Python and Markdown files. No Actions
+workflow changed, so no workflow-lint delta was required.
 
 The comparison used the baseline's identical bytes and copied rules with either
 the archived baseline or candidate scanner on `PYTHONPATH`. Session artifacts
@@ -112,6 +153,26 @@ and the local workbench to 15 pairs. All 22 Pages twins are clean without findin
 All original 123 verdict/finding/exit outcomes are unchanged. The old benign
 Russian SMS now also runs a folded view: `bytes_scanned` changes from 98 to 196
 under each policy. The reviewed recordings retain that coverage change.
+
+The recorder produced 135 outcomes at `6fe62e3`; a second recording matched
+those reviewed outcomes exactly apart from provenance. The Pages builder
+validated four allowlisted files, and all 11 focused Pages build tests passed.
+The real HTTP demo sample test also passed; its first attempt was blocked at
+loopback bind by the sandbox, before assertions, then passed unchanged with
+authorized listener access.
+
+Real-browser acceptance passed on the built Pages artifact and the running
+loopback scanner at `6fe62e3`, using Playwright 1.64.1 and installed Chrome
+157.0.8103.38. CUA had no available browser surface, so the equivalent browser
+route was used. Both new pairs under all three policies displayed the expected
+verdict, exit, rule, severity, and folded view; attack → twin → attack navigation
+worked on both surfaces. Pages showed 22/22 attacks, 22/22 twins, and 1/1 held
+failure. No page/console errors or requests outside the two loopback origins were
+observed. Both 390 px mobile layouts had no horizontal overflow; desktop/mobile
+captures were inspected. Clearing a live input and attempting an empty scan left
+no stale verdict. The owned browser and both servers were stopped. Local evidence:
+`/private/tmp/yara-demo-browser-20261107/browser-acceptance.json`; screenshots
+remain local and do not replace the repository's historical screenshot evidence.
 
 Full local suites, native PDF/Office rendering, vendor packs, and live consumer
 integration are outside this run. The six existing OPEN gap-probe cases remain:
