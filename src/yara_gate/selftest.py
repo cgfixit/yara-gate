@@ -1,5 +1,6 @@
 """One-command fixture matrix. Exits 0 only when every expected verdict matches."""
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -92,9 +93,21 @@ def _oversize(home: GatePaths, rules: Path) -> bool:
     path = home.inbox / "big.bin"
     path.touch()
     os_truncate(path, MAX_FILE_BYTES + 1)
+    before = path.stat()
     result = process_inbox_file(home, path, rules_dir=rules)
-    stayed = (home.quarantine / result.sha256).is_dir()
-    ok = result.verdict is Verdict.incomplete and exit_code(result) == 2 and stayed
+    held = Path(result.path)
+    stayed = held.parent == home.quarantine / "_rejected" and held.is_file()
+    ok = (
+        result.verdict is Verdict.incomplete
+        and exit_code(result) == 2
+        and result.incomplete_reason == "file exceeds 100MB"
+        and stayed
+        and os.path.samestat(before, held.stat())
+        and held.stat().st_size == MAX_FILE_BYTES + 1
+        and not path.exists()
+        and (home.reports / f"rejected-{result.sha256}.json").is_file()
+        and (home.reports / f"rejected-{result.sha256}.sarif").is_file()
+    )
     print(f"{'PASS' if ok else 'FAIL'} oversize verdict={result.verdict} stayed={stayed}")
     return ok
 

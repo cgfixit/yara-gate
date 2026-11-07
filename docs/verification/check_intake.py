@@ -21,7 +21,8 @@ import tempfile
 from pathlib import Path
 
 from yara_gate import quarantine
-from yara_gate.quarantine import GatePaths, process_inbox_file
+from yara_gate.quarantine import GatePaths, drain_inbox, process_inbox_file
+from yara_gate.scanner import MAX_FILE_BYTES
 
 REPO = Path(__file__).resolve().parents[2]
 # CRLF and Ctrl-Z change under a Windows text-mode read; the hash must cover these bytes.
@@ -79,6 +80,37 @@ def main() -> None:
         code, _ = _scan(home, rules, entry)
         check(f"identical-byte resubmission exits 0 (got {code})", code == 0)
         check("resubmission consumed, one slot", not entry.exists() and slot.is_file())
+
+        hidden = gate.inbox / ".note.txt"
+        hidden.write_bytes(PAYLOAD)
+        _settled(hidden)
+        directory = gate.inbox / "directory"
+        directory.mkdir()
+        (directory / "nested.txt").write_bytes(PAYLOAD)
+        drain_inbox(gate, rules_dir=rules)
+        check("dotfile scanned", not hidden.exists() and (slot.parent / hidden.name).is_file())
+        check(
+            "directory held intact",
+            not directory.exists()
+            and any(
+                p.read_bytes() == PAYLOAD
+                for p in (gate.quarantine / "_rejected").glob("*/nested.txt")
+            ),
+        )
+
+        oversized = gate.inbox / "oversized.bin"
+        with oversized.open("wb") as handle:
+            handle.truncate(MAX_FILE_BYTES + 1)
+        before = oversized.stat()
+        code, records = _scan(home, rules, oversized)
+        check("oversized intake exits 2", code == 2 and len(records) == 1)
+        check(
+            "oversized entry renamed without copying",
+            bool(records)
+            and os.path.samestat(
+                before, next((gate.quarantine / "_rejected").glob("*-oversized.bin")).stat()
+            ),
+        )
 
         outside = root / "outside"
         outside.mkdir()

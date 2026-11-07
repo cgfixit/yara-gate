@@ -87,14 +87,6 @@ class ScanTimeout(Exception):
     pass
 
 
-def hash_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def scan_file(
     path: Path | str,
     *,
@@ -110,14 +102,8 @@ def scan_file(
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
-        digest = "0" * 64
-        try:
-            if file_path.is_file():
-                digest = hash_file(file_path)
-        except OSError:
-            pass
         return result_from_findings(
-            sha256=digest, path=str(file_path), findings=[], incomplete_reason="scan failed"
+            sha256="0" * 64, path=str(file_path), findings=[], incomplete_reason="scan failed"
         )
 
 
@@ -245,15 +231,14 @@ def _scan_file(
             return finish("unreadable file")
         try:
             if file_path.stat().st_size > MAX_FILE_BYTES:
-                digest = hash_file(file_path)
                 return finish("file exceeds 100MB")
             with file_path.open("rb") as handle:
                 data = handle.read(MAX_FILE_BYTES + 1)
         except OSError:
             return finish("unreadable file")
-    digest = hashlib.sha256(data).hexdigest()
     if len(data) > MAX_FILE_BYTES:
         return finish("file exceeds 100MB")
+    digest = hashlib.sha256(data).hexdigest()
     root = rules_dir or default_rules_dir()
     rules, _skipped, error, compiled, skip_count, ruleset = compile_ruleset(root)
     if error or rules is None:

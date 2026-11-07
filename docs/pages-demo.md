@@ -31,6 +31,23 @@ install a CyClaw or CG-agent-harness integration. The
 [integration contract](integrations.md) still governs real callers and same-byte
 checks. The root `demo.html` is a launcher for the local workbench and this public replay.
 
+## Guided workflows
+
+Five fictional tasks open directly beside their recorded outcome: supplier review
+(Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
+model intake (pickle calls), and repository intake (dev-container host commands).
+Senders use reserved example addresses; the context is illustrative, and only the
+fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
+visitors can compare its twin and change policy without leaving the evidence.
+The full 20-pair catalog and incomplete scan remain under an expandable section.
+The source revision and recording date are visible above the workflows.
+
+The local workbench offers the same five shortcuts. Selecting one clears the
+previous result and prepares a sample with `agent-ingest`; **Scan sample** runs the
+real scanner and **Scan paired example** runs the other member under the same
+policy. These controls connect to no external workflow or service. This demo
+makes no measured production false-positive claim.
+
 ## Public artifact and privacy
 
 `scripts/build_pages.py` builds exactly four files into a new output directory:
@@ -201,7 +218,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 17 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 41 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

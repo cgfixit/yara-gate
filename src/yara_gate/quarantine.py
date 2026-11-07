@@ -18,7 +18,7 @@ from pathlib import Path
 
 from yara_gate.models import ScanPolicy, ScanResult, Verdict
 from yara_gate.report import write_reports
-from yara_gate.scanner import scan_file
+from yara_gate.scanner import MAX_FILE_BYTES, scan_file
 
 if sys.platform == "win32":
     import msvcrt
@@ -86,7 +86,7 @@ def default_home() -> GatePaths:
 
 
 class IntakeRejected(Exception):
-    """The inbox entry was not a single regular file. Its target was not read."""
+    """The entry is unsafe to open or exceeds the intake byte limit."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -243,7 +243,7 @@ def _drain(handler: "_InboxHandler", home: GatePaths, *, wait: bool) -> None:
 
 def _dispatch(event: object, handler: "_InboxHandler") -> None:
     path = getattr(event, "dest_path", None) or getattr(event, "src_path", None)
-    if not path or getattr(event, "is_directory", False):
+    if not path:
         return
     # The watch loop drains again within 0.5 s; a file still being written waits for that.
     handler.handle(Path(str(path)), wait=False)
@@ -267,13 +267,12 @@ class _InboxHandler:
 
     def handle(self, path: Path, *, wait: bool = True) -> None:
         with self._lock:
-            if path.name.startswith("."):
+            # Watchdog also reports the inbox itself; only its immediate entries are intake.
+            if path.parent.absolute() != self.home.inbox.absolute():
                 return
             try:
                 info = path.lstat()
             except OSError:
-                return
-            if stat.S_ISDIR(info.st_mode):
                 return
             if stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_nlink == 1:
                 if not self._settled(path, info, wait):
@@ -288,7 +287,8 @@ class _InboxHandler:
                 )
             except OSError:
                 return
-            print(f"{result.verdict} sha256={result.sha256}", flush=True)
+            reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
+            print(f"{result.verdict} sha256={result.sha256}{reason}", flush=True)
 
     def forget_missing(self, present: set[str]) -> None:
         with self._lock:
@@ -487,28 +487,40 @@ def _reject_reason(info: os.stat_result) -> str | None:
     return None
 
 
-def _hash_fd(fd: int) -> str:
+def _bounded_chunks(fd: int) -> Iterator[bytes]:
+    """Bound every pass, including a file that grows after the size check."""
+    if os.fstat(fd).st_size > MAX_FILE_BYTES:
+        raise IntakeRejected("file exceeds 100MB")
     os.lseek(fd, 0, os.SEEK_SET)
-    hasher = hashlib.sha256()
+    remaining = MAX_FILE_BYTES
     while True:
-        chunk = os.read(fd, 1024 * 1024)
+        chunk = os.read(fd, min(1024 * 1024, remaining + 1))
         if not chunk:
-            return hasher.hexdigest()
+            return
+        if len(chunk) > remaining:
+            raise IntakeRejected("file exceeds 100MB")
+        remaining -= len(chunk)
+        yield chunk
+
+
+def _hash_fd(fd: int) -> str:
+    hasher = hashlib.sha256()
+    for chunk in _bounded_chunks(fd):
         hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _copy_fd(fd: int, dest: Path) -> None:
-    os.lseek(fd, 0, os.SEEK_SET)
     # A name derived from dest could exceed NAME_MAX for a long but valid inbox name.
     partial = dest.with_name(f".partial-{secrets.token_hex(4)}")
-    with partial.open("wb") as handle:
-        while True:
-            chunk = os.read(fd, 1024 * 1024)
-            if not chunk:
-                break
-            handle.write(chunk)
-    os.chmod(partial, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-    os.replace(partial, dest)
+    try:
+        with partial.open("wb") as handle:
+            for chunk in _bounded_chunks(fd):
+                handle.write(chunk)
+        os.chmod(partial, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+        os.replace(partial, dest)
+    finally:
+        partial.unlink(missing_ok=True)
 
 
 def _same_file(fd: int, other: Path) -> bool:
@@ -551,7 +563,6 @@ def _reject_entry(
     dest = rejected / _fit_name(f"{stamp}-", src.name)
     if dest.exists():
         dest = rejected / _fit_name(f"{stamp}-{secrets.token_hex(2)}-", src.name)
-    os.rename(src, dest)
     token = hashlib.sha256(f"{src.name}{stamp}".encode()).hexdigest()
     result = ScanResult(
         sha256=token,
@@ -561,4 +572,5 @@ def _reject_entry(
         policy=policy,
     )
     write_reports(home.reports, result, stem=f"rejected-{token}")
+    os.rename(src, dest)
     return result

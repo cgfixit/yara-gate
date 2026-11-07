@@ -388,15 +388,23 @@ def test_archive_depth() -> None:
     assert archive_limit(nested_zip(4)) == "archive depth exceeds 3"
 
 
-def test_over_size_is_incomplete(tmp_path: Path, rules_copy: Path) -> None:
+def test_over_size_is_incomplete_without_reading(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = tmp_path / "big.bin"
     path.touch()
     with path.open("wb") as handle:
         handle.truncate(100 * 1024 * 1024 + 1)
+
+    def no_open(*args: object, **kwargs: object) -> None:
+        raise AssertionError("oversized scan must not open the file")
+
+    monkeypatch.setattr(Path, "open", no_open)
     result = scan_file(path, rules_dir=rules_copy)
     assert result.verdict is Verdict.incomplete
     assert exit_code(result) == 2
     assert result.incomplete_reason == "file exceeds 100MB"
+    assert result.sha256 == "0" * 64
 
 
 def test_broken_rule_is_incomplete(tmp_path: Path) -> None:

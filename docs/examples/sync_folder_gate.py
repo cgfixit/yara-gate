@@ -20,7 +20,8 @@ are scanned like any other and named in the log so the operator can decide a pol
 
 Stdlib only. Nothing here executes a target or fetches a URL. The ledger holds paths, sizes,
 times, and hashes, never content. Works on Windows, macOS, and Linux because it uses in-place
-scans; on a POSIX host the staging directory may instead be the gate's own ``inbox/``.
+scans. Staging must stay outside a watched inbox, which also processes dotfiles.
+Files over 100 MiB are held without copying and make the run exit 2.
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ import hashlib
 import json
 import os
 import secrets
-import shutil
 import stat
 import subprocess
 import sys
@@ -43,6 +43,7 @@ SKIP_PREFIXES = (".", "~$")
 # Windows: FILE_ATTRIBUTE_REPARSE_POINT covers symlinks, junctions, and cloud-file placeholders.
 _REPARSE = 0x400
 _SETTLE_SECONDS = 1.0
+MAX_FILE_BYTES = 100 * 1024 * 1024
 
 
 def main() -> int:
@@ -76,6 +77,8 @@ def main() -> int:
         reason = _skip_reason(path)
         if reason is not None:
             _log("skip", relative, reason)
+            if reason == "file exceeds 100MB":
+                worst = 2
             continue
         info = path.stat()
         key = f"{info.st_size}:{info.st_mtime_ns}"
@@ -86,7 +89,12 @@ def main() -> int:
             continue
         if "conflicted copy" in path.name:
             _log("note", relative, "conflicted copy; scanned like any file")
-        staged = _stage(path, home / "staging")
+        try:
+            staged = _stage(path, home / "staging")
+        except ValueError as exc:
+            _log("held", relative, str(exc))
+            worst = 2
+            continue
         if staged is None:
             _log("skip", relative, "changed during copy")
             continue
@@ -159,6 +167,8 @@ def _skip_reason(path: Path) -> str | None:
         return "reparse point (link or online-only placeholder); not read"
     if info.st_size == 0:
         return "zero length (placeholder or write in progress)"
+    if info.st_size > MAX_FILE_BYTES:
+        return "file exceeds 100MB"
     return None
 
 
@@ -175,18 +185,27 @@ def _settled(path: Path, info: os.stat_result) -> bool:
 
 
 def _stage(source: Path, staging: Path) -> Path | None:
-    """Copy through a temporary name, then rename, so a watcher never sees a partial file."""
+    """Bound the copy into private staging; staging must not be a watched inbox."""
     before = source.stat()
+    if before.st_size > MAX_FILE_BYTES:
+        raise ValueError("file exceeds 100MB")
     partial = staging / f".partial-{secrets.token_hex(4)}"
-    with source.open("rb") as handle, partial.open("wb") as out:
-        shutil.copyfileobj(handle, out, 1024 * 1024)
-    after = source.stat()
-    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+    try:
+        with source.open("rb") as handle, partial.open("wb") as out:
+            remaining = MAX_FILE_BYTES
+            while chunk := handle.read(min(1024 * 1024, remaining + 1)):
+                if len(chunk) > remaining:
+                    raise ValueError("file exceeds 100MB")
+                out.write(chunk)
+                remaining -= len(chunk)
+        after = source.stat()
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            return None
+        final = staging / f"{secrets.token_hex(4)}-{source.name}"
+        os.replace(partial, final)
+        return final
+    finally:
         partial.unlink(missing_ok=True)
-        return None
-    final = staging / f"{secrets.token_hex(4)}-{source.name}"
-    os.replace(partial, final)
-    return final
 
 
 def _sha256(path: Path) -> str:
