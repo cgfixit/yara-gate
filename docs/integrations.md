@@ -373,6 +373,17 @@ images, ODT spans, RTF control words, and Office parts a reader does not see. Th
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
 structure checks still run on the raw file.
 
+
+### SVG and Office comments
+
+The reader views scan runs inside each Excel or modern PowerPoint comment and
+inline spans inside one SVG text element. Separate comments and text elements stay
+separate. Latin small-capital spellings fold before lexical matching; a matching
+phrase keeps its note severity and follows the selected policy. These views do not
+measure visibility or SVG positioning. Continue to scan the exact text your
+extractor hands to the consumer; [reader boundaries](rules.md#phase-1c-small-reader-boundaries)
+list the supported parts and exclusions.
+
 A consumer that extracts text itself should gate that text too, since the
 extractor's output is what the model reads: scan the original file, then pass
 the extractor's output through `scan_bytes` (or `scan -`) before the text

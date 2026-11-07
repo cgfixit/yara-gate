@@ -46,11 +46,7 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 OPEN: dict[str, str] = {
     "rtf bold group inside the phrase": "#171.4",
     "rtf hex escape for a letter": "#171.4",
-    "svg tspans split the phrase": "#171.5",
-    "xlsx comment split over runs": "#171.6",
-    "pptx modern comment split over runs": "#171.6",
     "pdf annotation hex string": "#171.7",
-    "small capitals": "#171.8",
     "docx vanished run": "#110",
     "pdf invisible render mode": "#110",
     "pdf white fill": "#110",

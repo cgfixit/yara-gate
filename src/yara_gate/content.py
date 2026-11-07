@@ -117,6 +117,12 @@ _CONFUSABLES = str.maketrans(
 _LEET = str.maketrans(
     {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"}
 )
+# Unambiguous Latin small capitals used by small-text generators; phonetic variants stay put.
+_SMALL_CAPS = str.maketrans(
+    "\u1d00\u0299\u1d04\u1d05\u1d07\ua730\u0262\u029c\u026a\u1d0a\u1d0b\u029f"
+    "\u1d0d\u0274\u1d0f\u1d18\u0280\ua731\u1d1b\u1d1c\u1d20\u1d21\u028f\u1d22",
+    "abcdefghijklmnoprstuvwyz",
+)
 # A whole word that holds a non-ASCII letter or digit: the only words a mixed-script fold can
 # change. An ASCII word fails at its first character after the lazy prefix, so this is linear.
 _NON_ASCII_WORD = re.compile(r"(?<![^\W_])[^\W_]*?[^\W_\x00-\x7f][^\W_]*")
@@ -912,7 +918,8 @@ def folded_text(text: str) -> str:
 
     Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
     (fullwidth and other presentation forms), removal of format controls and of control
-    characters other than tab, CR, and LF, Cyrillic and Greek look-alikes folded to Latin inside
+    characters other than tab, CR, and LF, Latin small capitals folded to ASCII, and Cyrillic
+    and Greek look-alikes folded to Latin inside
     mixed-script tokens, a word hyphenated at a line end rejoined (``previ-`` then ``ous``),
     letters spaced one apart rejoined, and digit or symbol stand-ins folded inside tokens that
     mix them with letters. Russian, Greek, and ordinary numbers stay as written. The result is a
@@ -930,6 +937,7 @@ def folded_text(text: str) -> str:
             folded = folded.translate(_ASCII_CONTROL_DELETE)
     else:
         folded = folded.translate(FOLD_DELETE)
+        folded = folded.translate(_SMALL_CAPS)
     if not folded.isascii():
         folded = _NON_ASCII_WORD.sub(_fold_confusables, folded)
     if "-" in folded:
@@ -1008,9 +1016,10 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
 
 # A worksheet part, where Excel and streaming writers keep inline strings (t="inlineStr").
 _SHEET_PART = re.compile(r"(?i)^xl/worksheets/[^/]+\.xml$")
-# An inline string's open or close tag, a phonetic run's, or a text run with its text, in order.
+_COMMENT_PART = re.compile(r"(?i)^(xl/comments\d*\.xml|ppt/comments/[^/]+\.xml)$")
+# Cell/comment boundaries, phonetic runs, paragraph breaks, and text runs, in order.
 _CELL_TOKEN = re.compile(
-    rb"<(/?)(?:[A-Za-z][\w.-]{0,32}:)?(is|rPh)\b[^<>]{0,4096}>"
+    rb"<(/?)(?:[A-Za-z][\w.-]{0,32}:)?(is|rPh|comment|cm|p|br)\b[^<>]{0,4096}>"
     rb"|<(?:[A-Za-z][\w.-]{0,32}:)?t(?:\s[^<>]{0,4096})?>([^<]*)</(?:[A-Za-z][\w.-]{0,32}:)?t>"
 )
 # About 70 microseconds a piece, so the cap stays well inside the 30 s scan deadline.
@@ -1028,29 +1037,46 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     """
     if not _SHEET_PART.match(name) or b"inlineStr" not in data:
         return []
+    return _ooxml_pieces(data, budget, b"is")
+
+
+def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
+    """Join rich-text runs within each Excel or modern PowerPoint comment, never across comments."""
+    if not _COMMENT_PART.fullmatch(name):
+        return []
+    return _ooxml_pieces(data, budget, b"comment" if name.lower().startswith("xl/") else b"cm")
+
+
+def _ooxml_pieces(data: bytes, budget: Budget, boundary: bytes) -> list[str]:
     cells: list[str] = []
     runs: list[bytes] = []
     inside = phonetic = False
+    count_runs = 0
     for count, match in enumerate(_CELL_TOKEN.finditer(data)):
         if count % 4096 == 0:
             budget.check()
         closing, tag, text = match.group(1), match.group(2), match.group(3)
         if tag == b"rPh":
             phonetic = not closing and not match.group().endswith(b"/>")
-        elif tag == b"is":
-            if closing and inside and len(runs) >= 2:
+        elif tag == boundary:
+            if closing and inside and count_runs >= 2:
                 if len(cells) >= MAX_TEXT_PIECES:
                     raise ContentLimit("text pieces exceed 100000")
                 cells.append("".join(html.unescape(run.decode("utf-8", "replace")) for run in runs))
             inside = not closing and not match.group().endswith(b"/>")
             runs = []
+            count_runs = 0
+            phonetic = False
+        elif inside and (tag == b"p" and closing or tag == b"br"):
+            runs.append(b"\n")
         elif inside and not phonetic and text is not None:
             runs.append(text)
+            count_runs += 1
     return cells
 
 
-_HTML_OPENER = re.compile(r"<(?:!doctype\s+html|html\b)", re.I)
-_HTML_SUFFIXES = frozenset({"html", "htm", "xhtml"})
+_HTML_OPENER = re.compile(r"<(?:!doctype\s+(?:html|svg)\b|html\b|svg\b)", re.I)
+_HTML_SUFFIXES = frozenset({"html", "htm", "xhtml", "svg"})
 # A comment opener, a tag (bounded, and never across another <), a declaration or processing
 # instruction, a text run, a run of < that cannot open a tag with the text after it, or a lone <.
 # A tag's attributes: a quoted value may hold < or >, as in title="<script>"; every quantifier is
@@ -1072,14 +1098,14 @@ _HTML_BLOCKS = frozenset(
         "form", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html",
         "legend", "li", "main", "menu", "nav", "ol", "option", "p", "pre", "section",
         "summary", "table", "tbody", "td", "textarea", "tfoot", "th", "thead", "title", "tr",
-        "ul",
+        "ul", "svg", "text",
     }
 )  # fmt: skip
 _HTML_SPACE = re.compile(r"[ \t\r\n\f]+")
 
 
 def _opens_as_html(head: str) -> bool:
-    """True when ``head``, after a BOM, whitespace, and comments, opens with a doctype or <html>.
+    """Recognize HTML/SVG after a BOM, whitespace, comments, or an XML declaration.
 
     Comments are skipped one at a time with str.find, so no pattern can reconsider where an
     earlier comment ended.
@@ -1088,6 +1114,12 @@ def _opens_as_html(head: str) -> bool:
     while True:
         while position < len(head) and head[position].isspace():
             position += 1
+        if head.startswith("<?xml ", position):
+            close = head.find("?>", position + 6)
+            if close < 0:
+                return False
+            position = close + 2
+            continue
         if not head.startswith("<!--", position):
             return _HTML_OPENER.match(head, position) is not None
         close = head.find("-->", position + 4)
@@ -1097,7 +1129,7 @@ def _opens_as_html(head: str) -> bool:
 
 
 def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
-    """The text of each HTML block that inline markup splits, as a browser joins it.
+    """The text of each HTML block or SVG text element split by inline markup.
 
     A paragraph, list item, table cell, or other block is one piece; bold, links, spans,
     comments, and other inline markup inside it are dropped and their text joined, ``<br>``
@@ -1105,7 +1137,8 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     bodies are not text, and a textarea or title body is read as written, with no tags in it.
     A block whose text is one run is left to the raw and HTML-unescaped views. Two blocks are
     never joined. One linear pass with bounded tags; this is lexical text extraction, not
-    computed visibility, sanitization, or script execution.
+    computed visibility, sanitization, or script execution. SVG tspan/textPath are inline;
+    separate text elements stay separate. SVG positioning and CSS are not interpreted.
     """
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     if suffix not in _HTML_SUFFIXES and not _opens_as_html(text[:8192]):
@@ -1114,6 +1147,7 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     parts: list[str] = []
     segments = 0
     pre = 0
+    svg_depth = 0
 
     def flush() -> None:
         nonlocal segments
@@ -1130,6 +1164,17 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
         count += 1
         if count % 4096 == 0:
             budget.check()
+        if svg_depth and text.startswith("<![CDATA[", position):
+            end = text.find("]]>", position + 9)
+            piece = text[position + 9 : end if end >= 0 else len(text)]
+            position = end + 3 if end >= 0 else len(text)
+            # XML character data is visible text; entity-looking bytes remain literal.
+            if not pre:
+                piece = _HTML_SPACE.sub(" ", piece)
+            if piece.strip():
+                segments += 1
+            parts.append(piece)
+            continue
         match = _HTML_TOKEN.match(text, position)
         if match is None:  # pragma: no cover - the last alternative matches any character
             break
@@ -1144,6 +1189,8 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
             continue
         tag = (match.group(2) or "").lower()
         if tag:
+            if tag == "svg" and not lexeme.endswith("/>"):
+                svg_depth = max(0, svg_depth + (-1 if match.group(1) else 1))
             if tag in _HTML_RAW_TEXT and not match.group(1) and not lexeme.endswith("/>"):
                 # A textarea or title body is one run of shown text: never a split phrase.
                 flush()
