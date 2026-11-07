@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import math
 import re
-from bisect import bisect_right
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -176,34 +175,34 @@ def _contents_predecessors(
 
     The page object around each ``/Contents[`` is the nearest object header that ends before
     it and starts within ``_PAGE_DICT_WINDOW``, read up to the first ``endobj`` after it inside
-    that window. Headers are indexed once, the ``endobj`` search moves forward only, and each
-    object is parsed once however many matches fall inside it, so the pass is linear in the
-    file: a window rescanned per match cost about 9 s per MiB of repeated ``/Contents[``.
+    that window. The header cursor and ``endobj`` search move forward only. Each object is
+    parsed once however many matches fall inside it, and only the current and next header
+    are retained.
     Merging one page's references is idempotent, so parsing it once gives the same result.
     """
     predecessors: dict[int, int | None] = {}
-    starts: list[int] = []
-    ends: list[int] = []
-    indexed = False
-    parsed: set[int] = set()
+    headers = _PDF_OBJ_HEADER.finditer(data)
+    upcoming = current = None
+    headers_seen = 0
+    last_parsed = -1
     next_end = -2  # The first endobj at or after the last search point; -1 when there is none.
     for count, match in enumerate(_CONTENTS_ARRAY.finditer(data)):
         if count % 4096 == 0:
             budget.check()
-        if not indexed:
-            for number, header in enumerate(_PDF_OBJ_HEADER.finditer(data)):
-                if number % 4096 == 0:
-                    budget.check()
-                starts.append(header.start())
-                ends.append(header.end())
-            indexed = True
-        index = bisect_right(ends, match.start()) - 1
-        if index < 0 or starts[index] < match.start() - _PAGE_DICT_WINDOW:
+        if count == 0:
+            upcoming = next(headers, None)
+        while upcoming is not None and upcoming.end() <= match.start():
+            current = upcoming
+            if headers_seen % 4096 == 0:
+                budget.check()
+            headers_seen += 1
+            upcoming = next(headers, None)
+        if current is None or current.start() < match.start() - _PAGE_DICT_WINDOW:
             continue
-        start = ends[index]
-        if start in parsed:
+        start = current.end()
+        if start == last_parsed:
             continue
-        parsed.add(start)
+        last_parsed = start
         if next_end != -1 and next_end < match.end():
             next_end = data.find(b"endobj", match.end())
         if next_end == -1 or next_end + len(b"endobj") > start + _PAGE_DICT_WINDOW:

@@ -217,3 +217,11 @@ the gap probe (197 ok, 3 open), the coverage probe, `tests/test_pdftext.py` (6 p
 `mypy --strict src`, and `check_text_controls.py`.
 
 - `src/yara_gate/pdftext.py`: `c65ecdf577a287792174721525c231a6388480c6cf31601ccccf8ad764372df0`
+
+A forward-only cursor then replaced the header offset lists and parsed-object
+set. On a 2 MiB input with 262,144 object headers, Python-traced peak memory in
+the continuation parser fell from 19,306,926 to 3,650 bytes. The two versions
+returned the same continuation maps on 4,000 generated inputs, and the detection
+probe still passed 197 cases with three known gaps. The two new 4 MiB fixtures
+ran locally in 0.97 s and 1.09 s. `pdftext.py` SHA-256 is
+`3b375a24ff50be57b63e535c8dd19b21d3bff3e60cf68f9ec9b00d58fc167e0d`.
