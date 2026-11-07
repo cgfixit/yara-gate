@@ -148,27 +148,9 @@ def _file(dictionary: bytes, body: bytes) -> bytes:
     return b"%PDF-1.7\n1 0 obj\n" + dictionary + b"\nstream\n" + body + b"%%EOF\n"
 
 
-# expect: incomplete = uncertain /Length must not scan clean; read = phrase found and complete;
-# clean = no phrase and complete.
-# clean_at_eb5430c is the scan verdict at that revision. literal-missing was already
-# incomplete there; only the names in _CLEAN_AT_EB5430C were clean.
-# at_8fc41c5 is the result before the later-endstream landing fix: clean, read, or
-# incomplete. A row whose expect differs from at_8fc41c5 is red on that revision.
-_CLEAN_AT_EB5430C = frozenset(
-    {
-        "comment-missing",
-        "comment-unaligned",
-        "hex-missing",
-        "hex-unaligned",
-        "benign-no-stream",
-        "benign-annotation",
-        "benign-lengthless-stream",
-        "benign-unaligned-length",
-        "later-endstream",
-        "later-endstream-comment-split",
-        "later-endstream-glued",
-    }
-)
+# expect classifies the row. It is an assertion about this fixture, not a replay
+# of an older revision. incomplete: an uncertain length must not scan clean.
+# read: the phrase is found and the scan completes. clean: no phrase, and complete.
 _BOUNDARY = (
     ("comment-missing", "incomplete", "incomplete"),
     ("comment-unaligned", "incomplete", "incomplete"),
@@ -185,18 +167,17 @@ _BOUNDARY = (
     ("aligned-fake-header", "read", "read"),
     ("aligned-random-binary", "read", "read"),
     ("aligned-flate-keywords", "read", "read"),
+    ("aligned-endstreaming", "read", "read"),
     ("benign-no-stream", "clean", "clean"),
     ("benign-annotation", "clean", "clean"),
     ("benign-lengthless-stream", "incomplete", "incomplete"),
     ("benign-unaligned-length", "incomplete", "incomplete"),
-    # Red at 8fc41c5: /Length lands on a later endstream and the scan stays clean.
-    ("later-endstream", "incomplete", "clean"),
-    ("later-endstream-comment-split", "incomplete", "clean"),
-    ("later-endstream-glued", "incomplete", "clean"),
-    # Red at 8fc41c5: a correct /Length whose body contains the bytes. A length-based
-    # reader still shows the annotation after the stream; rejecting the span incompletes it.
-    ("aligned-prose-endstream", "incomplete", "read"),
-    ("aligned-jpeg-comment-endstream", "incomplete", "read"),
+    ("later-endstream", "incomplete", "incomplete"),
+    ("later-endstream-comment-split", "incomplete", "incomplete"),
+    # Digits glued to endstream are one token, not a keyword, so the landed length stands.
+    ("later-endstream-glued", "clean", "clean"),
+    ("aligned-prose-endstream", "incomplete", "incomplete"),
+    ("aligned-jpeg-comment-endstream", "incomplete", "incomplete"),
 )
 
 
@@ -250,6 +231,8 @@ def _boundary_pdf(name: str) -> bytes:
         body = zlib.compress(b"endstream 1 0 obj " * 40)
         assert b"endstream" not in body
         return _length_then(body, annot(encoded(PHRASE, "hex")))
+    if name == "aligned-endstreaming":
+        return _length_then(b"endstreaming", annot(encoded(PHRASE, "hex")))
     if name == "later-endstream":
         return _later_endstream(b"2 0 obj\n")
     if name == "later-endstream-comment-split":
@@ -293,17 +276,13 @@ def _length_then(look: bytes, real: bytes) -> bytes:
     )
 
 
-@pytest.mark.parametrize(("name", "expect", "at_8fc41c5"), _BOUNDARY)
-def test_stream_boundary_matrix(name: str, expect: str, at_8fc41c5: str, rules_copy: Path) -> None:
-    # The flag is the eb5430c verdict, not a type placeholder. literal-missing is absent.
-    assert (name in _CLEAN_AT_EB5430C) is (
-        name.startswith(("comment-", "hex-", "benign-", "later-endstream"))
-    )
-    assert at_8fc41c5 in {"clean", "read", "incomplete"}
-    if expect == "read":
-        assert at_8fc41c5 == "read"
-    if at_8fc41c5 == "clean" and expect == "clean":
-        assert name in {"benign-no-stream", "benign-annotation"}
+@pytest.mark.parametrize(("name", "expect", "classification"), _BOUNDARY)
+def test_stream_boundary_matrix(
+    name: str, expect: str, classification: str, rules_copy: Path
+) -> None:
+    # classification is the asserted class for this fixture, not a recorded old revision.
+    assert classification == expect
+    assert classification in {"clean", "read", "incomplete"}
     data = _boundary_pdf(name)
     try:
         texts = read(data)
@@ -328,8 +307,6 @@ def test_stream_boundary_matrix(name: str, expect: str, at_8fc41c5: str, rules_c
             assert texts == []
     else:
         raise AssertionError(expect)
-    if name in _CLEAN_AT_EB5430C and expect == "incomplete":
-        assert result.verdict.value == "incomplete"
 
 
 def test_object_stream_inflation_is_charged_once() -> None:

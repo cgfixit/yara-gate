@@ -275,7 +275,8 @@ header by itself does not reject the span: with no earlier `endstream`, those
 bytes are body data, and an annotation after the landed keyword is still read.
 
 A missing length, a length that does not land on `endstream`, or a length whose
-span contains an earlier `endstream` does not resume lexical parsing. The scan
+span contains an earlier keyword `endstream` does not resume lexical parsing.
+A longer token such as `endstreaming` is not that keyword. The scan
 is incomplete (`pdf annotation stream length unaligned`). That earlier keyword
 is not taken as the boundary either. Resuming there is unsafe, and treating the
 first textual `endstream` or an `N G obj` inside opaque bytes as a real object
@@ -285,11 +286,25 @@ appeared in 348 installed font and image files, a random 1 MiB buffer, its
 Flate encoding, or the Flate encoding of prose that contains both phrases.
 Rejecting an object header alone still fails closed on four aligned lookalike
 rows whose bodies contain `N G obj` and whose real annotation follows the
-stream, so that half is not used. A length is refused when the raw span
-contains an earlier `endstream`. That also incompletes two correct lengths:
+stream, so that half is not used. A length is refused when the span contains
+an earlier keyword `endstream`. That also incompletes two correct lengths:
 uncompressed page text that includes the word, and a JPEG comment that includes
 it. The Flate encoding of the same prose does not contain the keyword, and the
 annotation after that stream is still read.
+
+A file with `startxref` also resolves cross-reference offsets before the scan
+can be clean. Classic 20-byte tables, Flate `/Type /XRef` streams (`/W`,
+`/Index`, and a PNG or TIFF predictor), hybrid `/XRefStm`, and `/Prev` chains
+are read. A newer section overrides an older one. At one trailer, a classic
+offset and a stream offset for the same object are both checked. A type-1
+offset inside a landed span makes the scan incomplete
+(`pdf annotation xref offset inside stream`). A type-2 entry is an object-stream
+index, not a file offset, so object streams stay readable. No `startxref`
+leaves the sequential reader in place. A malformed table or stream
+(`pdf xref malformed`), a filter or predictor this reader does not decode
+(`pdf xref unsupported`), more than 100000 entries
+(`pdf xref entries exceed 100000`), or a spent deadline is incomplete. Chains
+stop at 32 sections. Flate output is charged to the shared 500MB budget.
 
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an

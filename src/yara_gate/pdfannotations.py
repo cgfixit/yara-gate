@@ -15,6 +15,7 @@ from yara_gate.content import (
 )
 from yara_gate.heuristics import _PDF_LEX, _decode_pdf_name
 from yara_gate.pdftext import _literal
+from yara_gate.pdfxref import xref_file_offsets
 
 _MAX_STRING = 1024 * 1024
 _SUBTYPES = frozenset(
@@ -23,7 +24,7 @@ _SUBTYPES = frozenset(
     b"/Widget /Screen /Popup /Watermark /3D /RichMedia /Projection".split()
 )
 _LANGUAGE = re.compile("\x1b[a-z]{2}(?:[A-Z]{2})?")
-_ENDSTREAM = b"endstream"
+_ENDSTREAM = re.compile(rb"(?<![A-Za-z0-9])endstream(?![A-Za-z0-9])")
 # Chunk the span search so a large body still hits the shared deadline.
 _SPAN_CHUNK = 1 << 20
 # PDFDocEncoding differs from Latin-1 in these slots (ISO 32000, Annex D).
@@ -70,25 +71,27 @@ def _text(token: bytes) -> str:
 
 
 def _earlier_endstream(data: bytes, begin: int, end_at: int, budget: Budget) -> bool:
-    """True when ``data[begin:end_at]`` contains ``endstream`` before the landed keyword."""
+    """True when a keyword ``endstream`` occurs in the span before the landed one."""
     if end_at > len(data):
         end_at = len(data)
     pos = begin
     while pos < end_at:
         budget.check()
         stop = min(end_at, pos + _SPAN_CHUNK)
-        found = data.find(_ENDSTREAM, pos, stop)
-        if found >= 0:
+        match = _ENDSTREAM.search(data, pos, stop)
+        if match is not None and match.end() <= end_at:
             return True
         if stop == end_at:
             return False
-        # Overlap by one keyword so a match on the chunk edge is not split.
-        pos = stop - (len(_ENDSTREAM) - 1)
+        pos = stop - 8
     return False
 
 
 def _tokens(
-    data: bytes, budget: Budget, objects: PdfObjects | None = None
+    data: bytes,
+    budget: Budget,
+    objects: PdfObjects | None = None,
+    spans: list[tuple[int, int]] | None = None,
 ) -> Iterator[tuple[bytes, int]]:
     """Keep string tokens intact so names written inside them never become dictionaries."""
     position = count = 0
@@ -142,6 +145,8 @@ def _tokens(
                 # a reader stopping there would see. An object header alone does not:
                 # with no earlier keyword, those bytes are inside the body.
                 if ending and not _earlier_endstream(data, begin, end_at, budget):
+                    if spans is not None:
+                        spans.append((begin, end_at))
                     position = end_at + ending.end()
                     continue
             # Missing, unaligned, or ambiguous. Resuming the lexer is not safe.
@@ -161,12 +166,13 @@ def _dictionaries(
     objects: PdfObjects,
     budget: Budget,
     strings: dict[tuple[int, int], list[bytes]] | None = None,
+    spans: list[tuple[int, int]] | None = None,
 ) -> Iterator[dict[bytes, PdfValue]]:
     tokens: list[bytes] = []
     depth = 0
     previous: list[bytes] = []
     key: tuple[int, int] | None = None
-    for token, _ in _tokens(data, budget, objects):
+    for token, _ in _tokens(data, budget, objects, spans):
         if strings is not None and not depth:
             if key is not None:
                 strings.setdefault(key, []).append(token)
@@ -220,6 +226,16 @@ def _dictionaries(
         raise ContentLimit("pdf annotation dictionary malformed")
 
 
+def _reject_xref_inside(data: bytes, spans: list[tuple[int, int]], budget: Budget) -> None:
+    offsets = xref_file_offsets(data, budget)
+    if not offsets or not spans:
+        return
+    for offset in offsets:
+        for begin, end in spans:
+            if begin <= offset < end:
+                raise ContentLimit("pdf annotation xref offset inside stream")
+
+
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
     if not data.startswith(b"%PDF"):
         return []
@@ -233,7 +249,9 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
                     raise ContentLimit("text pieces exceed 100000")
                 values.append(entry[b"/Contents"])
 
-    collect(_dictionaries(data, objects, budget, strings))
+    spans: list[tuple[int, int]] = []
+    collect(_dictionaries(data, objects, budget, strings, spans))
+    _reject_xref_inside(data, spans, budget)
     for number, source in objects.stream_members():
         body = bytes(source)
         strings.setdefault((number, 0), []).append(next(_tokens(body, budget), (b"", 0))[0])
