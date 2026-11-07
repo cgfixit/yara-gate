@@ -166,13 +166,14 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 43 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 45 inert
 examples, recorded with 85 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
 | --- | --- | --- |
+| Document | A PDF annotation with UTF-16BE hexadecimal instructions | The same encoded annotation with an ordinary revision note |
 | Document | An RTF override split by formatting and encoded letters | The same formatted RTF with an ordinary revision note |
 | Attachment | SVG text split across a CDATA section and a span | An ordinary SVG chart label in the same layout |
 | Document | A directive divided across Excel comment runs | A review comment about quarterly totals |
@@ -220,7 +221,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 43 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 45 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the failure case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
