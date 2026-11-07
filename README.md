@@ -141,7 +141,7 @@ Intake accepts only a regular file with one link and opens it without following 
 
 **Vendor packs**, downloaded once by `yara-gate setup` (or `rules install --allow-network`): YARA Forge core, signature-base, and Elastic protections-artifacts. See the dated [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) and [grading verification](docs/verification/2026-11-01-vendor-setup.md) for measured coverage and skips. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them.
 
-**Precision:** in the [documented 324-file synthetic corpus](docs/rules.md#measured-precision), 81 of the 85 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. This is a synthetic corpus, not a production false-positive rate.
+**Precision:** in the [documented 324-file synthetic corpus](docs/rules.md#measured-precision), 81 of the 85 rules hit nothing. The other four are documented Windows collisions, each at 0.31%. The [2026-11-06 documentation audit](docs/verification/2026-11-06-detection-documentation.md) reproduced those counts. This benign-only corpus measures collisions; it does not measure recall or production precision.
 
 **What it does not do:**
 - It cannot guarantee detection of novel or targeted payloads. YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.
@@ -151,7 +151,7 @@ Intake accepts only a regular file with one link and opens it without following 
 - It scans each input on its own. An instruction split across two messages is seen only if the caller also scans them together, as the [SMS bridge example](docs/examples/sms_gate_bridge.py) does.
 - Its deadline does not interrupt third-party parsers mid-call.
 
-The exact boundaries of every rule, the derived views, and the limits are in **[docs/rules.md](docs/rules.md)**.
+Start with the **[detection-method map](rules/README.md)** for links to every detection layer, including the Python checks outside `rules/`. The exact rule boundaries, derived views, and limits are in **[docs/rules.md](docs/rules.md)**.
 
 ## Reports and telemetry
 
@@ -206,6 +206,7 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), pdftext (the
                      shows), filetype, heuristics, models, quarantine, report, rules, hunt,
                      demo, selftest, samples, launchd, release (reviewed-release building
                      blocks, not yet a command)
+rules/README.md      detection-method map, source links, loading and evidence boundaries
 rules/local/         the 85 shipped rules in 58 files; rules/rules.lock pins the vendor packs
 web-demo/            public recorded-demo assets; scripts/ builds and re-records them;
                      docs/pages-demo.md explains deployment
