@@ -1,4 +1,5 @@
 import base64
+import json
 import time
 import zlib
 from collections.abc import Callable
@@ -465,8 +466,45 @@ def test_embedded_pe_blocks(tmp_path: Path) -> None:
 def test_mcp_tool_poisoning_vocabulary(payload: bytes, hidden: bool) -> None:
     from yara_gate.heuristics import mcp_tool_findings
 
-    found = {item.rule_id for item in mcp_tool_findings(Path("tools.json"), payload)}
+    findings, error = mcp_tool_findings(Path("tools.json"), payload)
+    assert error is None
+    found = {item.rule_id for item in findings}
     assert ("heuristic_mcp_hidden_instruction" in found) is hidden
+
+
+def _nested(node: object, depth: int) -> object:
+    for _ in range(depth):
+        node = {"x": node}
+    return node
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"mcpServers": [{"name": str(index)} for index in range(5000)] + [{"command": "bash"}]},
+        _nested({"command": "bash", "args": ["-c", "true"]}, 40),
+    ],
+)
+def test_mcp_entry_position_cannot_hide_it(document: object) -> None:
+    from yara_gate.heuristics import mcp_tool_findings
+
+    findings, error = mcp_tool_findings(Path("mcp.json"), json.dumps(document).encode())
+    assert error is None
+    assert {item.rule_id for item in findings} == {"heuristic_mcp_shell"}
+
+
+def test_mcp_walk_limit_is_incomplete_not_clean() -> None:
+    from yara_gate.heuristics import mcp_tool_findings
+
+    deep = json.dumps(_nested({"command": "node"}, 80)).encode()
+    assert mcp_tool_findings(Path("mcp.json"), deep) == ([], "mcp json exceeds walk limit")
+    # Without a key an MCP entry needs, the same depth keeps its clean result.
+    plain = json.dumps(_nested({"a": 1}, 80)).encode()
+    assert mcp_tool_findings(Path("data.json"), plain) == ([], None)
+    # Past json.loads' own nesting limit, the same rule applies.
+    keyed = b'{"x":' * 100_000 + b'{"command":"bash"}' + b"}" * 100_000
+    assert mcp_tool_findings(Path("mcp.json"), keyed) == ([], "mcp json exceeds walk limit")
+    assert mcp_tool_findings(Path("data.json"), b"[" * 100_000 + b"]" * 100_000) == ([], None)
 
 
 @pytest.mark.parametrize(

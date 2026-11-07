@@ -78,8 +78,16 @@ _TO_UNICODE = re.compile(
 )
 _TYPE0 = re.compile(rb"/Subtype[\x00\t\n\f\r ]*/Type0\b")
 _IDENTITY = re.compile(rb"/Encoding[\x00\t\n\f\r ]*/Identity-[HV]\b")
-_CMAP_SECTION = re.compile(rb"begin(codespacerange|bfchar|bfrange)(.*?)end\1", re.DOTALL)
-_CMAP_TOKEN = re.compile(rb"<([0-9A-Fa-f\x00\t\n\f\r ]*)>|\[|\]")
+_CMAP_KINDS = (b"codespacerange", b"bfchar", b"bfrange")
+# One pass over a CMap: section keywords and the tokens inside sections. A token cannot hold a
+# keyword (g, i, n are not hex digits), so this finds the tokens a per-section pass would.
+_CMAP_LEXEME = re.compile(
+    rb"(begin|end)(codespacerange|bfchar|bfrange)|<([0-9A-Fa-f\x00\t\n\f\r ]*)>|\[|\]"
+)
+# Real ToUnicode maps hold a few hundred thousand tokens at most; past this the map is not read
+# whole, so the scan is incomplete rather than silently using part of it.
+MAX_CMAP_TOKENS = 1 << 20
+_CMAP_CHECK_EVERY = 4096
 
 Lookup = Callable[[int, int], list[bytes]]
 
@@ -368,27 +376,52 @@ def _prime(objects: Lookup, keys: set[tuple[int, int]]) -> None:
 
 
 def _cmap(data: bytes, budget: Budget) -> tuple[dict[bytes, str], tuple[int, ...]]:
-    """bfchar and bfrange entries of a ToUnicode CMap, and its code lengths in bytes."""
+    """bfchar and bfrange entries of a ToUnicode CMap, and its code lengths in bytes.
+
+    A section runs from ``begin<kind>`` to the next ``end<kind>``; other keywords inside it are
+    text. A ``begin`` with no matching ``end`` after it opens nothing, which the last ``end`` of
+    each kind decides, so one linear pass replaces a lazy search that rescanned to the end of
+    the map for every unterminated ``begin``. The budget is checked every 4,096 lexemes.
+    """
     mapping: dict[bytes, str] = {}
     lengths: set[int] = set()
-    for section in _CMAP_SECTION.finditer(data):
-        budget.check()
-        kind, body = section.group(1), section.group(2)
-        items = [
-            _hex_bytes(token.group(1)) if token.group(1) is not None else token.group()
-            for token in _CMAP_TOKEN.finditer(body)
-        ]
-        if kind == b"codespacerange":
-            lengths.update(len(item) for item in items[0::2] if isinstance(item, bytes) and item)
-        elif kind == b"bfchar":
-            for source, target in zip(items[0::2], items[1::2], strict=False):
-                if len(mapping) >= MAX_CMAP_ENTRIES:
-                    break
-                if source and target not in (b"[", b"]"):
-                    mapping[source] = _utf16(target)
-        else:
-            _cmap_ranges(items, mapping)
+    last_end = {kind: data.rfind(b"end" + kind) for kind in _CMAP_KINDS}
+    kind: bytes | None = None
+    items: list[bytes] = []
+    tokens = 0
+    for count, lexeme in enumerate(_CMAP_LEXEME.finditer(data)):
+        if count % _CMAP_CHECK_EVERY == 0:
+            budget.check()
+        edge, name, hex_digits = lexeme.group(1, 2, 3)
+        if kind is None:
+            if edge == b"begin" and last_end[name] >= lexeme.end():
+                kind, items = name, []
+            continue
+        if edge is not None:
+            if edge == b"end" and name == kind:
+                _cmap_section(kind, items, mapping, lengths)
+                kind = None
+            continue
+        tokens += 1
+        if tokens > MAX_CMAP_TOKENS:
+            raise ContentLimit("pdf cmap exceeds token limit")
+        items.append(_hex_bytes(hex_digits) if hex_digits is not None else lexeme.group())
     return mapping, tuple(sorted(lengths, reverse=True))
+
+
+def _cmap_section(
+    kind: bytes, items: list[bytes], mapping: dict[bytes, str], lengths: set[int]
+) -> None:
+    if kind == b"codespacerange":
+        lengths.update(len(item) for item in items[0::2] if item)
+    elif kind == b"bfchar":
+        for source, target in zip(items[0::2], items[1::2], strict=False):
+            if len(mapping) >= MAX_CMAP_ENTRIES:
+                break
+            if source and target not in (b"[", b"]"):
+                mapping[source] = _utf16(target)
+    else:
+        _cmap_ranges(items, mapping)
 
 
 def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str]) -> None:

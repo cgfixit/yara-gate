@@ -129,6 +129,22 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, b"/Contents["),
         None,
     )
+    # The SVG scope rules count svg tags before every script, onload, onbegin, and onerror
+    # match. Just under their 1,024-match cap with no match inside an svg, so each loop
+    # runs to its end and the page stays clean.
+    scope = (
+        b"<html>"
+        + b"</svg>" * 1020
+        + b"<svg/>" * 1020
+        + b"<svg></svg></svg>"
+        + b"<script " * 1024
+        + b"onload=" * 1024
+        + b'<svg/><image onerror="x"'
+    )
+    yield "svg-scope-cap.html", _filled(scope, b" "), None
+    # A ToUnicode CMap of unterminated sections: a lazy section search rescanned to the end of
+    # the map for every one (over 300 s here), where one linear pass takes well under 1 s.
+    yield "pdf-cmap-sections.pdf", _cmap_pdf(b"beginbfchar "), None
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
     yield (
         "pdf-page-objects.pdf",
@@ -153,6 +169,27 @@ def _content_pdf(prelude: bytes, token: bytes) -> bytes:
             raise RuntimeError("content stream is not one landed span")
         return header + body + marker
     raise RuntimeError("content stream length does not fit")
+
+
+def _cmap_pdf(token: bytes) -> bytes:
+    """A 4 MiB PDF whose one font's unfiltered ToUnicode stream is ``token`` repeated."""
+    head = (
+        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>endobj\n"
+        b"4 0 obj<</Length 22>>stream\nBT /F1 12 Tf <0041> Tj\nendstream endobj\n"
+        b"5 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode 6 0 R>>endobj\n"
+    )
+    tail = b"\nendstream endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+    for digits in range(1, 9):
+        start = head + b"6 0 obj<</Length " + b"0" * digits + b">>stream\n"
+        body_len = SIZE - len(start) - len(tail)
+        if len(str(body_len)) != digits:
+            continue
+        count, rest = divmod(body_len, len(token))
+        body = token * count + b" " * rest
+        return head + b"6 0 obj<</Length %d>>stream\n" % body_len + body + tail
+    raise RuntimeError("cmap stream length does not fit")
 
 
 def _filled(prefix: bytes, token: bytes) -> bytes:

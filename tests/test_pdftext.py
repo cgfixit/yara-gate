@@ -46,6 +46,31 @@ def test_a_tj_array_past_its_item_cap_is_incomplete(monkeypatch: pytest.MonkeyPa
         _blocks(b"BT /F1 12 Tf [" + b"1 " * 200 + b"] TJ ET")
 
 
+def test_cmap_sections_need_their_own_end() -> None:
+    budget = Budget(float("inf"))
+    # A bfchar with no endbfchar after it opens nothing; the bfrange before it is read.
+    data = (
+        b"begincodespacerange <0000> <FFFF> endcodespacerange "
+        b"beginbfrange <0010> <0011> <0061> endbfrange beginbfchar <0001> <0041>"
+    )
+    assert pdftext._cmap(data, budget) == ({b"\x00\x10": "a", b"\x00\x11": "b"}, (2,))
+    # Inside a section, a begin of another kind is text: its tokens belong to the bfchar.
+    data = b"beginbfchar <0020> <0042> beginbfrange <0021> <0043> endbfchar endbfrange"
+    assert pdftext._cmap(data, budget) == ({b"\x00\x20": "B", b"\x00\x21": "C"}, ())
+
+
+def test_unterminated_cmap_sections_take_linear_time() -> None:
+    started = time.perf_counter()
+    assert pdftext._cmap(b"beginbfchar " * 200_000, Budget(float("inf"))) == ({}, ())
+    assert time.perf_counter() - started < 5
+
+
+def test_a_cmap_past_its_token_cap_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pdftext, "MAX_CMAP_TOKENS", 4)
+    with pytest.raises(ContentLimit, match="pdf cmap exceeds token limit"):
+        pdftext._cmap(b"beginbfchar <01> <41> <02> <42> <03> endbfchar", Budget(float("inf")))
+
+
 def test_text_past_the_block_cap_is_still_scanned() -> None:
     result = _blocks(b"BT /F1 12 Tf " + _glyphs("x" * 70_000 + " " + PHRASE) + b" Tj ET")
     assert _shown(result)

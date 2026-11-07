@@ -567,6 +567,54 @@ def cases() -> list[Case]:
             b'<svg xmlns="http://www.w3.org/2000/svg"><image href="x" onerror="void 0"/></svg>',
             "any",
         ),
+        # #183.1: active SVG content is scoped to the svg element outside an SVG document.
+        Case(
+            "#183.1",
+            "page script beside an inline icon (benign)",
+            "page.html",
+            b"<!doctype html><html><body><svg><path d='M0 0'/></svg>"
+            b"<script>var ready = true;</script></body></html>",
+            "clean",
+        ),
+        Case(
+            "#183.1",
+            "script inside an inline svg",
+            "page.html",
+            b"<!doctype html><html><body><svg><svg></svg>"
+            b"<script>void 0</script></svg></body></html>",
+            "doc_svg_active",
+        ),
+        # #183.6: an MCP entry's list position or depth cannot hide it.
+        Case(
+            "#183.6",
+            "mcp shell server at list item 51",
+            "mcp.json",
+            json.dumps(
+                {"mcpServers": [{"name": str(i)} for i in range(50)] + [{"command": "bash"}]}
+            ).encode(),
+            "heuristic_mcp_shell",
+        ),
+        Case(
+            "#183.6",
+            "mcp shell server nested 12 deep",
+            "mcp.json",
+            b'{"a":' * 12 + b'{"command":"bash","args":["-c","true"]}' + b"}" * 12,
+            "heuristic_mcp_shell",
+        ),
+        Case(
+            "#183.6",
+            "mcp entry past the depth budget",
+            "mcp.json",
+            b'{"a":' * 80 + b'{"command":"node"}' + b"}" * 80,
+            "incomplete:mcp json exceeds walk limit",
+        ),
+        Case(
+            "#183.6",
+            "long ordinary list (benign)",
+            "data.json",
+            json.dumps({"rows": [{"id": i, "description": "row"} for i in range(500)]}).encode(),
+            "clean",
+        ),
         Case("G1", "base64 control", "m.txt", b"see " + base64.b64encode(phrase), PHRASE_RULE),
         Case("G1", "base64+leet", "m.txt", b"see " + base64.b64encode(LEET.encode()), PHRASE_RULE),
         Case("G1", "percent control", "m.txt", PHRASE.replace(" ", "%20").encode(), PHRASE_RULE),

@@ -125,7 +125,9 @@ def scan_bytes(
     the report ``path``. The verdict describes these bytes: consume the same buffer, not a
     later reread.
     """
-    label = Path(name).name or "input"
+    # Either separator ends a directory, so a Windows-style name keeps only its last component
+    # on POSIX too.
+    label = PurePosixPath(str(name).replace("\\", "/")).name or "input"
     # bytes(5) would build five NUL bytes; anything not bytes-like is a failed scan.
     payload = bytes(data) if isinstance(data, bytes | bytearray | memoryview) else None
     try:
