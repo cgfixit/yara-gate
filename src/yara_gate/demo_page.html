@@ -40,6 +40,10 @@
     .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .75rem; font-weight: 700; color: var(--accent); }
     .muted, .help { color: var(--muted); }
     .help { font-size: .88rem; }
+    .presets { margin-bottom: 1.25rem; }
+    .presets .actions { justify-content: flex-start; gap: .5rem; }
+    .preset[aria-pressed="true"] { background: var(--ink); color: white; }
+    #workflow-context { margin: .8rem 0 0; }
     .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1.25rem; align-items: start; }
     .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 1.5rem; }
     .section-head, .actions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
@@ -105,6 +109,18 @@
       <p class="muted">Try the real scanner, understand its findings, and choose the right policy for your local AI workflow. This preview scans in memory; it does not move or release files.</p>
     </div>
     <noscript><p class="warning">JavaScript is required for this workbench. Use the local yara-gate CLI to scan without a browser.</p></noscript>
+    <section class="panel presets" aria-labelledby="workflow-title">
+      <h2 id="workflow-title">Try a realistic workflow with synthetic data</h2>
+      <p class="help">Choose a task, scan its fixed inert sample, then scan the benign twin. These fictional workflows use the real local scanner; no supplier, CI service, or model catalog is connected.</p>
+      <div class="actions" role="group" aria-label="Workflow presets">
+        <button type="button" class="secondary preset" data-sample="xlsx_comment_override" data-context="Procurement: summarize review.xlsx from supplier@example.invalid. Compare a directive split across comment runs with an ordinary review comment." aria-pressed="false">Supplier review</button>
+        <button type="button" class="secondary preset" data-sample="ansi_log" data-context="Engineering: explain build.log from a simulated CI tool. Compare an override beside a terminal escape with an ordinary coloured summary." aria-pressed="false">Build triage</button>
+        <button type="button" class="secondary preset" data-sample="svg_cdata_override" data-context="Design: review logo.svg from design@example.invalid. Compare a split directive with an ordinary chart label." aria-pressed="false">Design handoff</button>
+        <button type="button" class="secondary preset" data-sample="pickle_call" data-context="ML: inspect model.pt from a dummy model catalog. Compare a pickle call to os.system with ordinary OrderedDict state. The scanner never unpickles either sample." aria-pressed="false">Model intake</button>
+        <button type="button" class="secondary preset" data-sample="devcontainer" data-context="Engineering: review a dummy devcontainer.json. Compare a host download-and-run command with host folder creation and container-only installs. Nothing is executed." aria-pressed="false">Repository intake</button>
+      </div>
+      <p id="workflow-context" class="policy-help" hidden></p>
+    </section>
     <div class="workspace">
       <section class="panel" aria-labelledby="input-title">
         <div class="section-head"><h2 id="input-title"><span class="step">01</span> Choose input &amp; policy</h2></div>
@@ -377,6 +393,22 @@
         if (current === generation) { controller = null; setBusy(false); }
       }
     }
+    function clearWorkflow() {
+      $("workflow-context").hidden = true;
+      for (const button of document.querySelectorAll(".preset")) button.setAttribute("aria-pressed", "false");
+    }
+    for (const button of document.querySelectorAll(".preset")) {
+      button.addEventListener("click", () => {
+        clearWorkflow();
+        button.setAttribute("aria-pressed", "true");
+        $("sample").value = button.dataset.sample;
+        $("policy").value = "agent-ingest";
+        $("policy-help").textContent = policyHelp["agent-ingest"];
+        $("workflow-context").textContent = "Fictional task · " + button.dataset.context;
+        $("workflow-context").hidden = false;
+        clearResult("Workflow selected. Scan the sample, then compare its benign twin.");
+      });
+    }
     function scanSelectedSample() {
       const sample = $("sample").value;
       const body = Object.hasOwn(exampleText, sample) ? { text: exampleText[sample] } : { sample };
@@ -402,6 +434,7 @@
         $("paste").focus();
         return;
       }
+      clearWorkflow();
       postScan({ text: $("paste").value }, "Pasted text (paste.txt)");
     });
     $("paste").addEventListener("input", () => { countBytes(); clearResult("Text changed. Scan again for a current verdict."); });
@@ -412,8 +445,9 @@
       $("policy-help").textContent = policyHelp[$("policy").value];
       clearResult("Policy changed. Scan again under the selected policy.");
     });
-    $("sample").addEventListener("change", () => clearResult("Example changed. Scan it to see the result."));
+    $("sample").addEventListener("change", () => { clearWorkflow(); clearResult("Example changed. Scan it to see the result."); });
     $("clear").addEventListener("click", () => {
+      clearWorkflow();
       $("paste").value = ""; countBytes();
       clearResult("Input and result cleared from this page.");
       $("paste").focus();

@@ -19,9 +19,10 @@
   <main class="shell" id="content">
     <div class="intro">
       <p class="eyebrow">A gate before the context window</p>
-      <h1>Hold what would steer your agent. Pass what wouldn't.</h1>
-      <p class="lead">Real, recorded scanner results for attacks hidden where a quick pattern match cannot see them: an Excel review comment split into runs, SVG text split across CDATA and spans, and a message disguised with small capitals. Other examples cover PDF glyphs, model checkpoints, and nested or concatenated archives. <strong>Every attack sits beside a benign near-twin</strong> with the same channel and shape, so you can see what is held and what still passes.</p>
-      <p class="notice"><strong>This website does not scan anything.</strong> It replays saved results. There is no paste box, file upload, or connection to a local scanner. Use the local app for your own content.</p>
+      <h1>An ordinary file. An unexpected instruction.</h1>
+      <p class="lead">A supplier spreadsheet. A build log. A model checkpoint. Explore how yara-gate inspects content before an agent reads it, then compare each suspicious example with an ordinary near-twin.</p>
+      <p class="notice"><strong>Synthetic scenarios. Real scanner results.</strong> This public demo replays fixed recordings; it never scans, uploads, or connects to your machine.</p>
+      <p class="help" id="revision"></p>
     </div>
     <noscript><p class="notice">JavaScript is needed to view the recordings. The local scanner can be used from the command line without this website.</p></noscript>
     <section id="scoreboard" class="scoreboard" aria-label="Recorded totals" hidden>
@@ -31,14 +32,19 @@
       <div><strong id="score-rules"></strong><span id="score-rules-label"></span></div>
     </section>
     <div id="workbench" hidden>
-      <section class="panel" aria-labelledby="choose-title">
-        <div class="section-head"><h2 id="choose-title"><span class="step">01</span> Pick an attack or its twin</h2><span class="help">Verdict chips: message · document · manual</span></div>
-        <div id="channels" class="filters" role="group" aria-label="Show one channel"></div>
-        <div id="gallery" class="pairs"></div>
+      <section class="stories" aria-labelledby="story-heading">
+        <div class="section-head"><h2 id="story-heading">Start with a workflow</h2><a href="#catalog">Browse every example ↓</a></div>
+        <div id="stories" class="story-buttons" role="group" aria-label="Fictional workflows"></div>
       </section>
       <div class="workspace">
         <section class="panel" aria-labelledby="policy-title">
-          <h2 id="policy-title"><span class="step">02</span> Where would the content be used?</h2>
+          <div id="story-context" class="story-context" hidden>
+            <p class="eyebrow">Fictional workflow · synthetic fixture</p>
+            <h2 id="story-title"></h2><p id="story-brief"></p>
+            <dl id="story-envelope"></dl>
+            <p class="help">The sender and task are illustrative. Only the fixed fixture below was scanned.</p>
+          </div>
+          <h2 id="policy-title"><span class="step">01</span> Choose the read policy</h2>
           <div id="policy" class="segmented" role="group" aria-label="Policy"></div>
           <p id="policy-help" class="policy-help"></p>
           <h3 id="example-title" class="example-title"></h3>
@@ -49,13 +55,13 @@
             <p class="help">A finding keeps its severity. The policy decides whether the content is held.</p>
             <table><caption class="sr-only">Recorded outcomes under each policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Verdict</th><th scope="col">Exit</th></tr></thead><tbody id="comparison"></tbody></table>
           </div>
-          <details><summary>How these recordings were made</summary><p class="help">When this page was deployed, GitHub Actions ran the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. The failure example used a deliberately invalid rule in a disposable copy.</p><dl id="recording-source"></dl></details>
+          <details><summary>How these recordings were made</summary><p class="help">These records were produced by the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. The failure example used a deliberately invalid rule in a disposable copy.</p><dl id="recording-source"></dl></details>
         </section>
         <section class="panel" aria-labelledby="result-title">
-          <div class="section-head"><h2 id="result-title" tabindex="-1"><span class="step">03</span> Recorded outcome</h2><span class="tag">Saved result</span></div>
+          <div class="section-head"><h2 id="result-title" tabindex="-1"><span class="step">02</span> Recorded outcome</h2><span class="tag">Saved result</span></div>
           <div id="decision" class="decision"><span id="verdict" class="badge"></span><span id="exit-policy" class="help"></span><h3 id="decision-title"></h3><p id="decision-help"></p></div>
           <p id="policy-reason" class="help"></p>
-          <h3>How it was caught</h3><ul id="findings" class="findings"></ul><p id="no-findings" class="help"></p>
+          <h3 id="findings-title">What the scanner found</h3><ul id="findings" class="findings"></ul><p id="no-findings" class="help"></p>
           <div id="twin" class="twin" hidden>
             <h3 id="twin-title">Compared with its benign twin</h3>
             <p class="help">Same channel and layout; only the content differs. Both were recorded under the selected policy.</p>
@@ -67,11 +73,17 @@
           <details><summary>Recorded response JSON</summary><p class="help">Curated fields with no input content, matched bytes, or file paths. This is demonstration evidence, never an authorization record for another file.</p><pre id="json" tabindex="0" aria-label="Recorded response JSON"></pre></details>
         </section>
       </div>
+      <details class="panel catalog" id="catalog">
+        <summary>Explore all recorded pairs &amp; the failed scan</summary>
+        <div class="section-head"><h2 id="choose-title">All examples, by channel</h2><span class="help">Verdict chips: message · document · manual</span></div>
+        <div id="channels" class="filters" role="group" aria-label="Show one channel"></div>
+        <div id="gallery" class="pairs"></div>
+      </details>
     </div>
     <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
     <section class="panel guide" aria-labelledby="precision-title">
-      <h2 id="precision-title">What stayed clean in the measurements</h2>
-      <p>Every attack above has a benign twin that the same build recorded as clean, with no findings, under all three policies. Beyond these examples, the bundled rules are measured against benign files on every change:</p>
+      <h2 id="precision-title">Low noise needs evidence, not a promise</h2>
+      <p>In this curated synthetic set, every attack has a benign twin that the same build recorded as clean, with no findings, under all three policies. Beyond these examples, the bundled rules are measured against benign files on every change:</p>
       <div class="guide-grid two">
         <div><h3>324 generated benign files</h3><p>81 of the 85 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.31%). CI fails the build if any rule crosses its limit.</p></div>
         <div><h3>500 installed documentation and asset files</h3><p>The original Phase 1c-small candidate changed no verdicts, incomplete reasons, or finding IDs in this macOS sample. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-06-phase1c-small.md" rel="noopener noreferrer">reader verification record</a> for scope.</p></div>

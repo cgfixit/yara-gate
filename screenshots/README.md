@@ -162,3 +162,13 @@ See the [Pages verification record](../docs/verification/2026-11-01-pages-demo.m
 for source/artifact provenance, capture times, image hashes, and verification
 limits. No sample content, credentials, private documents, or local paths appear
 in the captures. Images retain their original bytes.
+
+## November 6 guided synthetic workflows
+
+![Guided replay with a fictional supplier task and recorded outcome](yara-gate-guided-replay.jpg)
+
+The [guided workflow verification](../docs/verification/2026-11-06-guided-demo.md)
+records the original replay, live-workbench, and narrow-screen comparison JPEGs,
+source revision `a4f3e51`, capture conditions, SHA-256 hashes, and limits. Captured
+November 6, 2026 at approximately 22:32–22:34 EST in the macOS in-app browser.
+These use only fixed inert fixtures and explicitly fictional workflow context.

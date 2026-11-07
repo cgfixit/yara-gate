@@ -40,7 +40,50 @@ const sources = {
 };
 const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: recording.cases[0].id, policy: 'agent-ingest', channel: 'All' };
+const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channel: 'All' };
+
+// Fictional context only. Decisions always come from the selected fixture's recording.
+const stories = [
+  { id: 'xlsx_comment_override', label: 'Supplier review', title: 'Summarize a supplier workbook',
+    brief: 'The procurement assistant is asked to summarize review comments. One comment hides an override across formatting runs; its twin discusses quarterly totals.',
+    sender: 'supplier@example.invalid', task: 'Procurement · review comments', file: 'review.xlsx' },
+  { id: 'ansi_log', label: 'Build triage', title: 'Explain a failed build',
+    brief: 'A coding assistant receives a coloured CI log. A terminal escape sits against an instruction in the suspicious version; the twin keeps an ordinary build summary.',
+    sender: 'Example CI · simulated tool response', task: 'Engineering · build triage', file: 'build.log' },
+  { id: 'svg_cdata_override', label: 'Design handoff', title: 'Read a supplied design asset',
+    brief: 'An assistant checks an SVG attachment. The suspicious label splits a directive across CDATA and a span; its twin uses the same layout for an ordinary chart label.',
+    sender: 'design@example.invalid', task: 'Design · attachment review', file: 'logo.svg' },
+  { id: 'pickle_call', label: 'Model intake', title: 'Inspect a checkpoint before loading',
+    brief: 'A model file arrives for evaluation. Static inspection finds an os.system call in the synthetic pickle; the twin rebuilds ordinary state with OrderedDict. Neither is unpickled.',
+    sender: 'Example model catalog · dummy artifact', task: 'ML · artifact intake', file: 'model.pt' },
+  { id: 'devcontainer', label: 'Repository intake', title: 'Review a development environment',
+    brief: 'A repository asks to initialize a dev container. The suspicious config downloads and runs a script on the host; the twin creates a host folder and installs inside the container.',
+    sender: 'Example repository · dummy checkout', task: 'Engineering · environment review', file: 'devcontainer.json' }
+];
+
+function storyButtons() {
+  for (const story of stories) {
+    const button = text($('stories'), 'button', story.label, 'story-button');
+    button.type = 'button';
+    button.dataset.example = story.id;
+    button.addEventListener('click', () => {
+      state.policy = 'agent-ingest';
+      select(story.id, false);
+    });
+  }
+}
+
+function storyContext(example) {
+  const story = stories.find((item) => item.id === example.id || item.id === example.pair);
+  $('story-context').hidden = !story;
+  for (const button of document.querySelectorAll('.story-button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.example === story?.id));
+  }
+  if (!story) return;
+  $('story-title').textContent = story.title;
+  $('story-brief').textContent = story.brief;
+  definitions($('story-envelope'), [['From (fictional)', story.sender], ['Task', story.task], ['Fixture filename', story.file]]);
+}
 
 function text(parent, tag, value, className) {
   const element = document.createElement(tag);
@@ -175,13 +218,14 @@ function twinColumn(parent, item, policy, isSelected) {
 function select(id, scroll) {
   state.example = id;
   render();
-  if (scroll && window.matchMedia('(max-width: 800px)').matches) $('result-title').focus();
+  if (scroll) $('result-title').focus();
 }
 
 function render() {
   const example = byId.get(state.example);
   const policy = state.policy;
   const result = example.results[policy];
+  storyContext(example);
   for (const card of document.querySelectorAll('.card')) card.setAttribute('aria-pressed', String(card.dataset.example === example.id));
   for (const button of document.querySelectorAll('.segment')) button.setAttribute('aria-pressed', String(button.dataset.policy === policy));
   $('policy-help').textContent = help[policy];
@@ -208,6 +252,7 @@ function render() {
   $('policy-reason').textContent = result.incomplete_reason
     ? 'Incomplete: ' + result.incomplete_reason
     : result.policy_reason || 'No policy promotion in this recording.';
+  $('findings-title').textContent = result.findings.length ? 'What triggered the decision' : 'What the scanner found';
   $('findings').replaceChildren();
   for (const finding of result.findings) {
     const li = text($('findings'), 'li', '');
@@ -254,6 +299,7 @@ function render() {
 }
 
 scoreboard();
+storyButtons();
 gallery();
 channelFilters();
 policyButtons();
@@ -261,10 +307,11 @@ $('twin-open').addEventListener('click', () => {
   const pair = byId.get(state.example).pair;
   if (pair) select(pair, false);
 });
+$('revision').textContent = 'Recorded from ' + recording.source_revision.slice(0, 12) + ' · ' + recording.captured_at.slice(0, 10) + ' UTC · bundled rules only';
 definitions($('recording-source'), [
   ['Captured at (UTC)', recording.captured_at],
   ['Scanner source revision', recording.source_revision],
-  ['Coverage scope', 'Bundled local rules only; no vendor packs. Re-recorded from this revision when the page was deployed; verdicts and findings must match the reviewed baseline, or the deploy stops.']
+  ['Coverage scope', 'Bundled local rules only; no vendor packs. The deploy pipeline re-records from its source revision; verdicts and findings must match the reviewed baseline, or the deploy stops.']
 ]);
 render();
 $('workbench').hidden = false;
