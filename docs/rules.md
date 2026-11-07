@@ -293,18 +293,27 @@ it. The Flate encoding of the same prose does not contain the keyword, and the
 annotation after that stream is still read.
 
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. Classic 20-byte tables, Flate `/Type /XRef` streams (`/W`,
-`/Index`, and a PNG or TIFF predictor), hybrid `/XRefStm`, and `/Prev` chains
-are read. A newer section overrides an older one. At one trailer, a classic
-offset and a stream offset for the same object are both checked. A type-1
-offset inside a landed span makes the scan incomplete
-(`pdf annotation xref offset inside stream`). A type-2 entry is an object-stream
-index, not a file offset, so object streams stay readable. No `startxref`
-leaves the sequential reader in place. A malformed table or stream
-(`pdf xref malformed`), a filter or predictor this reader does not decode
-(`pdf xref unsupported`), more than 100000 entries
-(`pdf xref entries exceed 100000`), or a spent deadline is incomplete. Chains
-stop at 32 sections. Flate output is charged to the shared 500MB budget.
+can be clean. Every `startxref` is a candidate, with or without a following
+`%%EOF`, and each candidate includes its `/Prev` chain. Classic 20-byte tables,
+Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
+hybrid `/XRefStm` are read. A newer section overrides an older one inside one
+candidate. At one trailer, a classic offset and a stream offset for the same
+object are both checked. The landed span includes the newline and `endstream`
+the length ends on, so an offset on those bytes is inside the span. A type-1
+offset from any candidate inside that span makes the scan incomplete
+(`pdf annotation xref offset inside stream`). A type-1 offset that does not
+begin an object header is malformed, which covers a `/W` width that does not
+match the packed fields and a stream whose decoded length is not an exact
+multiple of the row width. A type-2 entry is an object-stream index, not a
+file offset, so object streams stay readable. An object that only a later
+candidate lists is kept when its offset begins an object header outside every
+span. No `startxref` leaves the sequential reader in place. A malformed table
+or stream (`pdf xref malformed`), a filter or predictor this reader does not
+decode (`pdf xref unsupported`), more than 100000 entries
+(`pdf xref entries exceed 100000`), more than 32 `startxref` candidates, or a
+spent deadline is incomplete. Chains stop at 32 sections. Flate output is
+charged to the shared 500MB budget, and a stream `pdf_streams` already inflated
+is not inflated again.
 
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an
