@@ -397,7 +397,13 @@ paragraph, so a kerned array, a hex string, glyph-ID text from Chrome, LibreOffi
 or Word, a word in bold, or a wrapped line reads as written). A composite font with
 no readable `ToUnicode` map leaves text unread; that is the note
 `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
-text it could not read. A Word, Excel, or PowerPoint verdict covers each XML member
+text it could not read. Annotation `/Contents` strings are decoded separately
+as `pdf-annotation` (literal/octal, hexadecimal, PDFDocEncoding, UTF-16BE or
+UTF-8 with BOM, including indirect and supported object-stream members), then
+folded when spelling changes. Annotations and blank-line-separated paragraphs
+are never joined. Unreadable supported annotation contents are incomplete; rich
+text `/RC`, form-field values, and unsupported stream filters are not decoded
+by this reader. A Word, Excel, or PowerPoint verdict covers each XML member
 and an `ooxml-text` view that joins the text runs of the body, headers, footers,
 notes, comments, shared strings, and slides, so a sentence Word split across
 formatting runs is seen whole; an Excel inline-string cell split across rich-text

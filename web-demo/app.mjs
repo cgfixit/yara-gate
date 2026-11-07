@@ -28,6 +28,7 @@ const viewNames = {
   'ooxml-text': 'the joined text of an Office document',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
   'ooxml-comment': 'one Office comment with its text runs rejoined',
+  'pdf-annotation': 'one PDF annotation with its text string decoded',
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
   'pdf-flate': 'an inflated PDF stream',

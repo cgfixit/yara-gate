@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 16 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 18 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -22,7 +22,8 @@ many comment blocks; unmatched Markdown brackets; unclosed RTF groups/control
 words; SVG tspans; Latin small capitals; and stored OOXML comments. No input is
 executed, fetched, or extracted to disk. The ZIP input size includes its metadata.
 The ZIP end-record, comment-piece, and RTF group-depth floods must return their
-explicit incomplete cap reasons. The RTF reader now rejects the unclosed nesting
+explicit incomplete cap reasons. Two added PDF annotation floods require the
+100,000-token dictionary cap and 1 MiB encoded-string cap. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
