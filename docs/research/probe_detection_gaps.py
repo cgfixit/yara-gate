@@ -44,8 +44,6 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 
 # Gaps that still miss on this tree, by case label. Remove a label when its fix lands.
 OPEN: dict[str, str] = {
-    "rtf bold group inside the phrase": "#171.4",
-    "rtf hex escape for a letter": "#171.4",
     "pdf annotation hex string": "#171.7",
     "docx vanished run": "#110",
     "pdf invisible render mode": "#110",

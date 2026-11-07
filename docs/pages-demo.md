@@ -1,10 +1,11 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 41
-inert examples under `agent-ingest`, `agent-document`, and `default`: 20
+YARA-X backend. This site therefore replays **real recorded results** for 43
+inert examples under `agent-ingest`, `agent-document`, and `default`: 21
 attacks, each with a benign near-twin, and one failed scan. Selecting an example does
-not start a scan. The UI labels every result as recorded and shows the scanner
+not start a scan. These are detected examples at their recorded revision, not
+current bypasses. The RTF pair now covers formatting and encoded letters. The UI labels every result as recorded and shows the scanner
 revision, capture time, rule coverage, and engine version.
 
 The page is built to show precision as well as detection. A scoreboard counts,
@@ -39,7 +40,7 @@ model intake (pickle calls), and repository intake (dev-container host commands)
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 20-pair catalog and incomplete scan remain under an expandable section.
+The full 21-pair catalog and incomplete scan remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers the same five shortcuts. Selecting one clears the
