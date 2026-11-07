@@ -45,6 +45,76 @@ class XrefEntry:
     generation: int = 0
 
 
+def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
+    """Line-start ``startxref`` keywords outside comments and literal strings."""
+    found: list[int] = []
+    index = 0
+    size = len(data)
+    line_start = True
+    comment = False
+    depth = 0
+    escaped = False
+    hex_string = False
+    while index < size:
+        if index % 65536 == 0:
+            budget.check()
+        byte = data[index]
+        if comment:
+            if byte in b"\r\n":
+                comment = False
+                line_start = True
+            index += 1
+            continue
+        if depth:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:
+                escaped = True
+            elif byte == 0x28:
+                depth += 1
+            elif byte == 0x29:
+                depth -= 1
+            line_start = byte in b"\r\n"
+            index += 1
+            continue
+        if hex_string:
+            if byte == 0x3E:
+                hex_string = False
+            line_start = byte in b"\r\n"
+            index += 1
+            continue
+        if byte == 0x25:
+            comment = True
+            line_start = False
+            index += 1
+            continue
+        if byte == 0x28:
+            depth = 1
+            line_start = False
+            index += 1
+            continue
+        if byte == 0x3C and index + 1 < size and data[index + 1] != 0x3C:
+            hex_string = True
+            line_start = False
+            index += 1
+            continue
+        if line_start and data.startswith(b"startxref", index):
+            after = index + len(b"startxref")
+            if after >= size or data[after : after + 1] in b"\x00\t\n\f\r ":
+                found.append(index)
+                if len(found) > _MAX_HOPS:
+                    raise ContentLimit("pdf xref malformed")
+                index = after
+                line_start = False
+                continue
+        if byte in b"\r\n":
+            line_start = True
+        elif byte not in b"\x00\t\f ":
+            line_start = False
+        index += 1
+    return found
+
+
 def xref_file_offsets(
     data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
 ) -> list[int] | None:
@@ -56,16 +126,7 @@ def xref_file_offsets(
     too many entries or candidates, and a spent deadline raise ``ContentLimit``.
     ``decoded`` is the stream cache ``pdf_streams`` already inflated.
     """
-    candidates: list[int] = []
-    cursor = 0
-    while True:
-        marker = data.find(b"startxref", cursor)
-        if marker < 0:
-            break
-        candidates.append(marker)
-        cursor = marker + len(b"startxref")
-        if len(candidates) > _MAX_HOPS:
-            raise ContentLimit("pdf xref malformed")
+    candidates = _startxref_candidates(data, budget)
     if not candidates:
         return None
     union: list[int] = []

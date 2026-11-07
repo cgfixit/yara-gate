@@ -292,9 +292,33 @@ uncompressed page text that includes the word, and a JPEG comment that includes
 it. The Flate encoding of the same prose does not contain the keyword, and the
 annotation after that stream is still read.
 
+A keyword-delimited object header in the raw bytes of a landed stream makes
+the scan incomplete (`pdf object header inside stream`). The header is
+`N G obj` with PDF whitespace (`NUL`, TAB, LF, FF, CR, or space, including a
+run of them) between the tokens. The number starts the span or follows
+whitespace or a delimiter `()<>[]{}/%`. `obj` ends on whitespace, one of those
+delimiters, or `<<`. This does not depend on an xref entry, a page reference,
+or the generation. Decoded object-stream members are not this check. They are
+read on their own, and a type-2 xref entry stays an index into that stream.
+The incompletes are conservative. A header written as stream data, including
+one after a `/Length` that lands on `endstream`, still stops the scan, and a
+real annotation after that stream is not read. A header that no viewer displays
+still stops the scan. Measured on 2026-11-07, none of these files had such a header
+in a landed span: `rfbproto-3.3.pdf` (Acrobat Distiller 3.02, 110778 bytes),
+`rfbproto-3.7.pdf` (GNU Ghostscript 5.10, 165552 bytes), `rfbproto-3.8.pdf`
+(GPL Ghostscript 8.61, 143840 bytes), `gnus-logo.pdf` (GPL Ghostscript 8.54,
+3658 bytes), and the two Microsoft Word hybrids
+`CL2020 EMEAR DEVWKS-1542 Intersight Ansible Lab Guide.pdf` (1030061 bytes)
+and `Impact DNW07 UCS Ansible Collection Lab Guide.pdf` (433208 bytes). The
+same header pattern was absent from 348 fonts under `/usr/share/fonts` and
+454 PNG or JPEG files under `/usr/share/pixmaps` and `/usr/share/icons`.
+
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. Every `startxref` is a candidate, with or without a following
-`%%EOF`, and each candidate includes its `/Prev` chain. Classic 20-byte tables,
+can be clean. A candidate is a `startxref` keyword at the start of a line,
+outside comments and literal or hex strings, with or without a following
+`%%EOF`. A comment or string that contains the word is not a candidate. A
+candidate that is present and does not parse still makes the scan incomplete.
+Each candidate includes its `/Prev` chain. Classic 20-byte tables,
 Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
 hybrid `/XRefStm` are read. A newer section overrides an older one inside one
 candidate. At one trailer, a classic offset and a stream offset for the same

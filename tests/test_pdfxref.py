@@ -325,10 +325,10 @@ def _mismatched_width() -> bytes:
     for number, body in enumerate(_objects(), 1):
         offsets[number] = len(buf)
         buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
-    hidden = b"\n" + b"5 0 obj\n" + _link(PHRASE) + b"\nendobj\n" + b"QQQ"
+    hidden = b"ordinary image bytes without an object header"
     offsets[4] = len(buf)
     buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
-    attack = offsets[4] + buf[offsets[4] :].find(b"stream\n") + len(b"stream\n") + 1
+    attack = offsets[1]
     offsets[6] = len(buf)
 
     def pack(kind: int, field2: int, field3: int = 0) -> bytes:
@@ -359,6 +359,54 @@ def test_xref_width_mismatch_is_incomplete(rules_copy: Path) -> None:
     result = _scan(_mismatched_width(), rules_copy)
     assert result.verdict.value == "incomplete"
     assert result.incomplete_reason == "pdf xref malformed"
+
+
+def _repair_only() -> bytes:
+    """Object 5 exists only as a raw header inside a landed stream. The xref omits it."""
+    buf = bytearray(b"%PDF-1.4\n")
+    entries: dict[int, tuple[int, int, bytes]] = {0: (0, 65535, b"f")}
+    for number, body in enumerate(_objects(), 1):
+        entries[number] = (len(buf), 0, b"n")
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    hidden = b"\n5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    entries[4] = (len(buf), 0, b"n")
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
+    return _finish(buf, _classic(entries, 5))
+
+
+def _generation_reuse() -> bytes:
+    """Xref generation 1 is a benign object. Generation 0 with the phrase is inside the stream."""
+    buf = bytearray(b"%PDF-1.4\n")
+    entries: dict[int, tuple[int, int, bytes]] = {0: (0, 65535, b"f")}
+    for number, body in enumerate(_objects(), 1):
+        entries[number] = (len(buf), 0, b"n")
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    hidden = b"\n5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    entries[4] = (len(buf), 0, b"n")
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
+    benign = b"<< /Type /Annot /Subtype /Text /Rect [0 0 10 10] /Contents (Hello.) >>"
+    entries[5] = (len(buf), 1, b"n")
+    buf += b"5 1 obj\n" + benign + b"\nendobj\n"
+    return _finish(buf, _classic(entries, 6))
+
+
+def test_unlisted_object_header_inside_a_stream_is_incomplete(rules_copy: Path) -> None:
+    result = _scan(_repair_only(), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf object header inside stream"
+
+
+def test_generation_mismatch_inside_a_stream_is_incomplete(rules_copy: Path) -> None:
+    result = _scan(_generation_reuse(), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf object header inside stream"
+
+
+def test_startxref_inside_a_comment_is_not_a_candidate(rules_copy: Path) -> None:
+    data = _benign("classic") + b"\n% startxref 99999\n(startxref 99999)\n"
+    result = _scan(data, rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
 
 
 def test_flate_xref_is_not_inflated_twice() -> None:

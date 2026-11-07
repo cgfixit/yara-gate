@@ -229,6 +229,26 @@ def _dictionaries(
 
 
 _OBJECT_AT = re.compile(rb"[0-9]{1,10}[\x00\t\n\f\r ]+[0-9]{1,5}[\x00\t\n\f\r ]+obj\b")
+# A raw header inside a landed stream. Whitespace between the tokens is any PDF
+# whitespace, including a run of them. The number must start the span or follow
+# whitespace or a delimiter. ``obj`` must end on whitespace, a delimiter, or ``<<``.
+_STREAM_HEADER = re.compile(
+    rb"([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj"
+    rb"(?=[\x00\t\n\f\r ()<>\[\]{}/%]|<<)"
+)
+_HEADER_BOUND = b"\x00\t\n\f\r ()<>[]{}/%"
+
+
+def _reject_headers_inside(data: bytes, spans: list[tuple[int, int]]) -> None:
+    """A keyword-delimited object header in raw stream bytes is incomplete.
+
+    Decoded object-stream members are not these spans. They are read separately.
+    """
+    for begin, end in spans:
+        for match in _STREAM_HEADER.finditer(data, begin, end):
+            at = match.start()
+            if at == begin or data[at - 1] in _HEADER_BOUND:
+                raise ContentLimit("pdf object header inside stream")
 
 
 def _reject_xref_inside(
@@ -264,6 +284,7 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
 
     spans: list[tuple[int, int]] = []
     collect(_dictionaries(data, objects, budget, strings, spans))
+    _reject_headers_inside(data, spans)
     _reject_xref_inside(data, spans, budget, objects.decoded)
     for number, source in objects.stream_members():
         body = bytes(source)
