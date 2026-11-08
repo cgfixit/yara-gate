@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import zipfile
+import zlib
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -135,6 +136,26 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, page),
         None,
     )
+    # 200 Type0 fonts, each with its own FlateDecode ToUnicode map writing 65,536 entries:
+    # 13 s on 43aba2e, which had no per-file CMap budget.
+    identity = b"1 beginbfrange\n<0000> <FFFF> <0000>\nendbfrange\n"
+    yield (
+        "pdf-cmap-fonts.pdf",
+        _cmap_pdf(200, zlib.compress(identity), b"/Filter/FlateDecode"),
+        "pdf cmap entries exceed 524288",
+    )
+    # One map of unclosed section markers: a lazy begin...end regex rescanned to the end from
+    # each one, past the 20 s watchdog. Unfiltered, so the map is exactly what the file holds.
+    yield (
+        "pdf-cmap-sections.pdf",
+        _cmap_pdf(1, b"beginbfchar ", b""),
+        None,
+    )
+    yield (
+        "pdf-cmap-tokens.pdf",
+        _cmap_pdf(1, b"[", b"", b"beginbfrange ", b" endbfrange"),
+        "pdf cmap tokens exceed 1572864",
+    )
     # One resource name that means 64 Type0 fonts, each with its own ToUnicode map, as a
     # merged file of 64 sources would: every string is decoded in four of them, and the 60
     # past that cap make the text unmapped rather than unread without notice.
@@ -175,6 +196,47 @@ def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
             raise RuntimeError("content stream is not one landed span")
         return header + body + marker
     raise RuntimeError("content stream length does not fit")
+
+
+def _cmap_pdf(
+    fonts: int, cmap: bytes, filters: bytes, prefix: bytes = b"", suffix: bytes = b""
+) -> bytes:
+    """A 4 MiB page naming ``fonts`` Type0 fonts with one ToUnicode stream each.
+
+    With ``filters`` each stream is ``cmap`` and a comment pads the file. Without, one stream
+    repeats ``cmap`` between ``prefix`` and ``suffix`` to fill the file, and its `/Length`
+    lands on `endstream`.
+    """
+    body = b"BT /F0 12 Tf 72 700 Td <00480069> Tj ET"
+    names = b" ".join(b"/F%d %d 0 R" % (index, 100 + index) for index in range(fonts))
+    head = b"".join(
+        [
+            b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources<</Font<<",
+            names + b">>>>/Contents 4 0 R>>endobj\n",
+            b"4 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body),
+            *(
+                b"%d 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode %d 0 R>>"
+                b"endobj\n" % (100 + index, 5000 + index)
+                for index in range(fonts)
+            ),
+        ]
+    )
+    tail = b"\nendstream endobj\n%%EOF\n"
+    if filters:
+        streams = b"".join(
+            b"%d 0 obj<</Length %d%s>>stream\n%s" % (5000 + index, len(cmap), filters, cmap) + tail
+            for index in range(fonts)
+        )
+        return _filled(head + streams + b"%", b" ")[:-1] + b"\n"
+    for digits in range(1, 9):
+        start = b"5000 0 obj<</Length %s>>stream\n" % (b"0" * digits)
+        length = SIZE - len(head) - len(start) - len(tail)
+        if len(str(length)) != digits:
+            continue
+        count, rest = divmod(length - len(prefix) - len(suffix), len(cmap))
+        stream = prefix + cmap * count + b" " * rest + suffix
+        return head + b"5000 0 obj<</Length %d>>stream\n" % length + stream + tail
+    raise RuntimeError("cmap stream length does not fit")
 
 
 def _filled(prefix: bytes, token: bytes) -> bytes:
