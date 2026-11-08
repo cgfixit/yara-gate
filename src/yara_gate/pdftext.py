@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 
 from yara_gate.content import (
@@ -46,6 +46,13 @@ MAX_TOKENS = 4_000_000
 # A TJ array holds a few hundred items; one this long is not text a reader shows.
 MAX_ARRAY_ITEMS = 100_000
 MAX_CMAP_ENTRIES = 1 << 17
+# ToUnicode entries written in one file, across all its fonts and overwrites included. One
+# 20-byte `<0000> <FFFF> <0000>` bfrange writes 65,536 entries, so many fonts with their own
+# maps, or one map repeating the range, would otherwise spend the deadline and memory on maps.
+MAX_CMAP_TOTAL = 4 * MAX_CMAP_ENTRIES
+# CMap tokens lexed in one file. A well-formed entry takes two tokens (bfchar) or at most three
+# (a one-code bfrange), so this admits every map within MAX_CMAP_TOTAL.
+MAX_CMAP_TOKENS = 3 * MAX_CMAP_TOTAL
 MAX_FONT_VARIANTS = 4
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
@@ -78,16 +85,8 @@ _TO_UNICODE = re.compile(
 )
 _TYPE0 = re.compile(rb"/Subtype[\x00\t\n\f\r ]*/Type0\b")
 _IDENTITY = re.compile(rb"/Encoding[\x00\t\n\f\r ]*/Identity-[HV]\b")
-_CMAP_KINDS = (b"codespacerange", b"bfchar", b"bfrange")
-# One pass over a CMap: section keywords and the tokens inside sections. A token cannot hold a
-# keyword (g, i, n are not hex digits), so this finds the tokens a per-section pass would.
-_CMAP_LEXEME = re.compile(
-    rb"(begin|end)(codespacerange|bfchar|bfrange)|<([0-9A-Fa-f\x00\t\n\f\r ]*)>|\[|\]"
-)
-# Real ToUnicode maps hold a few hundred thousand tokens at most; past this the map is not read
-# whole, so the scan is incomplete rather than silently using part of it.
-MAX_CMAP_TOKENS = 1 << 20
-_CMAP_CHECK_EVERY = 4096
+_CMAP_BEGIN = re.compile(rb"begin(codespacerange|bfchar|bfrange)")
+_CMAP_TOKEN = re.compile(rb"<([0-9A-Fa-f\x00\t\n\f\r ]*)>|\[|\]")
 
 Lookup = Callable[[int, int], list[bytes]]
 
@@ -148,7 +147,7 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     by_number: dict[int, bytes | None] = {
         stream.number: stream.text for stream in streams if stream.number is not None
     }
-    fonts = _fonts(data, streams, objects, by_number, budget)
+    fonts = _fonts(data, streams, objects, _Cmaps(by_number, budget), budget)
     box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
     # Keep the existing font approximation in file order. Visibility needs stronger evidence
@@ -277,7 +276,7 @@ def _fonts(
     data: bytes,
     streams: list[PdfStream],
     objects: Lookup,
-    by_number: dict[int, bytes | None],
+    cmaps: _Cmaps,
     budget: Budget,
 ) -> dict[bytes, list[Font]]:
     """Resource name to the distinct fonts it names anywhere in the file (pages may differ)."""
@@ -324,7 +323,7 @@ def _fonts(
         found: list[Font] = []
         for key in sorted(refs):
             if key not in cache:
-                cache[key] = _font(objects(*key), by_number, budget, raw, key)
+                cache[key] = _font(objects(*key), cmaps, raw, key)
             font = cache[key]
             if font is not None and font not in found:
                 found.append(font)
@@ -335,8 +334,7 @@ def _fonts(
 
 def _font(
     bodies: list[bytes],
-    by_number: dict[int, bytes | None],
-    budget: Budget,
+    cmaps: _Cmaps,
     raw: Callable[[tuple[int, int]], bytes],
     key: tuple[int, int],
 ) -> Font | None:
@@ -349,15 +347,46 @@ def _font(
             # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
             # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
             mapping = _TO_UNICODE.search(raw(key))
-        if mapping is None:
-            return Font(composite, None, (2,) if composite else (1,))
-        cmap_bytes = by_number.get(int(mapping.group(1)))
-        if not cmap_bytes:
-            return Font(composite, None, (2,) if composite else (1,))
-        cmap, lengths = _cmap(cmap_bytes, budget)
         default = (2,) if composite else (1,)
+        parsed = None if mapping is None else cmaps.get(int(mapping.group(1)))
+        if parsed is None:
+            return Font(composite, None, default)
+        cmap, lengths = parsed
         return Font(composite, cmap or None, lengths or default)
     return None
+
+
+class _Cmaps:
+    """A file's ToUnicode maps by object number, each parsed once however many fonts share it.
+
+    Every token lexed counts toward ``MAX_CMAP_TOKENS`` and every entry written into any map,
+    overwrites included, toward ``MAX_CMAP_TOTAL``. Past either the scan is incomplete rather
+    than spending the deadline and memory on maps.
+    """
+
+    def __init__(self, streams: dict[int, bytes | None], budget: Budget) -> None:
+        self._streams = streams
+        self._budget = budget
+        self._parsed: dict[int, tuple[dict[bytes, str], tuple[int, ...]] | None] = {}
+        self.written = 0
+        self.lexed = 0
+
+    def get(self, number: int) -> tuple[dict[bytes, str], tuple[int, ...]] | None:
+        if number not in self._parsed:
+            data = self._streams.get(number)
+            self._parsed[number] = _cmap(data, self._budget, self) if data else None
+        return self._parsed[number]
+
+    def spend(self, entries: int) -> None:
+        self.written += entries
+        if self.written > MAX_CMAP_TOTAL:
+            raise ContentLimit(f"pdf cmap entries exceed {MAX_CMAP_TOTAL}")
+
+    def lex(self, body: bytes) -> None:
+        # Every _CMAP_TOKEN match starts with one of these bytes, so this bounds the matches.
+        self.lexed += body.count(b"<") + body.count(b"[") + body.count(b"]")
+        if self.lexed > MAX_CMAP_TOKENS:
+            raise ContentLimit(f"pdf cmap tokens exceed {MAX_CMAP_TOKENS}")
 
 
 _LOOKUP_WINDOW = 4000
@@ -375,56 +404,59 @@ def _prime(objects: Lookup, keys: set[tuple[int, int]]) -> None:
         prime(keys)
 
 
-def _cmap(data: bytes, budget: Budget) -> tuple[dict[bytes, str], tuple[int, ...]]:
+def _cmap(data: bytes, budget: Budget, work: _Cmaps) -> tuple[dict[bytes, str], tuple[int, ...]]:
     """bfchar and bfrange entries of a ToUnicode CMap, and its code lengths in bytes.
 
-    A section runs from ``begin<kind>`` to the next ``end<kind>``; other keywords inside it are
-    text. A ``begin`` with no matching ``end`` after it opens nothing, which the last ``end`` of
-    each kind decides, so one linear pass replaces a lazy search that rescanned to the end of
-    the map for every unterminated ``begin``. The budget is checked every 4,096 lexemes.
+    Each section charges ``work`` for its tokens before lexing them and for the entries it may
+    write before writing them.
     """
     mapping: dict[bytes, str] = {}
     lengths: set[int] = set()
-    last_end = {kind: data.rfind(b"end" + kind) for kind in _CMAP_KINDS}
-    kind: bytes | None = None
-    items: list[bytes] = []
-    tokens = 0
-    for count, lexeme in enumerate(_CMAP_LEXEME.finditer(data)):
-        if count % _CMAP_CHECK_EVERY == 0:
-            budget.check()
-        edge, name, hex_digits = lexeme.group(1, 2, 3)
-        if kind is None:
-            if edge == b"begin" and last_end[name] >= lexeme.end():
-                kind, items = name, []
-            continue
-        if edge is not None:
-            if edge == b"end" and name == kind:
-                _cmap_section(kind, items, mapping, lengths)
-                kind = None
-            continue
-        tokens += 1
-        if tokens > MAX_CMAP_TOKENS:
-            raise ContentLimit("pdf cmap exceeds token limit")
-        items.append(_hex_bytes(hex_digits) if hex_digits is not None else lexeme.group())
+    for kind, body in _cmap_sections(data, budget):
+        work.lex(body)
+        items = [
+            _hex_bytes(token.group(1)) if token.group(1) is not None else token.group()
+            for token in _CMAP_TOKEN.finditer(body)
+        ]
+        if kind == b"codespacerange":
+            lengths.update(len(item) for item in items[0::2] if isinstance(item, bytes) and item)
+        elif kind == b"bfchar":
+            work.spend(len(items) // 2)
+            for source, target in zip(items[0::2], items[1::2], strict=False):
+                if len(mapping) >= MAX_CMAP_ENTRIES:
+                    break
+                if source and target not in (b"[", b"]"):
+                    mapping[source] = _utf16(target)
+        else:
+            _cmap_ranges(items, mapping, work)
     return mapping, tuple(sorted(lengths, reverse=True))
 
 
-def _cmap_section(
-    kind: bytes, items: list[bytes], mapping: dict[bytes, str], lengths: set[int]
-) -> None:
-    if kind == b"codespacerange":
-        lengths.update(len(item) for item in items[0::2] if item)
-    elif kind == b"bfchar":
-        for source, target in zip(items[0::2], items[1::2], strict=False):
-            if len(mapping) >= MAX_CMAP_ENTRIES:
-                break
-            if source and target not in (b"[", b"]"):
-                mapping[source] = _utf16(target)
-    else:
-        _cmap_ranges(items, mapping)
+def _cmap_sections(data: bytes, budget: Budget) -> Iterator[tuple[bytes, bytes]]:
+    """Each ``begin<kind> ... end<kind>`` section's kind and body, in order, in linear time.
+
+    A ``begin`` with no later ``end`` of its kind is skipped, and the search goes on after it,
+    as a lazy ``begin(kind)(.*?)end(kind)`` regex would. That regex rescans to the end of the
+    data from every unclosed ``begin``, quadratic in their number and with no deadline check
+    inside one search. Here a kind with no ``end`` left is never searched for again.
+    """
+    unclosed: set[bytes] = set()
+    position = 0
+    while len(unclosed) < 3 and (begin := _CMAP_BEGIN.search(data, position)) is not None:
+        budget.check()
+        kind = begin.group(1)
+        position = begin.end()
+        if kind in unclosed:
+            continue
+        end = data.find(b"end" + kind, position)
+        if end < 0:
+            unclosed.add(kind)
+            continue
+        yield kind, data[position:end]
+        position = end + len(b"end") + len(kind)
 
 
-def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str]) -> None:
+def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str], work: _Cmaps) -> None:
     index = 0
     while index + 2 < len(items) and len(mapping) < MAX_CMAP_ENTRIES:
         low, high, target = items[index], items[index + 1], items[index + 2]
@@ -441,13 +473,16 @@ def _cmap_ranges(items: list[bytes], mapping: dict[bytes, str]) -> None:
                 targets.append(items[index])
                 index += 1
             index += 1
-            for offset, each in enumerate(targets[: last - first + 1]):
+            targets = targets[: last - first + 1]
+            work.spend(len(targets))
+            for offset, each in enumerate(targets):
                 mapping[(first + offset).to_bytes(len(low), "big")] = _utf16(each)
             continue
         if target == b"]":
             continue
         base = int.from_bytes(target, "big") if target else 0
         width = max(len(target), 2)
+        work.spend(last - first + 1)
         for offset in range(last - first + 1):
             if len(mapping) >= MAX_CMAP_ENTRIES:
                 return

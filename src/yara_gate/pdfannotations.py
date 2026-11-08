@@ -146,7 +146,9 @@ def _tokens(
                 # with no earlier keyword, those bytes are inside the body.
                 if ending and not _earlier_endstream(data, begin, end_at, budget):
                     if spans is not None:
-                        spans.append((begin, end_at))
+                        # Include the newline and endstream the length landed on.
+                        # An offset on those bytes is not an object a reader seeks.
+                        spans.append((begin, end_at + ending.end()))
                     position = end_at + ending.end()
                     continue
             # Missing, unaligned, or ambiguous. Resuming the lexer is not safe.
@@ -226,14 +228,45 @@ def _dictionaries(
         raise ContentLimit("pdf annotation dictionary malformed")
 
 
-def _reject_xref_inside(data: bytes, spans: list[tuple[int, int]], budget: Budget) -> None:
-    offsets = xref_file_offsets(data, budget)
-    if not offsets or not spans:
+_OBJECT_AT = re.compile(rb"[0-9]{1,10}[\x00\t\n\f\r ]+[0-9]{1,5}[\x00\t\n\f\r ]+obj\b")
+# A raw header inside a landed stream. Whitespace between the tokens is any PDF
+# whitespace, including a run of them. The number must start the span or follow
+# whitespace or a delimiter. ``obj`` must end on whitespace, a delimiter, or ``<<``.
+_STREAM_HEADER = re.compile(
+    rb"([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj"
+    rb"(?=[\x00\t\n\f\r ()<>\[\]{}/%]|<<)"
+)
+_HEADER_BOUND = b"\x00\t\n\f\r ()<>[]{}/%"
+
+
+def _reject_headers_inside(data: bytes, spans: list[tuple[int, int]]) -> None:
+    """A keyword-delimited object header in raw stream bytes is incomplete.
+
+    Decoded object-stream members are not these spans. They are read separately.
+    """
+    for begin, end in spans:
+        for match in _STREAM_HEADER.finditer(data, begin, end):
+            at = match.start()
+            if at == begin or data[at - 1] in _HEADER_BOUND:
+                raise ContentLimit("pdf object header inside stream")
+
+
+def _reject_xref_inside(
+    data: bytes,
+    spans: list[tuple[int, int]],
+    budget: Budget,
+    decoded: dict[int, bytes | None] | None = None,
+) -> None:
+    offsets = xref_file_offsets(data, budget, decoded)
+    if not offsets:
         return
     for offset in offsets:
         for begin, end in spans:
             if begin <= offset < end:
                 raise ContentLimit("pdf annotation xref offset inside stream")
+        window = data[offset : offset + 64] if 0 <= offset < len(data) else b""
+        if _OBJECT_AT.match(window) is None:
+            raise ContentLimit("pdf xref malformed")
 
 
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
@@ -251,7 +284,8 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
 
     spans: list[tuple[int, int]] = []
     collect(_dictionaries(data, objects, budget, strings, spans))
-    _reject_xref_inside(data, spans, budget)
+    _reject_headers_inside(data, spans)
+    _reject_xref_inside(data, spans, budget, objects.decoded)
     for number, source in objects.stream_members():
         body = bytes(source)
         strings.setdefault((number, 0), []).append(next(_tokens(body, budget), (b"", 0))[0])

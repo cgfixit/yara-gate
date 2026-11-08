@@ -725,6 +725,51 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             b'<html><svg><image href="x" onerror="f()"/></svg></html>',
             "doc_svg_event_handler",
         ),
+        (
+            "svg-mixed-contexts.html",
+            b"<html><svg><title>Label</title><path/></svg><script>void 0</script></html>",
+            "doc_svg_active",
+        ),
+        (
+            "svg-comment-text.html",
+            b"<html><svg><!-- label </svg> --><script>void 0</script></svg></html>",
+            "doc_svg_active",
+        ),
+        (
+            "svg-quoted-text.html",
+            b'<html><svg aria-label="literal </svg>"><script>void 0</script></svg></html>',
+            "doc_svg_active",
+        ),
+        (
+            "svg-unmatched-close.html",
+            b"<html></svg><svg><script>void 0</script></svg></html>",
+            "doc_svg_active",
+        ),
+        (
+            "svg-unquoted-attribute.html",
+            b"<html><svg data-label=x/><script>void 0</script></svg></html>",
+            "doc_svg_active",
+        ),
+        (
+            "svg-cdata-event.html",
+            b'<html><svg><![CDATA[</svg>]]><image onerror="void 0"/></svg></html>',
+            "doc_svg_event_handler",
+        ),
+        (
+            "svg-script-before.html",
+            b'<html><script>void 0</script><svg aria-label="icon"><path/></svg></html>',
+            None,
+        ),
+        (
+            "embedded-svg.zip",
+            _zip("icon.html", b"<html><svg><!-- </svg> --><script>void 0</script></svg></html>"),
+            "doc_svg_active",
+        ),
+        (
+            "encoded-svg.html",
+            '<html><svg aria-label="</svg>"><script>void 0</script></svg></html>'.encode("utf-16"),
+            "doc_svg_active",
+        ),
         ("trailing.svg", b"<svg><rect/></svg><script></script>", "doc_svg_active"),
         ("rooted.bin", b'<?xml version="1.0"?>\n<svg><rect/></svg><script/>', "doc_svg_active"),
         ("prose.svg", b"<svg><desc>The onbegin and onerror attributes.</desc></svg>", None),

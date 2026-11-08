@@ -104,3 +104,11 @@ parsers; in 1,063 of them both raised the same exception.
   passes, but holds a malformed font for an avoidable reason; it is left for a separate change.
 - The SVG false positives are measured on synthetic pages; the host sweep had no page with the
   pattern. Production false-positive rates were not measured.
+
+## Integration follow-up
+
+The CMap implementation and its timing cases now come from #193 on main. The
+SVG rules use the original strict match unless a bounded lexical pass can prove
+that raw SVG scope delimiters are unambiguous. The pass declines the exception
+on malformed tags, ambiguous context, or exhaustion. This preserves the prior
+block on such input while keeping the clean result for ordinary sibling markup.

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import Budget, ContentLimit, PdfObjects
+from yara_gate.content import Budget, ContentLimit, PdfObjects, pdf_streams
 from yara_gate.pdfannotations import pdf_annotation_texts
 from yara_gate.pdfxref import xref_file_offsets
 from yara_gate.scanner import scan_bytes
@@ -271,3 +271,150 @@ def test_xref_deadline_uses_the_scan_budget() -> None:
 def test_missing_startxref_skips_xref() -> None:
     data = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
     assert xref_file_offsets(data, Budget(time.monotonic() + 30)) is None
+
+
+def _decoy() -> bytes:
+    """A real startxref and %%EOF, then a free-only table and a startxref with no %%EOF."""
+    base = bytearray(_hiding("classic"))
+    at = len(base)
+    base += (
+        b"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Size 1 /Root 1 0 R >>\n"
+        + b"startxref\n%d" % at
+    )
+    return bytes(base)
+
+
+def test_trailing_startxref_without_eof_is_incomplete(rules_copy: Path) -> None:
+    # pypdf 7.0.0 reads the earlier table and the in-stream phrase. The decoy must not scan clean.
+    data = _decoy()
+    assert data.count(b"startxref") == 2
+    assert data.rfind(b"%%EOF") < data.rfind(b"startxref")
+    result = _scan(data, rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf annotation xref offset inside stream"
+
+
+def _terminator_offset(on_newline: bool) -> bytes:
+    # A whitespace-delimited header is what pypdf's repair search matches.
+    hidden = b"\n" + b"5 0 obj\n" + _link(PHRASE) + b"\nendobj\n" + b"QQQ"
+    buf = bytearray(b"%PDF-1.4\n")
+    offsets = {0: (0, 65535, b"f")}
+    for number, body in enumerate(_objects(), 1):
+        offsets[number] = (len(buf), 0, b"n")
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    offsets[4] = (len(buf), 0, b"n")
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"\nendstream\nendobj\n"
+    end_at = buf.find(b"stream\n") + len(b"stream\n") + len(hidden)
+    assert buf[end_at : end_at + 10] == b"\nendstream"
+    offsets[5] = (end_at if on_newline else end_at + 1, 0, b"n")
+    return _finish(buf, _classic(offsets, 6))
+
+
+def test_offset_on_the_stream_terminator_is_incomplete(rules_copy: Path) -> None:
+    # pypdf 7.0.0 ignores the pointer and then finds the whitespace-delimited
+    # "5 0 obj" in the stream body. Both positions stay incomplete.
+    for on_newline in (True, False):
+        result = _scan(_terminator_offset(on_newline), rules_copy)
+        assert result.verdict.value == "incomplete", on_newline
+
+
+def _mismatched_width() -> bytes:
+    """Declared /W [1 1 2] but the bytes are packed as [1 2 1]."""
+    buf = bytearray(b"%PDF-1.5\n")
+    offsets: dict[int, int] = {}
+    for number, body in enumerate(_objects(), 1):
+        offsets[number] = len(buf)
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    hidden = b"ordinary image bytes without an object header"
+    offsets[4] = len(buf)
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
+    attack = offsets[1]
+    offsets[6] = len(buf)
+
+    def pack(kind: int, field2: int, field3: int = 0) -> bytes:
+        return bytes([kind]) + field2.to_bytes(2, "big") + bytes([field3 & 255])
+
+    rows = (
+        pack(0, 0, 255)
+        + pack(1, offsets[1])
+        + pack(1, offsets[2])
+        + pack(1, offsets[3])
+        + pack(1, offsets[4])
+        + pack(1, attack)
+        + pack(1, offsets[6])
+    )
+    payload = zlib.compress(rows)
+    buf += (
+        b"6 0 obj\n<< /Type /XRef /Size 7 /W [1 1 2] /Root 1 0 R "
+        b"/Filter /FlateDecode /Length %d >>\nstream\n"
+        % len(payload)
+        + payload
+        + b"\nendstream\nendobj\n"
+    )
+    return bytes(buf) + b"startxref\n%d\n%%%%EOF\n" % offsets[6]
+
+
+def test_xref_width_mismatch_is_incomplete(rules_copy: Path) -> None:
+    # pypdf 7.0.0 rejects the scrambled offset and then finds the phrase in the body.
+    result = _scan(_mismatched_width(), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf xref malformed"
+
+
+def _repair_only() -> bytes:
+    """Object 5 exists only as a raw header inside a landed stream. The xref omits it."""
+    buf = bytearray(b"%PDF-1.4\n")
+    entries: dict[int, tuple[int, int, bytes]] = {0: (0, 65535, b"f")}
+    for number, body in enumerate(_objects(), 1):
+        entries[number] = (len(buf), 0, b"n")
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    hidden = b"\n5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    entries[4] = (len(buf), 0, b"n")
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
+    return _finish(buf, _classic(entries, 5))
+
+
+def _generation_reuse() -> bytes:
+    """Xref generation 1 is a benign object. Generation 0 with the phrase is inside the stream."""
+    buf = bytearray(b"%PDF-1.4\n")
+    entries: dict[int, tuple[int, int, bytes]] = {0: (0, 65535, b"f")}
+    for number, body in enumerate(_objects(), 1):
+        entries[number] = (len(buf), 0, b"n")
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    hidden = b"\n5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    entries[4] = (len(buf), 0, b"n")
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(hidden) + hidden + b"endstream\nendobj\n"
+    benign = b"<< /Type /Annot /Subtype /Text /Rect [0 0 10 10] /Contents (Hello.) >>"
+    entries[5] = (len(buf), 1, b"n")
+    buf += b"5 1 obj\n" + benign + b"\nendobj\n"
+    return _finish(buf, _classic(entries, 6))
+
+
+def test_unlisted_object_header_inside_a_stream_is_incomplete(rules_copy: Path) -> None:
+    result = _scan(_repair_only(), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf object header inside stream"
+
+
+def test_generation_mismatch_inside_a_stream_is_incomplete(rules_copy: Path) -> None:
+    result = _scan(_generation_reuse(), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf object header inside stream"
+
+
+def test_startxref_inside_a_comment_is_not_a_candidate(rules_copy: Path) -> None:
+    data = _benign("classic") + b"\n% startxref 99999\n(startxref 99999)\n"
+    result = _scan(data, rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
+
+
+def test_flate_xref_is_not_inflated_twice() -> None:
+    data = _benign("flate")
+    budget = Budget(time.monotonic() + 30)
+    objects = PdfObjects(data, budget)
+    pdf_streams(data, budget, objects.decoded)
+    charged = budget.expanded
+    assert charged > 0
+    pdf_annotation_texts(data, objects, budget)
+    assert budget.expanded == charged

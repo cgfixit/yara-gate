@@ -1372,6 +1372,86 @@ _HTML_TOKEN = re.compile(
 _HTML_RAW_TEXT = {
     tag: re.compile(rf"</{tag}\s*>", re.I) for tag in ("script", "style", "textarea", "title")
 }
+_SVG_MARKER = re.compile(rb"</?svg\b", re.I)
+# Only accept unambiguous tag syntax for the YARA scope exception. In HTML an unquoted
+# value consumes a trailing slash, while a slash after a quoted value can close an SVG.
+_SCOPE_TAG = re.compile(
+    rb"""<(/?)([a-zA-Z][a-zA-Z0-9:-]{0,63}+)(?:[ \t\r\n\f]++[^\s"'<>/=]++"""
+    rb"""(?:[ \t\r\n\f]*+=[ \t\r\n\f]*+(?:"[^"]*+"|'[^']*+'|[^\s"'=<>` ]++))?)*+"""
+    rb"""[ \t\r\n\f]*+(/?)>"""
+)
+_SCOPE_DOCTYPE = re.compile(rb"<!doctype[ \t\r\n\f]+html[ \t\r\n\f]*>", re.I)
+_SCOPE_RAW_END = {
+    name.encode(): re.compile(rb"</" + name.encode() + rb"[ \t\r\n\f]*>", re.I)
+    for name in (*_HTML_RAW_TEXT, "xmp", "iframe", "noembed", "noframes")
+}
+_SCOPE_AMBIGUOUS = frozenset({b"foreignobject", b"select", b"plaintext", b"noscript", b"math"})
+
+
+def svg_scope_proven(data: bytes) -> bool:
+    """Whether raw SVG delimiters can safely narrow the bundled active-content rules.
+
+    Decline the exception on ambiguous markup or budget exhaustion. The rules then keep
+    their strict match on the original bytes.
+    """
+    if len(data) > 1 << 20 or (marker := _SVG_MARKER.search(data)) is None:
+        return False
+    if data.count(b"<") > 4096:
+        return False
+    stack: list[bytes] = []
+    position = 0
+    while marker is not None:
+        start = data.find(b"<", position, marker.start() + 1)
+        if data.startswith(b"<!--", start):
+            end = data.find(b"-->", start + 4)
+            if (
+                end < 0
+                or marker.start() < end
+                or data.startswith((b">", b"->"), start + 4)
+                or data.find(b"--", start + 4, end) >= 0
+            ):
+                return False
+            position = end + 3
+            continue
+        if (doctype := _SCOPE_DOCTYPE.match(data, start)) is not None:
+            position = doctype.end()
+            continue
+        tag = _SCOPE_TAG.match(data, start)
+        if tag is None:
+            return False
+        position = tag.end()
+        closing, name, self_close = tag.groups()
+        name = name.lower()
+        lexeme = tag.group()
+        if name in _SCOPE_AMBIGUOUS or (name == b"title" and stack):
+            return False
+        if marker.start() < position:
+            if (
+                marker.start() != start
+                or name != b"svg"
+                or _SVG_MARKER.search(data, marker.end(), position) is not None
+            ):
+                return False
+            if closing:
+                if re.fullmatch(rb"</svg[ \t\r\n\f]*>", lexeme, re.I) is None:
+                    return False
+            elif lexeme.endswith(b"/>") != bool(self_close):
+                return False
+            marker = _SVG_MARKER.search(data, position)
+        if stack or name == b"svg":
+            if closing:
+                if not stack or stack.pop() != name:
+                    return False
+            elif not self_close:
+                stack.append(name)
+        elif not closing and name in _SCOPE_RAW_END:
+            raw_end = _SCOPE_RAW_END[name].match(data, data.find(b"<", position))
+            if raw_end is None or (marker is not None and marker.start() < raw_end.end()):
+                return False
+            position = raw_end.end()
+    return not stack
+
+
 _HTML_BLOCKS = frozenset(
     {
         "address", "article", "aside", "blockquote", "body", "caption", "center", "dd",

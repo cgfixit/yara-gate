@@ -21,7 +21,7 @@ rule doc_svg_event_handler {
         $root = /(\xEF\xBB\xBF)?\s*(<\?xml[^<>]{0,512}\?>\s*)?((<!--[^>]{0,4096}-->|<!DOCTYPE[^<>]{0,1024}>)\s*){0,8}<svg\b/ nocase ascii
     condition:
         $svg and ($begin or $error) and (
-            yara_gate_ext == "svg" or yara_gate_ext == "svgz" or $root at 0
+            yara_gate_ext == "svg" or yara_gate_ext == "svgz" or $root at 0 or not yara_gate_svg_scope_proven
             // As in doc_svg_active, a flood of more than 1,024 matches keeps the strict test.
             or #svg > 1024 or #svg_end > 1024 or #svg_self > 1024 or #begin > 1024 or #error > 1024
             or for any i in (1..#begin): (

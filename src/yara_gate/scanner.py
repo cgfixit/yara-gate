@@ -29,6 +29,7 @@ from yara_gate.content import (
     ooxml_text_views,
     pdf_streams,
     pdf_views,
+    svg_scope_proven,
     text_views,
 )
 from yara_gate.content import (
@@ -782,6 +783,7 @@ def _invoke_scan(
         ("yara_gate_text", sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
+        ("yara_gate_svg_scope_proven", svg_scope_proven(data)),
     ):
         try:
             scanner.set_global(global_name, value)

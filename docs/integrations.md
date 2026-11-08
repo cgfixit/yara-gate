@@ -404,9 +404,7 @@ The original bytes, paragraph boundaries, and finding severity are preserved;
 these notes still pass the notes-only `agent-document` read rule. A composite font with
 no readable `ToUnicode` map leaves text unread; that is the note
 `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
-text it could not read. A `ToUnicode` map is read in one linear pass with the scan
-deadline checked as it goes; one with more than 1,048,576 tokens is incomplete
-(`pdf cmap exceeds token limit`) rather than read in part. Annotation `/Contents` strings are decoded separately
+text it could not read. Annotation `/Contents` strings are decoded separately
 as `pdf-annotation` (literal/octal, hexadecimal, PDFDocEncoding, UTF-16BE or
 UTF-8 with BOM, including indirect and supported object-stream members), then
 folded when spelling changes. Annotations and blank-line-separated paragraphs

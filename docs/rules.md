@@ -45,6 +45,7 @@ The scanner finds base64 runs with a linear regex in [`heuristics.base64_run_sig
 | `yara_gate_text` | bool | `true` | `true` when the buffer sniffs as text |
 | `yara_gate_b64_blob` | bool | `false` | `true` when the buffer has a base64 run that `agent_base64_blob` should report |
 | `yara_gate_b64_exe` | bool | `false` | `true` when a run decodes to an executable header |
+| `yara_gate_svg_scope_proven` | boolean | `false` | The scanner verified unambiguous SVG tag boundaries for this buffer. Leave false when running the rules standalone. |
 
 If the globals are missing, compilation fails with an error. Leaving both base64 booleans at `false` turns off the two base64 rules in that tool, and leaving `yara_gate_name` empty turns off `dev_devcontainer_lifecycle` and `dev_envrc_exec`. Nothing else changes.
 
@@ -150,8 +151,8 @@ A hardening guide that shows how an attacker disables Defender, a red-team write
 | [`script_launchagent_shell`](../rules/local/script_launchagent_shell.yar) | Advisory | LaunchAgent program arguments that run `/bin/sh`, `bash`, `zsh`, or `/usr/bin/python3`, `perl`, `ruby`, `osascript`, `curl`, or `env`, with `curl`, `wget`, `osascript`, `base64`, or `urlopen` in the plist |
 | [`script_chmod_execute`](../rules/local/script_chmod_execute.yar) | Advisory | `chmod +x`, `u+x`, or an octal mode, then a launch (`./`, a shell, a `/tmp` path, or `~/`) on the next line or after `&&` or `;` |
 | [`doc_rtf_object`](../rules/local/doc_rtf_object.yar) | Block | RTF object data or an object update |
-| [`doc_svg_active`](../rules/local/doc_svg_active.yar) | Block | An SVG with a script or an `onload` handler. In an SVG document (an `.svg` or `.svgz` name, or an `<svg>` root element) any script or `onload` blocks; elsewhere, such as an HTML page with an inline icon, the script or handler must sit inside an `<svg>` element (more `<svg>` start tags than end tags before it, or on the `<svg>` tag itself), so a page script or `<body onload>` beside a scriptless icon stays clean. Over 1,024 matches of any scope pattern keeps the strict test |
-| [`doc_svg_event_handler`](../rules/local/doc_svg_event_handler.yar) | Advisory | An SVG animation element (`animate`, `animateMotion`, `animateTransform`, `animateColor`, `set`) with a non-empty `onbegin` handler, or an `image`, `feImage`, `svg`, or `use` element with a non-empty `onerror` handler. Whether it runs depends on how the SVG is embedded; an HTML `<img onerror>`, an empty handler, `data-onbegin`, and prose naming the attribute stay clean. Outside an SVG document the element must sit inside an `<svg>` element, as for `doc_svg_active`: an HTML parser reads `<image>` outside SVG as `<img>` |
+| [`doc_svg_active`](../rules/local/doc_svg_active.yar) | Block | An SVG with a script or an `onload` handler. In standalone SVG or when scope is ambiguous, the rule retains its strict match. In ordinary markup with proven SVG scope, a sibling page script or body handler does not count. |
+| [`doc_svg_event_handler`](../rules/local/doc_svg_event_handler.yar) | Advisory | An SVG animation with a non-empty `onbegin` handler or an `image`, `feImage`, `svg`, or `use` element with a non-empty `onerror` handler. Uses the same scope proof and strict fallback. Whether the handler runs depends on the embedding. |
 | [`doc_external_template`](../rules/local/doc_external_template.yar) | Advisory | One OOXML `<Relationship>` element whose `Type` ends in `/attachedTemplate`, with `TargetMode="External"` and an `http(s)://` or UNC `Target`, or an RTF file whose `\template` control word is followed within 256 bytes by an `http(s)://` or UNC path ([T1221](https://attack.mitre.org/techniques/T1221/)) |
 | [`script_download_execute`](../rules/local/script_download_execute.yar) | Advisory | `curl` or `wget` piped into a shell or interpreter, `bash <(curl …)`, a PowerShell download on the same line as `iex`, or a `python -c` one-liner that fetches and runs the result (details below) |
 | [`container_disk_image`](../rules/local/container_disk_image.yar) | Advisory | ISO, VHD, or DMG magic at the offset that format uses |
@@ -292,19 +293,52 @@ uncompressed page text that includes the word, and a JPEG comment that includes
 it. The Flate encoding of the same prose does not contain the keyword, and the
 annotation after that stream is still read.
 
+A keyword-delimited object header in the raw bytes of a landed stream makes
+the scan incomplete (`pdf object header inside stream`). The header is
+`N G obj` with PDF whitespace (`NUL`, TAB, LF, FF, CR, or space, including a
+run of them) between the tokens. The number starts the span or follows
+whitespace or a delimiter `()<>[]{}/%`. `obj` ends on whitespace, one of those
+delimiters, or `<<`. This does not depend on an xref entry, a page reference,
+or the generation. Decoded object-stream members are not this check. They are
+read on their own, and a type-2 xref entry stays an index into that stream.
+The incompletes are conservative. A header written as stream data, including
+one after a `/Length` that lands on `endstream`, still stops the scan, and a
+real annotation after that stream is not read. A header that no viewer displays
+still stops the scan. Measured on 2026-11-07, none of these files had such a header
+in a landed span: `rfbproto-3.3.pdf` (Acrobat Distiller 3.02, 110778 bytes),
+`rfbproto-3.7.pdf` (GNU Ghostscript 5.10, 165552 bytes), `rfbproto-3.8.pdf`
+(GPL Ghostscript 8.61, 143840 bytes), `gnus-logo.pdf` (GPL Ghostscript 8.54,
+3658 bytes), and the two Microsoft Word hybrids
+`CL2020 EMEAR DEVWKS-1542 Intersight Ansible Lab Guide.pdf` (1030061 bytes)
+and `Impact DNW07 UCS Ansible Collection Lab Guide.pdf` (433208 bytes). The
+same header pattern was absent from 348 fonts under `/usr/share/fonts` and
+454 PNG or JPEG files under `/usr/share/pixmaps` and `/usr/share/icons`.
+
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. Classic 20-byte tables, Flate `/Type /XRef` streams (`/W`,
-`/Index`, and a PNG or TIFF predictor), hybrid `/XRefStm`, and `/Prev` chains
-are read. A newer section overrides an older one. At one trailer, a classic
-offset and a stream offset for the same object are both checked. A type-1
-offset inside a landed span makes the scan incomplete
-(`pdf annotation xref offset inside stream`). A type-2 entry is an object-stream
-index, not a file offset, so object streams stay readable. No `startxref`
-leaves the sequential reader in place. A malformed table or stream
-(`pdf xref malformed`), a filter or predictor this reader does not decode
-(`pdf xref unsupported`), more than 100000 entries
-(`pdf xref entries exceed 100000`), or a spent deadline is incomplete. Chains
-stop at 32 sections. Flate output is charged to the shared 500MB budget.
+can be clean. A candidate is a `startxref` keyword at the start of a line,
+outside comments and literal or hex strings, with or without a following
+`%%EOF`. A comment or string that contains the word is not a candidate. A
+candidate that is present and does not parse still makes the scan incomplete.
+Each candidate includes its `/Prev` chain. Classic 20-byte tables,
+Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
+hybrid `/XRefStm` are read. A newer section overrides an older one inside one
+candidate. At one trailer, a classic offset and a stream offset for the same
+object are both checked. The landed span includes the newline and `endstream`
+the length ends on, so an offset on those bytes is inside the span. A type-1
+offset from any candidate inside that span makes the scan incomplete
+(`pdf annotation xref offset inside stream`). A type-1 offset that does not
+begin an object header is malformed, which covers a `/W` width that does not
+match the packed fields and a stream whose decoded length is not an exact
+multiple of the row width. A type-2 entry is an object-stream index, not a
+file offset, so object streams stay readable. An object that only a later
+candidate lists is kept when its offset begins an object header outside every
+span. No `startxref` leaves the sequential reader in place. A malformed table
+or stream (`pdf xref malformed`), a filter or predictor this reader does not
+decode (`pdf xref unsupported`), more than 100000 entries
+(`pdf xref entries exceed 100000`), more than 32 `startxref` candidates, or a
+spent deadline is incomplete. Chains stop at 32 sections. Flate output is
+charged to the shared 500MB budget, and a stream `pdf_streams` already inflated
+is not inflated again.
 
 Rich text `/RC`, form-field values, and filters the existing object-stream reader
 does not support remain outside this view. A recognized annotation with an
