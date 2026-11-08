@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from yara_gate.models import exit_code
+from yara_gate.samples import merged_pdf
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
@@ -626,6 +627,10 @@ def build_corpus(root: Path) -> dict[str, str]:
         )
     for index in range(12):
         add(f"pdf/notes-{index:02d}.pdf", _pdf(f"Quarterly notes {index}".encode()))
+    # Merged files keep every source's /F1, so one name means one font per source. Past four
+    # fonts the rest are not decoded, a note (docs/verification/2026-11-07-pdf-font-readings.md).
+    for fonts in (4, 5):
+        add(f"pdf/merged-{fonts}-fonts.pdf", merged_pdf("Quarterly notes for review.", fonts, 1))
     for index in range(12):
         add(f"office/notes-{index:02d}.docx", _docx(f"Quarterly notes {index}"))
     for index in range(10):

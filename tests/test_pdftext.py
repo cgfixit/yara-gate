@@ -6,7 +6,7 @@ import zlib
 
 import pytest
 
-from yara_gate import pdftext, scanner
+from yara_gate import pdftext, samples, scanner
 from yara_gate.content import Budget, ContentLimit, ContentUnit, PdfObjects, PdfStream, pdf_streams
 from yara_gate.models import Finding, FindingSource, Severity
 
@@ -162,7 +162,10 @@ def test_an_overflowing_tounicode_font_has_a_second_reading() -> None:
     body = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R >>"
     cmaps = pdftext._Cmaps({6: cmap}, Budget(math.inf))
     fonts = pdftext._font([body], cmaps, lambda key: b"", (5, 0))
-    assert [pdftext._decode(b"\x00\x41", font) for font in fonts] == ["@", "\U00010040"]
+    assert [pdftext._decode(b"\x00\x41", font, 10, Budget(math.inf).check) for font in fonts] == [
+        "@",
+        "\U00010040",
+    ]
 
 
 def _font_pdf(fonts: int, maps: int, ranges: int = 1, target: bytes = b"0000") -> bytes:
@@ -242,3 +245,61 @@ def test_the_carried_reading_counts_toward_the_cmap_budget() -> None:
     assert time.monotonic() - started < 5
     # <0048> and <0069> read "G" and "h" wrapped, and U+10047 and U+10068 carried.
     assert {"Gh", "\U00010047\U00010068"} <= set(text.blocks)
+
+
+def test_wide_cmap_range_charges_bytes_before_expanding() -> None:
+    with pytest.raises(ContentLimit, match="pdf cmap expanded bytes"):
+        _ranges(b"1 beginbfrange <0000> <3FFF> <" + b"FF" * 2048 + b"> endbfrange")
+
+
+def test_repeated_wide_glyph_cannot_expand_past_text_limit() -> None:
+    font = pdftext.Font(True, {b"\x00\x01": "x" * 1024}, (2,))
+    with pytest.raises(ContentLimit, match="pdf decoded text exceeds character limit"):
+        pdftext._decode(
+            b"\x00\x01" * 20_000, font, pdftext.MAX_PDF_DECODED_CHARS, Budget(math.inf).check
+        )
+
+
+def test_cmap_source_widths_are_bounded() -> None:
+    with pytest.raises(ContentLimit, match="pdf cmap source code exceeds four bytes"):
+        _ranges(b"1 begincodespacerange <0000000000> <00000000ff> endcodespacerange")
+
+
+def _read(data: bytes) -> pdftext.PdfText:
+    budget = Budget(math.inf)
+    objects = PdfObjects(data, budget)
+    return pdftext.pdf_text(data, pdf_streams(data, budget, objects.decoded), objects, budget)
+
+
+def _pages(content: bytes, *cmaps: bytes) -> pdftext.PdfText:
+    """Read a file whose pages each show ``content`` in /F1, each through its own map."""
+    return _read(samples.shared_name_pdf([(content, cmap) for cmap in cmaps]))
+
+
+def _bfchar(shift: int) -> bytes:
+    pairs = b"".join(
+        b"<%04X> <%04X>\n" % (ord(c) + 0x100, (ord(c) - 32 + shift) % 95 + 32)
+        for c in sorted(set(PHRASE))
+    )
+    return _CMAP_HEAD + b"%d beginbfchar\n" % len(set(PHRASE)) + pairs + b"endbfchar\nendcmap\n"
+
+
+def test_a_carried_reading_past_the_cap_is_reported_unmapped() -> None:
+    # An overflowing range gives the last font a second reading, ordered after every font's
+    # first: three fonts and that one are five readings, so the carried one is not decoded.
+    overflow = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FF80>\nendbfrange\nendcmap\n"
+    content = b"BT /F1 12 Tf 72 700 Td <00C1> Tj ET"
+    assert not _pages(content, _bfchar(1), _bfchar(2), overflow).unmapped
+    assert _pages(content, _bfchar(1), _bfchar(2), _bfchar(3), overflow).unmapped
+
+
+def test_fonts_past_the_reference_cap_are_reported_unmapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pdftext, "MAX_FONT_REFERENCES", 2)
+    content = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+    two = _pages(content, _bfchar(1), _bfchar(0))
+    assert _shown(two) and not two.unmapped
+    # The third font, which alone maps the phrase, is never resolved or decoded.
+    three = _pages(content, _bfchar(1), _bfchar(2), _bfchar(0))
+    assert not _shown(three) and three.unmapped

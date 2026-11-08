@@ -233,9 +233,14 @@ def _glyph_ids(text: str) -> bytes:
     return b"<" + b"".join(b"%04X" % (ord(char) + 0x100) for char in text) + b">"
 
 
-def _to_unicode_cmap(text: str) -> bytes:
+def _to_unicode_cmap(text: str, shift: int = 0) -> bytes:
+    """Map each glyph id back to its character, or ``shift`` printable characters along."""
     chars = sorted(set(text))
-    pairs = b"".join(b"<%04X> <%04X>\n" % (ord(char) + 0x100, ord(char)) for char in chars)
+    pairs = b"".join(
+        b"<%04X> <%04X>\n"
+        % (ord(char) + 0x100, (ord(char) - 32 + shift) % 95 + 32 if shift else ord(char))
+        for char in chars
+    )
     return (
         b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
         b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
@@ -270,6 +275,48 @@ def _glyph_pdf(runs: tuple[tuple[str, str], ...]) -> bytes:
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
     return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def shared_name_pdf(pages: list[tuple[bytes, bytes]]) -> bytes:
+    """One page per ``(content, ToUnicode map)``; each page's /F1 is its own Type0 font.
+
+    A merged PDF looks like this: every source document keeps its own /F1, so the name means
+    one font per source. Fonts are numbered in page order.
+    """
+    kids = b" ".join(b"%d 0 R" % (3 + 4 * index) for index in range(len(pages)))
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [" + kids + b"] /Count %d >>" % len(pages),
+    ]
+    for index, (content, cmap) in enumerate(pages):
+        stream, font, tounicode = (4 + 4 * index + offset for offset in range(3))
+        objects += [
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>" % (font, stream),
+            b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAA%c+Arial /Encoding /Identity-H "
+            b"/ToUnicode %d 0 R >>" % (65 + index % 26, tounicode),
+            b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream",
+        ]
+    out = bytearray(b"%PDF-1.7\n")
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def merged_pdf(text: str, fonts: int, reading: int) -> bytes:
+    """``fonts`` pages that all show ``text`` as glyph ids in /F1, each through its own font.
+
+    Only font number ``reading`` (from 1) maps the ids back to ``text``; font k maps each
+    one k printable characters along, so no two fonts are equal.
+    """
+    content = b"BT /F1 12 Tf 72 700 Td " + _glyph_ids(text) + b" Tj ET"
+    return shared_name_pdf(
+        [
+            (content, _to_unicode_cmap(text, 0 if page == reading else page))
+            for page in range(1, fonts + 1)
+        ]
+    )
 
 
 def glyph_pdf_override() -> bytes:

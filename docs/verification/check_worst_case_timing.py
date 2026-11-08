@@ -156,11 +156,33 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _cmap_pdf(1, b"[", b"", b"beginbfrange ", b" endbfrange"),
         "pdf cmap tokens exceed 1572864",
     )
+    # One resource name that means 64 Type0 fonts, each with its own ToUnicode map, as a
+    # merged file of 64 sources would: every string is decoded in four of them, and the 60
+    # past that cap make the text unmapped rather than unread without notice.
+    fonts = b""
+    for index in range(64):
+        resources, font, cmap = (100 + 3 * index + offset for offset in range(3))
+        body = (
+            b"begincmap 1 begincodespacerange <0000> <FFFF> endcodespacerange "
+            b"1 beginbfrange <0000> <00FF> <%04X> endbfrange endcmap" % (0x41 + index)
+        )
+        fonts += b"%d 0 obj<</Font<</F1 %d 0 R>>>>endobj\n" % (resources, font)
+        fonts += b"%d 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode %d 0 R>>" % (
+            font,
+            cmap,
+        )
+        fonts += b"endobj\n%d 0 obj<</Length %d>>stream\n" % (cmap, len(body))
+        fonts += body + b"\nendstream endobj\n"
+    yield (
+        "pdf-font-readings.pdf",
+        _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts),
+        None,
+    )
 
 
-def _content_pdf(prelude: bytes, token: bytes) -> bytes:
-    """A 4 MiB content stream whose `/Length` lands on the only `endstream`."""
-    marker = b"\nendstream\nendobj\n%%EOF\n"
+def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
+    """A 4 MiB content stream whose `/Length` lands on its `endstream`, then ``objects``."""
+    marker = b"\nendstream\nendobj\n" + objects + b"%%EOF\n"
     for digits in range(1, 9):
         header_len = len(b"%PDF-1.4\n1 0 obj<</Length ") + digits + len(b">>stream\n")
         body_len = SIZE - header_len - len(marker)
@@ -267,6 +289,7 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "markdown-lines.md": "markdown-text",
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
+        "pdf-font-readings.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
         "pdf-white-areas.pdf": "pdf-hidden-text",
     }.get(name)
