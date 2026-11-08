@@ -137,16 +137,13 @@ stream cap makes the scan `incomplete`.
 
 ## Residual risks and boundaries
 
-- **Pre-existing CMap amplification.** About 57 ms per 65,536-entry font, with no
-  per-file entry budget, lets a ~57 KB file use about 11 s of the 30 s default
-  deadline. The deadline still bounds it (the check runs between sections), and
-  an overflowing map adds about 28 ms per font. A per-file CMap entry budget is
-  a separate change.
+- **CMap amplification** (resolved by #193, see below). Before it, about 57 ms
+  per 65,536-entry font with no per-file entry budget let a ~57 KB file use about
+  11 s of the 30 s default deadline, and an overflowing map added about 28 ms per
+  font.
 - `MAX_FONT_VARIANTS` (4) still truncates a resource name's readings without
   reporting it. Second readings are ordered last, so this change never drops a
   font that base read, but a name already at four fonts gets no carried reading.
-  (Follow-up: that truncation is now reported as `heuristic_pdf_text_unmapped`; see
-  [2026-11-07-pdf-font-readings.md](2026-11-07-pdf-font-readings.md).)
 - These cases follow the table above, not every reader:
   - pdf.js treats a carried value in U+1D800–U+1DFFF as a surrogate and shows a
     different code point there.
@@ -162,10 +159,27 @@ stream cap makes the scan `incomplete`.
   a general prompt-injection guarantee. Hosted CI (Ubuntu, macOS, Windows) has
   not run on this change yet.
 
-## Integration follow-up
+## Reconciled with the per-file CMap budget (#193), 2026-11-08
 
-The per-file entry and token budgets described in #193 apply to this candidate.
-Range expansion charges key and decoded string storage before allocation, and
-the alternate map is built and charged once per ToUnicode object. A separate
-decoded-character limit bounds repeated glyphs before the reader joins them.
-Exhaustion returns incomplete. The two readings still apply within these limits.
+`main` gained the per-file entry and token budgets, the linear section finder,
+and a cache of parsed maps by ToUnicode object number
+([record](2026-11-07-cmap-entry-budget.md)). Merging it here:
+
+- `_Cmaps.get` now returns the map, its code lengths, and the carried reading.
+  It builds `{**cmap, **carried}` once per map object and charges its entries to
+  `MAX_CMAP_TOTAL`, so fonts sharing an overflowing map copy it once. The range
+  charge already covers the loop that fills both `mapping` and `carried`.
+- `_font` keeps returning one reading, or two when a range overflows.
+
+Linux container, Python 3.12.3, YARA-X 1.23.0, one `scan_bytes` run each,
+FlateDecode maps `<0000> <FFFF> <FFFF>`:
+
+| Input | Before #193 | Merged |
+| --- | --- | --- |
+| 200 fonts, 200 overflowing maps (59 KB) | about 17 s | 0.35 s, `pdf cmap entries exceed 524288` |
+| 200 fonts, 1 shared overflowing map | not measured | 0.13 s, clean |
+| 2 fonts, 2 overflowing maps | not measured | 0.17 s, clean |
+
+Each overflowing two-byte map charges 65,536 entries for the range and 131,071
+for the copy, so three such maps pass the budget. A focused test covers that and
+the shared case, and it fails when the copy's charge is removed.

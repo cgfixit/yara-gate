@@ -511,6 +511,17 @@ def _cmap_sections(data: bytes, budget: Budget) -> Iterator[tuple[bytes, bytes]]
 def _cmap_ranges(
     items: list[bytes], mapping: dict[bytes, str], carried: dict[bytes, str], work: _Cmaps
 ) -> None:
+    """Add bfrange entries to ``mapping``.
+
+    ``<lo> <hi> <dst>`` maps each code to ``dst`` plus its offset in the range, carrying into
+    the higher byte. ISO 32000-1 9.10.3 increments only the last byte, but for a one-unit
+    destination PDFium, PDFBox, pdfminer.six, pdf.js, and MuPDF all carry. When the sum no
+    longer fits in ``dst``'s width (``<0000> <00FF> <FFFF>``), they split: PDFium, PDFBox,
+    and pdfminer.six wrap it to that width, while pdf.js and MuPDF keep the untruncated last
+    UTF-16 unit, a code point from U+10000. ``mapping`` gets the wrapped reading and
+    ``carried`` the other one for those codes only, so the text is read both ways
+    (docs/verification/2026-11-07-cmap-range-overflow.md).
+    """
     index = 0
     while index + 2 < len(items) and len(mapping) < MAX_CMAP_ENTRIES:
         low, high, target = items[index], items[index + 1], items[index + 2]
