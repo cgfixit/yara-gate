@@ -159,3 +159,11 @@ stream cap makes the scan `incomplete`.
 - These are synthetic fixtures. They are not a production false-positive rate or
   a general prompt-injection guarantee. Hosted CI (Ubuntu, macOS, Windows) has
   not run on this change yet.
+
+## Integration follow-up
+
+The per-file entry and token budgets described in #193 apply to this candidate.
+Range expansion charges key and decoded string storage before allocation, and
+the alternate map is built and charged once per ToUnicode object. A separate
+decoded-character limit bounds repeated glyphs before the reader joins them.
+Exhaustion returns incomplete. The two readings still apply within these limits.
