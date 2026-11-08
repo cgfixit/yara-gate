@@ -303,3 +303,9 @@ def test_fonts_past_the_reference_cap_are_reported_unmapped(
     # The third font, which alone maps the phrase, is never resolved or decoded.
     three = _pages(content, _bfchar(1), _bfchar(2), _bfchar(0))
     assert not _shown(three) and three.unmapped
+
+
+def test_a_stray_byte_in_a_hex_string_is_skipped() -> None:
+    # Readers skip a byte that is not a hex digit; the scan must not fail on one.
+    assert pdftext._hex_bytes(b"41x4 2") == b"AB"
+    assert pdftext._hex_bytes(b"4g1") == b"A"

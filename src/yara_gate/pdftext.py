@@ -68,6 +68,7 @@ _SPACE_ADJUST = -200.0
 _NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)\Z")
 _CP1252 = [bytes((value,)).decode("cp1252", errors="replace") for value in range(256)]
 _HEX_WHITESPACE = b"\x00\t\n\f\r "
+_NOT_HEX = re.compile(rb"[^0-9A-Fa-f]")
 _INLINE_IMAGE_END = re.compile(rb"[\x00\t\n\f\r ]EI(?=[\x00\t\n\f\r ]|\Z)")
 _LITERAL_ESCAPES = {
     ord("n"): b"\n",
@@ -1171,7 +1172,15 @@ def _hex_bytes(raw: bytes) -> bytes:
     digits = raw.translate(None, _HEX_WHITESPACE)
     if len(digits) % 2:
         digits += b"0"
-    return binascii.unhexlify(digits)
+    try:
+        return binascii.unhexlify(digits)
+    except binascii.Error:
+        # A content-stream hex string can hold any byte. Skip what is not a hex digit, as
+        # readers do, rather than fail the scan.
+        digits = _NOT_HEX.sub(b"", raw)
+        if len(digits) % 2:
+            digits += b"0"
+        return binascii.unhexlify(digits)
 
 
 def _utf16(raw: bytes) -> str:
