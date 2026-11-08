@@ -25,7 +25,7 @@ _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
 # private and global rules compile too, so they count.
 _RULE_NAME = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
-_CACHE_SALT = b"yara-gate-rules-v2"
+_CACHE_SALT = b"yara-gate-rules-v3"
 _ALLOWED_DOWNLOAD_HOSTS = frozenset(
     {
         "github.com",
@@ -1007,6 +1007,7 @@ def define_scan_globals(compiler: Any) -> None:
     # class pattern has no atom, so YARA-X verified it at every offset (about 5 s per MB).
     compiler.define_global("yara_gate_b64_blob", False)
     compiler.define_global("yara_gate_b64_exe", False)
+    compiler.define_global("yara_gate_svg_scope_proven", False)
 
 
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:

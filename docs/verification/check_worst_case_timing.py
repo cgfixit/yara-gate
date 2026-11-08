@@ -136,6 +136,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, page),
         None,
     )
+    # Ambiguous SVG scope above the proof budget must keep the strict result without
+    # repeatedly counting tag offsets for each of the active-content matches.
+    scope = b"<html>" + b"</svg><svg/>" * 1020 + b"<script " * 1024 + b"onload=" * 1024
+    yield "svg-scope-cap.html", _filled(scope, b" "), None
     # 200 Type0 fonts, each with its own FlateDecode ToUnicode map writing 65,536 entries:
     # 13 s on 43aba2e, which had no per-file CMap budget.
     identity = b"1 beginbfrange\n<0000> <FFFF> <0000>\nendbfrange\n"

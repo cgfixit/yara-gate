@@ -262,11 +262,23 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("doc_external_template", rels, rels_miss),
         ("doc_rtf_object", b"{\\rtf1 \\objupdate }\n", b"{\\rtf1 hello}\n"),
         ("doc_svg_active", b"<svg><script></script></svg>", b"<svg><rect/></svg>"),
+        # Embedded in a page: a script inside the svg fires; a page script beside an icon does not.
+        (
+            "doc_svg_active",
+            b"<html><svg><script></script></svg></html>",
+            b"<html><svg><rect/></svg><script></script></html>",
+        ),
         # A handler body on an animation element; declarative animation with begin= stays clean.
         (
             "doc_svg_event_handler",
             b'<svg><animate attributeName="x" onbegin="void 0"/></svg>',
             b'<svg><animate attributeName="x" begin="0s" dur="1s"/></svg>',
+        ),
+        # An HTML parser reads an image tag outside svg as img, so only one inside svg fires.
+        (
+            "doc_svg_event_handler",
+            b'<html><svg><image href="x" onerror="void 0"/></svg></html>',
+            b'<html><svg><rect/></svg><image src="x" onerror="void 0"></html>',
         ),
         (
             "script_download_execute",

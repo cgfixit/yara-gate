@@ -67,6 +67,12 @@ def test_scan_bytes_matches_scan_file(tmp_path: Path, rules_copy: Path) -> None:
         ]
 
 
+def test_scan_bytes_keeps_only_the_last_component_of_either_separator(rules_copy: Path) -> None:
+    result = scan_bytes(b"notes", name="C:\\Users\\someone\\plans\\notes.txt", rules_dir=rules_copy)
+    assert result.path == "notes.txt"
+    assert scan_bytes(b"notes", name="a/b\\c.md", rules_dir=rules_copy).path == "c.md"
+
+
 def test_scan_bytes_refuses_non_bytes(rules_copy: Path) -> None:
     result = scan_bytes(5, rules_dir=rules_copy)  # type: ignore[arg-type]
     assert result.verdict is Verdict.incomplete

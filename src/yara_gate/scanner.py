@@ -29,6 +29,7 @@ from yara_gate.content import (
     ooxml_text_views,
     pdf_streams,
     pdf_views,
+    svg_scope_proven,
     text_views,
 )
 from yara_gate.content import (
@@ -125,7 +126,9 @@ def scan_bytes(
     the report ``path``. The verdict describes these bytes: consume the same buffer, not a
     later reread.
     """
-    label = Path(name).name or "input"
+    # Either separator ends a directory, so a Windows-style name keeps only its last component
+    # on POSIX too.
+    label = PurePosixPath(str(name).replace("\\", "/")).name or "input"
     # bytes(5) would build five NUL bytes; anything not bytes-like is a failed scan.
     payload = bytes(data) if isinstance(data, bytes | bytearray | memoryview) else None
     try:
@@ -781,6 +784,7 @@ def _invoke_scan(
         ("yara_gate_text", sniff(data) == "text"),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
+        ("yara_gate_svg_scope_proven", svg_scope_proven(data)),
     ):
         try:
             scanner.set_global(global_name, value)

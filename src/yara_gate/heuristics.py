@@ -65,7 +65,8 @@ def heuristic_findings(
     keras, keras_error = keras_config_findings(path, data)
     findings.extend(keras)
     findings.extend(ooxml_structure_findings(path, data))
-    findings.extend(mcp_tool_findings(path, data))
+    mcp, mcp_error = mcp_tool_findings(path, data)
+    findings.extend(mcp)
     office, error = office_findings(path, data)
     findings.extend(office)
     if error is None and pdf_encrypted(data):
@@ -75,6 +76,8 @@ def heuristic_findings(
         error = keras_error
     if error is None:
         error = pickle_error
+    if error is None:
+        error = mcp_error
     return findings, error
 
 
@@ -943,6 +946,13 @@ _PICKLE_SAFE_BUILTINS = frozenset(
         ),
     }
 )
+# The MCP walk's budget: about 1 s of Python on a laptop at the node cap. The depth cap
+# matches the Keras walk's; json.loads itself fails near depth 1,000.
+_MCP_MAX_NODES = 2_000_000
+_MCP_MAX_DEPTH = 64
+_MCP_TOO_LARGE = "mcp json exceeds walk limit"
+# A budget-truncated document holds the scan only when it could carry an MCP entry.
+_MCP_KEYS = (b'"command"', b'"args"', b'"description"', b"\\u")
 _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|pwsh)(\s|$)")
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
 # Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
@@ -1203,21 +1213,33 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
     return findings
 
 
-def mcp_tool_findings(path: Path, data: bytes) -> list[Finding]:
+def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
+    """Shell launchers and hidden instructions in MCP-style JSON, and an incomplete reason.
+
+    The walk visits every element up to a shared node and depth budget, so the position of an
+    entry in a list or its nesting depth cannot hide it. A document the budget cannot finish is
+    incomplete when it could hold an MCP entry (it names a command, args, or a description, or
+    escapes a key), never clean; other large JSON keeps its result.
+    """
     if path.suffix.lower() != ".json" or not data.lstrip().startswith((b"{", b"[")):
-        return []
+        return [], None
     try:
         parsed = json.loads(data)
     except json.JSONDecodeError:
-        return []
-    hits: list[str] = []
-    _walk_mcp(parsed, hits, 0)
+        return [], None
+    except RecursionError:
+        # Nested past what json.loads can parse: unwalked, so the same rule as the budget.
+        return [], _MCP_TOO_LARGE if any(key in data for key in _MCP_KEYS) else None
+    hits: set[str] = set()
+    _walk_mcp(parsed, hits)
     findings: list[Finding] = []
     if "shell" in hits:
         findings.append(_advisory("heuristic_mcp_shell"))
     if "hidden" in hits:
         findings.append(_advisory("heuristic_mcp_hidden_instruction"))
-    return findings
+    if "truncated" in hits and any(key in data for key in _MCP_KEYS):
+        return findings, _MCP_TOO_LARGE
+    return findings, None
 
 
 def _block(rule_id: str) -> Finding:
@@ -1588,27 +1610,42 @@ def _gguf_value(data: bytes, offset: int, value_type: int) -> int | None:
     return cursor
 
 
-def _walk_mcp(node: object, hits: list[str], depth: int) -> None:
-    if depth > 8 or len(hits) > 4:
-        return
-    if isinstance(node, dict):
-        command = node.get("command")
-        if isinstance(command, str) and _SHELL_COMMAND.search(command):
-            hits.append("shell")
-        args = node.get("args")
-        if isinstance(args, list):
-            for item in args:
-                if isinstance(item, str) and _SHELL_ARG.search(item):
-                    hits.append("shell")
-                    break
-        description = node.get("description")
-        if isinstance(description, str) and _HIDDEN_INSTRUCTION.search(description):
-            hits.append("hidden")
-        for value in node.values():
-            _walk_mcp(value, hits, depth + 1)
-    elif isinstance(node, list):
-        for item in node[:50]:
-            _walk_mcp(item, hits, depth + 1)
+def _walk_mcp(root: object, hits: set[str]) -> None:
+    # The Keras walk's shape: one lazy iterator per open container, a node cap, and a depth
+    # cap; reaching either with nodes left unvisited adds "truncated".
+    stack: list[Iterator[object]] = [iter((root,))]
+    seen = 0
+    while stack and not {"shell", "hidden"} <= hits:
+        node = next(stack[-1], _KERAS_END)
+        if node is _KERAS_END:
+            stack.pop()
+            continue
+        if seen >= _MCP_MAX_NODES:
+            hits.add("truncated")
+            return
+        seen += 1
+        if isinstance(node, dict):
+            command = node.get("command")
+            if isinstance(command, str) and _SHELL_COMMAND.search(command):
+                hits.add("shell")
+            args = node.get("args")
+            if isinstance(args, list) and any(
+                isinstance(item, str) and _SHELL_ARG.search(item) for item in args
+            ):
+                hits.add("shell")
+            description = node.get("description")
+            if isinstance(description, str) and _HIDDEN_INSTRUCTION.search(description):
+                hits.add("hidden")
+            children: Iterator[object] | None = iter(node.values()) if node else None
+        elif isinstance(node, list) and node:
+            children = iter(node)
+        else:
+            children = None
+        if children is not None:
+            if len(stack) > _MCP_MAX_DEPTH:
+                hits.add("truncated")
+            else:
+                stack.append(children)
 
 
 def _decode_pdf_name(token: bytes) -> bytes:
