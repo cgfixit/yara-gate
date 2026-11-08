@@ -29,6 +29,7 @@ import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
+from functools import cached_property
 
 from yara_gate.content import (
     _PDF_OBJ_HEADER,
@@ -111,6 +112,12 @@ class Font:
     @property
     def unreadable(self) -> bool:
         return self.composite and not self.cmap
+
+    @cached_property
+    def widest(self) -> int:
+        """The most characters one code decodes to: the longest map value, and at least the
+        one WinAnsi character a simple font falls back to."""
+        return max(1, max(map(len, self.cmap.values()), default=0)) if self.cmap else 1
 
 
 @dataclass
@@ -651,23 +658,21 @@ class _Paragraphs:
             self.result.unmapped = True
         readings: list[str] = []
         printed = False
+        check = self.budget.check
+        used = self.result.decoded_chars
         for font in variants[:MAX_FONT_VARIANTS]:
             parts: list[str] = []
             for item in strings:
                 if isinstance(item, bytes):
                     # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
-                    decoded = _decode(
-                        item,
-                        font,
-                        MAX_PDF_DECODED_CHARS - self.result.decoded_chars,
-                        self.budget.check,
-                    )
-                    self.result.decoded_chars += len(decoded)
+                    decoded = _decode(item, font, MAX_PDF_DECODED_CHARS - used, check)
+                    used += len(decoded)
                     printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
                     parts.append(decoded)
                 elif isinstance(item, float) and item <= _SPACE_ADJUST:
                     parts.append(" ")
             readings.append("".join(parts))
+        self.result.decoded_chars = used
         self.add(readings, baseline, size)
         return readings, printed
 
@@ -1189,6 +1194,9 @@ def _utf16(raw: bytes) -> str:
     return raw.decode("utf-16-be", errors="replace")
 
 
+_DECODE_CHUNK = 8192
+
+
 def _decode(raw: bytes, font: Font, remaining: int, check: Callable[[], None]) -> str:
     too_large = "pdf decoded text exceeds character limit"
     if font.cmap is None:
@@ -1199,6 +1207,16 @@ def _decode(raw: bytes, font: Font, remaining: int, check: Callable[[], None]) -
         check()
         return raw.decode("cp1252", errors="replace")
     cmap = font.cmap
+    # A short string that cannot pass the limit is decoded in one pass, as before the limit
+    # existed. The content-stream token loop checks the deadline between strings.
+    size = len(raw)
+    if size <= _DECODE_CHUNK:
+        lengths = font.lengths
+        if lengths == (2,):
+            if (size >> 1) * font.widest <= remaining:
+                return "".join([cmap.get(raw[i : i + 2], "") for i in range(0, size - 1, 2)])
+        elif lengths == (1,) and size * font.widest <= remaining:
+            return "".join([cmap.get(raw[i : i + 1]) or _CP1252[raw[i]] for i in range(size)])
     output: list[str] = []
 
     def append(text: str) -> None:

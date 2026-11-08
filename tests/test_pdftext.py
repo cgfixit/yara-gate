@@ -309,3 +309,11 @@ def test_a_stray_byte_in_a_hex_string_is_skipped() -> None:
     # Readers skip a byte that is not a hex digit; the scan must not fail on one.
     assert pdftext._hex_bytes(b"41x4 2") == b"AB"
     assert pdftext._hex_bytes(b"4g1") == b"A"
+
+
+def test_a_long_map_value_still_reaches_the_decoded_limit() -> None:
+    # Short strings take the one-pass path only when no code can pass the limit.
+    font = pdftext.Font(True, {b"\x00\x01": "x" * 50}, (2,))
+    assert pdftext._decode(b"\x00\x01" * 2, font, 100, lambda: None) == "x" * 100
+    with pytest.raises(ContentLimit, match="pdf decoded text exceeds character limit"):
+        pdftext._decode(b"\x00\x01" * 3, font, 100, lambda: None)
