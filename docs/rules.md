@@ -26,7 +26,7 @@ These rules target content an AI agent is about to read: messages, retrieved doc
 | [`agent_bidi_override`](../rules/local/agent_bidi_override.yar) | An explicit left-to-right or right-to-left override in a text unit | Note |
 | [`agent_bidi_formatting`](../rules/local/agent_bidi_formatting.yar) | A directional embedding or isolate in a text unit | Note |
 | [`agent_bidi_source`](../rules/local/agent_bidi_source.yar) | Any bidi override, embedding, or isolate in a file whose suffix names a programming or shell language (Trojan Source, CVE-2021-42574) | Block |
-| [`agent_base64_blob`](../rules/local/agent_base64_blob.yar) | A base64 run of 400 or more characters that is not media, a font, a PEM body, or an SSH key | Advisory |
+| [`agent_base64_blob`](../rules/local/agent_base64_blob.yar) | A base64 run of 400 or more characters that is not media, a font, a PEM body, an SSH key, or hex digits only (a PDF hex string of glyph ids or a UTF-16BE outline title is hex text, not base64) | Advisory |
 | [`agent_base64_executable`](../rules/local/agent_base64_blob.yar) | A base64 run of 400 or more characters whose decoded head is a PE (`MZ`), ELF, or Mach-O header, in a page, a JSON value, a message, or a `data:` URI | Block |
 | [`agent_eicar`](../rules/local/agent_eicar.yar) | The EICAR antivirus test string | Block |
 

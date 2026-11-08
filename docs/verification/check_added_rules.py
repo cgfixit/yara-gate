@@ -18,7 +18,13 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path
 
-from yara_gate.samples import merged_pdf, mini_pe, shared_name_pdf
+from yara_gate.samples import (
+    hex_glyph_line_pdf,
+    hex_outline_title_pdf,
+    merged_pdf,
+    mini_pe,
+    shared_name_pdf,
+)
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
@@ -564,6 +570,24 @@ def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     ]
 
 
+def hex_string_cases() -> list[tuple[str, bytes, str | None]]:
+    """PDF hex strings are hex text, not base64.
+
+    See docs/verification/2026-11-08-base64-hex-strings.md.
+
+    Chromium writes a line of text as one hex glyph-id string, and LibreOffice writes a long
+    heading's outline entry as a UTF-16BE hex title. Both are runs of 400 or more hex digits,
+    which agent_base64_blob reported until a hex-only run stopped counting. A base64 payload
+    beside a hex string is its own run and still counts.
+    """
+    payload = base64.b64encode(bytes(range(256)) * 2)
+    return [
+        ("hex-glyph-line.pdf", hex_glyph_line_pdf(), None),
+        ("hex-outline-title.pdf", hex_outline_title_pdf(), None),
+        ("hex-beside-base64.pdf", hex_glyph_line_pdf(payload), "agent_base64_blob"),
+    ]
+
+
 def _flate_text_pdf(content: bytes) -> bytes:
     body = zlib.compress(content)
     return (
@@ -676,6 +700,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         *_overflow_cmap_cases(),
         *font_reading_cases(),
         *_encoded_text_cases(),
+        *hex_string_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.
         (
             "repo-git.zip",
