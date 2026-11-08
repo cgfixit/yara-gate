@@ -1,5 +1,6 @@
 """The pdf-text reconstruction: limits, graphics-state scoping, and stream continuation."""
 
+import math
 import time
 import zlib
 
@@ -105,12 +106,71 @@ def test_same_rule_ids_from_two_namespaces_are_both_kept(
     }
 
 
-def _font_pdf(fonts: int, maps: int, ranges: int = 1) -> bytes:
+_CMAP_HEAD = b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+
+
+def _ranges(body: bytes) -> tuple[dict[bytes, str], dict[bytes, str]]:
+    budget = Budget(math.inf)
+    data = _CMAP_HEAD + body + b"endcmap\n"
+    mapping, lengths, carried = pdftext._cmap(data, budget, pdftext._Cmaps({}, budget))
+    assert lengths == (2,)
+    return mapping, carried
+
+
+def test_an_overflowing_bfrange_destination_is_read_wrapped_and_carried() -> None:
+    mapping, carried = _ranges(b"1 beginbfrange\n<0000> <00FF> <FFFF>\nendbfrange\n")
+    assert len(mapping) == 256
+    # Before the overflow both readings agree; past it PDFium, PDFBox, and pdfminer.six wrap
+    # to two bytes, and pdf.js and MuPDF keep the code point past U+FFFF.
+    assert mapping[b"\x00\x00"] == "\uffff" and b"\x00\x00" not in carried
+    assert mapping[b"\x00\x41"] == "@" and carried[b"\x00\x41"] == "\U00010040"
+    assert set(carried) == set(mapping) - {b"\x00\x00"}
+
+
+def test_a_carry_below_the_destination_width_is_not_an_overflow() -> None:
+    mapping, carried = _ranges(b"1 beginbfrange\n<0000> <0001> <00FF>\nendbfrange\n")
+    assert mapping == {b"\x00\x00": "\xff", b"\x00\x01": "\u0100"} and not carried
+    mapping, carried = _ranges(b"1 beginbfrange\n<0000> <0001> <0041FFFF>\nendbfrange\n")
+    assert mapping[b"\x00\x01"] == "B\x00" and not carried
+
+
+def test_a_wide_destination_keeps_its_leading_units_when_it_overflows() -> None:
+    mapping, carried = _ranges(b"1 beginbfrange\n<0000> <0001> <FFFFFFFF>\nendbfrange\n")
+    assert mapping[b"\x00\x01"] == "\x00\x00" and carried[b"\x00\x01"] == "\uffff\U00010000"
+
+
+def test_a_later_entry_replaces_the_carried_reading() -> None:
+    mapping, carried = _ranges(
+        b"1 beginbfrange\n<0000> <00FF> <FFFF>\nendbfrange\n"
+        b"1 beginbfchar\n<0041> <0041>\nendbfchar\n"
+        b"1 beginbfrange\n<0042> <0043> [<0042> <0043>]\nendbfrange\n"
+        b"1 beginbfrange\n<0044> <0044> <0044>\nendbfrange\n"
+    )
+    assert [mapping[bytes((0, c))] for c in b"ABCD"] == list("ABCD")
+    assert not {bytes((0, c)) for c in b"ABCD"} & set(carried)
+    assert carried[b"\x00\x45"] == "\U00010044"
+
+
+def test_an_overflowing_bfrange_keeps_the_entry_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pdftext, "MAX_CMAP_ENTRIES", 100)
+    mapping, carried = _ranges(b"1 beginbfrange\n<0000> <FFFF> <FFFF>\nendbfrange\n")
+    assert len(mapping) == 100 and len(carried) == 99
+
+
+def test_an_overflowing_tounicode_font_has_a_second_reading() -> None:
+    cmap = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FFFF>\nendbfrange\nendcmap\n"
+    body = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R >>"
+    cmaps = pdftext._Cmaps({6: cmap}, Budget(math.inf))
+    fonts = pdftext._font([body], cmaps, lambda key: b"", (5, 0))
+    assert [pdftext._decode(b"\x00\x41", font) for font in fonts] == ["@", "\U00010040"]
+
+
+def _font_pdf(fonts: int, maps: int, ranges: int = 1, target: bytes = b"0000") -> bytes:
     """A page drawing "Hi" in /F0, ``fonts`` Type0 fonts over ``maps`` FlateDecode ToUnicode
-    maps, each map writing the identity range ``<0000> <FFFF> <0000>`` ``ranges`` times."""
+    maps, each map writing the range ``<0000> <FFFF> <target>`` ``ranges`` times."""
     cmap = zlib.compress(
         b"1 begincodespacerange <0000> <FFFF> endcodespacerange\n%d beginbfrange\n" % ranges
-        + b"<0000> <FFFF> <0000>\n" * ranges
+        + (b"<0000> <FFFF> <" + target + b">\n") * ranges
         + b"endbfrange\n"
     )
     names = b" ".join(b"/F%d %d 0 R" % (index, 100 + index) for index in range(fonts))
@@ -170,3 +230,15 @@ def test_cmap_tokens_past_the_file_budget_are_incomplete() -> None:
     data = b"beginbfrange " + b"[" * (pdftext.MAX_CMAP_TOKENS + 1) + b" endbfrange"
     with pytest.raises(ContentLimit, match=f"pdf cmap tokens exceed {pdftext.MAX_CMAP_TOKENS}"):
         pdftext._cmap(data, budget, pdftext._Cmaps({}, budget))
+
+
+# An overflowing map writes 65,536 entries, then a second copy of 131,071 for its carried
+# reading: three such maps pass the budget, and one shared by 200 fonts is copied once.
+def test_the_carried_reading_counts_toward_the_cmap_budget() -> None:
+    with pytest.raises(ContentLimit, match=f"pdf cmap entries exceed {pdftext.MAX_CMAP_TOTAL}"):
+        _pdf_text(_font_pdf(3, 3, target=b"FFFF"))
+    started = time.monotonic()
+    text = _pdf_text(_font_pdf(200, 1, target=b"FFFF"))
+    assert time.monotonic() - started < 5
+    # <0048> and <0069> read "G" and "h" wrapped, and U+10047 and U+10068 carried.
+    assert {"Gh", "\U00010047\U00010068"} <= set(text.blocks)
