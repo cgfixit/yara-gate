@@ -161,10 +161,10 @@ _BOUNDARY = (
     ("fake-header-missing", "incomplete", "incomplete"),
     ("fake-header-unaligned", "incomplete", "incomplete"),
     ("next-object-missing-length", "incomplete", "incomplete"),
-    ("aligned-literal-lookalike", "read", "read"),
-    ("aligned-comment-lookalike", "read", "read"),
-    ("aligned-hex-lookalike", "read", "read"),
-    ("aligned-fake-header", "read", "read"),
+    ("aligned-literal-lookalike", "header", "header"),
+    ("aligned-comment-lookalike", "header", "header"),
+    ("aligned-hex-lookalike", "header", "header"),
+    ("aligned-fake-header", "header", "header"),
     ("aligned-random-binary", "read", "read"),
     ("aligned-flate-keywords", "read", "read"),
     ("aligned-endstreaming", "read", "read"),
@@ -175,7 +175,7 @@ _BOUNDARY = (
     ("later-endstream", "incomplete", "incomplete"),
     ("later-endstream-comment-split", "incomplete", "incomplete"),
     # Digits glued to endstream are one token, not a keyword, so the landed length stands.
-    ("later-endstream-glued", "clean", "clean"),
+    ("later-endstream-glued", "header", "header"),
     ("aligned-prose-endstream", "incomplete", "incomplete"),
     ("aligned-jpeg-comment-endstream", "incomplete", "incomplete"),
 )
@@ -282,7 +282,7 @@ def test_stream_boundary_matrix(
 ) -> None:
     # classification is the asserted class for this fixture, not a recorded old revision.
     assert classification == expect
-    assert classification in {"clean", "read", "incomplete"}
+    assert classification in {"clean", "read", "incomplete", "header"}
     data = _boundary_pdf(name)
     try:
         texts = read(data)
@@ -294,6 +294,10 @@ def test_stream_boundary_matrix(
         assert result.incomplete_reason is None
         assert result.verdict.value == "advisory"
         assert any(f.view == "pdf-annotation" for f in result.findings)
+    elif expect == "header":
+        assert isinstance(texts, ContentLimit)
+        assert result.verdict.value == "incomplete"
+        assert result.incomplete_reason == "pdf object header inside stream"
     elif expect == "incomplete":
         assert isinstance(texts, ContentLimit)
         assert result.verdict.value == "incomplete"

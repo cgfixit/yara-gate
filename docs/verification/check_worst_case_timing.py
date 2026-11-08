@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import zipfile
+import zlib
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -129,27 +130,35 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, b"/Contents["),
         None,
     )
-    # The SVG scope rules count svg tags before every script, onload, onbegin, and onerror
-    # match. Just under their 1,024-match cap with no match inside an svg, so each loop
-    # runs to its end and the page stays clean.
-    scope = (
-        b"<html>"
-        + b"</svg>" * 1020
-        + b"<svg/>" * 1020
-        + b"<svg></svg></svg>"
-        + b"<script " * 1024
-        + b"onload=" * 1024
-        + b'<svg/><image onerror="x"'
-    )
-    yield "svg-scope-cap.html", _filled(scope, b" "), None
-    # A ToUnicode CMap of unterminated sections: a lazy section search rescanned to the end of
-    # the map for every one (over 300 s here), where one linear pass takes well under 1 s.
-    yield "pdf-cmap-sections.pdf", _cmap_pdf(b"beginbfchar "), None
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
     yield (
         "pdf-page-objects.pdf",
         _filled(streams, page),
         None,
+    )
+    # Ambiguous SVG scope above the proof budget must keep the strict result without
+    # repeatedly counting tag offsets for each of the active-content matches.
+    scope = b"<html>" + b"</svg><svg/>" * 1020 + b"<script " * 1024 + b"onload=" * 1024
+    yield "svg-scope-cap.html", _filled(scope, b" "), None
+    # 200 Type0 fonts, each with its own FlateDecode ToUnicode map writing 65,536 entries:
+    # 13 s on 43aba2e, which had no per-file CMap budget.
+    identity = b"1 beginbfrange\n<0000> <FFFF> <0000>\nendbfrange\n"
+    yield (
+        "pdf-cmap-fonts.pdf",
+        _cmap_pdf(200, zlib.compress(identity), b"/Filter/FlateDecode"),
+        "pdf cmap entries exceed 524288",
+    )
+    # One map of unclosed section markers: a lazy begin...end regex rescanned to the end from
+    # each one, past the 20 s watchdog. Unfiltered, so the map is exactly what the file holds.
+    yield (
+        "pdf-cmap-sections.pdf",
+        _cmap_pdf(1, b"beginbfchar ", b""),
+        None,
+    )
+    yield (
+        "pdf-cmap-tokens.pdf",
+        _cmap_pdf(1, b"[", b"", b"beginbfrange ", b" endbfrange"),
+        "pdf cmap tokens exceed 1572864",
     )
 
 
@@ -171,24 +180,44 @@ def _content_pdf(prelude: bytes, token: bytes) -> bytes:
     raise RuntimeError("content stream length does not fit")
 
 
-def _cmap_pdf(token: bytes) -> bytes:
-    """A 4 MiB PDF whose one font's unfiltered ToUnicode stream is ``token`` repeated."""
-    head = (
-        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
-        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
-        b"3 0 obj<</Type/Page/Parent 2 0 R/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>endobj\n"
-        b"4 0 obj<</Length 22>>stream\nBT /F1 12 Tf <0041> Tj\nendstream endobj\n"
-        b"5 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode 6 0 R>>endobj\n"
+def _cmap_pdf(
+    fonts: int, cmap: bytes, filters: bytes, prefix: bytes = b"", suffix: bytes = b""
+) -> bytes:
+    """A 4 MiB page naming ``fonts`` Type0 fonts with one ToUnicode stream each.
+
+    With ``filters`` each stream is ``cmap`` and a comment pads the file. Without, one stream
+    repeats ``cmap`` between ``prefix`` and ``suffix`` to fill the file, and its `/Length`
+    lands on `endstream`.
+    """
+    body = b"BT /F0 12 Tf 72 700 Td <00480069> Tj ET"
+    names = b" ".join(b"/F%d %d 0 R" % (index, 100 + index) for index in range(fonts))
+    head = b"".join(
+        [
+            b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources<</Font<<",
+            names + b">>>>/Contents 4 0 R>>endobj\n",
+            b"4 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body),
+            *(
+                b"%d 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode %d 0 R>>"
+                b"endobj\n" % (100 + index, 5000 + index)
+                for index in range(fonts)
+            ),
+        ]
     )
-    tail = b"\nendstream endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+    tail = b"\nendstream endobj\n%%EOF\n"
+    if filters:
+        streams = b"".join(
+            b"%d 0 obj<</Length %d%s>>stream\n%s" % (5000 + index, len(cmap), filters, cmap) + tail
+            for index in range(fonts)
+        )
+        return _filled(head + streams + b"%", b" ")[:-1] + b"\n"
     for digits in range(1, 9):
-        start = head + b"6 0 obj<</Length " + b"0" * digits + b">>stream\n"
-        body_len = SIZE - len(start) - len(tail)
-        if len(str(body_len)) != digits:
+        start = b"5000 0 obj<</Length %s>>stream\n" % (b"0" * digits)
+        length = SIZE - len(head) - len(start) - len(tail)
+        if len(str(length)) != digits:
             continue
-        count, rest = divmod(body_len, len(token))
-        body = token * count + b" " * rest
-        return head + b"6 0 obj<</Length %d>>stream\n" % body_len + body + tail
+        count, rest = divmod(length - len(prefix) - len(suffix), len(cmap))
+        stream = prefix + cmap * count + b" " * rest + suffix
+        return head + b"5000 0 obj<</Length %d>>stream\n" % length + stream + tail
     raise RuntimeError("cmap stream length does not fit")
 
 

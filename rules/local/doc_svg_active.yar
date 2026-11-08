@@ -22,7 +22,7 @@ rule doc_svg_active {
         $root = /(\xEF\xBB\xBF)?\s*(<\?xml[^<>]{0,512}\?>\s*)?((<!--[^>]{0,4096}-->|<!DOCTYPE[^<>]{0,1024}>)\s*){0,8}<svg\b/ nocase ascii
     condition:
         $svg and ($script or $onload or ($foreign and $script)) and (
-            yara_gate_ext == "svg" or yara_gate_ext == "svgz" or $root at 0 or $svg_onload
+            yara_gate_ext == "svg" or yara_gate_ext == "svgz" or $root at 0 or not yara_gate_svg_scope_proven or $svg_onload
             // Each scope test counts every svg tag before a match, so more than 1,024 matches
             // of any of these patterns keeps the strict test: a flood can hide no script and
             // cannot make the condition quadratic.
