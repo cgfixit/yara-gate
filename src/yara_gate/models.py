@@ -95,6 +95,9 @@ class ScanResult(_Dumpable):
     # What ran: how many rules compiled, which yara-gate produced the record, and how long it took.
     compiled_rules: int = 0
     tool_version: str | None = None
+    # SHA-256 over the scanner's own sources and parser versions: changes when a reader or
+    # heuristic does, even if tool_version and ruleset_sha256 do not.
+    detector_sha256: str | None = None
     scan_seconds: float | None = None
     # What was covered, counted up to the point the scan finished or stopped: content units
     # (the file plus archive and mail members), derived views by name, bytes handed to YARA, and

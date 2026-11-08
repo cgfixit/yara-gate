@@ -11,7 +11,16 @@ Twilio POSTs each inbound message to this server. The bridge:
    sender's recent messages joined together, so an instruction split across two texts is
    seen whole;
 4. appends a message to ``allowed.jsonl`` only when both scans are complete ``clean`` records
-   for these exact bytes, and everything else to ``held.jsonl`` with the rule IDs for review.
+   for these exact bytes, and everything else to ``held.jsonl`` with the rule IDs for review;
+5. deduplicates committed ``MessageSid`` values. A signature proves origin but a signed
+   request can be replayed. The bridge reserves the ID in ``processed.sqlite3``, appends
+   the queue line, then commits the reservation. A committed duplicate is acknowledged
+   without scanning. An overlapping uncommitted delivery gets HTTP 503 so it can retry.
+   A message without a ``MessageSid`` is held.
+
+A crash between the queue append and the commit can still write one line twice, so the agent
+side must also skip a ``message_sid`` it has already consumed: no transport check gives
+exactly-once delivery.
 
 It answers Twilio with an empty TwiML response: no automatic reply, nothing echoed back. The
 agent side reads ``allowed.jsonl`` and must still fence each body as untrusted data and keep
@@ -38,6 +47,7 @@ import hashlib
 import hmac
 import json
 import os
+import sqlite3
 import stat
 import sys
 import threading
@@ -56,6 +66,7 @@ WINDOW_SECONDS = 15 * 60
 RATE_PER_MINUTE = 12  # Per sender; a flood is held for review rather than scanned and passed.
 EMPTY_TWIML = b'<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 QUEUE_FILES = ("allowed.jsonl", "held.jsonl")
+PROCESSED = "processed.sqlite3"
 
 
 def _require_mine(info: os.stat_result, path: Path) -> None:
@@ -118,11 +129,22 @@ class Gate:
         try:
             _require_mine(os.fstat(self.dir_fd), queue)
             _make_private(self.dir_fd, 0o700)
-            for name in QUEUE_FILES:
+            for name in (*QUEUE_FILES, PROCESSED):
                 os.close(self._open(name))
+            # The checked file, by path: sqlite3 cannot open relative to a descriptor. The queue
+            # directory is ours and 0700, so its journal files are private too.
+            self.db = sqlite3.connect(
+                queue / PROCESSED, isolation_level=None, check_same_thread=False
+            )
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS processed"
+                " (message_sid TEXT PRIMARY KEY, outcome TEXT NOT NULL, received_at INTEGER)"
+            )
         except BaseException:
             os.close(self.dir_fd)
             raise
+        self.db_lock = threading.Lock()
+        self.in_flight: set[str] = set()
 
     def _open(self, name: str) -> int:
         """Open a queue file to append: ours, regular, one link, mode 0600, contents kept."""
@@ -146,7 +168,47 @@ class Gate:
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+    def _seen(self, sid: str) -> bool:
+        with self.db_lock:
+            row = self.db.execute("SELECT 1 FROM processed WHERE message_sid = ?", (sid,))
+            return row.fetchone() is not None
+
+    def _commit(self, name: str, entry: dict[str, Any]) -> bool:
+        """Reserve the ID, append the line, and commit the ID. False if already recorded."""
+        with self.db_lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.db.execute(
+                    "INSERT INTO processed VALUES (?, ?, ?)",
+                    (entry["message_sid"], name, entry["received_at"]),
+                )
+                self._append(name, entry)
+                self.db.execute("COMMIT")
+            except sqlite3.IntegrityError:
+                self.db.execute("ROLLBACK")
+                return False
+            except BaseException:
+                if self.db.in_transaction:
+                    self.db.execute("ROLLBACK")
+                raise
+            return True
+
     def decide(self, fields: dict[str, str]) -> str:
+        sid = fields.get("MessageSid", "")
+        if sid:
+            with self.lock:
+                if sid in self.in_flight:
+                    return "retry"
+                if self._seen(sid):
+                    return "duplicate"
+                self.in_flight.add(sid)
+        try:
+            return self._decide(fields, sid)
+        finally:
+            with self.lock:
+                self.in_flight.discard(sid)
+
+    def _decide(self, fields: dict[str, str], sid: str) -> str:
         sender = fields.get("From", "")
         body = fields.get("Body", "")
         now = time.time()
@@ -170,6 +232,8 @@ class Gate:
                 recent.popleft()
             flood = len(arrivals) > RATE_PER_MINUTE
         reasons: list[str] = []
+        if not sid:
+            reasons.append("no MessageSid, so a replay could not be told apart")
         if fields.get("NumMedia", "0") not in ("", "0"):
             reasons.append("mms media is not scanned; review it in Twilio")
         if flood:
@@ -189,12 +253,13 @@ class Gate:
                     + (f" {rules}" if rules else "")
                 )
         entry["sha256"] = single.sha256
+        outcome = "held" if reasons else "allowed"
         if reasons:
             entry["held_because"] = reasons
+        if not sid:
             self._append("held.jsonl", entry)
-            return "held"
-        self._append("allowed.jsonl", entry)
-        return "allowed"
+            return outcome
+        return outcome if self._commit(f"{outcome}.jsonl", entry) else "duplicate"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -232,7 +297,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         outcome = self.server.gate.decide(fields)
         print(f"{fields.get('MessageSid', '?')}: {outcome}", flush=True)
-        self._reply(200, EMPTY_TWIML, "text/xml")
+        if outcome == "retry":
+            self._reply(503, b"")
+        else:
+            self._reply(200, EMPTY_TWIML, "text/xml")
 
     def _reply(self, status: int, body: bytes, content_type: str = "text/plain") -> None:
         self.send_response(status)

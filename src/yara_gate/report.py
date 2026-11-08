@@ -61,6 +61,7 @@ def compact_report(result: ScanResult) -> dict[str, object]:
         "policy_reason": result.policy_reason,
         "compiled_rules": result.compiled_rules,
         "tool_version": result.tool_version,
+        "detector_sha256": result.detector_sha256,
         "scan_seconds": result.scan_seconds,
         "units_scanned": result.units_scanned,
         "views_scanned": result.views_scanned,
