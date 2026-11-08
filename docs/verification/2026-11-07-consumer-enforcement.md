@@ -26,8 +26,8 @@ inert MCP config with that entry plus a plain note, under `agent-document`.
 
 | Step | Main's sync script | This change |
 | --- | --- | --- |
-| 1. Old scanner, home A | both allowed, exit 0 | both allowed, exit 0 |
-| 2. New scanner, same home A | nothing rescanned; stale `allowed/mcp.json` stays, exit 0 | both rescanned; `mcp.json` held and withdrawn, exit 1 |
+| 1. Old scanner, home A | both allowed, exit 0 | both allowed at `15000dd`; at `ba97eaf` the probe fails (the old scanner reports no `detector_sha256`), nothing is admitted, exit 2 |
+| 2. New scanner, same home A | nothing rescanned; stale `allowed/mcp.json` stays, exit 0 | both rescanned; `mcp.json` held (and, at `15000dd`, withdrawn), exit 1 |
 | 3. New scanner, fresh home B | `mcp.json` held, exit 1 | `mcp.json` held, exit 1 |
 | 4. New scanner, home A, source mtime changed | held, **and** the old copy still in `allowed/` | held; nothing for it in `allowed/` |
 
@@ -46,7 +46,7 @@ Through the real HTTP handler on loopback with valid Twilio signatures (a fake t
 | Delivery | Outcome |
 | --- | --- |
 | A message, then the same signed request again | allowed, then duplicate (one queue line) |
-| Two identical deliveries at once | one allowed, one duplicate |
+| Two identical deliveries at once | one allowed, one duplicate at `15000dd`; one allowed, one HTTP 503 at `ba97eaf` |
 | A held message, then its replay | held, then duplicate |
 | No `MessageSid` | held |
 | `allowed.jsonl` unwritable (a directory) | no response, no row; after repair the retry is allowed |
