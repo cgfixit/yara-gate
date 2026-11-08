@@ -46,7 +46,11 @@ MAX_TOKENS = 4_000_000
 # A TJ array holds a few hundred items; one this long is not text a reader shows.
 MAX_ARRAY_ITEMS = 100_000
 MAX_CMAP_ENTRIES = 1 << 17
+# Each text string is decoded once per font its resource name means, up to this many. Past
+# it, or past MAX_FONT_REFERENCES fonts behind one name, some readings go undecoded, which is
+# reported as unmapped text (docs/verification/2026-11-07-pdf-font-readings.md).
 MAX_FONT_VARIANTS = 4
+MAX_FONT_REFERENCES = 64
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
 
@@ -100,6 +104,10 @@ class Font:
 @dataclass
 class PdfText:
     """Text blocks, multi-block paragraphs, and whether some text could not be decoded.
+
+    ``unmapped`` is set when a composite font has no readable map, a font the file never
+    resolves shows two-byte codes, or a string is shown in a resource name that means more
+    fonts than ``MAX_FONT_VARIANTS`` (or ``MAX_FONT_REFERENCES``), so a reading went undecoded.
 
     ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
     moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
@@ -276,6 +284,7 @@ def _fonts(
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
     references: dict[bytes, set[tuple[int, int]]] = {}
+    truncated: set[bytes] = set()
     dictionaries: list[bytes] = []
     indirect: set[tuple[int, int]] = set()
     for source in sources:
@@ -293,8 +302,11 @@ def _fonts(
         for ref in _NAME_REF.finditer(dictionary):
             name = _name(ref.group(1))
             slot = references.setdefault(name, set())
-            if len(slot) < 64:
-                slot.add((int(ref.group(2)), int(ref.group(3))))
+            key = (int(ref.group(2)), int(ref.group(3)))
+            if len(slot) < MAX_FONT_REFERENCES:
+                slot.add(key)
+            elif key not in slot:
+                truncated.add(name)
     cache: dict[tuple[int, int], list[Font]] = {}
     fonts: dict[bytes, list[Font]] = {}
     _prime(objects, {key for refs in references.values() for key in refs})
@@ -325,6 +337,11 @@ def _fonts(
         # A second reading of one font comes after every font's first, so it never displaces
         # a font the name also means within MAX_FONT_VARIANTS.
         found.extend(each for each in alternates if each not in found)
+        unresolved = Font(True, None, (2,))
+        if name in truncated and unresolved not in found:
+            # The fonts past the reference cap are never resolved: a composite font with no
+            # map stands for them, so text shown in this name is reported as unmapped.
+            found.append(unresolved)
         if found:
             fonts[name] = found
     return fonts
@@ -504,6 +521,10 @@ class _Paragraphs:
         # this paragraph holds.
         self.block_start = 0
         self.pieces = 0
+        # Whether the last font list shown had an unreadable font: a name's list is fixed, and
+        # consecutive strings nearly always share it, so a name of 64 fonts is checked once.
+        self.checked: list[Font] | None = None
+        self.unreadable = False
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -516,13 +537,23 @@ class _Paragraphs:
         """
         strings = list(strings)
         variants = fonts or [Font(False)]
-        if any(font.unreadable for font in variants):
+        if variants is not self.checked:
+            self.checked = variants
+            self.unreadable = any(font.unreadable for font in variants)
+        if self.unreadable:
             self.result.unmapped = True
         elif not fonts and _two_byte(strings):
             # A font the file never resolves, whose codes are two bytes wide: decoding them as
             # WinAnsi would yield noise, so the text counts as unread.
             self.result.unmapped = True
             return None
+        if (
+            len(variants) > MAX_FONT_VARIANTS
+            and not self.result.unmapped
+            and any(isinstance(item, bytes) and item for item in strings)
+        ):
+            # The readings past the cap are not decoded, so text only they show goes unread.
+            self.result.unmapped = True
         readings: list[str] = []
         printed = False
         for font in variants[:MAX_FONT_VARIANTS]:

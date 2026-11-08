@@ -145,6 +145,8 @@ stream cap makes the scan `incomplete`.
 - `MAX_FONT_VARIANTS` (4) still truncates a resource name's readings without
   reporting it. Second readings are ordered last, so this change never drops a
   font that base read, but a name already at four fonts gets no carried reading.
+  (Follow-up: that truncation is now reported as `heuristic_pdf_text_unmapped`; see
+  [2026-11-07-pdf-font-readings.md](2026-11-07-pdf-font-readings.md).)
 - These cases follow the table above, not every reader:
   - pdf.js treats a carried value in U+1D800–U+1DFFF as a surrogate and shows a
     different code point there.
