@@ -23,6 +23,7 @@ and text covered by a later fill are not computed.
 
 from __future__ import annotations
 
+import binascii
 import math
 import re
 from collections import Counter
@@ -46,6 +47,9 @@ MAX_TOKENS = 4_000_000
 # A TJ array holds a few hundred items; one this long is not text a reader shows.
 MAX_ARRAY_ITEMS = 100_000
 MAX_CMAP_ENTRIES = 1 << 17
+MAX_CMAP_BYTES = 64 * 1024 * 1024
+_MAX_CMAP_CODE_BYTES = 4
+MAX_PDF_DECODED_CHARS = 16 * 1024 * 1024
 # ToUnicode entries written in one file, across all its fonts and overwrites included. One
 # 20-byte `<0000> <FFFF> <0000>` bfrange writes 65,536 entries, so many fonts with their own
 # maps, or one map repeating the range, would otherwise spend the deadline and memory on maps.
@@ -59,7 +63,7 @@ _SPACE_ADJUST = -200.0
 
 _NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)\Z")
 _CP1252 = [bytes((value,)).decode("cp1252", errors="replace") for value in range(256)]
-_HEX_DIGITS = re.compile(rb"[^0-9A-Fa-f]")
+_HEX_WHITESPACE = b"\x00\t\n\f\r "
 _INLINE_IMAGE_END = re.compile(rb"[\x00\t\n\f\r ]EI(?=[\x00\t\n\f\r ]|\Z)")
 _LITERAL_ESCAPES = {
     ord("n"): b"\n",
@@ -120,6 +124,7 @@ class PdfText:
     # The same grouping for text drawn so that a reader does not see it.
     hidden_blocks: list[str] = field(default_factory=list)
     hidden_paragraphs: list[str] = field(default_factory=list)
+    decoded_chars: int = field(default=0, repr=False)
 
     @property
     def hidden(self) -> list[str]:
@@ -357,51 +362,49 @@ def _font(
         parsed = None if mapping is None else cmaps.get(int(mapping.group(1)))
         if parsed is None:
             return [Font(composite, None, default)]
-        cmap, lengths, carried = parsed
+        cmap, lengths, alternate = parsed
         fonts = [Font(composite, cmap or None, lengths or default)]
-        if carried is not None:
-            fonts.append(Font(composite, carried, lengths or default))
+        if alternate:
+            fonts.append(Font(composite, alternate, lengths or default))
         return fonts
     return []
-
-
-_Parsed = tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str] | None]
 
 
 class _Cmaps:
     """A file's ToUnicode maps by object number, each parsed once however many fonts share it.
 
     Every token lexed counts toward ``MAX_CMAP_TOKENS`` and every entry written into any map,
-    overwrites included, toward ``MAX_CMAP_TOTAL``. Past either the scan is incomplete rather
-    than spending the deadline and memory on maps.
+    overwrites included, toward ``MAX_CMAP_TOTAL``. Keys and decoded string storage are
+    charged before allocation. Exhaustion leaves the scan incomplete.
     """
 
     def __init__(self, streams: dict[int, bytes | None], budget: Budget) -> None:
         self._streams = streams
         self._budget = budget
-        self._parsed: dict[int, _Parsed | None] = {}
+        self._parsed: dict[
+            int, tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]] | None
+        ] = {}
         self.written = 0
         self.lexed = 0
+        self.expanded = 0
 
-    def get(self, number: int) -> _Parsed | None:
-        """The map, its code lengths, and its carried reading: the map with an overflowing
-        range's codes read the other way, or None when no range overflows. The carried
-        reading is a second copy of the map, so its entries count toward ``MAX_CMAP_TOTAL``."""
+    def get(self, number: int) -> tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]] | None:
         if number not in self._parsed:
             data = self._streams.get(number)
-            parsed: _Parsed | None = None
+            self._parsed[number] = None
             if data:
-                cmap, lengths, carried = _cmap(data, self._budget, self)
-                reading = None
+                mapping, lengths, carried = _cmap(data, self._budget, self)
                 if carried:
-                    self._budget.check()
-                    self.spend(len(cmap) + len(carried))
-                    reading = {**cmap, **carried}
-                parsed = (cmap, lengths, reading)
-            self._parsed[number] = parsed
+                    self.spend(len(mapping))
+                    carried = {**mapping, **carried}
+                self._parsed[number] = mapping, lengths, carried
         return self._parsed[number]
 
-    def spend(self, entries: int) -> None:
+    def spend(self, entries: int, expanded: int = 0) -> None:
+        self._budget.check()
+        self.expanded += expanded
+        if self.expanded > MAX_CMAP_BYTES:
+            raise ContentLimit(f"pdf cmap expanded bytes exceed {MAX_CMAP_BYTES}")
         self.written += entries
         if self.written > MAX_CMAP_TOTAL:
             raise ContentLimit(f"pdf cmap entries exceed {MAX_CMAP_TOTAL}")
@@ -432,11 +435,7 @@ def _cmap(
     data: bytes, budget: Budget, work: _Cmaps
 ) -> tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]]:
     """bfchar and bfrange entries of a ToUnicode CMap, its code lengths in bytes, and the
-    codes an overflowing bfrange gives a second reading (see ``_cmap_ranges``).
-
-    Each section charges ``work`` for its tokens before lexing them and for the entries it may
-    write before writing them.
-    """
+    codes an overflowing bfrange gives a second reading (see ``_cmap_ranges``)."""
     mapping: dict[bytes, str] = {}
     carried: dict[bytes, str] = {}
     lengths: set[int] = set()
@@ -447,13 +446,18 @@ def _cmap(
             for token in _CMAP_TOKEN.finditer(body)
         ]
         if kind == b"codespacerange":
-            lengths.update(len(item) for item in items[0::2] if isinstance(item, bytes) and item)
+            if any(len(item) > _MAX_CMAP_CODE_BYTES for item in items):
+                raise ContentLimit("pdf cmap source code exceeds four bytes")
+            lengths.update(len(item) for item in items[0::2] if item)
         elif kind == b"bfchar":
             work.spend(len(items) // 2)
             for source, target in zip(items[0::2], items[1::2], strict=False):
                 if len(mapping) >= MAX_CMAP_ENTRIES:
                     break
+                if len(source) > _MAX_CMAP_CODE_BYTES:
+                    raise ContentLimit("pdf cmap source code exceeds four bytes")
                 if source and target not in (b"[", b"]"):
+                    work.spend(0, len(source) + 2 * len(target))
                     mapping[source] = _utf16(target)
                     if carried:
                         # A later entry replaces the code in every reader.
@@ -507,6 +511,8 @@ def _cmap_ranges(
         index += 3
         if not low or len(low) != len(high) or low in (b"[", b"]") or high in (b"[", b"]"):
             continue
+        if len(low) > _MAX_CMAP_CODE_BYTES:
+            raise ContentLimit("pdf cmap source code exceeds four bytes")
         first, last = int.from_bytes(low, "big"), int.from_bytes(high, "big")
         if last < first or last - first > 0xFFFF:
             continue
@@ -518,22 +524,25 @@ def _cmap_ranges(
                 index += 1
             index += 1
             targets = targets[: last - first + 1]
-            work.spend(len(targets))
+            work.spend(len(targets), sum(len(low) + 2 * len(each) for each in targets))
             for offset, each in enumerate(targets):
                 code = (first + offset).to_bytes(len(low), "big")
                 mapping[code] = _utf16(each)
-                if carried:
-                    carried.pop(code, None)
+                carried.pop(code, None)
             continue
         if target == b"]":
             continue
-        base = int.from_bytes(target, "big") if target else 0
         width = max(len(target), 2)
+        count = last - first + 1
+        work.spend(count, count * (len(low) + 2 * width))
+        base = int.from_bytes(target, "big")
         limit = (1 << (8 * width)) - 1
         # The destination as whole UTF-16 units: the units before the last, and the last.
         units = base.to_bytes(width + width % 2, "big")
         prefix, unit = _utf16(units[:-2]), int.from_bytes(units[-2:], "big")
-        work.spend(last - first + 1)
+        overflow = max(0, base + count - 1 - limit)
+        if overflow:
+            work.spend(overflow, overflow * (len(low) + 2 * width + 4))
         for offset in range(last - first + 1):
             if len(mapping) >= MAX_CMAP_ENTRIES:
                 return
@@ -576,8 +585,9 @@ class _Paragraphs:
     placed with ``add`` from the readings the visible grouping already decoded.
     """
 
-    def __init__(self, result: PdfText, *, hidden: bool = False) -> None:
+    def __init__(self, result: PdfText, budget: Budget, *, hidden: bool = False) -> None:
         self.result = result
+        self.budget = budget
         self.hidden = hidden
         self.blocks = result.hidden_blocks if hidden else result.blocks
         self.paragraphs = result.hidden_paragraphs if hidden else result.paragraphs
@@ -614,7 +624,13 @@ class _Paragraphs:
             for item in strings:
                 if isinstance(item, bytes):
                     # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
-                    decoded = _decode(item, font)
+                    decoded = _decode(
+                        item,
+                        font,
+                        MAX_PDF_DECODED_CHARS - self.result.decoded_chars,
+                        self.budget.check,
+                    )
+                    self.result.decoded_chars += len(decoded)
                     printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
                     parts.append(decoded)
                 elif isinstance(item, float) and item <= _SPACE_ADJUST:
@@ -841,8 +857,8 @@ def _blocks(
     # q saves, and Q restores, the whole graphics state: the CTM, the clip, and the text state.
     saved: list[tuple[Matrix, list[Font], float, float, int, bool, bool, Box | None]] = []
     line = _IDENTITY_MATRIX
-    paragraphs = _Paragraphs(result)
-    hidden = _Paragraphs(result, hidden=True)
+    paragraphs = _Paragraphs(result, budget)
+    hidden = _Paragraphs(result, budget, hidden=True)
 
     def extend(points: list[float]) -> None:
         nonlocal path
@@ -1121,10 +1137,10 @@ def _two_byte(strings: list[object]) -> bool:
 
 
 def _hex_bytes(raw: bytes) -> bytes:
-    digits = _HEX_DIGITS.sub(b"", raw)
+    digits = raw.translate(None, _HEX_WHITESPACE)
     if len(digits) % 2:
         digits += b"0"
-    return bytes.fromhex(digits.decode("ascii"))
+    return binascii.unhexlify(digits)
 
 
 def _utf16(raw: bytes) -> str:
@@ -1133,36 +1149,53 @@ def _utf16(raw: bytes) -> str:
     return raw.decode("utf-16-be", errors="replace")
 
 
-def _decode(raw: bytes, font: Font) -> str:
+def _decode(raw: bytes, font: Font, remaining: int, check: Callable[[], None]) -> str:
+    too_large = "pdf decoded text exceeds character limit"
     if font.cmap is None:
         if font.composite:
             return ""
+        if len(raw) > remaining:
+            raise ContentLimit(too_large)
+        check()
         return raw.decode("cp1252", errors="replace")
     cmap = font.cmap
-    if font.lengths == (2,):
-        return "".join(
-            [cmap.get(raw[index : index + 2], "") for index in range(0, len(raw) - 1, 2)]
-        )
-    if font.lengths == (1,):
-        return "".join(
-            [cmap.get(raw[index : index + 1]) or _CP1252[raw[index]] for index in range(len(raw))]
-        )
     output: list[str] = []
-    index = 0
-    while index < len(raw):
-        for length in font.lengths:
-            code = raw[index : index + length]
-            if len(code) == length and code in font.cmap:
-                output.append(font.cmap[code])
-                index += length
-                break
-        else:
-            # A code the map does not list: a simple font falls back to its byte, a composite
-            # font has nothing to show for it.
-            step = font.lengths[-1] if font.composite else 1
-            if not font.composite:
-                output.append(raw[index : index + 1].decode("cp1252", errors="replace"))
-            index += step
+
+    def append(text: str) -> None:
+        nonlocal remaining
+        remaining -= len(text)
+        if remaining < 0:
+            raise ContentLimit(too_large)
+        if text:
+            output.append(text)
+
+    if font.lengths == (2,):
+        for index in range(0, len(raw) - 1, 2):
+            if index % 8192 == 0:
+                check()
+            append(cmap.get(raw[index : index + 2], ""))
+    elif font.lengths == (1,):
+        for index in range(len(raw)):
+            if index % 8192 == 0:
+                check()
+            append(cmap.get(raw[index : index + 1]) or _CP1252[raw[index]])
+    else:
+        index = next_check = 0
+        while index < len(raw):
+            if index >= next_check:
+                check()
+                next_check = index + 8192
+            for length in font.lengths:
+                code = raw[index : index + length]
+                if len(code) == length and code in cmap:
+                    append(cmap[code])
+                    index += length
+                    break
+            else:
+                # A simple font falls back to its byte. A composite font has no text.
+                if not font.composite:
+                    append(_CP1252[raw[index]])
+                index += font.lengths[-1] if font.composite else 1
     return "".join(output)
 
 
