@@ -15,9 +15,11 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from yara_gate import quarantine
@@ -173,16 +175,55 @@ def main() -> None:
             check("junction moved out of the inbox", not os.path.lexists(junction))
             check("junction target left in place", secret.read_bytes() == b"outside the inbox\n")
 
-        child = subprocess.Popen(  # noqa: S603
-            [sys.executable, "-c", "import time; time.sleep(30)"]
+        # The watcher lock is an OS lock (flock, or msvcrt on Windows), held across processes
+        # and released when its holder dies, so a crash or a reused PID cannot wedge it.
+        lock_home = Path(tempfile.mkdtemp(prefix="yara-gate-watch-lock-"))
+        # The holder reports its own PID: on Windows a venv's python.exe is a launcher that
+        # runs the interpreter as a child, so killing the launcher would leave the holder alive.
+        holder = (
+            "import os, sys, time\n"
+            "from pathlib import Path\n"
+            "from yara_gate.quarantine import GatePaths, _acquire_lock\n"
+            "_acquire_lock(GatePaths(Path(sys.argv[1])))\n"
+            "print('held', os.getpid(), flush=True)\n"
+            "time.sleep(60)\n"
         )
+        child = subprocess.Popen(  # noqa: S603
+            [sys.executable, "-c", holder, str(lock_home)], stdout=subprocess.PIPE, text=True
+        )
+        holder_pid = 0
         try:
-            check("a running process reads as alive", quarantine._alive(child.pid))
-            check("the liveness probe did not stop it", child.poll() is None)
+            words = (child.stdout.readline() if child.stdout is not None else "").split()
+            took = len(words) == 2 and words[0] == "held" and words[1].isdigit()
+            check("a child process took the watcher lock", took)
+            holder_pid = int(words[1]) if took else 0
+            try:
+                os.close(quarantine._acquire_lock(GatePaths(lock_home)))
+                refused = False
+            except RuntimeError:
+                refused = True
+            check("a second watcher is refused while the first lives", refused)
         finally:
+            if holder_pid:
+                # TerminateProcess on Windows, the default SIGTERM action elsewhere.
+                os.kill(holder_pid, signal.SIGTERM)
             child.kill()
             child.wait()
-        check("an exited process reads as not alive", not quarantine._alive(child.pid))
+            if child.stdout is not None:
+                child.stdout.close()
+        # Windows releases a dead process's byte-range locks asynchronously, so allow a moment.
+        taken = False
+        deadline = time.monotonic() + 10
+        try:
+            while not taken and time.monotonic() < deadline:
+                try:
+                    os.close(quarantine._acquire_lock(GatePaths(lock_home)))
+                    taken = True
+                except RuntimeError:
+                    time.sleep(0.1)
+        finally:
+            shutil.rmtree(lock_home, ignore_errors=True)
+        check("the lock is free once its holder is killed", taken)
 
     if failures:
         raise SystemExit("intake check failed: " + "; ".join(failures))
