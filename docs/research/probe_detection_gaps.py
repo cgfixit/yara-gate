@@ -9,7 +9,8 @@ fix also removes its marker. Ids G1-G7 are the gaps recorded in
 the reader-text gaps of that issue, and #110 the hidden-text cases, recorded in
 ``docs/verification/2026-11-06-reader-text-gaps.md`` and, for the hidden-text fix,
 ``docs/verification/2026-11-07-hidden-text.md``; a #171 or #110 case without a number is a
-control that already holds or a boundary that is not planned to change.
+control that already holds or a boundary that is not planned to change. ``fonts`` cases are
+the font-reading cap of ``docs/verification/2026-11-07-pdf-font-readings.md``.
 
 Nothing is executed, unpacked to disk, or fetched. Fixtures are built in memory from a plain
 English override phrase and harmless SVG handler bodies (``void 0``). A short CLI pass copies a
@@ -1388,6 +1389,54 @@ def reader_cases() -> list[Case]:
             "clean",
         ),
         *hidden_text_cases(),
+        *font_reading_cases(),
+    ]
+
+
+def font_reading_cases() -> list[Case]:
+    """A resource name meaning more fonts than the reader decodes each string with (four).
+
+    Merged PDFs keep every source's /F1, so a name can mean one font per source. Text only a
+    fifth font decodes is not read; the scan reports it as unmapped text instead of clean
+    (docs/verification/2026-11-07-pdf-font-readings.md). Benign merges pay the same note.
+    """
+    unmapped = "heuristic_pdf_text_unmapped"
+    return [
+        Case(
+            "fonts",
+            "pdf name with four fonts, phrase in fourth",
+            "a.pdf",
+            samples.merged_pdf(PHRASE, 4, 4),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf name with five fonts, phrase in fifth",
+            "a.pdf",
+            samples.merged_pdf(PHRASE, 5, 5),
+            f"{unmapped} without {PHRASE_RULE}",
+        ),
+        Case(
+            "fonts",
+            "pdf name with five fonts, phrase in first",
+            "a.pdf",
+            samples.merged_pdf(PHRASE, 5, 1),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf merged name, four fonts (benign)",
+            "a.pdf",
+            samples.merged_pdf("Quarterly notes for the spring review.", 4, 1),
+            "clean",
+        ),
+        Case(
+            "fonts",
+            "pdf merged name, five fonts (benign)",
+            "a.pdf",
+            samples.merged_pdf("Quarterly notes for the spring review.", 5, 1),
+            unmapped,
+        ),
     ]
 
 

@@ -18,7 +18,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path
 
-from yara_gate.samples import mini_pe
+from yara_gate.samples import merged_pdf, mini_pe, shared_name_pdf
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
@@ -455,6 +455,45 @@ def _overflow_cmap_cases() -> list[tuple[str, bytes, str | None]]:
     ]
 
 
+def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
+    """A resource name that means more fonts than the text reader decodes each string with.
+
+    Each page's /F1 is its own font, as in a merged file, and only the last maps the glyph
+    ids to the phrase. Past four readings the rest are not decoded, so the scan reports
+    ``heuristic_pdf_text_unmapped``; before docs/verification/2026-11-07-pdf-font-readings.md
+    five fonts scanned clean. An overflowing bfrange gives its font a second, carried reading
+    ordered after every font's first, so two decoys and that font are four readings, and
+    three decoys and that font are five.
+    """
+    hit = "agent_override_imperative"
+    unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Release notes for the spring update."
+    carried = (
+        _CMAP_HEAD
+        + b"1 beginbfrange\n<0000> <FFFF> <FFFF>\nendbfrange\n"
+        + b"2 beginbfchar\n<0120> <0020>\n<012E> <002E>\nendbfchar\nendcmap\n"
+    )
+    codes = [_bold(char) - 0xFFFF if char.isalpha() else ord(char) + 0x100 for char in _PDF_PHRASE]
+    bold = b"BT /F1 12 Tf 72 700 Td " + _codes(codes) + b" Tj ET"
+
+    def behind(decoys: int) -> bytes:
+        # A decoy range ends below 0xFFFF - page, so it never overflows into a carried reading.
+        decoy = _CMAP_HEAD + b"1 beginbfrange\n<0000> <FEFF> <%04X>\nendbfrange\nendcmap\n"
+        return shared_name_pdf(
+            [(bold, decoy % page) for page in range(1, decoys + 1)] + [(bold, carried)]
+        )
+
+    return [
+        ("fonts-4-last.pdf", merged_pdf(_PDF_PHRASE, 4, 4), hit),
+        ("fonts-5-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5), unmapped),
+        ("fonts-8-last.pdf", merged_pdf(_PDF_PHRASE, 8, 8), unmapped),
+        ("fonts-4-plain.pdf", merged_pdf(benign, 4, 4), None),
+        ("fonts-5-plain.pdf", merged_pdf(benign, 5, 5), unmapped),
+        ("fonts-2-carried.pdf", behind(2), hit),
+        ("fonts-3-carried.pdf", behind(3), unmapped),
+    ]
+
+
 def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     """The pdf-text view: kerned, hex, wrapped, and glyph-id text, and its near misses."""
     unmapped = "heuristic_pdf_text_unmapped"
@@ -635,6 +674,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("note.pkl", pickle.dumps({"note": "hello"}, protocol=4), None),
         *pdf_text_cases(),
         *_overflow_cmap_cases(),
+        *font_reading_cases(),
         *_encoded_text_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.
         (
