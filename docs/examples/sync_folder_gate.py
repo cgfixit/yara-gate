@@ -21,13 +21,12 @@ are scanned like any other and named in the log so the operator can decide a pol
 Each admission is bound to the detector that made it. A run first scans a fixed probe from
 stdin and takes the policy, ``ruleset_sha256``, ``engine_version``, ``tool_version``, and
 ``detector_sha256`` from its record; a file whose ledger entry carries another identity is
-rescanned even when its size and mtime are unchanged. At the end of the run, every
-``allowed/`` copy that no ledger entry admits under the current identity, whether it was
-superseded by a new version, held or failed on a rescan, or not revalidated after a scanner,
-rules, or policy change, moves to ``withdrawn/<sha256>/`` with a ``withdrawn.json`` reason.
-So ``allowed/`` holds only what the current detector admits; a downstream index built from it
-must drop entries that leave it. If the probe fails, nothing is scanned or moved and the run
-exits 2.
+rescanned even when its size and mtime are unchanged. The gate withdraws old detector
+admissions before scanning and checks the detector identity in every file's actual result.
+After the run, a copy with no current source admission moves to ``withdrawn/<sha256>/``
+with a ``withdrawn.json`` reason. If the probe fails, all admissions are withdrawn and the
+run exits 2. Use one gate process per home and coordinate reads with a completed pass.
+Downstream indexes must drop entries withdrawn from ``allowed/``.
 
 Each scan has a hard parent timeout (``--timeout`` plus 30 seconds): a scanner that does not
 exit is killed, its partial output is ignored, the staged copy is held, and the next run
@@ -79,19 +78,23 @@ def main() -> int:
     args = parser.parse_args()
 
     home = args.gate_home.resolve()
-    for name in ("staging", "allowed", "held", "reports", "withdrawn"):
-        (home / name).mkdir(parents=True, exist_ok=True)
-    ledger_path = home / "ledger.json"
-    ledger = _load_ledger(ledger_path)
     sync_root = args.sync_folder.resolve()
     if home == sync_root or home.is_relative_to(sync_root):
         print("gate home must be outside the sync folder", file=sys.stderr)
         return 2
+    for name in ("staging", "allowed", "held", "reports", "withdrawn"):
+        (home / name).mkdir(parents=True, exist_ok=True)
+    ledger_path = home / "ledger.json"
+    ledger = _load_ledger(ledger_path)
     identity = _identity(args, home)
     if identity is None:
-        _log("error", "-", "identity probe failed; nothing scanned or moved")
+        _withdraw_stale(home, {}, None)
+        _save_ledger(ledger_path, {})
+        _log("error", "-", "identity probe failed; admissions withdrawn")
         return 2
+    _withdraw_stale(home, ledger, identity)
 
+    current: dict[str, dict] = {}
     worst = 0
     for path in sorted(_entries(sync_root)):
         relative = path.relative_to(sync_root).as_posix()
@@ -105,6 +108,7 @@ def main() -> int:
         key = f"{info.st_size}:{info.st_mtime_ns}"
         previous = ledger.get(relative, {})
         if previous.get("key") == key and previous.get("identity") == identity:
+            current[relative] = previous
             continue
         if not _settled(path, info):
             _log("skip", relative, "changing")
@@ -122,6 +126,9 @@ def main() -> int:
             continue
         digest = _sha256(staged)
         code, record = _scan(args, home, staged)
+        if record is not None and _record_identity(record) != identity:
+            _log("error", relative, "detector changed during scan; held for retry")
+            code, record = 2, None
         allowed = code == 0 and record is not None and _readable(record, args.policy, digest)
         destination = home / ("allowed" if allowed else "held") / digest
         destination.mkdir(parents=True, exist_ok=True)
@@ -129,7 +136,7 @@ def main() -> int:
         (destination / "record.json").write_text(
             json.dumps(record or {"exit_code": code}, indent=2) + "\n", encoding="utf-8"
         )
-        ledger[relative] = {
+        current[relative] = {
             # No record (a crash, a timeout, unreadable output): the next run retries it.
             "key": key if record is not None else None,
             "sha256": digest,
@@ -137,10 +144,12 @@ def main() -> int:
             "allowed": allowed,
             "identity": identity,
         }
+        ledger[relative] = current[relative]
         _save_ledger(ledger_path, ledger)
         _log("allowed" if allowed else "held", relative, digest)
         worst = max(worst, code if record is not None else 2)
-    _withdraw_stale(home, ledger, identity)
+    _withdraw_stale(home, current, identity)
+    _save_ledger(ledger_path, current)
     return worst
 
 
@@ -165,14 +174,20 @@ def _identity(args: argparse.Namespace, home: Path) -> str | None:
         return None
     if completed.returncode != 0 or not isinstance(record, dict):
         return None
-    if record.get("verdict") != "clean" or not record.get("ruleset_sha256"):
+    if record.get("policy") != args.policy or record.get("verdict") != "clean":
         return None
+    return _record_identity(record)
+
+
+def _record_identity(record: dict) -> str | None:
     fields = ("policy", "ruleset_sha256", "engine_version", "tool_version", "detector_sha256")
-    identity = json.dumps({field: record.get(field) for field in fields}, sort_keys=True)
-    return hashlib.sha256(identity.encode()).hexdigest()
+    values = {field: record.get(field) for field in fields}
+    if not all(isinstance(value, str) and value for value in values.values()):
+        return None
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
-def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str) -> None:
+def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str | None) -> None:
     """Move every allowed copy the current identity does not admit out of the read set."""
     admitted = {
         (entry.get("sha256"), entry.get("name"))
@@ -183,10 +198,10 @@ def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str) -> None:
     for directory in sorted(allowed.iterdir()):
         if not directory.is_dir() or directory.is_symlink():
             continue
+        target = home / "withdrawn" / directory.name
         for copy in sorted(directory.iterdir()):
             if copy.name == "record.json" or (directory.name, copy.name) in admitted:
                 continue
-            target = home / "withdrawn" / directory.name
             target.mkdir(parents=True, exist_ok=True)
             os.replace(copy, target / copy.name)
             (target / "withdrawn.json").write_text(
@@ -201,7 +216,8 @@ def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str) -> None:
         if all(item.name == "record.json" for item in directory.iterdir()):
             record = directory / "record.json"
             if record.exists():
-                os.replace(record, home / "withdrawn" / directory.name / "record.json")
+                target.mkdir(parents=True, exist_ok=True)
+                os.replace(record, target / "record.json")
             directory.rmdir()
 
 

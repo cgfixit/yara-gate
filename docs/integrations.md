@@ -196,9 +196,11 @@ directory the gate owns, and reads only what the gate allowed:
    `tool_version` can stay the same while a reader or heuristic changes a verdict,
    so also record the report's `detector_sha256`, the policy, and the engine
    version, and rescan an unchanged file when any of them differ. Then withdraw
-   every `allowed/` copy the current detector has not admitted: a superseded
-   version, a copy whose rescan held or failed, or one not yet revalidated. Move it
-   outside the read set and drop it from any index built from `allowed/`.
+   every `allowed/` copy with no current admission: a deleted or superseded
+   source, a copy whose rescan held or failed, or one not yet revalidated. Check
+   the identity in each file's record against the probe before admitting it.
+   Move withdrawn files outside the read set and drop them from any index.
+   Use one gate process per home and coordinate reads with a completed pass.
 7. Give each scan a hard parent timeout a little longer than `--timeout`, since
    the scanner's deadline cannot preempt every parser. Kill a scan that overruns,
    ignore its partial output, hold the staged copy, and retry it on the next pass.
@@ -206,7 +208,7 @@ directory the gate owns, and reads only what the gate allowed:
 [docs/examples/sync_folder_gate.py](examples/sync_folder_gate.py) does exactly
 this with the standard library, on Windows, macOS, and Linux. It reads the
 detector identity from one in-memory scan of a fixed probe at the start of each
-run (if that fails, nothing is scanned or moved), withdraws to
+run. If the probe fails, the script withdraws admissions and exits 2. It withdraws to
 `withdrawn/<sha256>/` with a `withdrawn.json` reason, and kills a scan 30 seconds
 after its `--timeout`. Oversized
 sources are logged and make the run exit 2 without being copied. Staging must
@@ -398,13 +400,12 @@ bridge for a Twilio number. It verifies `X-Twilio-Signature` against the auth to
 and the public URL, and holds every MMS (the gate never fetches media, and image text
 is not read). It scans each body and the sender's recent messages joined together, so
 an instruction split across two texts is held on the second, and it writes allowed and
-held messages to owner-only queues. It processes each `MessageSid` once: a valid
-signature proves origin, not freshness, so a Twilio retry or a replayed signed
-request is dropped before it is scanned, including after a restart. An owner-only
-SQLite file records each message in the same transaction as its queue line, so a
-failed write is retried cleanly; a crash between the two can still repeat a line,
-so the consumer must also skip a `message_sid` it has consumed. A message without
-a `MessageSid` is held. It sends no automatic reply. The first half of a
+held messages to owner-only queues. An owner-only SQLite file tracks committed
+`MessageSid` values across restarts. Committed duplicates are acknowledged without
+scanning. An overlapping delivery during an uncommitted attempt gets HTTP 503.
+The bridge commits the SQLite reservation after the JSONL append, so a crash
+between those operations can repeat a line. The consumer must also deduplicate
+by `message_sid`. A message without a `MessageSid` is held. It sends no automatic reply. The first half of a
 split instruction has already been allowed by the time the second arrives; it is
 harmless alone, but the consumer should still read messages as one sender's thread,
 not as instructions. Measured gaps for this channel, the consumer changes it needs,

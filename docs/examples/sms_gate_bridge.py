@@ -12,13 +12,11 @@ Twilio POSTs each inbound message to this server. The bridge:
    seen whole;
 4. appends a message to ``allowed.jsonl`` only when both scans are complete ``clean`` records
    for these exact bytes, and everything else to ``held.jsonl`` with the rule IDs for review;
-5. processes each ``MessageSid`` once. A signature proves a request came from Twilio, not that
-   it is new: Twilio retries a delivery it saw fail, and a captured signed request can be
-   replayed. ``processed.sqlite3`` keeps a unique row per message; the row and the queue line
-   are written in one transaction, so a failure before the commit leaves nothing recorded and
-   Twilio's retry is processed normally. A duplicate, concurrent or after a restart, is
-   answered and dropped before it is scanned or counted toward the sender's window. A
-   message without a ``MessageSid`` is held.
+5. deduplicates committed ``MessageSid`` values. A signature proves origin but a signed
+   request can be replayed. The bridge reserves the ID in ``processed.sqlite3``, appends
+   the queue line, then commits the reservation. A committed duplicate is acknowledged
+   without scanning. An overlapping uncommitted delivery gets HTTP 503 so it can retry.
+   A message without a ``MessageSid`` is held.
 
 A crash between the queue append and the commit can still write one line twice, so the agent
 side must also skip a ``message_sid`` it has already consumed: no transport check gives
@@ -176,7 +174,7 @@ class Gate:
             return row.fetchone() is not None
 
     def _commit(self, name: str, entry: dict[str, Any]) -> bool:
-        """Record the message and append its line in one transaction; False if already done."""
+        """Reserve the ID, append the line, and commit the ID. False if already recorded."""
         with self.db_lock:
             self.db.execute("BEGIN IMMEDIATE")
             try:
@@ -185,20 +183,23 @@ class Gate:
                     (entry["message_sid"], name, entry["received_at"]),
                 )
                 self._append(name, entry)
+                self.db.execute("COMMIT")
             except sqlite3.IntegrityError:
                 self.db.execute("ROLLBACK")
                 return False
             except BaseException:
-                self.db.execute("ROLLBACK")
+                if self.db.in_transaction:
+                    self.db.execute("ROLLBACK")
                 raise
-            self.db.execute("COMMIT")
             return True
 
     def decide(self, fields: dict[str, str]) -> str:
         sid = fields.get("MessageSid", "")
         if sid:
             with self.lock:
-                if sid in self.in_flight or self._seen(sid):
+                if sid in self.in_flight:
+                    return "retry"
+                if self._seen(sid):
                     return "duplicate"
                 self.in_flight.add(sid)
         try:
@@ -296,7 +297,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         outcome = self.server.gate.decide(fields)
         print(f"{fields.get('MessageSid', '?')}: {outcome}", flush=True)
-        self._reply(200, EMPTY_TWIML, "text/xml")
+        if outcome == "retry":
+            self._reply(503, b"")
+        else:
+            self._reply(200, EMPTY_TWIML, "text/xml")
 
     def _reply(self, status: int, body: bytes, content_type: str = "text/plain") -> None:
         self.send_response(status)

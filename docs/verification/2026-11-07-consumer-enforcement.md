@@ -76,3 +76,11 @@ message and the unnamed one. `processed.sqlite3` and both queues are 0600; the d
 - `allowed/` now holds only the current admission of each path. A consumer that relied on old
   versions staying there should read `withdrawn/` as history, never as a read set.
 - These are reference examples; a live CyClaw or harness adapter was not exercised.
+
+### Follow-up acceptance
+
+- A deleted source is withdrawn on the next pass and its ledger entry is removed.
+- The probe must supply the complete detector identity, and each file's actual record must
+  match it. A failed probe withdraws existing admissions. A mismatched file is held for retry.
+- A signed duplicate received during an uncommitted attempt gets HTTP 503. Once the
+  attempt is recorded, duplicates get HTTP 200 without another append.
