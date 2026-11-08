@@ -1,8 +1,8 @@
 rule agent_base64_blob {
     meta:
         author = "yara-gate"
-        description = "A base64 run of 400 or more characters, independent of filename, that is not media, a font, a PEM body, or an SSH key"
-        intent = "Advisory on a long base64 run whose own start is not an image, audio, video, or font header and does not follow a data: media URI, a PEM header, or an SSH key type"
+        description = "A base64 run of 400 or more characters, independent of filename, that is not media, a font, a PEM body, an SSH key, or hex digits only"
+        intent = "Advisory on a long base64 run whose own start is not an image, audio, video, or font header, that does not follow a data: media URI, a PEM header, or an SSH key type, and that is not hex text such as a PDF hex string"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://datatracker.ietf.org/doc/html/rfc4648"

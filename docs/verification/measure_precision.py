@@ -21,7 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from yara_gate.models import exit_code
-from yara_gate.samples import merged_pdf
+from yara_gate.samples import hex_glyph_line_pdf, hex_outline_title_pdf, merged_pdf
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
@@ -631,6 +631,9 @@ def build_corpus(root: Path) -> dict[str, str]:
     # fonts the rest are not decoded, a note (docs/verification/2026-11-07-pdf-font-readings.md).
     for fonts in (4, 5):
         add(f"pdf/merged-{fonts}-fonts.pdf", merged_pdf("Quarterly notes for review.", fonts, 1))
+    # Hex text a PDF writer emits: a Chromium glyph-id line and a LibreOffice outline title.
+    add("pdf/hex-glyph-line.pdf", hex_glyph_line_pdf())
+    add("pdf/hex-outline-title.pdf", hex_outline_title_pdf())
     for index in range(12):
         add(f"office/notes-{index:02d}.docx", _docx(f"Quarterly notes {index}"))
     for index in range(10):

@@ -242,10 +242,13 @@ def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
 def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, bool]:
     """Return (blob, executable) for base64 runs of 400 or more characters in ``data``.
 
-    ``blob`` is a run that is not media, a font, a PEM body, or an SSH key: its first characters
-    are not an image, audio, video, or font header, and it does not follow a ``data:`` media URI,
-    a PEM header, or an SSH key type. ``executable`` is a run whose decoded head is MZ, ELF, or
-    Mach-O. Each exemption covers its own run. The YARA rules agent_base64_blob and
+    ``blob`` is a run that is not media, a font, a PEM body, an SSH key, or hex: its first
+    characters are not an image, audio, video, or font header, it does not follow a ``data:``
+    media URI, a PEM header, or an SSH key type, and it is not made only of hex digits. Hex
+    digits are 22 of the 64 base64 characters, so 400 of them in a row are hex text, such as a
+    PDF hex string (glyph ids in a content stream, a UTF-16BE outline title), not base64 data.
+    ``executable`` is a run whose decoded head is MZ, ELF, or Mach-O. Each exemption covers its
+    own run. The YARA rules agent_base64_blob and
     agent_base64_executable read these as globals and keep their ids and verdict_on_match.
 
     ``samples`` marks a buffer that can hold raw sample values, such as decoded PDF streams,
@@ -260,7 +263,11 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
         head = data[start : start + 16]
         if _B64_EXE.match(head):
             exe = True
-        if not blob and _B64_MEDIA.match(head) is None:
+        if (
+            not blob
+            and _B64_MEDIA.match(head) is None
+            and not _HEX_RUN.fullmatch(data, start, match.end())
+        ):
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
             if blob and samples:
@@ -867,6 +874,7 @@ def _script_letter(char: str) -> bool:
 # A run starts where the previous byte is not in the alphabet, so each run is visited once.
 _B64_RUN = re.compile(rb"(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{400,}")
 _B64_MIN = 400
+_HEX_RUN = re.compile(rb"[0-9A-Fa-f]+")
 # The shortest unit first, then as many further copies as follow.
 _B64_REPEAT = re.compile(rb"([A-Za-z0-9+/]{1,12}?)\1{3,}")
 # _b64_unsampled: 64-character windows, a sample-like one has 58 near neighbors at one lag.

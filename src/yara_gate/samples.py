@@ -38,7 +38,8 @@ def tag_smuggled_markdown() -> bytes:
 
 
 def base64_text() -> bytes:
-    blob = b"A" * 200 + b"B" * 200 + b"="
+    # Q is outside the hex digits: a run of only A-F, a-f, and 0-9 is hex text, not a blob.
+    blob = b"A" * 200 + b"Q" * 200 + b"="
     return b"payload:\n" + blob + b"\n"
 
 
@@ -304,6 +305,43 @@ def shared_name_pdf(pages: list[tuple[bytes, bytes]]) -> bytes:
     return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
+_HEX_LINE = "Quarterly revenue planning notes for the spring roadmap review meeting. " * 2
+
+
+def _hex_pdf(text: str, after: bytes = b"", extra: bytes = b"") -> bytes:
+    """One page showing ``text`` as one hex string of subset glyph ids, as Chromium writes it.
+
+    The ids count from 3 in the order ``text`` first uses each character, and a ToUnicode map
+    turns them back. ``after`` is shown after the hex string; ``extra`` is one more object.
+    """
+    order = list(dict.fromkeys(text))
+    ids = b"".join(b"%04X" % (order.index(char) + 3) for char in text)
+    content = b"BT /F1 12 Tf 72 700 Td <" + ids + b"> Tj " + after + b"ET"
+    pairs = b"".join(b"<%04X> <%04X>\n" % (index + 3, ord(c)) for index, c in enumerate(order))
+    cmap = (
+        b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+        + b"%d beginbfchar\n" % len(order)
+        + pairs
+        + b"endbfchar\nendcmap\n"
+    )
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Arial /Encoding /Identity-H "
+        b"/ToUnicode 6 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream",
+    ]
+    if extra:
+        objects.append(extra)
+    out = bytearray(b"%PDF-1.7\n")
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
 def merged_pdf(text: str, fonts: int, reading: int) -> bytes:
     """``fonts`` pages that all show ``text`` as glyph ids in /F1, each through its own font.
 
@@ -317,6 +355,17 @@ def merged_pdf(text: str, fonts: int, reading: int) -> bytes:
             for page in range(1, fonts + 1)
         ]
     )
+
+
+def hex_glyph_line_pdf(payload: bytes = b"") -> bytes:
+    """A line of text as one 588-digit hex string of glyph ids; ``payload`` shown after it."""
+    return _hex_pdf(_HEX_LINE, b"(" + payload + b") Tj " if payload else b"")
+
+
+def hex_outline_title_pdf() -> bytes:
+    """A long heading's outline entry as a UTF-16BE hex title, as LibreOffice writes it."""
+    title = b"<FEFF" + _HEX_LINE.encode("utf-16-be").hex().upper().encode() + b">"
+    return _hex_pdf("Notes", extra=b"<< /Title " + title + b" /Count 0 >>")
 
 
 def glyph_pdf_override() -> bytes:
