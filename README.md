@@ -175,10 +175,10 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 
 ## Rules and hunting
 
-- `setup` downloads the packs pinned in `rules/rules.lock`, checks each SHA-256, and does nothing on later runs while every installed file is present (`--force` downloads again). `rules install --allow-network` does the same on demand; `rules update --allow-network` resolves new pins. These are the only three commands that use the network, each swaps the vendor tree only after the new rules compile, and a scan never downloads.
+- `setup` downloads the packs pinned in `rules/rules.lock`, checks each SHA-256, and does nothing on later runs while every installed file is present (`--force` downloads again). `rules install --allow-network` does the same on demand; `rules update --allow-network` resolves new pins. These are the only three commands that use the network, each swaps the vendor tree only after the new rules compile, and a scan never downloads. Extraction refuses a pack that holds two rule files with the same name, more than 20,000 rule files, or more than 300 MiB once expanded, and keeps the previous tree.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. If a shipped rule fails to compile, or a recorded vendor file (listed in the untracked `vendor.installed.json`) is missing, the scan exits 2.
 
-`yara-gate hunt --confirmed <sha256> --reason "…" --scope path/to/search` writes a candidate rule from a file already in `blocked/` (`--confirmed-by` labels who confirmed it; the default is `operator`). The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block.
+`yara-gate hunt --confirmed <sha256> --reason "…" --scope path/to/search` writes a candidate rule from a file already in `blocked/` (`--confirmed-by` labels who confirmed it; the default is `operator`). The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block. Only a file with hunt's own `hunt_<12 hex>.yar` name is skipped as a candidate; a `status = "candidate"` line in any other rule file is ordinary metadata and its rules load.
 
 ### How vendor matches are graded
 

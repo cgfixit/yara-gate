@@ -14,7 +14,7 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
 | `vendor/` (downloaded, untracked) | Rule bodies installed by `setup` or the network-authorized install/update commands; omitted from wheels. |
 | `vendor.installed.json` (generated, untracked) | Inventory written by a successful install/update. A missing recorded file makes scans incomplete, including before cache reuse. |
-| `local/hunt_<sha-prefix>.yar` (generated in the selected rules root) | Hunt output with `status = "candidate"` metadata, excluded from active scanning until explicitly promoted. [Operator workflow](../user-guide.md#6-after-you-confirm-a-file-is-bad). |
+| `local/hunt_<sha-prefix>.yar` (generated in the selected rules root) | Hunt output with `status = "candidate"` metadata, excluded from active scanning until explicitly promoted. Only this file name is a candidate; the same status in any other file does not exclude it. [Operator workflow](../user-guide.md#6-after-you-confirm-a-file-is-bad). |
 
 [`rules.py`](../src/yara_gate/rules.py) owns discovery, compilation, cache,
 fingerprints, and vendor installation. An installed rules root loads packaged

@@ -94,19 +94,18 @@ Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` 
 
 For an agent or indexer that must hold every advisory and note, use `yara-gate scan <path> --policy agent-ingest` or `yara-gate watch --policy agent-ingest`. Those findings then produce `block`, exit 1, and `blocked/` for inbox files; their original severity stays in the report. `--policy agent-document` holds advisories and lets a file with notes only through; the README's [policy table](README.md#verdicts-and-policies) compares the three. Use a dedicated `--home` for each consumer. Existing files are not automatically rescanned when a policy changes. A repeated inbox submission returns the existing slot to quarantine before it is scanned and relocated again, under the name it was submitted with this time.
 
-Stop watch with Control-C. If a previous watch crashed, the next start takes over a dead pid in `~/YaraGate/.watch.pid`.
+Stop watch with Control-C. One watch runs per gate home: it holds an operating-system lock on `~/YaraGate/.watch.lock`, so a second start exits 2 with `watch already running`. The lock is released when the watcher exits or crashes, so a stale file or a reused process ID never keeps the next start out. A `.watch.pid` left by an earlier release is ignored and removed.
 
 The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
 
 To leave watch running after you log in, write a plist and load it yourself.
 
 ```bash
-mkdir -p ~/Library/Logs/yara-gate
 uv run yara-gate install-agent --dest ~/Library/LaunchAgents/com.cgfixit.yaragate.watch.plist --home ~/YaraGate
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cgfixit.yaragate.watch.plist
 ```
 
-`install-agent` does not run `launchctl`. The plist has no secrets in it. Unload with `launchctl bootout gui/$(id -u)/com.cgfixit.yaragate.watch` when you want watch to stop.
+`install-agent` does not run `launchctl`. It creates `~/Library/Logs/yara-gate` for the log, and the plist has no secrets in it. launchd restarts watch after a crash or a non-zero exit (at most every 10 seconds), including a start refused because another watch holds the gate home; a clean exit stays stopped. Unload with `launchctl bootout gui/$(id -u)/com.cgfixit.yaragate.watch` when you want watch to stop.
 
 ## 4. Scan one file without moving it
 
@@ -233,4 +232,4 @@ for actual CyClaw/Harness callers; a preview never authorizes following content.
 
 ## Verification records
 
-Every change ships with a dated record under [docs/verification/](docs/verification/) that names the source revision, engine version, rule count, commands, and observed outcomes. The most recent, as of this guide: the [November 7 consumer enforcement](docs/verification/2026-11-07-consumer-enforcement.md) and [detection scope and budgets](docs/verification/2026-11-07-detection-scope-and-budgets.md) records, the [November 7 normalized-reader comparison](docs/verification/2026-11-07-normalized-reader-text.md), the [November 6 demo showcase](docs/verification/2026-11-06-demo-showcase.md), the [YARA-X 1.23.0 upgrade](docs/verification/2026-11-06-yara-x-1.23.0.md), the [PDF text view](docs/verification/2026-11-05-pdf-text-view.md), the [encoded-text views](docs/verification/2026-11-05-encoded-text-views.md), the [pickle walker](docs/verification/2026-11-05-pickle-walker.md), and the [intake resubmission](docs/verification/2026-11-02-intake-resubmission.md) records. Older records describe smaller rule trees and earlier engines; read their revision line before relying on a number. `uv run yara-gate selftest` and `uv run python docs/research/probe_rule_coverage.py --verify` reproduce the library and CLI behavior on your machine with disposable homes, so `~/YaraGate` is never touched by verification.
+Every change ships with a dated record under [docs/verification/](docs/verification/) that names the source revision, engine version, rule count, commands, and observed outcomes. The most recent, as of this guide: the [November 8 rule and watcher integrity](docs/verification/2026-11-08-rule-and-watch-integrity.md) record, the [November 7 consumer enforcement](docs/verification/2026-11-07-consumer-enforcement.md) and [detection scope and budgets](docs/verification/2026-11-07-detection-scope-and-budgets.md) records, the [November 7 normalized-reader comparison](docs/verification/2026-11-07-normalized-reader-text.md), the [November 6 demo showcase](docs/verification/2026-11-06-demo-showcase.md), the [YARA-X 1.23.0 upgrade](docs/verification/2026-11-06-yara-x-1.23.0.md), the [PDF text view](docs/verification/2026-11-05-pdf-text-view.md), the [encoded-text views](docs/verification/2026-11-05-encoded-text-views.md), the [pickle walker](docs/verification/2026-11-05-pickle-walker.md), and the [intake resubmission](docs/verification/2026-11-02-intake-resubmission.md) records. Older records describe smaller rule trees and earlier engines; read their revision line before relying on a number. `uv run yara-gate selftest` and `uv run python docs/research/probe_rule_coverage.py --verify` reproduce the library and CLI behavior on your machine with disposable homes, so `~/YaraGate` is never touched by verification.

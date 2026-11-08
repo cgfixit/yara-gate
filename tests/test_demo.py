@@ -228,7 +228,11 @@ def test_demo_refuses_public_bind() -> None:
 
 def test_install_agent_plist_is_private(tmp_path: Path) -> None:
     dest = tmp_path / "com.cgfixit.yaragate.watch.plist"
-    write_launch_agent(dest, home=tmp_path / "gate", binary=Path("/usr/bin/true"))
+    logs = tmp_path / "logs"
+    write_launch_agent(dest, home=tmp_path / "gate", binary=Path("/usr/bin/true"), log_dir=logs)
+    # A crash or failed start restarts; launchd needs the log directory to exist.
+    assert plistlib.loads(dest.read_bytes())["KeepAlive"] == {"SuccessfulExit": False}
+    assert logs.is_dir()
     plutil = Path("/usr/bin/plutil")
     if plutil.is_file():
         lint = subprocess.run(

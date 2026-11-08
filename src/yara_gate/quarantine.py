@@ -188,7 +188,7 @@ def watch(
     from watchdog.observers import Observer
 
     home.ensure()
-    _acquire_lock(home)
+    lock_fd = _acquire_lock(home)
     handler = _InboxHandler(home, rules_dir, timeout_s, policy)
 
     class Handler(FileSystemEventHandler):
@@ -218,9 +218,7 @@ def watch(
     finally:
         observer.stop()
         observer.join(timeout=5)
-        lock = home.root / ".watch.pid"
-        if lock.exists():
-            lock.unlink()
+        os.close(lock_fd)  # Releases the watcher lock; the OS also does if the process dies.
 
 
 def drain_inbox(
@@ -365,59 +363,30 @@ def _relocate(home: GatePaths, result: ScanResult) -> None:
     os.replace(src, dest_root / result.sha256)
 
 
-def _acquire_lock(home: GatePaths) -> None:
-    lock = home.root / ".watch.pid"
-    if lock.exists():
-        try:
-            pid = int(lock.read_text(encoding="utf-8").strip())
-        except ValueError:
-            pid = -1
-        if pid > 0 and _alive(pid):
-            raise RuntimeError("watch already running")
-        lock.unlink()
-    lock.write_text(str(os.getpid()), encoding="utf-8")
+def _acquire_lock(home: GatePaths) -> int:
+    """Take the gate home's watcher lock and return its descriptor, held while watch runs.
 
-
-def _alive(pid: int) -> bool:
-    if sys.platform == "win32":
-        return _alive_windows(pid)
+    An OS lock, not a PID file: two watchers starting together cannot both take it, a crash
+    releases it, and a reused PID cannot keep a new watcher out. The file holds the owner's
+    PID for an operator to read; it is never trusted.
+    """
+    fd = os.open(home.root / ".watch.lock", os.O_RDWR | os.O_CREAT | _BINARY, 0o600)
     try:
-        os.kill(pid, 0)
+        if sys.platform == "win32":
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        return False
-    return True
-
-
-if sys.platform == "win32":
-    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    _ERROR_ACCESS_DENIED = 5
-    _STILL_ACTIVE = 259
-
-    def _alive_windows(pid: int) -> bool:
-        """Ask the kernel. On Windows os.kill(pid, 0) sends CTRL_C_EVENT; it is not a probe.
-
-        A process that exists but belongs to another user is alive. A process that exited with
-        code 259 reads as alive, which keeps a second watcher out rather than letting one in.
-        """
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-        kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            return bool(ctypes.get_last_error() == _ERROR_ACCESS_DENIED)
-        try:
-            code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return True
-            return bool(code.value == _STILL_ACTIVE)
-        finally:
-            kernel32.CloseHandle(handle)
+        os.close(fd)
+        raise RuntimeError("watch already running") from None
+    try:
+        os.ftruncate(fd, 0)
+        os.write(fd, str(os.getpid()).encode())
+        # An earlier release's PID file is not a lock; a stale one would only mislead.
+        (home.root / ".watch.pid").unlink(missing_ok=True)
+    except OSError:
+        pass
+    return fd
 
 
 def _open_regular(src: Path) -> int:

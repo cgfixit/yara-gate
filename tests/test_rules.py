@@ -331,15 +331,99 @@ def test_selftest_unexpected_error_exits_2(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_watch_names_the_running_watcher(tmp_path: Path, rules_copy: Path) -> None:
-    # A live pid in the lock file is the "already running" case; nothing is watched.
+    # Another holder of the watcher lock is the "already running" case; nothing is watched.
+    from yara_gate.quarantine import GatePaths, _acquire_lock
+
     home = tmp_path / "gate"
     home.mkdir()
-    (home / ".watch.pid").write_text(str(os.getpid()), encoding="utf-8")
-    result = CliRunner().invoke(app, ["watch", "--home", str(home), "--rules", str(rules_copy)])
+    held = _acquire_lock(GatePaths(home))
+    try:
+        result = CliRunner().invoke(app, ["watch", "--home", str(home), "--rules", str(rules_copy)])
+    finally:
+        os.close(held)
     text = (result.stdout or "") + (result.stderr or "")
     assert result.exit_code == 2
     assert "incomplete: watch already running" in text
     assert "RuntimeError" not in text
+
+
+def test_a_stale_pid_file_does_not_block_the_watcher_lock(tmp_path: Path) -> None:
+    # A PID file naming any live process, here this one, is not a lock.
+    from yara_gate.quarantine import GatePaths, _acquire_lock
+
+    home = tmp_path / "gate"
+    home.mkdir()
+    (home / ".watch.pid").write_text(str(os.getpid()), encoding="utf-8")
+    held = _acquire_lock(GatePaths(home))
+    try:
+        assert not (home / ".watch.pid").exists()
+        assert (home / ".watch.lock").read_text(encoding="utf-8") == str(os.getpid())
+        with pytest.raises(RuntimeError, match="watch already running"):
+            _acquire_lock(GatePaths(home))
+    finally:
+        os.close(held)
+    os.close(_acquire_lock(GatePaths(home)))
+
+
+def test_candidate_status_skips_only_a_hunt_file(rules_copy: Path) -> None:
+    root = rules_copy
+    base = compile_sources(root)[3]
+    candidate = (
+        'rule {name} {{\n  meta:\n    verdict_on_match = "advisory"\n    status = "candidate"\n'
+        '  strings:\n    $a = "{name}"\n  condition:\n    $a\n}}\n'
+    )
+    (root / "local" / "team_rules.yar").write_text(
+        candidate.format(name="team_one") + candidate.format(name="team_two"), encoding="utf-8"
+    )
+    (root / "local" / "hunt_0123456789ab.yar").write_text(
+        candidate.format(name="hunt_0123456789ab"), encoding="utf-8"
+    )
+    # The team file's status is metadata and its rules load; hunt's own candidate does not.
+    assert compile_sources(root)[3] == base + 2
+
+
+def _forge_lock(root: Path, blob: bytes) -> None:
+    pin = PackPin(
+        name="yara-forge-core",
+        url="https://github.com/YARAHQ/yara-forge/releases/download/x/core.zip",
+        pin="x",
+        sha256=hashlib.sha256(blob).hexdigest(),
+    )
+    save_lock(RulesLock(packs=[pin]), root)
+
+
+@pytest.mark.parametrize(
+    ("members", "message"),
+    [
+        (
+            {"a/dup.yar": "rule a { condition: true }", "b/dup.yar": "rule b { condition: true }"},
+            "two members at dup.yar",
+        ),
+        ({f"r{index}.yar": "rule r { condition: true }" for index in range(5)}, "exceeds 4"),
+    ],
+)
+def test_vendor_extraction_refuses_collisions_and_floods(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, members: dict[str, str], message: str
+) -> None:
+    import yara_gate.rules as rules_module
+
+    monkeypatch.setattr(rules_module, "_VENDOR_MAX_FILES", 4)
+    root = _rules_tree(tmp_path)
+    good = _kept_zip()
+    _forge_lock(root, good)
+    install_packs(root, transport=lambda _url: good)
+    before = sorted(path.name for path in (root / "vendor" / "yara-forge").iterdir())
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, body in members.items():
+            archive.writestr(name, body)
+    blob = stream.getvalue()
+    _forge_lock(root, blob)
+    with pytest.raises(RuleDownloadError, match=message):
+        install_packs(root, transport=lambda _url: blob)
+    # The previous vendor tree stays, and no staging directory is left behind.
+    assert sorted(path.name for path in (root / "vendor" / "yara-forge").iterdir()) == before
+    assert list(root.glob(".staging-*")) == []
 
 
 def test_promote_names_the_missing_candidate(rules_copy: Path) -> None:

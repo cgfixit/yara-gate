@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from yara_gate.rules import (
+    HUNT_FILE,
     OVERRIDES_NAME,
     compile_sources,
     parse_vendor_overrides,
@@ -43,6 +44,10 @@ def main() -> None:
             if path.suffix not in {".yar", ".yara"}:
                 continue
             text = path.read_text(encoding="utf-8")
+            # Only a hunt-named file is a candidate the loader skips; elsewhere the status is
+            # inert metadata on a rule that loads, which would mislead a reader.
+            if 'status = "candidate"' in text and HUNT_FILE.fullmatch(path.name) is None:
+                failures.append(f"{path.name} has a candidate status outside a hunt file")
             for name, body in _blocks(text):
                 declared += 1
                 meta = body.split("strings:", 1)[0].split("condition:", 1)[0]

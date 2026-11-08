@@ -17,11 +17,14 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import platformdirs
 
 _STATUS = re.compile(r'(?m)^\s*status\s*=\s*"([^"]+)"')
+# The name hunt gives a candidate it writes. Only such a file can be a candidate: a status
+# line in any other rule file is metadata, and metadata does not implement policy.
+HUNT_FILE = re.compile(r"hunt_[0-9a-f]{12}\.yar")
 # private and global rules compile too, so they count.
 _RULE_NAME = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
@@ -35,6 +38,10 @@ _ALLOWED_DOWNLOAD_HOSTS = frozenset(
     }
 )
 _DOWNLOAD_CAP = 300 * 1024 * 1024
+# Per pack, what extraction may write: the reviewed packs hold about 1,800 rule files, and a
+# few MB of compressed download must not expand without limit on disk.
+_VENDOR_MAX_FILES = 20_000
+_VENDOR_MAX_BYTES = _DOWNLOAD_CAP
 Transport = Callable[[str], bytes]
 # The last compiled set, keyed by its digest, so each file in a run skips deserializing.
 _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
@@ -361,7 +368,10 @@ def _under(path: Path, root: Path) -> bool:
     return True
 
 
-def is_candidate(text: str) -> bool:
+def is_candidate(path: Path, text: str) -> bool:
+    """A hunt-written candidate: hunt's file name and a candidate status. The loader skips it."""
+    if HUNT_FILE.fullmatch(path.name) is None:
+        return False
     match = _STATUS.search(text)
     return match is not None and match.group(1) == "candidate"
 
@@ -431,7 +441,7 @@ def compile_ruleset(
                 return None, [], "bundled rules missing", 0, 0, digest
             skipped.append(f"{_rule_key(path, rules_dir)}: OSError")
             continue
-        if is_candidate(text):
+        if is_candidate(path, text):
             continue
         try:
             _validate_one(yara_x, path, text)
@@ -614,18 +624,52 @@ def _extract_locked(pack: PackPin, blob: bytes, vendor: Path) -> None:
     _extract_tar(blob, vendor / pack.name, "yara")
 
 
+class _ExtractBudget:
+    """Counts one pack's extracted files and bytes, and the names already written."""
+
+    def __init__(self) -> None:
+        self.files = 0
+        self.bytes = 0
+        self.written: set[Path] = set()
+
+    def admit(self, target: Path, size: int) -> None:
+        if target in self.written:
+            # Two members would land on one path; the second must not silently replace the first.
+            raise RuleDownloadError(f"vendor archive has two members at {target.name}")
+        self.files += 1
+        self.bytes += max(size, 0)
+        if self.files > _VENDOR_MAX_FILES:
+            raise RuleDownloadError(f"vendor archive exceeds {_VENDOR_MAX_FILES} rule files")
+        if self.bytes > _VENDOR_MAX_BYTES:
+            raise RuleDownloadError("vendor archive expands past the download cap")
+        self.written.add(target)
+
+
+def _bounded_read(handle: IO[bytes], declared: int) -> bytes:
+    """Read a member, refusing one that yields more than its declared size."""
+    data = handle.read(declared + 1)
+    if len(data) > declared:
+        raise RuleDownloadError("vendor archive member is larger than declared")
+    return data
+
+
 def _extract_zip(blob: bytes, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
+    budget = _ExtractBudget()
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         for info in archive.infolist():
             if info.is_dir() or not info.filename.endswith((".yar", ".yara")):
                 continue
+            # The flat layout keeps rule keys and override packs stable; a collision is refused.
             target = dest / Path(info.filename).name
-            target.write_bytes(archive.read(info))
+            budget.admit(target, info.file_size)
+            with archive.open(info) as member:
+                target.write_bytes(_bounded_read(member, info.file_size))
 
 
 def _extract_tar(blob: bytes, dest: Path, subpath: str) -> None:
     dest.mkdir(parents=True, exist_ok=True)
+    budget = _ExtractBudget()
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
         for member in archive.getmembers():
             if not member.isfile():
@@ -633,11 +677,12 @@ def _extract_tar(blob: bytes, dest: Path, subpath: str) -> None:
             target = _vendor_member(dest, member.name, subpath)
             if target is None:
                 continue
+            budget.admit(target, member.size)
             extracted = archive.extractfile(member)
             if extracted is None:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(extracted.read())
+            target.write_bytes(_bounded_read(extracted, member.size))
 
 
 def _vendor_member(dest: Path, member_name: str, subpath: str) -> Path | None:
@@ -1051,7 +1096,7 @@ def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> lis
         if _rule_key(path, rules_dir) in names:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if is_candidate(text):
+        if is_candidate(path, text):
             continue
         good.append((path, text))
     return good
