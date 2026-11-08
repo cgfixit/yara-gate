@@ -145,6 +145,32 @@ def test_base64_run_signals_scope_exemptions_to_each_run() -> None:
     assert base64_run_signals(b"A" * 399) == (False, False)
 
 
+def test_a_hex_only_run_is_hex_text_not_base64() -> None:
+    import base64
+
+    from yara_gate.heuristics import base64_run_signals
+
+    # A Chromium glyph-id string and a LibreOffice UTF-16BE outline title, each 400+ digits.
+    glyphs = (
+        b"BT /F1 12 Tf <" + b"".join(b"%04X" % (0x24 + i % 40) for i in range(120)) + b"> Tj ET"
+    )
+    title = (
+        b"/Title<FEFF"
+        + "Quarterly review summary ".encode("utf-16-be").hex().upper().encode() * 9
+        + b">"
+    )
+    assert base64_run_signals(glyphs) == (False, False)
+    assert base64_run_signals(title) == (False, False)
+    assert base64_run_signals(glyphs, samples=True) == (False, False)
+    # One character outside the hex digits makes the run base64 again, and base64 of hex text
+    # is not itself hex, so an encoded payload is still a blob.
+    assert base64_run_signals(b"<" + b"0A" * 250 + b"g>") == (True, False)
+    assert base64_run_signals(base64.b64encode(b"0123456789abcdef" * 40)) == (True, False)
+    # Each run is judged alone: a hex string beside a payload does not exempt the payload.
+    payload = base64.b64encode(bytes(range(256)) * 2)
+    assert base64_run_signals(glyphs + b"\n" + payload) == (True, False)
+
+
 def test_repeated_samples_are_not_a_blob_in_decoded_pdf_streams() -> None:
     import base64
 
