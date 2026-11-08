@@ -15,6 +15,7 @@ import tempfile
 import urllib.parse
 import zipfile
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 
 from yara_gate.samples import mini_pe
@@ -396,6 +397,64 @@ def _to_unicode(text: str) -> bytes:
     )
 
 
+_CMAP_HEAD = b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+
+
+def _codes(codes: list[int]) -> bytes:
+    return b"<" + b"".join(b"%04X" % code for code in codes) + b">"
+
+
+def _bold(char: str) -> int:
+    """Mathematical Bold for a letter; NFKC folds it back to the letter."""
+    if char.isupper():
+        return 0x1D400 + ord(char) - ord("A")
+    return 0x1D41A + ord(char) - ord("a")
+
+
+def _overflow_cmap_cases() -> list[tuple[str, bytes, str | None]]:
+    """A bfrange whose destination overflows two bytes, read both ways readers do.
+
+    ``<0000> <00FF> <FF80>`` maps code 0x80 + c to 0x10000 + c, which PDFium, PDFBox, and
+    pdfminer.six wrap to c (the range stays within one last byte, as PDFium requires).
+    ``<0000> <FFFF> <FFFF>`` maps code c to 0xFFFF + c, which pdf.js and MuPDF keep, so
+    letters can land on Mathematical Bold. Every case was incomplete before
+    docs/verification/2026-11-07-cmap-range-overflow.md.
+    """
+    hit = "agent_override_imperative"
+    wrapped = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FF80>\nendbfrange\nendcmap\n"
+    carried = (
+        _CMAP_HEAD
+        + b"1 beginbfrange\n<0000> <FFFF> <FFFF>\nendbfrange\n"
+        + b"2 beginbfchar\n<0120> <0020>\n<012E> <002E>\nendbfchar\nendcmap\n"
+    )
+
+    def shown(text: str, cmap: bytes, code: Callable[[str], int]) -> bytes:
+        content = b"BT /F1 12 Tf 72 700 Td " + _codes([code(char) for char in text]) + b" Tj ET"
+        return _text_pdf(content, _TYPE0_MAPPED, (cmap,))
+
+    def wrap(char: str) -> int:
+        return ord(char) + 0x80
+
+    def carry(char: str) -> int:
+        return _bold(char) - 0xFFFF if char.isalpha() else ord(char) + 0x100
+
+    benign = "Release notes for the spring update."
+    return [
+        ("cmap-wrapped.pdf", shown(_PDF_PHRASE, wrapped, wrap), hit),
+        ("cmap-carried.pdf", shown(_PDF_PHRASE, carried, carry), hit),
+        ("cmap-carried-plain.pdf", shown(benign, carried, carry), None),
+        (
+            "cmap-overflow-plain.pdf",
+            _text_pdf(
+                b"BT /F1 12 Tf <0041> Tj ET",
+                _TYPE0_MAPPED,
+                (_CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FFFF>\nendbfrange\nendcmap\n",),
+            ),
+            None,
+        ),
+    ]
+
+
 def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     """The pdf-text view: kerned, hex, wrapped, and glyph-id text, and its near misses."""
     unmapped = "heuristic_pdf_text_unmapped"
@@ -575,6 +634,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("model.pt", _zip("data.pkl", _dangerous_pickle()), "heuristic_pickle_reduce"),
         ("note.pkl", pickle.dumps({"note": "hello"}, protocol=4), None),
         *pdf_text_cases(),
+        *_overflow_cmap_cases(),
         *_encoded_text_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.
         (
