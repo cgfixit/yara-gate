@@ -1337,3 +1337,101 @@ def test_the_definition_under_the_referenced_generation_is_never_dropped_by_the_
                 assert _shown(text) or text.unmapped, (fonts, reference)
                 if exact == 0:
                     assert _shown(text), (fonts, reference)
+
+
+def _numbered(font: bytes, content: bytes, *objects: tuple[int, int, bytes]) -> pdftext.PdfText:
+    """Read a page that shows ``content`` in ``/F1 <font>``, then ``objects`` as written."""
+    data = samples._one_page_pdf("", font, objects)
+    return _read(
+        data.replace(samples._stream(b"BT /F1 12 Tf 72 700 Td <> Tj ET"), _stream(content))
+    )
+
+
+def _maps(number: int, *shifts: int) -> list[tuple[int, int, bytes]]:
+    return [(number, 0, samples._stream(_bfchar(shift))) for shift in shifts]
+
+
+@pytest.mark.parametrize("fonts_first", [False, True])
+def test_a_map_defined_many_times_does_not_drop_the_referenced_generation(
+    fonts_first: bool,
+) -> None:
+    # ``6 0 obj`` is read too, and its map has four definitions. The page names ``6 1 R``, so
+    # the reading through ``6 1 obj`` comes before all four and is decoded.
+    fonts = [(6, 0, samples._glyph_font(7)), (6, 1, samples._glyph_font(8))]
+    maps = [*_maps(7, 1, 2, 3, 4), *_maps(8, 0)]
+    shown = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+    text = _numbered(b"6 1 R", shown, *(fonts + maps if fonts_first else maps + fonts))
+    assert _shown(text) and text.unmapped
+
+
+_OVERFLOW = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FF80>\nendbfrange\nendcmap\n"
+_CARRIED = b"BT /F1 12 Tf 72 700 Td <00C1> Tj ET"
+
+
+def _decoy_map(index: int) -> bytes:
+    return _CMAP_HEAD + b"1 beginbfchar\n<00C1> <%04X>\nendbfchar\nendcmap\n" % (0x58 + index)
+
+
+def test_the_carried_reading_of_a_maps_last_definition_is_kept_under_the_cap() -> None:
+    # One font, its map defined four times, the last with an overflowing range. A lookup that
+    # keeps the last definition reads that map both ways; three decoys before it do not push
+    # its carried reading past the cap.
+    maps = [(7, 0, samples._stream(_decoy_map(index))) for index in range(3)]
+    text = _numbered(
+        b"6 0 R",
+        _CARRIED,
+        *maps,
+        (7, 0, samples._stream(_OVERFLOW)),
+        (6, 0, samples._glyph_font(7)),
+    )
+    assert {"A", "\U00010041"} <= set(text.blocks) and text.unmapped
+
+
+@pytest.mark.parametrize("generations", [(0, 0, 0), (1, 2, 3)])
+def test_the_carried_reading_of_the_referenced_definition_is_kept_under_the_cap(
+    generations: tuple[int, int, int],
+) -> None:
+    # The font the page names maps through an overflowing range; three more definitions of
+    # the object, under the same generation or others, follow it.
+    objects = [(7, 0, samples._stream(_OVERFLOW)), (6, 0, samples._glyph_font(7))]
+    for index, generation in enumerate(generations):
+        objects.append((11 + index, 0, samples._stream(_decoy_map(index))))
+        objects.append((6, generation, samples._glyph_font(11 + index)))
+    text = _numbered(b"6 0 R", _CARRIED, *objects)
+    assert {"A", "\U00010041"} <= set(text.blocks) and text.unmapped
+
+
+def test_a_reference_no_generation_answers_is_also_read_without_a_font() -> None:
+    # pdf.js compares the generation, finds no ``6 1 obj``, and shows the string in a
+    # fallback font. ``6 0 obj`` is what a reader that ignores generations uses.
+    decoy = [(7, 0, samples._stream(_bfchar(3))), (6, 0, samples._glyph_font(7))]
+    shown = b"BT /F1 12 Tf 72 700 Td <" + PHRASE.encode().hex().encode() + b"> Tj ET"
+    assert not _shown(_numbered(b"6 0 R", shown, *decoy))
+    text = _numbered(b"6 1 R", shown, *decoy)
+    assert _shown(text) and not text.unmapped
+    # The no-font reading does not take one of the four places a definition has.
+    phrase = [(8, 0, samples._stream(_bfchar(0))), (6, 2, samples._glyph_font(8))]
+    crowd = [*_maps(7, 1, 2, 3, 4), (6, 0, samples._glyph_font(7))]
+    glyphs = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+    assert _shown(_numbered(b"6 1 R", glyphs, *_maps(7, 1, 2, 3), *decoy[1:], *phrase))
+    assert _numbered(b"6 1 R", glyphs, *crowd, *phrase).unmapped
+
+
+def test_two_byte_codes_in_a_reference_no_generation_answers_are_reported() -> None:
+    # Read as WinAnsi the codes are noise, so the text counts as unread, as it does for a
+    # name the file never resolves.
+    decoy = [(7, 0, samples._stream(_bfchar(3))), (6, 0, samples._glyph_font(7))]
+    shown = b"BT /F1 12 Tf 72 700 Td <" + b"".join(b"00%02X" % c for c in b"Please") + b"> Tj ET"
+    assert not _numbered(b"6 0 R", shown, *decoy).unmapped
+    assert _numbered(b"6 1 R", shown, *decoy).unmapped
+
+
+def test_a_page_whose_font_no_generation_answers_keeps_the_union() -> None:
+    # The page map is only built for a file whose references resolve, but if a narrowed name
+    # ever has no font under its own generation, the stream is read through every page's.
+    budget = Budget(math.inf)
+    reader = pdftext._FontReader(
+        b"%PDF-1.7\n", lambda number, generation: [], pdftext._Cmaps({}, budget), budget
+    )
+    union = {b"F1": [pdftext.Font(False)]}
+    assert pdftext._PageFonts({b"F1": [(6, 1)]}, reader, union)[b"F1"] is union[b"F1"]

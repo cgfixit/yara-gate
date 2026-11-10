@@ -113,11 +113,19 @@ above. Nothing here was run against Acrobat, Preview, or a browser.
   object along: define the font once and its map twice. Stream numbers were already
   generation-blind.
 - **Order under the cap.** First the definition main read: the first one under each
-  generation a reference names, which is also what a reader that honours generations shows.
-  Then the last definition, the first, and the ones between, latest first. An ordinary
-  incremental update leaves the last in use, and a table can still name the first. So no
-  reading main had of a font object is lost to the cap. The order matters only past four
-  readings.
+  generation a reference names, which is also what a reader that honours generations shows,
+  read through the last definition of its map, with that map's carried reading. Then the
+  last definition, the first, and the ones between, latest first. An ordinary incremental
+  update leaves the last in use, and a table can still name the first. So no reading main
+  had of a font object is lost to the cap. The order matters only past four readings. (The
+  map and carried-reading part, and generation 0 no longer counting as named when no
+  reference names it, came from the
+  [third review finding](#review-finding-map-definitions-carried-readings-and-a-reference-no-definition-answers).)
+- **A reference no definition answers is also read with no font.** The page says `6 1 R`
+  and the file has only `6 0 obj`. pdf.js compares the generation, finds nothing, and shows
+  the string in a fallback font; the readers that ignore generations use `6 0 obj`. Both
+  are read. The no-font reading is main's, comes first, and does not take one of the four
+  places.
 - **Caps stay fail-visible.** A font with more than four distinct readings, or more than 64
   raw definitions (`MAX_FONT_DEFINITIONS`), or a long definition that could not be read to
   its end, gets an unresolved reading as well. Text shown in it is
@@ -266,6 +274,90 @@ Timing after both fixes: `check_worst_case_timing.py` PASS on 30 inputs,
 under 65,536 generations: 1.91 s. One font defined and named under all 65,536 generations:
 2.83 s, against 17.99 s on main.
 
+## Review finding: map definitions, carried readings, and a reference no definition answers
+
+Found in the review pass of `b85e001`, listed as open in the pull request, and reproduced
+on the merge with main `1b60986` (`c659670`) before anything changed. All four are readings
+main had. The page shows the phrase through `/F1`; a decoy map turns every code into
+another letter.
+
+| Fixture | main `1b60986` | `c659670` | with the fix |
+| --- | --- | --- | --- |
+| page says `6 1 R`; `6 0 obj` names map 7, defined four times (decoys); `6 1 obj` names the phrase map | phrase | **unmapped note only** | phrase, with the note |
+| page says `6 0 R`; one `6 0 obj` names map 7, defined four times: three decoys, then a map whose overflowing `bfrange` carries the phrase | phrase | **unmapped note only** | phrase, with the note |
+| the carried-map font first, then three decoy `6 0 obj`, or three decoy `6 1`, `6 2`, `6 3 obj` | phrase | **unmapped note only** | phrase, with the note |
+| page says `6 1 R`, string in one-byte codes; the file holds only `6 0 obj`, with a decoy map | advisory; blocked under `agent-ingest` | **clean under all three policies** | as main |
+
+Three causes, one per row group:
+
+- **Generation 0 counted as named.** `_Definitions` looks generation 0 up for every number,
+  to find object-stream members, and the order treated it as a generation a reference
+  names. Sorted first, `6 0 obj` and its four map definitions filled the four places before
+  `6 1 obj`. The generations references name are now kept apart from the one looked up.
+- **A definition's readings were pooled.** Every definition's first reading came before any
+  carried reading, so the carried reading main had of the font it read fell past the cap
+  once other definitions supplied four. `_Cmaps.fonts` now also returns the one or two
+  readings through the map's last definition (the one main kept), and `_font` puts those
+  first for each definition under a named generation.
+- **By-number lookup replaced the generation-exact one.** main resolved `6 1 R` to nothing
+  and read the string as WinAnsi. Resolving by number alone read it through the decoy only.
+  When no reference of a name has a font under its own generation, the no-font reading is
+  now kept as the first reading, beside the definitions under other generations. Two-byte
+  codes in that reading are noise, so they are reported as unmapped and not decoded, as
+  for a name the file never resolves. A narrowed page name in that state falls back to the
+  file-wide union, as it did.
+
+**What a reader shows for the fourth row** (direct runtime, this container; the string is
+`<506C65...>`, the font a Type 1 font with a decoy `ToUnicode`):
+
+| File | pypdf 5.1.0 | pdfminer.six 20260107 | PDFium 153.0.7999.0 | MuPDF 1.28.6 | poppler 24.02.0 | pdf.js 6.5.438 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `6 0 R`, `6 0 obj` (control) | no | no | no | no | no | no |
+| `6 1 R`, `6 0 obj`, table lists generation 0 | error | no | no | no | no | **phrase** |
+| the same with no table | error | no | no | no | no | **phrase** |
+| `6 1 R`, `6 0 obj`, table lists generation 1 | no | no | no | no | no | **phrase** |
+| no object 6 at all | error | phrase | phrase | phrase | no | phrase |
+
+"no" means the extracted text does not hold the phrase; the probe does not record whether
+it holds the decoy's letters or nothing. So the fourth row is text one of the six readers
+shows, not a judgment call. pdfminer.six, PDFium, and MuPDF show the phrase when the font is
+absent and not when only its generation differs, which fits a lookup by number. The source
+reading above said pdf.js falls back to an earlier generation; for `6 1 R` over a lone
+`6 0 obj` version 6.5.438 does not. The other direction was not run.
+
+**3,000 generated files** (seed 1: one to six definitions of object 6 under generations 0
+to 2, one to three map streams with one to five definitions each, a phrase map or a carried
+phrase map at a random definition, references under generations 0 to 3, strings in glyph
+ids, carried codes, or one-byte codes; object order shuffled), read by main `1b60986`,
+`c659670`, and the fix:
+
+| | phrase decoded | unmapped note only | nothing |
+| --- | --- | --- | --- |
+| main `1b60986` | 1,187 | 0 | 1,813 |
+| `c659670` | 840 | 1,037 | 1,123 |
+| with the fix | 1,559 | 771 | 670 |
+
+- **`c659670` read less than main on 727 files**: 443 with nothing at all, 284 with the
+  note only. **The fix reads less than main on none.**
+- **The fix reads less than `c659670` on 18**, all with the note: five or more distinct
+  readings where the place now given to the referenced generation was held by a
+  definition under generation 0. main read nothing in any of the 18.
+
+The four rows are tests: `test_a_map_defined_many_times_does_not_drop_the_referenced_generation`,
+`test_the_carried_reading_of_a_maps_last_definition_is_kept_under_the_cap`,
+`test_the_carried_reading_of_the_referenced_definition_is_kept_under_the_cap`,
+`test_a_reference_no_generation_answers_is_also_read_without_a_font`, and
+`test_two_byte_codes_in_a_reference_no_generation_answers_are_reported`. Seven of the eight
+new cases fail on `c659670`; the eighth is a control for the page map's fallback.
+
+**Checks on the fix** (merge with main `1b60986`, this container): `pytest tests` 785
+passed, 5 skipped; `check_added_rules.py` 233 plus 4; `probe_detection_gaps.py --verify`,
+`probe_rule_coverage.py --verify`, and `measure_precision.py --fail-over` exit 0;
+`check_worst_case_timing.py` PASS on 36 inputs, `pdf-font-definitions.pdf` 5.96 s; Ruff,
+`mypy --strict src scripts`, `check_doc_links.py`, and `check_text_controls.py` clean. 153
+real PDFs (ten writers, merges, linearized and object-stream files) have the same verdict
+and rule ids as main under all three policies.
+
 ## Commands and results (this container)
 
 - `uv run pytest -q tests/test_pdftext.py`: 56 passed after the review fixes (45 before).
@@ -302,6 +394,11 @@ under 65,536 generations: 1.91 s. One font defined and named under all 65,536 ge
 - **A benign file can pay the note.** A font object with five distinct definitions, such
   as one re-subset in five incremental saves, is held under `agent-ingest`. No generator
   file examined here redefines a font at all.
+- **The no-font reading is kept only when no reference of the name has a font under its
+  own generation.** A name with one resolved and one unresolved reference is read through
+  the resolved one and the other definitions of both numbers, as on main. A page that
+  names only the unresolved one is then shown by pdf.js in a fallback font and not read
+  that way here.
 - **More readings on a reused name.** A name that already means four fonts loses one to
   the cap when one of them has a second definition, and the scan says so. The guarantee
   above is per font object: across several fonts under one name, which reading is the one
