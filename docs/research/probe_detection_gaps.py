@@ -53,8 +53,6 @@ OPEN: dict[str, str] = {
     "backlog svg link with a javascript: target": "B1",
     "backlog svg foreignObject holding an iframe": "B1",
     "backlog mcp description: no need to mention": "B2",
-    "backlog html data attribute holding the phrase": "B3",
-    "backlog html zero opacity holding the phrase": "B3",
     "backlog html white text holding the phrase": "B3",
     "backlog zero-width bit run": "B4",
     "backlog ansi concealed phrase": "B5",
@@ -1868,18 +1866,97 @@ def backlog_cases() -> list[Case]:
 
 
 def hidden_html_cases() -> list[Case]:
-    """Shown text that ``agent_hidden_html`` held, beside hidden text it must still hold.
+    """HTML text a browser does not show, beside the nearest text it does show.
 
-    docs/verification/2026-11-10-hidden-html-text.md: a fractional font size and a comment
-    that has already closed are not hiding cues.
+    docs/verification/2026-11-10-hidden-html-text.md: the hidden-text reader claims what one
+    exact declaration on an element settles, and ``agent_hidden_html`` no longer reads a
+    fractional font size or a closed comment as a cue. Each hidden case has the shown twin a
+    reader would mistake for it.
     """
     lexical = "agent_hidden_html"
+    hidden = f"{HIDDEN_TEXT} without {lexical}"
+    shown = f"{PHRASE_RULE} without {HIDDEN_TEXT}"
     plain = f"{PHRASE_RULE} without {lexical}"
+    # The lexical rule reads 256 bytes after a cue: past that, only the reader can tell.
+    far = "Notes for the reviewer. " * 14
 
     def page(body: str, head: str = "") -> bytes:
         return f"<!doctype html><html><head>{head}</head><body>{body}</body></html>".encode()
 
     return [
+        Case(
+            "html",
+            "html white text on its own white background",
+            "a.html",
+            page(f'<p style="color:#ffffff;background-color:#ffffff">{PHRASE}</p>'),
+            hidden,
+        ),
+        Case(
+            "html",
+            "html white text on its own dark background (shown)",
+            "a.html",
+            page(f'<p style="color:#ffffff;background-color:#222222">{PHRASE}</p>'),
+            shown,
+        ),
+        Case(
+            "html",
+            "html transparent text",
+            "a.html",
+            page(f'<span style="color:transparent">{PHRASE}</span>'),
+            hidden,
+        ),
+        Case(
+            "html",
+            "html transparent text with a shadow (shown)",
+            "a.html",
+            page(f'<span style="color:transparent;text-shadow:0 0 1px #000">{PHRASE}</span>'),
+            shown,
+        ),
+        Case(
+            "html",
+            "html template holding the phrase",
+            "a.html",
+            page(f"<template><p>{PHRASE}</p></template><p>Welcome.</p>"),
+            hidden,
+        ),
+        Case(
+            "html",
+            "html visibility hidden, phrase past the lexical window",
+            "a.html",
+            page(f'<div style="visibility:hidden"><p>{far}</p><p>{PHRASE}</p></div>'),
+            hidden,
+        ),
+        Case(
+            "html",
+            "html visibility set back by a child (shown)",
+            "a.html",
+            page(
+                f'<div style="visibility:hidden"><p>{far}</p>'
+                f'<p style="visibility:visible">{PHRASE}</p></div>'
+            ),
+            shown,
+        ),
+        Case(
+            "html",
+            "html display none dropped by a browser (shown)",
+            "a.html",
+            page(f'<div style="x:(;display:none"><p>{far}</p><p>{PHRASE}</p></div>'),
+            shown,
+        ),
+        Case(
+            "html",
+            "html zero opacity in a page with a script (shown)",
+            "a.html",
+            page(f'<p style="opacity:0">{PHRASE}</p>', '<script src="fade.js"></script>'),
+            shown,
+        ),
+        Case(
+            "html",
+            "html data attribute repeating the shown title (shown)",
+            "a.html",
+            page(f'<h1>{PHRASE}</h1><div data-title="{PHRASE}">Share</div>'),
+            shown,
+        ),
         Case(
             "html",
             "html hidden comment, shown copy after it",

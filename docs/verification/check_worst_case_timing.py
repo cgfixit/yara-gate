@@ -34,6 +34,20 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ("html-comments.html", b"<html><!--", b"<!--", None),
         ("html-quotes.html", b'<html><p title="', b"'a=", None),
         ("html-tags.html", b"<html><p ", b"x=", None),
+        # The hidden-text reader: a style to parse on every element, and inline elements
+        # that end across a block, each of which rebuilds the open elements.
+        (
+            "html-styled-elements.html",
+            b"<!doctype html><html><body>",
+            b'<i style="color:rgb(255, 255, 255);background:hsl(0,0%,100%)">x</i>',
+            None,
+        ),
+        (
+            "html-misnested-inline.html",
+            b'<!doctype html><html><body><div style="visibility:hidden">',
+            b"<b><div></b></div>",
+            None,
+        ),
         (
             "zip-end-records.zip",
             b"",
@@ -182,6 +196,11 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts),
         None,
     )
+    # One style attribute of 4 MiB whose every declaration opens a parenthesis: the style is
+    # split once, without rescanning from each opener.
+    prefix, suffix = b'<!doctype html><html><body><p style="', b'">x</p></body></html>'
+    count, rest = divmod(SIZE - len(prefix) - len(suffix), 4)
+    yield "html-style-parens.html", prefix + b"x:(;" * count + b" " * rest + suffix, None
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
