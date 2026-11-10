@@ -46,6 +46,13 @@ jobs:
       - name: Sync from the lock file
         run: uv sync --frozen --group dev
 
+      # Actionlint checks syntax, types, and shell. Zizmor checks what a valid workflow can
+      # still get wrong: an action not pinned to a commit, checkout credentials left on disk,
+      # an event field expanded into a script, a permission wider than the job needs.
+      - name: Zizmor
+        if: runner.os == 'Linux'
+        run: uv run zizmor --offline --pedantic .github
+
       - name: Lock file matches pyproject
         run: uv lock --check
 
@@ -55,8 +62,9 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
 
+      # scripts/ holds the gate that decides whether a commit is published.
       - name: Mypy
-        run: uv run mypy --strict src
+        run: uv run mypy --strict src scripts
 
       - name: Compile and lint local rules
         run: uv run python docs/verification/lint_rules.py
@@ -75,6 +83,9 @@ jobs:
 
       - name: No bidi or invisible controls in tracked text
         run: uv run python docs/verification/check_text_controls.py
+
+      - name: Relative Markdown links and heading anchors resolve
+        run: uv run python docs/verification/check_doc_links.py
 
       - name: In-place scans
         run: uv run python docs/verification/check_scan_only.py
