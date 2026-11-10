@@ -10,7 +10,8 @@ the reader-text gaps of that issue, and #110 the hidden-text cases, recorded in
 ``docs/verification/2026-11-06-reader-text-gaps.md`` and, for the hidden-text fix,
 ``docs/verification/2026-11-07-hidden-text.md``; a #171 or #110 case without a number is a
 control that already holds or a boundary that is not planned to change. ``fonts`` cases are
-the font-reading cap of ``docs/verification/2026-11-07-pdf-font-readings.md``. B1-B6 are the
+the font-reading cap of ``docs/verification/2026-11-07-pdf-font-readings.md`` and the font
+definitions of ``docs/verification/2026-11-10-pdf-font-definitions.md``. B1-B7 are the
 open candidates of ``docs/research/detection-backlog.md``, each beside a control and a benign
 boundary; a ``backlog`` case without a number is one of those.
 
@@ -59,6 +60,7 @@ OPEN: dict[str, str] = {
     "backlog zero-width bit run": "B4",
     "backlog ansi concealed phrase": "B5",
     "backlog gyp command expansion, output discarded": "B6",
+    "backlog pdf font with two /ToUnicode keys, phrase in last": "B7",
 }
 HIDDEN_TEXT = "heuristic_hidden_text"
 
@@ -1402,6 +1404,7 @@ def reader_cases() -> list[Case]:
         ),
         *hidden_text_cases(),
         *font_reading_cases(),
+        *font_definition_cases(),
         *backlog_cases(),
     ]
 
@@ -1448,6 +1451,111 @@ def font_reading_cases() -> list[Case]:
             "pdf merged name, five fonts (benign)",
             "a.pdf",
             samples.merged_pdf("Quarterly notes for the spring review.", 5, 1),
+            unmapped,
+        ),
+    ]
+
+
+def font_definition_cases() -> list[Case]:
+    """A font object, or its ToUnicode map, that the file defines more than once.
+
+    A reader uses one definition and readers differ in which, so each gives a reading
+    (docs/verification/2026-11-10-pdf-font-definitions.md). Before that, only the first
+    definition of a font and the last of a map were read, so every case here but the two
+    controls, the five-definition ones, and the benign ones scanned clean. Past four distinct
+    definitions the rest are not decoded, which is reported as unmapped text; the last and the
+    first are read first.
+    """
+    unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Quarterly notes for the spring review."
+    five = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+
+    def font(text: str, *fonts: tuple[int, int], reference: int = 0) -> bytes:
+        return samples.redefined_font_pdf(text, fonts, reference=reference)
+
+    return [
+        Case(
+            "fonts",
+            "pdf font defined twice, phrase in first (control)",
+            "a.pdf",
+            font(PHRASE, (0, 0), (0, 3)),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf font defined twice, phrase in second",
+            "a.pdf",
+            font(PHRASE, (0, 3), (0, 0)),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf font 6 1 obj holds the phrase, page says 6 0 R",
+            "a.pdf",
+            font(PHRASE, (0, 3), (1, 0)),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf font 6 0 obj holds the phrase, page says 6 1 R",
+            "a.pdf",
+            font(PHRASE, (1, 3), (0, 0), reference=1),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf font in an object stream beside a raw decoy",
+            "a.pdf",
+            samples.redefined_font_pdf(PHRASE, [(0, 3)], member=0),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf tounicode map defined twice, phrase in second (control)",
+            "a.pdf",
+            samples.redefined_map_pdf(PHRASE, [3, 0]),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf tounicode map defined twice, phrase in first",
+            "a.pdf",
+            samples.redefined_map_pdf(PHRASE, [0, 3]),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf font defined five times, phrase in first",
+            "a.pdf",
+            font(PHRASE, *five),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf font defined five times, phrase in second",
+            "a.pdf",
+            font(PHRASE, five[1], five[0], *five[2:]),
+            f"{unmapped} without {PHRASE_RULE}",
+        ),
+        Case(
+            "fonts",
+            "pdf font defined twice (benign)",
+            "a.pdf",
+            font(benign, (0, 3), (0, 0)),
+            "clean",
+        ),
+        Case(
+            "fonts",
+            "pdf font defined five times, equal (benign)",
+            "a.pdf",
+            font(benign, *[(0, 0)] * 5),
+            "clean",
+        ),
+        Case(
+            "fonts",
+            "pdf font defined five times (benign)",
+            "a.pdf",
+            font(benign, *five),
             unmapped,
         ),
     ]
@@ -1744,6 +1852,18 @@ def backlog_cases() -> list[Case]:
     def tool(description: str) -> bytes:
         return json.dumps({"tools": [{"name": "add", "description": description}]}).encode()
 
+    def two_maps(text: str, first: int, last: int) -> bytes:
+        """One font dictionary whose /ToUnicode key is written twice, a map per shift."""
+        font = (
+            b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H "
+            b"/ToUnicode 10 0 R /ToUnicode 11 0 R >>"
+        )
+        maps = [
+            (10 + index, 0, samples._stream(samples._to_unicode_cmap(text, shift)))
+            for index, shift in enumerate((first, last))
+        ]
+        return samples._one_page_pdf(text, b"6 0 R", [(6, 0, font), *maps])
+
     return [
         # B1: an SVG that runs or loads something without a script element or a handler.
         Case("B1", "backlog svg script (control)", "a.svg", svg("<script>void 0</script>"), "any"),
@@ -1861,6 +1981,29 @@ def backlog_cases() -> list[Case]:
             "binding.gyp",
             b'{"targets":[{"target_name":"a","include_dirs":'
             b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
+            "clean",
+        ),
+        # B7: a font dictionary that writes /ToUnicode twice. poppler, PDFium, and pdf.js keep
+        # the last key; this reader takes the first.
+        Case(
+            "B7",
+            "backlog pdf font with two /ToUnicode keys, phrase in first (control)",
+            "a.pdf",
+            two_maps(PHRASE, first=0, last=3),
+            PHRASE_RULE,
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with two /ToUnicode keys, phrase in last",
+            "a.pdf",
+            two_maps(PHRASE, first=3, last=0),
+            PHRASE_RULE,
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with two /ToUnicode keys (benign)",
+            "a.pdf",
+            two_maps("Quarterly notes for the spring review.", first=3, last=0),
             "clean",
         ),
     ]

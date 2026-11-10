@@ -5,6 +5,8 @@ import io
 import json
 import struct
 import zipfile
+import zlib
+from collections.abc import Sequence
 
 # The EICAR test file is a harmless string every scanner is expected to flag.
 EICAR = rb"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
@@ -366,6 +368,76 @@ def hex_outline_title_pdf() -> bytes:
     """A long heading's outline entry as a UTF-16BE hex title, as LibreOffice writes it."""
     title = b"<FEFF" + _HEX_LINE.encode("utf-16-be").hex().upper().encode() + b">"
     return _hex_pdf("Notes", extra=b"<< /Title " + title + b" /Count 0 >>")
+
+
+def _stream(body: bytes, entries: bytes = b"") -> bytes:
+    return b"<< /Length %d %s>>\nstream\n" % (len(body), entries) + body + b"\nendstream"
+
+
+def _glyph_font(tounicode: int) -> bytes:
+    return (
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Arial /Encoding /Identity-H "
+        b"/ToUnicode %d 0 R >>" % tounicode
+    )
+
+
+def _one_page_pdf(text: str, font: bytes, objects: Sequence[tuple[int, int, bytes]]) -> bytes:
+    """One page showing ``text`` as glyph ids in /F1, the reference ``font``, then ``objects``
+    as ``(number, generation, body)`` in the order given. There is no cross-reference table,
+    so nothing in the file says which of two definitions is in use."""
+    content = b"BT /F1 12 Tf 72 700 Td " + _glyph_ids(text) + b" Tj ET"
+    page = (
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 " + font + b" >> >> /Contents 4 0 R >>"
+    )
+    head = [
+        (1, 0, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, 0, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        (3, 0, page),
+        (4, 0, _stream(content)),
+    ]
+    out = bytearray(b"%PDF-1.7\n")
+    for number, generation, body in [*head, *objects]:
+        out += b"%d %d obj\n" % (number, generation) + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def redefined_font_pdf(
+    text: str,
+    fonts: Sequence[tuple[int, int]],
+    *,
+    reference: int = 0,
+    member: int | None = None,
+) -> bytes:
+    """One page that shows ``text`` as glyph ids in /F1, a font object defined more than once.
+
+    Each ``(generation, shift)`` in ``fonts`` is one definition of object 6, in file order,
+    with its own ToUnicode map: shift 0 maps the ids back to ``text``, and any other shift maps
+    each id that many printable characters along. An incremental update leaves a file like
+    this, and so does a reused object number. The page names the font ``6 <reference> R``.
+    ``member`` adds one more definition of object 6, with that shift, inside an object stream.
+    """
+    shifts = [shift for _, shift in fonts] + ([] if member is None else [member])
+    objects = [
+        (10 + index, 0, _stream(_to_unicode_cmap(text, shift)))
+        for index, shift in enumerate(shifts)
+    ]
+    for index, (generation, _) in enumerate(fonts):
+        objects.append((6, generation, _glyph_font(10 + index)))
+    if member is not None:
+        head = b"6 0 "
+        packed = zlib.compress(head + _glyph_font(10 + len(fonts)))
+        entries = b"/Type /ObjStm /N 1 /First %d /Filter /FlateDecode " % len(head)
+        objects.append((7, 0, _stream(packed, entries)))
+    return _one_page_pdf(text, b"6 %d R" % reference, objects)
+
+
+def redefined_map_pdf(text: str, shifts: Sequence[int]) -> bytes:
+    """One page that shows ``text`` as glyph ids in a font whose ToUnicode stream, object 7,
+    is defined once per shift in ``shifts``, in file order (see ``redefined_font_pdf``)."""
+    objects = [(6, 0, _glyph_font(7))]
+    objects += [(7, 0, _stream(_to_unicode_cmap(text, shift))) for shift in shifts]
+    return _one_page_pdf(text, b"6 0 R", objects)
 
 
 def glyph_pdf_override() -> bytes:

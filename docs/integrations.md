@@ -425,7 +425,11 @@ and PNG or TIFF predictor, handed to the text rules and the PDF name checks), an
 the `pdf-text` and `pdf-paragraph` views (the strings a reader shows, decoded
 through each font's `ToUnicode` map or as WinAnsi, joined per text object and per
 paragraph, so a kerned array, a hex string, glyph-ID text from Chrome, LibreOffice,
-or Word, a word in bold, or a wrapped line reads as written). Each PDF piece is also
+or Word, a word in bold, or a wrapped line reads as written). A font object or
+`ToUnicode` map that the file defines more than once (an incremental update, a number
+reused under another generation, an object-stream member beside a raw object) is read
+through every definition, because readers differ in which one they use; each distinct
+definition counts as one of the fonts its name means. Each PDF piece is also
 spelling-folded when needed, with `pdf-text+text-folded` or
 `pdf-paragraph+text-folded` provenance. Look-alikes, leet, Latin small capitals,
 and Cyrillic letter case therefore reach the same lexical rules after glyph decoding.
