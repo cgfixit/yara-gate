@@ -518,3 +518,30 @@ def test_a_font_under_the_referenced_generation_is_read_past_the_cap() -> None:
 def test_the_last_definition_is_read_past_the_cap() -> None:
     text = _defined(*[(0, 3)] * 80, (0, 0))
     assert _shown(text) and text.unmapped
+
+
+@pytest.mark.parametrize("count", [1, 2, 3, 5, 6, 9, 70])
+def test_the_definition_under_the_referenced_generation_is_never_dropped_by_the_cap(
+    count: int,
+) -> None:
+    # A reader that honours generations shows the first definition under the generation the
+    # page names, which is also what the generation-exact lookup read. Whatever the order and
+    # however many definitions there are, that one is decoded, and a phrase any other
+    # definition holds is either decoded or reported.
+    for reference in (0, 1, 2):
+        for at in sorted({*range(min(count, 8)), count - 1}):
+            for pattern in range(5):
+                fonts = [
+                    (
+                        (index * (pattern + 1) + pattern // 2) % 3,
+                        0 if index == at else 1 + index % 8,
+                    )
+                    for index in range(count)
+                ]
+                text = _defined(*fonts, reference=reference)
+                exact = next(
+                    (shift for generation, shift in fonts if generation == reference), None
+                )
+                assert _shown(text) or text.unmapped, (fonts, reference)
+                if exact == 0:
+                    assert _shown(text), (fonts, reference)

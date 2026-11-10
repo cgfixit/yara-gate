@@ -398,19 +398,24 @@ class _Definitions:
     (docs/verification/2026-11-10-pdf-font-definitions.md). Each definition is therefore one
     some reader may use, and the caller reads every one.
 
-    Raw definitions come first, in the order of ``_likeliest``: the first
-    ``MAX_FONT_DEFINITIONS`` in the file, the last of them replaced by the file's last when
-    there are more. Then come the bodies only the lookup has: its own definitions under each
-    generation a reference names, so nothing a generation-exact lookup read is dropped by the
-    cap, and object-stream members, which it returns for generation 0. A body is the lookup's
-    window; ``to_unicode`` reads a raw definition to its ``endobj``.
+    The raw definitions kept are the first ``MAX_FONT_DEFINITIONS`` in the file, the last of
+    them replaced by the file's last when there are more. The lookup adds the bodies only it
+    has: its own definitions under each generation a reference names, and object-stream
+    members, which it returns for generation 0. A body is the lookup's window; ``to_unicode``
+    reads a raw definition to its ``endobj``.
+
+    With ``looks``, only the bodies it accepts are returned, ordered for a caller that decodes
+    a few of them. First comes the one a generation-exact lookup reads under each generation a
+    reference names: the first such body under that generation, so the cap never drops what a
+    reader that honours generations shows. The other raw definitions follow in the order of
+    ``_likeliest``, then the other bodies of the lookup.
     """
 
     def __init__(self, data: bytes, objects: Lookup, budget: Budget) -> None:
         self._data = data
         self._objects = objects
         self._check = budget.check
-        self._starts: dict[int, list[int]] = {}
+        self._starts: dict[int, list[tuple[int, int]]] = {}
         self._complete: dict[int, bool] = {}
         self._generations: dict[int, set[int]] = {}
         self._long: dict[int, re.Match[bytes] | None] = {}
@@ -425,8 +430,8 @@ class _Definitions:
             self._generations.setdefault(number, {0}).add(generation)
         wanted = {number for number, _ in keys if number not in self._starts}
         if wanted:
-            found: dict[int, list[int]] = {number: [] for number in wanted}
-            last: dict[int, int] = {}
+            found: dict[int, list[tuple[int, int]]] = {number: [] for number in wanted}
+            last: dict[int, tuple[int, int]] = {}
             for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
                 if count % 4096 == 0:
                     self._check()
@@ -434,9 +439,9 @@ class _Definitions:
                 if key is None or key[0] not in found:
                     continue
                 if len(found[key[0]]) < MAX_FONT_DEFINITIONS:
-                    found[key[0]].append(match.end())
+                    found[key[0]].append((match.end(), key[1]))
                 else:
-                    last[key[0]] = match.end()
+                    last[key[0]] = (match.end(), key[1])
             for number, slot in found.items():
                 self._complete[number] = number not in last
                 if number in last:
@@ -444,22 +449,44 @@ class _Definitions:
             self._starts.update(found)
         _prime(self._objects, keys | {(number, 0) for number, _ in keys})
 
-    def __call__(self, number: int) -> tuple[list[tuple[bytes, int | None]], bool]:
+    def __call__(
+        self, number: int, looks: Callable[[bytes], bool] | None = None
+    ) -> tuple[list[tuple[bytes, int | None]], bool]:
         """Each definition's body with its file offset (None when only the lookup has it), and
-        whether that is all of them: False when the raw definitions pass the cap."""
+        whether that is all of them: False when a cap left some unread."""
         if number not in self._starts:
             self.prime([(number, 0)])
-        found: list[tuple[bytes, int | None]] = [
-            (self._data[start : start + _PDF_VALUE_WINDOW], start)
-            for start in _likeliest(self._starts[number])
+        complete = self._complete[number]
+        raw = [
+            (self._data[start : start + _PDF_VALUE_WINDOW], start, generation)
+            for start, generation in self._starts[number]
         ]
-        seen = {body for body, _ in found}
+        seen = {(generation, body) for body, _, generation in raw}
+        extra: list[tuple[bytes, int | None, int]] = []
         for generation in sorted(self._generations.get(number, {0})):
+            if len(extra) >= MAX_FONT_DEFINITIONS:
+                complete = False
+                break
             for body in self._objects(number, generation):
-                if body not in seen:
-                    seen.add(body)
-                    found.append((body, None))
-        return found, self._complete[number]
+                if (generation, body) not in seen:
+                    seen.add((generation, body))
+                    extra.append((body, None, generation))
+        if looks is None:
+            return [(body, start) for body, start, _ in raw + extra], complete
+        # Past the cap the last raw header is the file's last, later than any body of the lookup.
+        cut = len(raw) if self._complete[number] else len(raw) - 1
+        head = [entry for entry in raw[:cut] if looks(entry[0])]
+        tail = [entry for entry in raw[cut:] if looks(entry[0])]
+        extra = [entry for entry in extra if looks(entry[0])]
+        exact: dict[int, tuple[bytes, int | None, int]] = {}
+        for entry in head + extra + tail:
+            if entry[2] in self._generations.get(number, ()):
+                exact.setdefault(entry[2], entry)
+        first = [exact[generation] for generation in sorted(exact)]
+        taken = {id(entry) for entry in first}
+        ordered = first + [entry for entry in _likeliest(head + tail) if id(entry) not in taken]
+        ordered += [entry for entry in extra if id(entry) not in taken]
+        return [(body, start) for body, start, _ in ordered], complete
 
     def to_unicode(self, start: int) -> tuple[re.Match[bytes] | None, bool]:
         """The /ToUnicode reference of the raw definition at ``start``, read to its ``endobj``,
@@ -477,6 +504,10 @@ class _Definitions:
             self._read += end - start
             self._long[start] = _TO_UNICODE.search(self._data, start, end)
         return self._long[start], True
+
+
+def _looks_like_a_font(body: bytes) -> bool:
+    return b"/Font" in body or b"/Subtype" in body
 
 
 def _likeliest[T](definitions: Sequence[T]) -> list[T]:
@@ -502,13 +533,11 @@ def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> list[Font]:
     than a string is decoded with, or more definitions than are read, also gets an unresolved
     reading, so text shown in it is reported as unmapped instead of passing unread.
     """
-    bodies, complete = definitions(number)
+    bodies, complete = definitions(number, _looks_like_a_font)
     first: list[Font] = []
     second: list[Font] = []
     for body, start in bodies:
         cmaps.check()
-        if b"/Font" not in body and b"/Subtype" not in body:
-            continue
         composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
         mapping = _TO_UNICODE.search(body)
         if mapping is None and start is not None and len(body) >= _LOOKUP_WINDOW:

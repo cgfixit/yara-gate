@@ -112,10 +112,12 @@ above. Nothing here was run against Acrobat, Preview, or a browser.
 - **The `ToUnicode` stream is read the same way.** Leaving it would move the same file one
   object along: define the font once and its map twice. Stream numbers were already
   generation-blind.
-- **Order under the cap.** The last definition, then the first, then the ones between,
-  latest first. An ordinary incremental update leaves the last in use; a table can still
-  name the first, which is also the one main read, so no finding main had is lost on a font
-  alone. The order matters only past four readings.
+- **Order under the cap.** First the definition main read: the first one under each
+  generation a reference names, which is also what a reader that honours generations shows.
+  Then the last definition, the first, and the ones between, latest first. An ordinary
+  incremental update leaves the last in use, and a table can still name the first. So no
+  reading main had of a font object is lost to the cap. The order matters only past four
+  readings.
 - **Caps stay fail-visible.** A font with more than four distinct readings, or more than 64
   raw definitions (`MAX_FONT_DEFINITIONS`), or a long definition that could not be read to
   its end, gets an unresolved reading as well. Text shown in it is
@@ -146,8 +148,8 @@ above. Nothing here was run against Acrobat, Preview, or a browser.
 - Fixtures and cases: `samples.redefined_font_pdf`, `samples.redefined_map_pdf`; 15 cases
   in `check_added_rules.font_definition_cases()`; 12 `fonts` cases and three `B7` cases in
   `docs/research/probe_detection_gaps.py`; `pdf-font-definitions.pdf` in
-  `check_worst_case_timing.py`; 22 tests (15 functions) in `tests/test_pdftext.py`, four of
-  them from the review finding below.
+  `check_worst_case_timing.py`; 29 tests (16 functions) in `tests/test_pdftext.py`, eleven
+  of them from the two review findings below.
 
 ## Real generator output
 
@@ -227,13 +229,46 @@ change exists to prevent. The fix:
   then sets `unmapped`: what a name means in the unread definitions is not known.
 
 The outcome matrix of the fixtures above this section is unchanged by the fix, and so are
-the two probes, the 230 added-rule cases, and the precision corpus. Timing after the fix:
-`check_worst_case_timing.py` PASS on 30 inputs, `pdf-font-definitions.pdf` 5.95 s, slowest
-`pdf-page-objects.pdf` 7.10 s; one font named under 65,536 generations 2.09 s.
+the two probes, the 230 added-rule cases, and the precision corpus.
+
+## Review finding: the order under the reading cap
+
+Raised by the Codex security review of `3707639`, as P2, and reproduced on `23da684`. With
+five distinct definitions across generations, the one main read could be the fifth in the
+order and go undecoded. The scan reported `heuristic_pdf_text_unmapped`, which
+`agent-document` passes, where main had the finding itself.
+
+| Fixture (five distinct definitions of object 6) | main `2b6eda8` | `23da684` | with the fix |
+| --- | --- | --- | --- |
+| page says `6 0 R`; `6 0 obj` with the phrase map is second, the rest are `6 1 obj` | shown | **not shown**, unmapped | shown, unmapped |
+| page says `6 1 R`; `6 1 obj` with the phrase map is second, the rest are `6 0 obj` | shown | **not shown**, unmapped | shown, unmapped |
+| page says `6 0 R`; all five are `6 0 obj`, the phrase map second | not shown, no note | not shown, unmapped | not shown, unmapped |
+
+The fix puts first what a generation-exact lookup reads: the first font-like body under
+each generation a reference names. The last and the first follow as before. The lookup's own
+bodies are capped at 64 per object number as well; past that the font is not complete.
+
+Both findings were the same root cause, an order chosen without checking it against what
+main read, so the property is now tested directly:
+
+- `test_the_definition_under_the_referenced_generation_is_never_dropped_by_the_cap` walks
+  generation patterns, phrase positions, and reference generations for 1 to 70 definitions.
+  The definition main read must be decoded, and any other phrase must be decoded or
+  reported. It fails on `23da684` for 5, 6, 9, and 70 definitions.
+- 600 generated files (mixed generations, 1 to 70 definitions, object-stream members, a
+  second reference, an indirect `/Font` dictionary that is itself redefined, a map stream
+  defined twice) were read by main, `23da684`, and the fix. main decodes the phrase in 81.
+  `23da684` lost 11 of those, each with the note. The fix loses none, decodes 482, and
+  reports the other 118; none is unread without a note.
+
+Timing after both fixes: `check_worst_case_timing.py` PASS on 30 inputs,
+`pdf-font-definitions.pdf` 5.55 s, slowest `pdf-page-objects.pdf` 6.03 s. One font named
+under 65,536 generations: 1.91 s. One font defined and named under all 65,536 generations:
+2.83 s, against 17.99 s on main.
 
 ## Commands and results (this container)
 
-- `uv run pytest -q tests/test_pdftext.py`: 49 passed after the review fix (45 before it).
+- `uv run pytest -q tests/test_pdftext.py`: 56 passed after the review fixes (45 before).
   With `pdftext.py` from `2b6eda8`, 13 of the first 18 new tests fail and the other five
   are controls main already holds; the four from the review finding fail on `3707639`. One existing
   test, `test_an_overflowing_tounicode_font_has_a_second_reading`, calls `_font` directly
@@ -241,7 +276,7 @@ the two probes, the 230 added-rule cases, and the precision corpus. Timing after
   focused run (`tests/test_pdftext.py tests/test_pdf_text_folding.py
   tests/test_worst_case_timing.py tests/test_scanner.py tests/test_pdfannotations.py
   tests/test_phase1c_readers.py tests/test_heuristics.py tests/test_pages_deploy.py
-  tests/test_demo.py`): 373 passed.
+  tests/test_demo.py`): 380 passed.
 - `docs/verification/check_added_rules.py`: passed, 230 cases plus 4 vendor-override cases.
 - `docs/research/probe_detection_gaps.py --verify`: exit 0; 236 `ok`, no FAIL or STALE; the
   ten open cases are B1 to B6 and the new B7. CLI agent-ingest intake filed every case as
@@ -268,7 +303,9 @@ the two probes, the 230 added-rule cases, and the precision corpus. Timing after
   as one re-subset in five incremental saves, is held under `agent-ingest`. No generator
   file examined here redefines a font at all.
 - **More readings on a reused name.** A name that already means four fonts loses one to
-  the cap when one of them has a second definition, and the scan says so.
+  the cap when one of them has a second definition, and the scan says so. The guarantee
+  above is per font object: across several fonts under one name, which reading is the one
+  past the cap can differ from main, with the note.
 - **Two `/ToUnicode` keys in one dictionary are still read through the first.** poppler,
   PDFium, and pdf.js keep the last. This is B7 in the
   [detection backlog](../research/detection-backlog.md), with the reason it is not built
