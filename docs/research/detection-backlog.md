@@ -1,7 +1,8 @@
 # Detection backlog
 
 Last reviewed: November 10, 2026, on `main` at `838b11d` plus the
-[SVG link and zero-width run rules](../verification/2026-11-10-svg-links-and-invisible-runs.md).
+[SVG link and zero-width run rules](../verification/2026-11-10-svg-links-and-invisible-runs.md)
+and the [phrase-rule generator](../verification/2026-11-10-phrase-rule-generator.md).
 Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
@@ -26,8 +27,14 @@ Nothing here is a production false-positive rate or a recall figure.
    because their near-miss fired (see the record).
 4. **Prefer a spelling of an existing rule over a new rule.** A new rule id changes the
    counts in four documents and needs its own pair, precision row, and policy decision.
-5. **Run the whole bar** in [What a rule change has to show](#what-a-rule-change-has-to-show).
-6. **Update this page in the same change**: move the item to the record, remove its `OPEN`
+5. **In a generated rule file, edit the source.** `agent_prompt_injection_phrases.yar`,
+   `agent_override_imperative.yar`, and `agent_hidden_html.yar` are rendered from
+   [`rules/templates/`](../../rules/templates/). A word goes in `fragments.toml` and reaches
+   every string that names its list; run `scripts/generate_rules.py`, read
+   `git diff rules/local` for the strings it reached, and give each one a near-miss. A list
+   that leaves a word out does so on purpose; the reason is in the not-planned table.
+6. **Run the whole bar** in [What a rule change has to show](#what-a-rule-change-has-to-show).
+7. **Update this page in the same change**: move the item to the record, remove its `OPEN`
    marker in [`probe_detection_gaps.py`](probe_detection_gaps.py), and add any boundary you
    found to the not-planned list.
 
@@ -35,7 +42,7 @@ Nothing here is a production false-positive rate or a recall figure.
 
 | Check | Command | What it establishes |
 | --- | --- | --- |
-| Compiles, metadata complete | `docs/verification/lint_rules.py` | The pack loads; severities are consistent |
+| Compiles, metadata complete, generated files current | `docs/verification/lint_rules.py` | The pack loads; severities are consistent; a generated file is what its template renders |
 | Fires and has a near-miss | `docs/verification/check_rule_pairs.py` | Each new spelling fires; the nearest benign text does not |
 | Library, CLI, encodings | `docs/research/probe_rule_coverage.py --verify` | UTF-8, UTF-16, and zipped copies give the same rule ids and exits |
 | Benign corpus unchanged | `docs/verification/measure_precision.py --fail-over` | No new hit on the 328 generated benign files |
@@ -185,7 +192,9 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 | A `javascript:` scheme split by a tab, line feed, or carriage return (`java&#9;script:`), which a browser strips from a URL before reading it | Verified clean on `doc_svg_active_link`; assessment for browsers, from the WHATWG URL parser's removal of those three characters, not run | A pattern that allows a control between every letter leaves the engine no literal to search for. A derived view that deletes them inside attribute values would serve every URL rule; needs its own benign count |
 | An SVG `href` in a namespace prefix other than `xlink:` (`<a x:href="javascript:...">` with `xmlns:x` bound to XLink) | Verified clean | The prefix is the author's choice, so any prefix would need a namespace reader. Needs a sample from a real generator first |
 | Runs of other invisible characters in `agent_invisible_run`: Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the soft hyphen, the braille blank, Mongolian free variation selectors | Assessment: each renders as nothing or as blank space in most fonts | Korean jamo text and hyphenated output use some of them in sequence. Each needs a benign count over its script's text before it joins the run |
-| Generate the phrase rules from a word list and one separator grammar | [#171](https://github.com/cgfixit/yara-gate/issues/171), deferred there | The line-break separator is written out 64 times in `agent_prompt_injection_phrases`, up from 32. Worth doing before the next phrase is added |
+| The other rule bodies written out more than once: the ten `$block` strings of `dev_github_workflow_runner_backdoor` (one string with the indent counted from 2 to 20), the command list in four `dev_git_config_exec` strings, the credential-file list in three `script_credential_upload` strings, the encoded-parameter prefixes shared by `script_encoded_powershell` and `shortcut_powershell_encoded`, the request tail in two `agent_role_spoof_action` strings | Verified by counting on this tree. No miss or false hit is recorded against any of them | [`generate_rules.py`](../../scripts/generate_rules.py) can render the lists as fragments today; the workflow strings need a loop over a number, which templates do not have. Each file needs the proof the phrase rules had: a rendered body that is the committed one byte for byte. Worth doing when one of these lists next changes |
+| One written form for the optional determiner: `(the SEP\|your SEP\|any SEP\|my SEP)?` in `$a`, `((the\|your\|any\|my) SEP)?` in `$a_post` | Verified: both forms are in the template as they were written by hand. Assessment: they match the same text | The generator change was checked by comparing bytes, so it rewrote no pattern. The condition compares where `$a`, `$b`, `$c`, and the exemption end, so a rewrite has to show that no match end moves: the pairs and a sweep, as for any rule change |
+| Word lists for the rules that keep theirs inline: `agent_prompt_injection_multilingual` (one list per language), `agent_role_spoof_action` and `agent_fake_chat_marker` (role openers by model family), `agent_message_code_relay` (code types, written eight times) | Verified by counting | The same generator; each is its own byte-for-byte move. The chat-template tokens are the ones that change most often ([keeping the detector current](#keeping-the-detector-current)) |
 
 ## Considered and not planned
 
@@ -220,6 +229,8 @@ overturn.
 | `javascript:void(...)` with any operand, or `javascript:` alone, as a no-op SVG link | Only an empty target, `;`, and `void(0)` or `void 0` are no-ops: `void` evaluates its operand, so `void(fetch(...))` runs it. The exemption is read from the `javascript:` token at the end of each link match, so a flood of no-op links stays clean ([record](../verification/2026-11-10-svg-links-and-invisible-runs.md)) |
 | `img`, `video`, `audio`, `frame`, or `portal` inside an SVG `foreignObject` | Diagram exports place `img` icons in labels, and media elements play nothing without a gesture. The five embedding elements are the ones that load a page or post a form |
 | A zero-width run shorter than 16, or zero-width characters spread one per word | A run of 15 is the notes it was. One character per word is what a pasted web page holds; `heuristic_unicode_control_conjunction` already holds it when the member also carries a phrase |
+| One grammar for every override string: each verb with each adjective and each noun | The strings differ on purpose, and each difference is a row of this table: `forget` counts only before `system prompt` and `programming`, `rules` is left out after `override`, and `above` has strings of its own. [`fragments.toml`](../../rules/templates/fragments.toml) shares a list where the strings agree and keeps two where they do not ([record](../verification/2026-11-10-phrase-rule-generator.md)) |
+| Render the templates when rules load, or ship them in the wheel | The file a reviewer reads, the file hashed into the ruleset digest, and the file a scan compiles are one file. Rendering at load would put a generator, and a second place to change a rule, inside the scan path |
 | HTML `<img src="https://...{{...}}">` as an exfiltration template | Web and mail templates are written this way. The Markdown forms are matched |
 | A literal key appended to `authorized_keys` | An administrator's own key looks the same. A downloaded key is matched |
 | ClickOnce manifests, `node -e` in `postinstall`, joining CSV cells or JSON array elements | Recorded earlier; see the [October 30 roadmap](detection-roadmap-2026-10-30.md) and [#171](https://github.com/cgfixit/yara-gate/issues/171) |
@@ -267,7 +278,9 @@ A lexical gate's recall on paraphrase corpora is a floor to report, not a target
 **Engine.** YARA-X 1.23.0 (November 5, 2026) is the newest release and the locked version.
 Its regular expressions have no lookahead, lookbehind, or backreference, and an alternation
 holds at most 255 branches; write an exemption as a second string and an offset test, as
-`script_download_execute` does. Unreleased commits change the compiled-rule serialization
+`script_download_execute` does. A pattern cannot mix greedy and non-greedy quantifiers, so a
+string with one lazy gap needs every quantifier lazy; in a generated rule file `{{lazy name}}`
+derives that copy from the greedy fragment instead of a second hand-written one. Unreleased commits change the compiled-rule serialization
 version, so the next release starts with a cold cache; the cache key already includes the
 engine version. A compiled cache is trusted input
 ([GHSA-2jx3-ff3v-j7jj](https://github.com/VirusTotal/yara-x/security/advisories/GHSA-2jx3-ff3v-j7jj));

@@ -60,7 +60,7 @@ Priorities are conditional on the assumptions above, not confirmed findings. Lik
 
 - [models.py](../src/yara_gate/models.py), [quarantine.py](../src/yara_gate/quarantine.py), and [report.py](../src/yara_gate/report.py): policy precedence, file identity, disposition, and disclosure (TM-001, TM-003, TM-004).
 - [scanner.py](../src/yara_gate/scanner.py), [content.py](../src/yara_gate/content.py), [pdftext.py](../src/yara_gate/pdftext.py), [pdfannotations.py](../src/yara_gate/pdfannotations.py), [pdfpages.py](../src/yara_gate/pdfpages.py), [pdfxref.py](../src/yara_gate/pdfxref.py), [rtftext.py](../src/yara_gate/rtftext.py), and [heuristics.py](../src/yara_gate/heuristics.py): bounded readers, detection gaps, and parser failure paths (TM-001, TM-002).
-- [rules.py](../src/yara_gate/rules.py) and [rules/](../rules/): trust, integrity, loading, and promotion (TM-001, TM-005).
+- [rules.py](../src/yara_gate/rules.py) and [rules/](../rules/): trust, integrity, loading, and promotion (TM-001, TM-005). Three local rule files are rendered at development time from [rules/templates/](../rules/templates/); the rendered files are the ones committed, reviewed, hashed, and packaged, CI fails one that is not what its template renders, and no scan reads a template or runs the generator.
 - [demo.py](../src/yara_gate/demo.py), [scripts/](../scripts/), and [web-demo/](../web-demo/): local HTTP and public artifact boundaries (TM-006).
 - [integration examples](examples/README.md): scanned-byte handoff and deployment-specific authentication (TM-001, TM-003, TM-006).
 

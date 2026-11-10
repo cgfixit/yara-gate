@@ -10,6 +10,7 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 | Path | Purpose |
 | --- | --- |
 | [`local/`](local/) | 87 shipped YARA rules in 58 `.yar`/`.yara` files: 75 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`templates/`](templates/) | Sources of the three generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the word lists and the word separator they share. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
 | [`rules.lock`](rules.lock) | Pinned URLs, revisions, and SHA-256 values for YARA Forge core, signature-base, and Elastic protections-artifacts. A lock does not install the bodies. |
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
 | `vendor/` (downloaded, untracked) | Rule bodies installed by `setup` or the network-authorized install/update commands; omitted from wheels. |
@@ -29,6 +30,29 @@ installs pinned packs and `rules update --allow-network` resolves new pins. Each
 compiles the staged tree before swapping it into place. Scanning never downloads
 or repairs vendor state. See [installation and operation](../user-guide.md) and
 [network/privacy boundaries](../SECURITY.md).
+
+## Generated rule files
+
+`agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`, and
+`agent_hidden_html.yar` are rendered from [`templates/`](templates/). The words an order is
+built from, the separator between words, the hiding cues, and the phrases read after a cue
+are each written once, in [`fragments.toml`](templates/fragments.toml). A template is the
+rule file with `{{name}}` where a fragment goes; `{{lazy name}}` gives the non-greedy copy
+that the documentary exemption and the HTML comment strings need, so that copy cannot
+drift from the strings it follows. To change one of these rules, edit the template or the
+fragment and run:
+
+```sh
+uv run python scripts/generate_rules.py
+```
+
+The generated file is the one that is compiled, hashed, packaged, and reviewed; its first
+lines name its sources. [`lint_rules.py`](../docs/verification/lint_rules.py) fails when a
+generated file is not what its template renders, so neither a hand edit nor an unrendered
+template edit merges. An edit to a fragment reaches every string that names it and is a
+rule change like any other: `git diff rules/local` shows the strings, and each needs its
+near-miss. The [record](../docs/verification/2026-11-10-phrase-rule-generator.md) has what was
+measured when the three files moved, and what was left written by hand.
 
 ## All detection layers
 
@@ -78,7 +102,8 @@ blocked file; ordinary scanning does not learn rules from the input it judges.
 
 | Check | What its result establishes |
 | --- | --- |
-| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata and rule fire/near-miss cases. |
+| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata, generated files matching their templates, and rule fire/near-miss cases. |
+| [`check_rule_generator.py`](../docs/verification/check_rule_generator.py) | The generator on disposable copies: a hand edit is found, one word-list edit reaches the order and its exemption and compiles, and what cannot be rendered is refused. |
 | [`check_added_rules.py`](../docs/verification/check_added_rules.py) | Added-rule and vendor-override cases. |
 | [`measure_precision.py`](../docs/verification/measure_precision.py) | Hits in a generated benign corpus; see [measured precision](../docs/rules.md#measured-precision). |
 | [`sweep_rule_changes.py`](../docs/verification/sweep_rule_changes.py) | Files on this machine whose findings differ between the committed rules and the working tree's. Run by hand before a rule change is published; not a CI step. |

@@ -1,0 +1,39 @@
+rule agent_hidden_html {
+    meta:
+        author = "yara-gate"
+        description = "Hidden HTML or a Markdown comment with an instruction-like phrase within 256 bytes"
+        intent = "Advisory when an instruction follows a hiding cue: display none, visibility hidden, a font size of zero, under one pixel, or 1 px, an offset of -1000 px or more that moves the text off screen, a screen-reader-only class, the hidden attribute, or a Markdown reference-style comment; or when it sits inside an HTML comment, before the comment closes. The cue alone is ordinary markup and is not reported. A fractional size such as 0.9em or 0.875rem is ordinary small text, and text after a comment has closed is shown (React, Vue, and Angular write comment markers beside the text they render), so neither is a cue; white or transparent text and zero opacity are not cues, because dark themes and fade-in animations use them on text a reader sees. More than 1,024 comment openers that each have a phrase within 256 bytes keep the earlier test, in which the comment does not have to be open"
+        severity = "advisory"
+        verdict_on_match = "advisory"
+        reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+    strings:
+        // CSS is not computed: each cue is a spelling that hides text in most pages, read lexically.
+        // The size cue is a real zero with a CSS unit or none and something that ends the value
+        // (0, 0px;, 0.0em"), a fraction of a pixel or point, 1px or 1pt, or under a tenth of an
+        // em. A bare "font-size:0" prefix also read 0.9em and 0.875rem, which are ordinary small
+        // text. The unit is a list, not any letters: text-folded spells 0.5em as 0.sem. Digit
+        // runs are bounded: an open-ended 0+ cost 30 times more on a file of long zero runs.
+        $hidden = /({{hiding_cues}})[\s\S]{0,256}({{hidden_phrases}})/ nocase ascii wide
+        // Same DAN carve-out as agent_prompt_injection_phrases: case-sensitive, so "Dan" stays clean.
+        $hidden_dan = /(?i:{{hiding_cues}})[\s\S]{0,256}{{dan_persona}}/ ascii wide
+        // A comment opener and the nearest phrase after it. The gaps are lazy, so each opener is
+        // paired with the first phrase that follows; a greedy gap would reach a later, shown
+        // phrase and the test below would then drop the hidden one. The pattern keeps the shape
+        // "cue, any 256 bytes, phrase" so the engine searches for the two ends apart; whether
+        // the comment is still open is decided in the condition, on offsets. YARA-X does not
+        // mix greedy and lazy quantifiers in one pattern, so the optional parts are lazy too.
+        $comment = /<!--[\s\S]{0,256}?({{lazy hidden_phrases}})/ nocase ascii wide
+        $comment_dan = /<!--[\s\S]{0,256}?{{lazy dan_persona}}/ ascii wide
+        $close = "-->" ascii wide
+    condition:
+        $hidden or $hidden_dan
+        // The phrase is inside the comment when no --> lies between the opener and the phrase's
+        // end. Text after a closed comment is shown, so it stays with the phrase rules. One
+        // range count per match; past 1,024 matches the comment is not required to be open,
+        // which is the test this rule had before, so a flood cannot make the condition slow.
+        or #comment > 1024 or #comment_dan > 1024
+        or for any i in (1..#comment): ( #close in (@comment[i]..@comment[i] + !comment[i]) == 0 )
+        or for any i in (1..#comment_dan): (
+            #close in (@comment_dan[i]..@comment_dan[i] + !comment_dan[i]) == 0
+        )
+}
