@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Recorded yara-gate results: attacks hidden in invisible PDF and Word text, tool descriptions, glued zips, terminal escapes, spreadsheet cells, PDF glyphs, model files, and dev containers are held, and each benign near-twin passes clean with no findings. Nothing is scanned or uploaded on this site.">
+  <meta name="description" content="Recorded yara-gate results: attacks hidden in invisible PDF and Word text, white-on-white web text, data attributes, merged PDFs, tool descriptions, glued zips, terminal escapes, spreadsheet cells, PDF glyphs, model files, and dev containers are held, and each benign near-twin passes clean with no findings. Nothing is scanned or uploaded on this site.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="yara-gate · Recorded demo">
   <meta property="og:description" content="Recorded results from an offline gate that holds risky content before an AI agent reads it, paired with benign near-twins that pass. Nothing is scanned or uploaded on this site.">
@@ -20,7 +20,7 @@
     <div class="intro">
       <p class="eyebrow">A gate before the context window</p>
       <h1>An ordinary file. An unexpected instruction.</h1>
-      <p class="lead">A supplier spreadsheet. A build log. A tool list. An invoice. Explore how yara-gate reads content the way a document reader would before an agent sees it, then compare each attack with an ordinary near-twin that differs only in what it says.</p>
+      <p class="lead">A supplier spreadsheet. A build log. A tool list. An invoice. A merged contract bundle. Explore how yara-gate reads content the way a document reader would before an agent sees it, then compare each attack with an ordinary near-twin that differs only in what it says.</p>
       <p class="notice"><strong>Synthetic scenarios. Real scanner results.</strong> This public demo replays fixed recordings; it never scans, uploads, or connects to your machine.</p>
       <p class="help" id="revision"></p>
     </div>
@@ -93,7 +93,7 @@
         <div id="gallery" class="pairs"></div>
       </details>
     </div>
-    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. Invisible PDF text, hidden Word text, a poisoned tool description deep in a list, and a script inside an inline SVG logo are the newest pairs, each beside a twin that stays clean.</p>
+    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. The newest pairs are white text on its own white background, an instruction in a <code>data-*</code> attribute, and an override on the last page of an eight-source merged PDF, each beside a twin that stays clean.</p>
     <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
     <section class="panel guide" aria-labelledby="precision-title">
       <h2 id="precision-title">Low noise needs evidence, not a promise</h2>
@@ -102,7 +102,8 @@
         <div><h3>328 generated benign files</h3><p>81 of the 85 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.30%). No structural check reports any of them; a merged PDF is read one font per page. CI fails the build if any rule crosses its limit.</p></div>
         <div><h3>15,140 files already on a Linux host</h3><p>When the SVG scope test and the full-depth tool-list walk arrived, HTML, SVG, Markdown, JSON, XML, and PDF files under <code>/usr</code>, <code>/opt</code>, and home directories kept every verdict and finding. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-detection-scope-and-budgets.md" rel="noopener noreferrer">scope and budget record</a>.</p></div>
         <div><h3>A false positive removed, not excused</h3><p>A page with an inline icon and an unrelated script used to be blocked as active SVG. The rule now needs the script inside the svg element; the pair above records both sides, and a page the scanner cannot scope keeps the strict block.</p></div>
-        <div><h3>Hidden text needs an instruction</h3><p>Templates, review notes, and OCR layers hide text all the time. Hidden Word or PDF text is reported only when an instruction rule also matches inside it. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-hidden-text.md" rel="noopener noreferrer">hidden-text record</a> for the benign sweep.</p></div>
+        <div><h3>Merged PDFs read page by page</h3><p>A merged PDF keeps each source's font named F1. Read through every font that name meant anywhere in the file, an ordinary eight-source bundle was held as unreadable. Each page is now read through its own fonts, so the bundle twin is clean and the override on its last page is found. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-pdf-page-fonts.md" rel="noopener noreferrer">page-font record</a>.</p></div>
+        <div><h3>Hidden text needs an instruction</h3><p>Templates, review notes, and OCR layers hide text all the time. Hidden Word, PDF, or HTML text is reported only when an instruction rule also matches inside it. HTML counts as hidden only on one exact inline declaration a browser accepts, checked against Chromium; text the page also shows is not reported. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-hidden-text.md" rel="noopener noreferrer">hidden-text</a> and <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-hidden-html-text.md" rel="noopener noreferrer">hidden HTML</a> records.</p></div>
         <div><h3>Real third-party files</h3><p>132 PDFs from the pikepdf and pypdf test suites gained no findings from the PDF text view. 65 joblib test pickles gave the same results as before the deeper pickle walk.</p></div>
         <div><h3>Published configuration</h3><p>Across 112 <code>devcontainer.json</code> files from published npm and PyPI packages, the dev container rule reported one: an inline <code>sh -c</code> host script, the shape it exists to flag. The other 61 lifecycle commands did not match it.</p></div>
       </div>

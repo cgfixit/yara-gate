@@ -141,7 +141,7 @@ Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. O
 
 A home-directory path is shown as `~/...`. For inbox scans, the path is the quarantine slot used during scanning, even after relocation to `clean/` or `blocked/`. An in-place scan retains its input path; stdin and `scan_bytes` use the final component of `--name`/`name`. Path shortening does not anonymize other filenames or directories.
 
-Reports include policy and `policy_reason`, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, `detector_sha256` (a digest of the scanner's own sources and parser versions, which changes when a reader or heuristic does even if the tool version and ruleset fingerprint do not; key cached admissions on it), the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive and mail members by ordinal (`zip:0`, `mime:2`), without disclosing their names; `view` identifies raw bytes or derived text: `decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` (look-alike spellings folded to plain letters and Cyrillic-only words lowercased), `base64-decoded` and `percent-decoded` (encoded runs that spell readable text), `mime-headers-decoded`, `pdf-flate` (inflated PDF streams), `pdf-text` and `pdf-paragraph` (the text a PDF shows, per text block and per paragraph), `ooxml-text` (joined runs of supported Office parts), `ooxml-cell` (one inline-string worksheet cell), `ooxml-comment` (one Excel or PowerPoint comment), `rtf-text` (one RTF paragraph, cell, or story), `pdf-annotation` (one annotation text string), `ooxml-hidden-text` and `pdf-hidden-text` (text a reader hides), `html-text` (one HTML block), `markdown-text` (one paragraph or list item), `comment-text` (one adjacent comment block), or `notebook-text` (one cell source/output piece). A `+text-folded` suffix records an additional spelling fold, including `pdf-text+text-folded` and `pdf-paragraph+text-folded` after glyph decoding. The [view reference](docs/rules.md#limits) defines the boundaries. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
+Reports include policy and `policy_reason`, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, `detector_sha256` (a digest of the scanner's own sources and parser versions, which changes when a reader or heuristic does even if the tool version and ruleset fingerprint do not; key cached admissions on it), the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive and mail members by ordinal (`zip:0`, `mime:2`), without disclosing their names; `view` identifies raw bytes or derived text: `decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` (look-alike spellings folded to plain letters and Cyrillic-only words lowercased), `base64-decoded` and `percent-decoded` (encoded runs that spell readable text), `mime-headers-decoded`, `pdf-flate` (inflated PDF streams), `pdf-text` and `pdf-paragraph` (the text a PDF shows, per text block and per paragraph), `ooxml-text` (joined runs of supported Office parts), `ooxml-cell` (one inline-string worksheet cell), `ooxml-comment` (one Excel or PowerPoint comment), `rtf-text` (one RTF paragraph, cell, or story), `pdf-annotation` (one annotation text string), `ooxml-hidden-text`, `pdf-hidden-text`, and `html-hidden-text` (text a reader or browser hides), `html-text` (one HTML block), `markdown-text` (one paragraph or list item), `comment-text` (one adjacent comment block), or `notebook-text` (one cell source/output piece). A `+text-folded` suffix records an additional spelling fold, including `pdf-text+text-folded` and `pdf-paragraph+text-folded` after glyph decoding. The [view reference](docs/rules.md#limits) defines the boundaries. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
 For any finding, start with the [detection-method map](rules/README.md) or look up its `rule_id` in [docs/rules.md](docs/rules.md), which gives the indicators each rule needs and its known benign collisions. Most rules are advisory. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 
@@ -191,7 +191,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 58 inert examples, each of 28 attacks beside a benign
+replays saved results for 64 inert examples, each of 31 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -209,15 +209,16 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
    The list holds the catalog the public demo records, grouped by intake channel:
-   28 attacks, each directly above its benign twin, and a 7z archive the scanner
-   cannot open (incomplete under every policy). The newest pairs are invisible PDF
-   text, hidden Word text, a poisoned MCP tool description 58th of 60, and a script
-   inside an inline SVG logo. **Scan pair side by side** scans the selected example
+   31 attacks, each directly above its benign twin, and a 7z archive the scanner
+   cannot open (incomplete under every policy). The newest pairs are white text on
+   its own white background in a web page, an instruction in an HTML `data-*`
+   attribute, and an override on the last page of an eight-source merged PDF whose
+   pages each keep their own font named `F1`. **Scan pair side by side** scans the selected example
    and its twin under the same policy. **Run every pair** scans the whole catalog
    and counts the attacks held, the twins that stayed clean, and the findings on
    twins; a result that differs from the reviewed expectation is marked, which is
    what you would see after adding rules that hit a twin. Under `agent-ingest` every
-   attack is held and every twin is clean; `agent-document` holds 11 of the 28 and
+   attack is held and every twin is clean; `agent-document` holds 13 of the 31 and
    records the rest as notes, and the default policy holds 4.
 3. Read the decision and original finding severities. Each finding says which
    check found it and in which view, in plain words. **Coverage & provenance**

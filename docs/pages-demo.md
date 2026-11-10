@@ -1,13 +1,15 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 58
-inert examples under `agent-ingest`, `agent-document`, and `default`: 28
+YARA-X backend. This site therefore replays **real recorded results** for 64
+inert examples under `agent-ingest`, `agent-document`, and `default`: 31
 attacks, each with a benign near-twin, and two scans that could not finish. Selecting
 an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The newest pairs cover invisible PDF text, hidden
-Word text, a poisoned MCP tool description deep in a list, and a script inside an
-inline SVG logo, beside the earlier encoded PDF annotation strings, RTF formatting,
+revision, not current bypasses. The newest pairs cover white text on its own white
+background, an instruction in an HTML `data-*` attribute, and an override on the last
+page of an eight-source merged PDF, beside invisible PDF text, hidden Word text, a
+poisoned MCP tool description deep in a list, a script inside an inline SVG logo, the
+earlier encoded PDF annotation strings, RTF formatting,
 uppercase Russian, and glyph-encoded PDF spelling. The UI labels
 every result as recorded and shows the scanner revision, capture time, rule coverage,
 and engine version.
@@ -46,17 +48,19 @@ checks.
 
 ## Guided workflows
 
-Seven fictional tasks open directly beside their recorded outcome: supplier review
+Nine fictional tasks open directly beside their recorded outcome: supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
-onboarding (an MCP tool list), and invoice intake (invisible PDF text).
+onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
+(a merged PDF read through each page's own fonts), and web research (white text on a
+white background).
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 28-pair catalog and the two unfinished scans remain under an expandable section.
+The full 31-pair catalog and the two unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same seven shortcuts and the same catalog: both read
+The local workbench offers the same nine shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Selecting a shortcut clears the previous result and prepares a
 sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
@@ -184,9 +188,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 58 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 64 inert
 examples, recorded with 85 bundled rules and YARA-X 1.23.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+Each deployment refreshes the revision and time. See the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -219,6 +223,9 @@ its benign twin.
 | Tool result | An MCP `tools/list` result whose 58th description of 60 says to read a private key and not tell the user | The same 60 tools; the 58th description notes that results are cached |
 | Document | A Word run formatted as hidden text holding the override | The same hidden run holding a note to ignore previous drafts |
 | Document | A PDF invoice with the override drawn in the invisible text render mode | The same invisible line repeating the invoice's own text, as an OCR layer does |
+| Web page | A vendor update whose last paragraph is white on its own white background and holds the override | The same white-on-white paragraph holding an ordinary reply line |
+| Web page | Release notes whose `data-summary` attribute holds the override and a request for API keys | The same attribute holding an ordinary release summary, as a share widget does |
+| Document | An eight-source merged PDF, each page keeping its own font named `F1`, whose last page spells an override through that page's font | The same bundle ending with an ordinary signature page |
 
 The two unfinished scans are an ordinary note scanned with a deliberately broken
 rule in a disposable tree, and a 7z header, a container the scanner does not open
@@ -232,6 +239,14 @@ At `682cf08`, before hidden text was read on its own, the hidden Word run and th
 invisible PDF line were notes only, so `agent-document` read both files. The
 [shared-catalog verification](verification/2026-11-10-demo-catalog.md) records those
 runs.
+
+The three pairs added later on November 10 show #205 and #207. Scanned with the
+scanner as it was at `2b6eda8`, before both, the white-text and `data-*` attacks were
+notes only, so `agent-document` read them, and the merged-PDF attack and its twin
+were both held under `agent-ingest` as `heuristic_pdf_text_unmapped`: the override was
+never read, and the ordinary bundle was held because its font name meant eight fonts.
+The [pairs verification](verification/2026-11-10-demo-html-merged-pdf.md) records
+those runs.
 
 The look-alike, hidden-page, Word, and PDF cases show the two intake channels the
 README leads with: an open SMS number, and a synced corpus where `agent-document`
@@ -256,7 +271,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 58 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 64 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

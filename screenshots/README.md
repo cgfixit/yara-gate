@@ -2,8 +2,33 @@
 
 This directory preserves Computer Use captures, the user-supplied demo image, and
 the November 10 headless-browser captures without editing or re-encoding. The
-README features the November 10 workbench run below. Earlier captures retain their
+README features the 31-pair workbench run below. Earlier captures retain their
 original implementation provenance.
+
+## Workbench with 31 pairs — November 10, 2026
+
+| Workbench: every pair, scanned live | Workbench: merged PDF beside its twin |
+| --- | --- |
+| ![Workbench run of all 31 pairs under agent-ingest](yara-gate-catalog31-workbench-run.png) | ![Contract bundle workflow: override on page 8 of a merged PDF held beside its clean twin](yara-gate-catalog31-workbench-pair.png) |
+
+Two original PNG captures, 2560 × 1800 (a 1280 × 900 viewport at device scale 2),
+taken November 10, 2026, at about 18:27 UTC, by headless Chromium 153.0.8010.12
+through Playwright 1.63.0 in a Linux container. They show no browser chrome and
+are not Computer Use captures. Source: clean `claude/friendly-curie-l6c1vj` at
+`9879a2a`. The workbench was `yara-gate demo` on `127.0.0.1` with a disposable
+copy of the 85 bundled rules, no vendor packs, and a disposable `HOME`. The run
+reports 31 of 31 attacks held under `agent-ingest`, 31 of 31 twins clean, 0
+findings on twins, and 63 of 63 results as expected. The pair capture is the
+**Contract bundle** workflow scanned side by side. All fixtures are inert and
+synthetic, and this is evidence for the curated pairs only, not a production
+false-positive rate. They replace the 28-pair captures below in the README; those
+files are kept unchanged. See the
+[verification record](../docs/verification/2026-11-10-demo-html-merged-pdf.md).
+
+| File | SHA-256 |
+| --- | --- |
+| `yara-gate-catalog31-workbench-run.png` | `bde24a06c858f9e51d3d7db4bab316bbc4bea1dc54f07c452494404f88508f88` |
+| `yara-gate-catalog31-workbench-pair.png` | `08ce472df30e8e2809b0a54a2a0250e1e95793ac38d82331c1bf9af03930b199` |
 
 ## Shared demo catalog — November 10, 2026
 

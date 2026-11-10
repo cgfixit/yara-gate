@@ -729,6 +729,81 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "html_white_override",
+        "detection",
+        "Web page",
+        "html_white_benign",
+        "White text on a white background",
+        "A vendor update whose last paragraph is white on its own white background and holds "
+        "an override. The page is not rendered: the inline colours settle that the text is "
+        "hidden, and an instruction there is an advisory, so the document policy holds it.",
+        "update.html",
+        samples.html_white_text_override(),
+        HELD,
+    ),
+    _case(
+        "html_white_benign",
+        "control",
+        "Web page",
+        "html_white_override",
+        "The same white paragraph with a footer line",
+        "The same white-on-white styling around an ordinary reply line, as mail templates "
+        "hide footers and preheaders. Hidden text alone is not a finding.",
+        "update.html",
+        samples.html_white_text_benign(),
+        CLEAN,
+    ),
+    _case(
+        "html_data_override",
+        "detection",
+        "Web page",
+        "html_data_benign",
+        "An instruction in a data attribute",
+        "Release notes whose data-summary attribute, which a browser never shows but a "
+        "page-to-text tool may keep, holds an override and a request for API keys.",
+        "notes.html",
+        samples.html_data_attribute_override(),
+        HELD,
+    ),
+    _case(
+        "html_data_benign",
+        "control",
+        "Web page",
+        "html_data_override",
+        "A share-widget summary in a data attribute",
+        "The same attribute holding an ordinary summary of the release, as share widgets "
+        "and analytics tags do.",
+        "notes.html",
+        samples.html_data_attribute_benign(),
+        CLEAN,
+    ),
+    _case(
+        "merged_pdf_override",
+        "detection",
+        "Document",
+        "merged_pdf_benign",
+        "An override on page 8 of a merged PDF",
+        "A contract bundle merged from eight sources. Each page keeps its own font named F1, "
+        "and the last page's glyphs spell an override only through that page's font. The "
+        "text is read through each page's own fonts, so the override is found.",
+        "bundle.pdf",
+        samples.merged_pdf_override(),
+        NOTE,
+    ),
+    _case(
+        "merged_pdf_benign",
+        "control",
+        "Document",
+        "merged_pdf_override",
+        "The same merged bundle with a signature page",
+        "The same eight sources and fonts with an ordinary last page. When a font name was "
+        "read through every font it meant anywhere in the file, this bundle was held as "
+        "unreadable; read page by page, it is clean.",
+        "bundle.pdf",
+        samples.merged_pdf_benign(),
+        CLEAN,
+    ),
+    _case(
         "incomplete",
         "failure",
         "Rules",
