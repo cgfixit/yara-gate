@@ -16,8 +16,10 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`report.py`](report.py) writes compact JSON and SARIF without matched bytes.
 - [`rules.py`](rules.py) discovers, compiles, caches, installs, updates, and promotes rules under the applicable controls.
 - [`hunt.py`](hunt.py) creates candidate rules from confirmed blocked files and checks them against benign examples.
-- [`demo.py`](demo.py) serves the bounded loopback scanner interface; [`demo_page.html`](demo_page.html) is its bundled page.
+- [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page.
 - [`launchd.py`](launchd.py) writes a macOS watcher plist; it does not load the agent.
 - [`release.py`](release.py) contains review and audit building blocks for a future release flow; no CLI release action or file move is implemented here.
 - [`samples.py`](samples.py) creates inert synthetic examples, including EICAR; [`selftest.py`](selftest.py) exercises a fixture matrix.
+- [`showcase.py`](showcase.py) is the demo catalog: each attack beside a benign near-twin, with the verdict expected under each policy. The workbench scans it and `scripts/record_pages_demo.py` records it for the public replay.
+- [`rtftext.py`](rtftext.py) reads bounded RTF text through formatting, codepages, and hex or Unicode escapes, one piece per paragraph, cell, or story.
 - [`py.typed`](py.typed) marks the package as providing type information.

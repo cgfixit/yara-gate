@@ -6,15 +6,13 @@ import importlib.resources
 import json
 import secrets
 import threading
-from collections.abc import Callable
-from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from yara_gate import samples
+from yara_gate import showcase
 from yara_gate.models import ScanPolicy, ScanResult, exit_code
 from yara_gate.scanner import scan_bytes
 
@@ -24,93 +22,15 @@ _PAGE = importlib.resources.files("yara_gate").joinpath("demo_page.html")
 _KNOWN_ERRORS = ("send a sample or text, not both", "empty text", "text too large")
 
 
-class DemoSample(StrEnum):
-    plain = "plain"
-    base64 = "base64"
-    pe_pdf = "pe_pdf"
-    b64_tool = "b64_tool"
-    b64_tool_benign = "b64_tool_benign"
-    pdf_glyph = "pdf_glyph"
-    pdf_glyph_benign = "pdf_glyph_benign"
-    pdf_glyph_folded = "pdf_glyph_folded"
-    pdf_glyph_folded_benign = "pdf_glyph_folded_benign"
-    uppercase_russian = "uppercase_russian"
-    uppercase_russian_benign = "uppercase_russian_benign"
-    pickle_call = "pickle_call"
-    pickle_benign = "pickle_benign"
-    devcontainer = "devcontainer"
-    devcontainer_benign = "devcontainer_benign"
-    zip_concat = "zip_concat"
-    zip_concat_benign = "zip_concat_benign"
-    ansi_log = "ansi_log"
-    ansi_log_benign = "ansi_log_benign"
-    html_split = "html_split"
-    html_split_benign = "html_split_benign"
-    xlsx_cell = "xlsx_cell"
-    xlsx_cell_benign = "xlsx_cell_benign"
-    svg_handler = "svg_handler"
-    svg_handler_benign = "svg_handler_benign"
-    selector_run = "selector_run"
-    selector_run_benign = "selector_run_benign"
-    svg_cdata_override = "svg_cdata_override"
-    svg_cdata_benign = "svg_cdata_benign"
-    xlsx_comment_override = "xlsx_comment_override"
-    xlsx_comment_benign = "xlsx_comment_benign"
-    small_caps_override = "small_caps_override"
-    small_caps_benign = "small_caps_benign"
-    rtf_override = "rtf_override"
-    rtf_benign = "rtf_benign"
-    pdf_annotation_override = "pdf_annotation_override"
-    pdf_annotation_benign = "pdf_annotation_benign"
-
-
-# Each sample is scanned under the name its type implies; the attacks and their benign twins
-# share a name, so only the content differs.
-_SAMPLES: dict[DemoSample, tuple[str, Callable[[], bytes]]] = {
-    DemoSample.plain: ("note.txt", samples.clean_text),
-    DemoSample.base64: ("blob.txt", samples.base64_text),
-    DemoSample.pe_pdf: ("report.pdf", samples.mini_pe),
-    DemoSample.b64_tool: ("tool-result.json", samples.encoded_tool_result),
-    DemoSample.b64_tool_benign: ("tool-result.json", samples.encoded_tool_result_benign),
-    DemoSample.pdf_glyph: ("checklist.pdf", samples.glyph_pdf_override),
-    DemoSample.pdf_glyph_benign: ("checklist.pdf", samples.glyph_pdf_benign),
-    DemoSample.pdf_glyph_folded: ("review.pdf", samples.glyph_pdf_folded_override),
-    DemoSample.pdf_glyph_folded_benign: ("review.pdf", samples.glyph_pdf_folded_benign),
-    DemoSample.uppercase_russian: ("message.txt", samples.uppercase_russian_override),
-    DemoSample.uppercase_russian_benign: ("message.txt", samples.uppercase_russian_benign),
-    DemoSample.pickle_call: ("model.pt", samples.pickle_checkpoint_call),
-    DemoSample.pickle_benign: ("model.pt", samples.pickle_checkpoint_benign),
-    DemoSample.devcontainer: ("devcontainer.json", samples.devcontainer_host_fetch),
-    DemoSample.devcontainer_benign: ("devcontainer.json", samples.devcontainer_benign),
-    DemoSample.zip_concat: ("invoice.zip", samples.concatenated_zip_hidden),
-    DemoSample.zip_concat_benign: ("invoice.zip", samples.concatenated_zip_benign),
-    DemoSample.ansi_log: ("build.log", samples.ansi_log_override),
-    DemoSample.ansi_log_benign: ("build.log", samples.ansi_log_benign),
-    DemoSample.html_split: ("release-notes.html", samples.html_inline_override),
-    DemoSample.html_split_benign: ("release-notes.html", samples.html_inline_benign),
-    DemoSample.xlsx_cell: ("totals.xlsx", samples.xlsx_rich_text_override),
-    DemoSample.xlsx_cell_benign: ("totals.xlsx", samples.xlsx_rich_text_benign),
-    DemoSample.svg_handler: ("logo.svg", samples.svg_onbegin_handler),
-    DemoSample.svg_handler_benign: ("logo.svg", samples.svg_declarative_benign),
-    DemoSample.selector_run: ("extension.js", samples.variation_selector_payload),
-    DemoSample.selector_run_benign: ("extension.js", samples.variation_selector_benign),
-    DemoSample.svg_cdata_override: ("logo.svg", samples.svg_cdata_override),
-    DemoSample.svg_cdata_benign: ("logo.svg", samples.svg_cdata_benign),
-    DemoSample.xlsx_comment_override: ("review.xlsx", samples.xlsx_comment_override),
-    DemoSample.xlsx_comment_benign: ("review.xlsx", samples.xlsx_comment_benign),
-    DemoSample.small_caps_override: ("note.txt", samples.small_caps_override),
-    DemoSample.small_caps_benign: ("note.txt", samples.small_caps_benign),
-    DemoSample.rtf_override: ("review.rtf", samples.rtf_override),
-    DemoSample.rtf_benign: ("review.rtf", samples.rtf_benign),
-    DemoSample.pdf_annotation_override: ("review.pdf", samples.pdf_annotation_override),
-    DemoSample.pdf_annotation_benign: ("review.pdf", samples.pdf_annotation_benign),
-}
+# The workbench scans the catalog the public replay records. The broken-rule failure needs
+# a rules tree of its own, so only the recorder scans that one.
+_SAMPLES = {case.id: case for case in showcase.CASES if not case.broken}
 
 
 class DemoRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    sample: DemoSample | None = None
+    sample: str | None = None
     text: str | None = None
     policy: ScanPolicy = ScanPolicy.default
 
@@ -120,6 +40,8 @@ class DemoRequest(BaseModel):
         has_text = self.text is not None
         if has_sample == has_text:
             raise ValueError("send a sample or text, not both")
+        if self.sample is not None and self.sample not in _SAMPLES:
+            raise ValueError("unknown sample")
         if self.text is not None and self.text == "":
             raise ValueError("empty text")
         if self.text is not None and len(self.text.encode("utf-8")) > _MAX_TEXT:
@@ -197,14 +119,10 @@ def view_result(result: ScanResult) -> DemoResponse:
     )
 
 
-def _sample_file(sample: DemoSample) -> tuple[str, bytes]:
-    name, build = _SAMPLES[sample]
-    return name, build()
-
-
 def scan_request(request: DemoRequest, *, rules_dir: Path | None) -> DemoResponse:
     if request.sample is not None:
-        name, payload = _sample_file(request.sample)
+        case = _SAMPLES[request.sample]
+        name, payload = case.name, case.payload
     else:
         name, payload = "paste.txt", (request.text or "").encode("utf-8")
     # In memory: a pasted document never touches the disk, not even under a temporary name.
@@ -232,10 +150,23 @@ def _csp(nonce: str) -> str:
     )
 
 
+def catalog_json() -> str:
+    """The catalog the page lists: titles, pairs, and expected verdicts, never a payload."""
+    data = {
+        "policies": list(showcase.POLICIES),
+        "cases": [
+            showcase.public_fields(case) | {"expected": list(case.expected)}
+            for case in _SAMPLES.values()
+        ],
+    }
+    # The JSON sits inside a script element, so no string in it may spell a closing tag.
+    return json.dumps(data, ensure_ascii=True).replace("<", "\\u003c")
+
+
 def render_page() -> tuple[bytes, str]:
     nonce = secrets.token_urlsafe(16)
     text = _PAGE.read_text(encoding="utf-8").replace("__NONCE__", nonce)
-    return text.encode("utf-8"), nonce
+    return text.replace("__CATALOG__", catalog_json()).encode("utf-8"), nonce
 
 
 class DemoHandler(BaseHTTPRequestHandler):

@@ -5,7 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Recorded yara-gate results: attacks hidden in glued zips, terminal escapes, variation selectors, spreadsheet cells, PDF glyphs, model files, and dev containers are held, and each benign near-twin passes clean. Nothing is scanned or uploaded on this site.">
+  <meta name="description" content="Recorded yara-gate results: attacks hidden in invisible PDF and Word text, tool descriptions, glued zips, terminal escapes, spreadsheet cells, PDF glyphs, model files, and dev containers are held, and each benign near-twin passes clean with no findings. Nothing is scanned or uploaded on this site.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="yara-gate · Recorded demo">
   <meta property="og:description" content="Recorded results from an offline gate that holds risky content before an AI agent reads it, paired with benign near-twins that pass. Nothing is scanned or uploaded on this site.">
@@ -20,7 +20,7 @@
     <div class="intro">
       <p class="eyebrow">A gate before the context window</p>
       <h1>An ordinary file. An unexpected instruction.</h1>
-      <p class="lead">A supplier spreadsheet. A build log. A model checkpoint. Explore how yara-gate inspects content before an agent reads it, then compare each suspicious example with an ordinary near-twin.</p>
+      <p class="lead">A supplier spreadsheet. A build log. A tool list. An invoice. Explore how yara-gate reads content the way a document reader would before an agent sees it, then compare each attack with an ordinary near-twin that differs only in what it says.</p>
       <p class="notice"><strong>Synthetic scenarios. Real scanner results.</strong> This public demo replays fixed recordings; it never scans, uploads, or connects to your machine.</p>
       <p class="help" id="revision"></p>
     </div>
@@ -28,10 +28,17 @@
     <section id="scoreboard" class="scoreboard" aria-label="Recorded totals" hidden>
       <div><strong id="score-held"></strong><span id="score-held-label"></span></div>
       <div><strong id="score-clean"></strong><span id="score-clean-label"></span></div>
+      <div><strong id="score-findings"></strong><span id="score-findings-label"></span></div>
       <div><strong id="score-failure"></strong><span id="score-failure-label"></span></div>
       <div><strong id="score-rules"></strong><span id="score-rules-label"></span></div>
     </section>
     <div id="workbench" hidden>
+      <section class="panel evidence" aria-labelledby="evidence-title">
+        <div class="section-head"><h2 id="evidence-title">Every pair at a glance</h2><span id="evidence-policy" class="tag"></span></div>
+        <p id="evidence-summary" class="evidence-summary"></p>
+        <div id="strip" class="strip" role="group" aria-label="Recorded verdict of each attack, with its benign twin below it"></div>
+        <p class="help">Each column is one pair: the attack on top, its benign twin beneath. The last columns are scans that could not finish. ✕ held, ! reported with exit 0, ✓ clean, ? incomplete. Squares follow the policy selected below; select one to open its recording.</p>
+      </section>
       <section class="stories" aria-labelledby="story-heading">
         <div class="section-head"><h2 id="story-heading">Start with a workflow</h2><a href="#catalog">Browse every example ↓</a></div>
         <div id="stories" class="story-buttons" role="group" aria-label="Fictional workflows"></div>
@@ -49,13 +56,14 @@
           <p id="policy-help" class="policy-help"></p>
           <h3 id="example-title" class="example-title"></h3>
           <p class="meta"><span id="example-kind" class="tag"></span><span id="example-channel" class="tag"></span></p>
+          <p id="example-how" class="meta"></p>
           <p id="example-description" class="help"></p>
           <div class="divider">
             <h3>One example, three policies</h3>
             <p class="help">A finding keeps its severity. The policy decides whether the content is held.</p>
             <table><caption class="sr-only">Recorded outcomes under each policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Verdict</th><th scope="col">Exit</th></tr></thead><tbody id="comparison"></tbody></table>
           </div>
-          <details><summary>How these recordings were made</summary><p class="help">These records were produced by the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. The failure example used a deliberately invalid rule in a disposable copy.</p><dl id="recording-source"></dl></details>
+          <details><summary>How these recordings were made</summary><p class="help">These records were produced by the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. One fail-closed example used a deliberately invalid rule in a disposable copy; the other is an archive format the scanner does not open.</p><dl id="recording-source"></dl></details>
         </section>
         <section class="panel" aria-labelledby="result-title">
           <div class="section-head"><h2 id="result-title" tabindex="-1"><span class="step">02</span> Recorded outcome</h2><span class="tag">Saved result</span></div>
@@ -74,21 +82,27 @@
         </section>
       </div>
       <details class="panel catalog" id="catalog">
-        <summary>Explore all recorded pairs &amp; the failed scan</summary>
-        <div class="section-head"><h2 id="choose-title">All examples, by channel</h2><span class="help">Verdict chips: message · document · manual</span></div>
+        <summary>Explore all recorded pairs &amp; the unfinished scans</summary>
+        <div class="section-head"><h2 id="choose-title">All examples</h2><span class="help">Verdict chips: message · document · manual</span></div>
+        <h3 class="filter-title">Arrives through</h3>
         <div id="channels" class="filters" role="group" aria-label="Show one channel"></div>
+        <h3 class="filter-title">How the attack was caught</h3>
+        <div id="methods" class="filters" role="group" aria-label="Show one way of catching an attack"></div>
+        <p class="help">Read from each attack's recorded findings: the view or check that found what the bytes as sent did not show. Two tags mean two evasions were stacked.</p>
+        <p id="gallery-count" class="help" role="status"></p>
         <div id="gallery" class="pairs"></div>
       </details>
     </div>
-    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. RTF formatting, encoded PDF annotation strings, uppercase Russian, and glyph-encoded PDF spelling are included beside their clean twins.</p>
+    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. Invisible PDF text, hidden Word text, a poisoned tool description deep in a list, and a script inside an inline SVG logo are the newest pairs, each beside a twin that stays clean.</p>
     <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
     <section class="panel guide" aria-labelledby="precision-title">
       <h2 id="precision-title">Low noise needs evidence, not a promise</h2>
-      <p>In this curated synthetic set, every attack has a benign twin that the same build recorded as clean, with no findings, under all three policies. Beyond these examples, the bundled rules are measured against benign files on every change:</p>
+      <p>In this curated synthetic set, every attack has a benign twin that the same build recorded as clean, with no findings, under all three policies. Most twins are near-misses on purpose: the same file type, layout, and encoding, and often the same opening words. Beyond these examples, the bundled rules are measured against benign files on every change:</p>
       <div class="guide-grid two">
-        <div><h3>324 generated benign files</h3><p>81 of the 85 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.31%). CI fails the build if any rule crosses its limit.</p></div>
-        <div><h3>500 installed documentation and asset files</h3><p>The original Phase 1c-small candidate changed no verdicts, incomplete reasons, or finding IDs in this macOS sample. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-06-phase1c-small.md" rel="noopener noreferrer">reader verification record</a> for scope.</p></div>
-        <div><h3>Files already on a Linux host</h3><p>6,099 HTML, SVG, and XLSX files kept their verdicts when the HTML block, spreadsheet cell, and SVG handler checks arrived; the new SVG rule matched none. Across 3,142 system files, only archives in newly handled formats changed verdict: some are now held as incomplete or advisory, and one jar became clean.</p></div>
+        <div><h3>328 generated benign files</h3><p>81 of the 85 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.30%). One merged PDF whose fonts cannot be told apart is reported as unread text, a note, by design. CI fails the build if any rule crosses its limit.</p></div>
+        <div><h3>15,140 files already on a Linux host</h3><p>When the SVG scope test and the full-depth tool-list walk arrived, HTML, SVG, Markdown, JSON, XML, and PDF files under <code>/usr</code>, <code>/opt</code>, and home directories kept every verdict and finding. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-detection-scope-and-budgets.md" rel="noopener noreferrer">scope and budget record</a>.</p></div>
+        <div><h3>A false positive removed, not excused</h3><p>A page with an inline icon and an unrelated script used to be blocked as active SVG. The rule now needs the script inside the svg element; the pair above records both sides, and a page the scanner cannot scope keeps the strict block.</p></div>
+        <div><h3>Hidden text needs an instruction</h3><p>Templates, review notes, and OCR layers hide text all the time. Hidden Word or PDF text is reported only when an instruction rule also matches inside it. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-hidden-text.md" rel="noopener noreferrer">hidden-text record</a> for the benign sweep.</p></div>
         <div><h3>Real third-party files</h3><p>132 PDFs from the pikepdf and pypdf test suites gained no findings from the PDF text view. 65 joblib test pickles gave the same results as before the deeper pickle walk.</p></div>
         <div><h3>Published configuration</h3><p>Across 112 <code>devcontainer.json</code> files from published npm and PyPI packages, the dev container rule reported one: an inline <code>sh -c</code> host script, the shape it exists to flag. The other 61 lifecycle commands did not match it.</p></div>
       </div>
@@ -101,7 +115,7 @@
 cd yara-gate
 uv sync --frozen
 uv run yara-gate demo --rules rules</pre>
-      <p class="help">Cloning and dependency installation use the network. After installation, the loopback app scans locally with bundled rules, including the twins shown here, and accepts short pastes; this public page cannot. Vendor installation is a separate, explicit step.</p>
+      <p class="help">Cloning and dependency installation use the network. After installation, the loopback app scans the same catalog locally with bundled rules, one pair side by side or every pair at once, and accepts short pastes; this public page cannot. Vendor installation is a separate, explicit step.</p>
       <div class="guide-grid">
         <div><h3>Messages &amp; tool results</h3><p>Use <code>agent-ingest</code> before an SMS, chat message, or tool response reaches the model. Require a complete clean result.</p></div>
         <div><h3>Synced documents</h3><p>Use <code>agent-document</code> for corpus files that may quote attacks. Accept only complete clean or the exact notes-only record.</p></div>
