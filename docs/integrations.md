@@ -91,7 +91,10 @@ Windows integration. The command does not execute targets or fetch URLs.
 Run `yara-gate demo --rules /path/to/rules` and open its printed loopback URL to
 compare the real scanner's policy outcomes before wiring a consumer. The UI
 starts on `agent-ingest`; its note and advisory examples make the difference
-between message, document, and default policies visible. Results show the
+between message, document, and default policies visible. **Run every pair**
+scans the demo catalog under the selected policy and marks any result that
+differs from its reviewed expectation: run it after adding local or vendor rules
+to see whether one of them reports a benign twin. Results show the
 original finding severities, policy reason, derived/member provenance, and
 coverage from the configured rules. A skipped-rule warning is reduced coverage,
 and an incomplete result is a hold even when partial findings exist.
@@ -562,7 +565,8 @@ treat every such change as an integration change and re-run your consumer checks
 The caller picks the policy because it knows whether it is reading a message or
 a document; the scanner does not guess from the content, and a size or ratio
 rule would be defeated by filler. A document that asks the reader to forward a
-one-time code, or that carries an encoded or hidden instruction, is still held.
+one-time code, or that carries an instruction in hidden text, is still held. An
+encoded override phrase is a note, recorded like the plain phrase.
 
 ## CyClaw and CG-agent-harness
 

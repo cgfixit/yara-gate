@@ -141,7 +141,7 @@ Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. O
 
 A home-directory path is shown as `~/...`. For inbox scans, the path is the quarantine slot used during scanning, even after relocation to `clean/` or `blocked/`. An in-place scan retains its input path; stdin and `scan_bytes` use the final component of `--name`/`name`. Path shortening does not anonymize other filenames or directories.
 
-Reports include policy and `policy_reason`, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, `detector_sha256` (a digest of the scanner's own sources and parser versions, which changes when a reader or heuristic does even if the tool version and ruleset fingerprint do not; key cached admissions on it), the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive and mail members by ordinal (`zip:0`, `mime:2`), without disclosing their names; `view` identifies raw bytes or derived text: `decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` (look-alike spellings folded to plain letters and Cyrillic-only words lowercased), `base64-decoded` and `percent-decoded` (encoded runs that spell readable text), `mime-headers-decoded`, `pdf-flate` (inflated PDF streams), `pdf-text` and `pdf-paragraph` (the text a PDF shows, per text block and per paragraph), `ooxml-text` (joined runs of supported Office parts), `ooxml-cell` (one inline-string worksheet cell), `html-text` (one HTML block), `markdown-text` (one paragraph or list item), `comment-text` (one adjacent comment block), or `notebook-text` (one cell source/output piece). A `+text-folded` suffix records an additional spelling fold, including `pdf-text+text-folded` and `pdf-paragraph+text-folded` after glyph decoding. The [view reference](docs/rules.md#limits) defines the boundaries. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
+Reports include policy and `policy_reason`, engine version, ruleset fingerprint, skipped vendor-file count, compiled rule count, the tool version, `detector_sha256` (a digest of the scanner's own sources and parser versions, which changes when a reader or heuristic does even if the tool version and ruleset fingerprint do not; key cached admissions on it), the scan time in seconds, and coverage counts (`units_scanned`, `views_scanned`, `bytes_scanned`, `yara_seconds`). Finding `member_path` entries identify archive and mail members by ordinal (`zip:0`, `mime:2`), without disclosing their names; `view` identifies raw bytes or derived text: `decoded-utf16`, `html-unescaped`, `json-unescaped`, `format-controls-removed`, `text-folded` (look-alike spellings folded to plain letters and Cyrillic-only words lowercased), `base64-decoded` and `percent-decoded` (encoded runs that spell readable text), `mime-headers-decoded`, `pdf-flate` (inflated PDF streams), `pdf-text` and `pdf-paragraph` (the text a PDF shows, per text block and per paragraph), `ooxml-text` (joined runs of supported Office parts), `ooxml-cell` (one inline-string worksheet cell), `ooxml-comment` (one Excel or PowerPoint comment), `rtf-text` (one RTF paragraph, cell, or story), `pdf-annotation` (one annotation text string), `ooxml-hidden-text` and `pdf-hidden-text` (text a reader hides), `html-text` (one HTML block), `markdown-text` (one paragraph or list item), `comment-text` (one adjacent comment block), or `notebook-text` (one cell source/output piece). A `+text-folded` suffix records an additional spelling fold, including `pdf-text+text-folded` and `pdf-paragraph+text-folded` after glyph decoding. The [view reference](docs/rules.md#limits) defines the boundaries. Offsets belong to that view. SARIF stores member/derived offsets in properties rather than mislabeling them as positions in the outer file.
 
 For any finding, start with the [detection-method map](rules/README.md) or look up its `rule_id` in [docs/rules.md](docs/rules.md), which gives the indicators each rule needs and its known benign collisions. Most rules are advisory. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 
@@ -184,7 +184,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 - Exit 2 and the file still in `quarantine/` is the fail-closed result. Fix the cause (run `uv sync --frozen` again, remove a broken user rule, run `setup` to restore a missing vendor file) and scan again. A file over the size cap or an encrypted document stays incomplete by design.
 - `rules install` or `rules update` without `--allow-network` is supposed to exit 2.
-- Two watches at once: the second exits 2 with `incomplete: RuntimeError`.
+- Two watches at once: the second exits 2 with `incomplete: watch already running`.
 - Vendor files that fail to compile are skipped and counted in the report's `skipped_rule_files`. A shipped local rule that fails to compile is fatal (exit 2). Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
 
 ## 9. Try a verdict in the browser
@@ -192,7 +192,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 The root [`demo.html`](demo.html) is a launcher for the two demos.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 49 inert examples, each of 24 attacks beside a benign
+replays saved results for 58 inert examples, each of 28 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -209,13 +209,19 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    (Command/Ctrl + Enter). The counter measures UTF-8 bytes, not characters;
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
-   The two paired groups contain 17 attacks and their benign twins. Start with
-   **New reader examples** for uppercase Russian, glyph-encoded PDFs with spelling
-   substitutions, an encoded PDF annotation, the RTF formatting/escape pair, split
-   Excel comments, SVG CDATA and spans, and small capitals. Click **Scan paired example** to run the other input without
-   changing policy. Under `agent-ingest` the attacks are held and the benign
-   twins are clean; changing the policy can change the verdict on a note.
-3. Read the decision and original finding severities. **Coverage & provenance**
+   The list holds the catalog the public demo records, grouped by intake channel:
+   28 attacks, each directly above its benign twin, and a 7z archive the scanner
+   cannot open (incomplete under every policy). The newest pairs are invisible PDF
+   text, hidden Word text, a poisoned MCP tool description 58th of 60, and a script
+   inside an inline SVG logo. **Scan pair side by side** scans the selected example
+   and its twin under the same policy. **Run every pair** scans the whole catalog
+   and counts the attacks held, the twins that stayed clean, and the findings on
+   twins; a result that differs from the reviewed expectation is marked, which is
+   what you would see after adding rules that hit a twin. Under `agent-ingest` every
+   attack is held and every twin is clean; `agent-document` holds 11 of the 28 and
+   records the rest as notes, and the default policy holds 4.
+3. Read the decision and original finding severities. Each finding says which
+   check found it and in which view, in plain words. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and fingerprints; a
    completed bundled-only scan does not mean vendor packs were installed. **Demo
    response JSON** shows preview fields without the input or matched bytes; it is
@@ -232,4 +238,4 @@ for actual CyClaw/Harness callers; a preview never authorizes following content.
 
 ## Verification records
 
-Every change ships with a dated record under [docs/verification/](docs/verification/) that names the source revision, engine version, rule count, commands, and observed outcomes. The most recent, as of this guide: the [November 8 rule and watcher integrity](docs/verification/2026-11-08-rule-and-watch-integrity.md) record, the [November 7 consumer enforcement](docs/verification/2026-11-07-consumer-enforcement.md) and [detection scope and budgets](docs/verification/2026-11-07-detection-scope-and-budgets.md) records, the [November 7 normalized-reader comparison](docs/verification/2026-11-07-normalized-reader-text.md), the [November 6 demo showcase](docs/verification/2026-11-06-demo-showcase.md), the [YARA-X 1.23.0 upgrade](docs/verification/2026-11-06-yara-x-1.23.0.md), the [PDF text view](docs/verification/2026-11-05-pdf-text-view.md), the [encoded-text views](docs/verification/2026-11-05-encoded-text-views.md), the [pickle walker](docs/verification/2026-11-05-pickle-walker.md), and the [intake resubmission](docs/verification/2026-11-02-intake-resubmission.md) records. Older records describe smaller rule trees and earlier engines; read their revision line before relying on a number. `uv run yara-gate selftest` and `uv run python docs/research/probe_rule_coverage.py --verify` reproduce the library and CLI behavior on your machine with disposable homes, so `~/YaraGate` is never touched by verification.
+Every change ships with a dated record under [docs/verification/](docs/verification/) that names the source revision, engine version, rule count, commands, and observed outcomes. The most recent, as of this guide: the [November 10 shared demo catalog](docs/verification/2026-11-10-demo-catalog.md) record, the [November 8 rule and watcher integrity](docs/verification/2026-11-08-rule-and-watch-integrity.md) and [base64 and PDF hex strings](docs/verification/2026-11-08-base64-hex-strings.md) records, the [November 7 consumer enforcement](docs/verification/2026-11-07-consumer-enforcement.md) and [detection scope and budgets](docs/verification/2026-11-07-detection-scope-and-budgets.md) records, the [November 7 normalized-reader comparison](docs/verification/2026-11-07-normalized-reader-text.md), [RTF reader](docs/verification/2026-11-07-rtf-reader.md), [PDF annotations](docs/verification/2026-11-07-pdf-annotations.md), [PDF font readings](docs/verification/2026-11-07-pdf-font-readings.md), and [CMap budget](docs/verification/2026-11-07-cmap-entry-budget.md) records, the [November 6 demo showcase](docs/verification/2026-11-06-demo-showcase.md), the [YARA-X 1.23.0 upgrade](docs/verification/2026-11-06-yara-x-1.23.0.md), the [PDF text view](docs/verification/2026-11-05-pdf-text-view.md), the [encoded-text views](docs/verification/2026-11-05-encoded-text-views.md), the [pickle walker](docs/verification/2026-11-05-pickle-walker.md), and the [intake resubmission](docs/verification/2026-11-02-intake-resubmission.md) records. Older records describe smaller rule trees and earlier engines; read their revision line before relying on a number. `uv run yara-gate selftest` and `uv run python docs/research/probe_rule_coverage.py --verify` reproduce the library and CLI behavior on your machine with disposable homes, so `~/YaraGate` is never touched by verification.
