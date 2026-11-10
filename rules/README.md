@@ -9,7 +9,8 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 
 | Path | Purpose |
 | --- | --- |
-| [`local/`](local/) | 85 shipped YARA rules in 58 `.yar`/`.yara` files: 73 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`local/`](local/) | 87 shipped YARA rules in 58 `.yar`/`.yara` files: 75 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`templates/`](templates/) | Sources of the three generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the word lists and the word separator they share. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
 | [`rules.lock`](rules.lock) | Pinned URLs, revisions, and SHA-256 values for YARA Forge core, signature-base, and Elastic protections-artifacts. A lock does not install the bodies. |
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
 | `vendor/` (downloaded, untracked) | Rule bodies installed by `setup` or the network-authorized install/update commands; omitted from wheels. |
@@ -30,6 +31,29 @@ compiles the staged tree before swapping it into place. Scanning never downloads
 or repairs vendor state. See [installation and operation](../user-guide.md) and
 [network/privacy boundaries](../SECURITY.md).
 
+## Generated rule files
+
+`agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`, and
+`agent_hidden_html.yar` are rendered from [`templates/`](templates/). The words an order is
+built from, the separator between words, the hiding cues, and the phrases read after a cue
+are each written once, in [`fragments.toml`](templates/fragments.toml). A template is the
+rule file with `{{name}}` where a fragment goes; `{{lazy name}}` gives the non-greedy copy
+that the documentary exemption and the HTML comment strings need, so that copy cannot
+drift from the strings it follows. To change one of these rules, edit the template or the
+fragment and run:
+
+```sh
+uv run python scripts/generate_rules.py
+```
+
+The generated file is the one that is compiled, hashed, packaged, and reviewed; its first
+lines name its sources. [`lint_rules.py`](../docs/verification/lint_rules.py) fails when a
+generated file is not what its template renders, so neither a hand edit nor an unrendered
+template edit merges. An edit to a fragment reaches every string that names it and is a
+rule change like any other: `git diff rules/local` shows the strings, and each needs its
+near-miss. The [record](../docs/verification/2026-11-10-phrase-rule-generator.md) has what was
+measured when the three files moved, and what was left written by hand.
+
 ## All detection layers
 
 | Layer | What it checks | Implementation and detailed reference |
@@ -45,7 +69,7 @@ or repairs vendor state. See [installation and operation](../user-guide.md) and
 | PDF active features | Complete decoded action/feature tokens, encryption, and the special note for an OpenAction that only navigates to a page. Other listed active features block, including those resolved in supported compressed object streams. | [`heuristics.py`](../src/yara_gate/heuristics.py), [PDF feature restrictions](../docs/rules.md#how-the-other-checks-work). |
 | Office structure and macros | OOXML VBA/DDE, OLE objects, altChunk, encrypted legacy Office, and extracted VBA auto-exec or command-related keywords. VBA source is inspected without executing it. | [`heuristics.py`](../src/yara_gate/heuristics.py), [Office findings](../docs/rules.md#structural-checks-without-yara). |
 | Embedded executables | Validated PE, ELF, or Mach-O headers inside another file, executable members in documents, or executables nested at least two container levels deep. | [`filetype.py`](../src/yara_gate/filetype.py), [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py). |
-| Unicode and encoding signals | Context-aware joiners, Unicode tags, long variation-selector runs, a control-plus-note conjunction, and base64 run classification with media/key exemptions. | [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py), [Unicode and media boundaries](../docs/rules.md#how-the-other-checks-work). |
+| Unicode and encoding signals | Context-aware joiners, Unicode tags, long variation-selector runs, a control-plus-note conjunction, and base64 run classification with media/key exemptions. A run of 16 or more zero-width characters is the YARA rule [`agent_invisible_run`](local/agent_invisible_unicode.yar). | [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py), [Unicode and media boundaries](../docs/rules.md#how-the-other-checks-work). |
 | Model files | Bounded pickle opcode inspection for selected dangerous callables, safetensors/GGUF header consistency, and Keras unsafe imports/calls or serialized Lambda code. No model is deserialized or executed. | [`heuristics.py`](../src/yara_gate/heuristics.py), [model-format limits](../docs/rules.md#structural-checks-without-yara). |
 | MCP data | Shell commands in JSON tool configuration and selected hidden-instruction phrases in description fields, at any list position or depth; JSON past the walk's 2,000,000-node or 64-level budget that could hold an entry is incomplete. | [`heuristics.py`](../src/yara_gate/heuristics.py), [MCP boundaries](../docs/rules.md#structural-checks-without-yara). |
 
@@ -78,7 +102,8 @@ blocked file; ordinary scanning does not learn rules from the input it judges.
 
 | Check | What its result establishes |
 | --- | --- |
-| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata and rule fire/near-miss cases. |
+| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata, generated files matching their templates, and rule fire/near-miss cases. |
+| [`check_rule_generator.py`](../docs/verification/check_rule_generator.py) | The generator on disposable copies: a hand edit is found, one word-list edit reaches the order and its exemption and compiles, and what cannot be rendered is refused. |
 | [`check_added_rules.py`](../docs/verification/check_added_rules.py) | Added-rule and vendor-override cases. |
 | [`measure_precision.py`](../docs/verification/measure_precision.py) | Hits in a generated benign corpus; see [measured precision](../docs/rules.md#measured-precision). |
 | [`sweep_rule_changes.py`](../docs/verification/sweep_rule_changes.py) | Files on this machine whose findings differ between the committed rules and the working tree's. Run by hand before a rule change is published; not a CI step. |

@@ -16,7 +16,7 @@ You should see `yara-gate 0.2.0`.
 
 The file `.python-version` contains `3.12`. `uv.lock` is the dependency pin. There is no `requirements.txt`.
 
-To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, `rules/local/`, `rules/rules.lock`, and `rules/vendor-overrides.json`. Leave out `.venv/` and the downloaded files under `rules/vendor/`; the compiled-rule cache lives in the user cache directory, not in the tree. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last install could not compile.
+To copy this folder to another machine, copy the source, `pyproject.toml`, `uv.lock`, `.python-version`, `rules/local/`, `rules/rules.lock`, and `rules/vendor-overrides.json`. `rules/templates/` and `scripts/` are needed only to change a generated rule file or rebuild the demo, not to scan. Leave out `.venv/` and the downloaded files under `rules/vendor/`; the compiled-rule cache lives in the user cache directory, not in the tree. Keep `rules/vendor/SKIPPED.md` when you want the list of rules the last install could not compile.
 
 Check the install with the built-in fixture run:
 
@@ -28,7 +28,7 @@ The last line is `SELFTEST PASS` and the exit code is 0. That command uses a tem
 
 ## 2. Download the curated rules once
 
-Scanning works offline with the 85 shipped local rules before this optional step. The curated packs (YARA Forge core, signature-base, and Elastic protections-artifacts) add known-malware signatures. Run this once, right after `uv sync`:
+Scanning works offline with the 87 shipped local rules before this optional step. The curated packs (YARA Forge core, signature-base, and Elastic protections-artifacts) add known-malware signatures. Run this once, right after `uv sync`:
 
 ```bash
 uv run yara-gate setup

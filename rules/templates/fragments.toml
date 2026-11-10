@@ -1,0 +1,89 @@
+# Word lists and sub-patterns for the rule templates beside this file.
+#
+# scripts/generate_rules.py puts each fragment where a template writes {{name}}, and writes the
+# result to rules/local. An array is a word list, joined with |; each entry is one alternative
+# of a regular expression, so "instructions?" is both spellings. A string is a sub-pattern. Both
+# may name other fragments. {{lazy name}} gives the same fragment with every quantifier made
+# non-greedy, for a string whose own quantifiers are lazy (YARA-X does not mix the two).
+#
+# Values are TOML literal strings: a backslash is a backslash, as in the rule file.
+#
+# An edit here is a rule change. It reaches every string that names the fragment, in every
+# template, so it needs the near-miss, sweep, and timing checks of
+# docs/research/detection-backlog.md. A boundary a list keeps on purpose is noted beside it;
+# the reasons are in that page's "Considered and not planned" table.
+
+# The one separator. Words may be split by spaces or tabs, or by one line break (hard-wrapped
+# Markdown, an SMS body). A blank line still splits them.
+sep = '([ \t]+|[ \t]*\r?\n[ \t]*)'
+
+# --- Override orders: agent_prompt_injection_phrases, agent_override_imperative ---
+
+override_verbs = ["ignore", "disregard", "forget"]
+
+# What marks an instruction as the one that came before. "above" is not an adjective in the
+# first list: "the above" and "above instructions" have strings of their own.
+earlier = ["previous", "prior", "preceding", "earlier", "initial", "original"]
+earlier_or_above = ["previous", "prior", "preceding", "earlier", "above", "initial", "original"]
+
+# The noun an order acts on. After "override", "rules" is left out: later rules override
+# earlier rules in every stylesheet and firewall manual.
+order_nouns = ["instructions?", "directions", "prompts?", "rules"]
+replace_nouns = ["instructions?", "directions", "prompts?"]
+
+# Optional quantifiers and an owner before the adjective.
+all_of = '(all{{sep}}(of{{sep}})?)?'
+any_of = '(all|any){{sep}}(of{{sep}})?'
+owner = '(the|your|my){{sep}}'
+
+# What follows the verb in the three strings that share the documentary exemption. The
+# exemption is built from these same fragments, so it ends where each string ends.
+earlier_order = '(the{{sep}}|your{{sep}}|any{{sep}}|my{{sep}})?({{earlier}}){{sep}}({{order_nouns}})'
+the_above = 'the{{sep}}above'
+everything_told = '(everything|all){{sep}}(you{{sep}}(were|have{{sep}}been){{sep}}told|(said|stated|written){{sep}}(above|before|earlier))'
+
+# --- "You are now ...": agent_prompt_injection_phrases, agent_hidden_html ---
+
+# What makes "you are now" an override and not a status line.
+unrestricted_markers = [
+    "ignore",
+    "override",
+    "bypass",
+    "reveal",
+    "execute",
+    "unrestricted",
+    "unfiltered",
+    "uncensored",
+    "jailbr(oken|eak(ing|s)?)",
+    "developer mode",
+    "do anything now",
+    "(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails)",
+]
+now_unrestricted = 'you are now\b[\s\S]{0,96}\b({{unrestricted_markers}})\b'
+# DAN is case-sensitive so the name "Dan" stays clean; only the phrase folds case.
+dan_persona = '(?i:you are now)\b[\s\S]{0,96}\bDAN\b'
+
+# --- agent_hidden_html ---
+
+# A spelling that hides text in most pages, read lexically. The rule's own comment explains
+# each; white or transparent text and zero opacity are not cues.
+hiding_cues = [
+    'display\s*:\s*none',
+    '''font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)''',
+    'visibility\s*:\s*hidden',
+    '(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)',
+    '''class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b''',
+    '<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]',
+    '\[(\/\/|comment)\]:[ \t]*[#<]',
+]
+
+# The phrases read after a cue or inside a comment.
+hidden_phrases = [
+    "ignore previous instructions",
+    "ignore all previous instructions",
+    "disregard the above",
+    "{{now_unrestricted}}",
+    "system prompt:",
+    "exfiltrate",
+    "do not tell the user",
+]

