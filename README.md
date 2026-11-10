@@ -190,7 +190,7 @@ Vendor matches default to **block**. The reviewed [`rules/vendor-overrides.json`
 uv run yara-gate demo --rules rules
 ```
 
-The local workbench calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It offers 17 attack/benign pairs, including uppercase Russian instructions, a glyph-encoded PDF with look-alikes and digit substitutions, encoded PDF annotations, RTF formatting and hex escapes, Excel comments, SVG CDATA, and Latin small capitals. Use **Scan paired example** to switch to the matching input under the same policy. The result shows the decision, original finding severity, and the view or check that found it. The workbench binds to `127.0.0.1` and scans in memory. See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser). Root [`demo.html`](demo.html) links to both demos and shows how to start the local workbench.
+The local workbench calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It offers 17 attack/benign pairs, including uppercase Russian instructions, a glyph-encoded PDF with look-alikes and digit substitutions, encoded PDF annotations, RTF formatting and hex escapes, Excel comments, SVG CDATA, and Latin small capitals. Use **Scan paired example** to switch to the matching input under the same policy. The result shows the decision, original finding severity, and the view or check that found it. The workbench binds to `127.0.0.1` and scans in memory. See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser).
 
 ![The local workbench explains an advisory held by agent-ingest](screenshots/yara-gate-workbench-hold.jpg)
 

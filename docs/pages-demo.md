@@ -32,7 +32,7 @@ Use `yara-gate demo` on loopback to inspect your own content. This public compan
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
 install a CyClaw or CG-agent-harness integration. The
 [integration contract](integrations.md) still governs real callers and same-byte
-checks. The root `demo.html` is a launcher for the local workbench and this public replay.
+checks.
 
 ## Guided workflows
 

@@ -51,13 +51,13 @@ Update affected docs in place, including stale counts/examples verified from cod
 Run the changed library/CLI path using inert input, copied rules and disposable
 homes. Use `yara-gate-runtime-verify` for behavior and
 `yara-gate-demo-evidence` for the live browser. Computer Use must exercise the real
-loopback demo with the final scanner/rules; `demo.html` is only an illustration.
+loopback demo with the final scanner/rules; the `web-demo/` replay only shows recordings.
 Browser evidence does not prove inbox disposition, archive limits or packaging.
 Record those through their actual interfaces. Preserve original screenshots under
 `screenshots/` with revision, date, scenario and hashes.
 
 Run Ruff on changed Python and Markdown, strict mypy for Python contract changes,
-and actionlint on changed workflows. Use focused regressions for concrete risks;
+and actionlint and zizmor on changed workflows. Use focused regressions for concrete risks;
 leave broad pytest/selftest coverage to hosted CI. Verify installed wheels when
 packaging changes. Recheck invariant boundaries affected by the final changes.
 

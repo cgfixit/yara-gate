@@ -1,11 +1,11 @@
 ---
 name: yara-gate-demo-evidence
-description: Exercise yara-gate's real loopback demo and capture reviewable Computer Use screenshots with provenance. Use for demo UI changes or requested visual verification; the standalone demo.html is not scanner acceptance.
+description: Exercise yara-gate's real loopback demo and capture reviewable Computer Use screenshots with provenance. Use for demo UI changes or requested visual verification; the public replay under web-demo/ is not scanner acceptance.
 ---
 
 # Capture live yara-gate demo evidence
 
-Read `src/yara_gate/demo.py`, `demo_page.html`, and the current CLI options. The root `demo.html` is a limited JavaScript illustration; it does not implement the real scanner, archive coverage, or policies. Use `SECURITY.md` and `screenshots/README.md` for evidence/privacy conventions.
+Read `src/yara_gate/demo.py`, `demo_page.html`, and the current CLI options. The public replay under `web-demo/` shows recorded results; it does not run the scanner, so it is not acceptance for a scanner, archive, or policy change. Use `SECURITY.md` and `screenshots/README.md` for evidence/privacy conventions.
 
 ## Run the intended scanner
 
