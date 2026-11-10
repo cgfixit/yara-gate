@@ -336,9 +336,12 @@ Readers search the end of the file for the bytes or for the line and do not
 lex around them, so one inside a comment, a literal string, or a stream body
 is a candidate too
 ([linearized files and the keyword search](verification/2026-11-10-pdf-xref-linearized.md)).
-An occurrence with no number after it gives no reader a section and is skipped.
-So is offset 0, which a linearized file's first-page trailer carries by design.
-A sign or a dot in front of the number is malformed. A candidate that is
+Comments between the keyword and the number are skipped, and leading zeros
+are dropped, as readers do. Offset 0, and a keyword that no number follows,
+name the start of the file: when the file opens with an xref stream that
+stream is read as a candidate, and otherwise the occurrence is skipped, since
+a linearized file's first-page trailer carries `startxref 0` by design.
+A sign or a dot in front of the number, or more than 20 digits, is malformed. A candidate that is
 present and does not parse still makes the scan incomplete.
 Each candidate includes its `/Prev` chain. Classic 20-byte tables,
 Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and

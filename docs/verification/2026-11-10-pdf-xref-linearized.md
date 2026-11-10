@@ -55,6 +55,16 @@ return the hidden text: pypdf 5.1.0, pdfminer.six 20260107, PDFium 153.0.7999.0 
 | at a line start, a vertical tab before the number | pypdf, pdfminer.six | **clean** | incomplete |
 | at a line start, the number written `+N` | pypdf, PDFium, pdf.js | incomplete (`pdf xref malformed`) | the same |
 | `%startxref`, with the number on the next comment line | none | clean | clean |
+| the offset padded with zeros to 24 digits | pypdf, PDFium, pdfminer.six | incomplete | incomplete |
+| `startxref %c`, then the offset on the next line | pypdf, PDFium | incomplete (`pdf xref malformed`) | incomplete |
+| `startxref`, a line holding `%c`, then the offset | PDFium | incomplete (`pdf xref malformed`) | incomplete |
+| `startxref 0`, in a file that opens with its xref stream | pdfminer.six | incomplete | incomplete |
+| `startxref x` in that file | not run | incomplete (`pdf xref malformed`) | incomplete |
+
+The last five rows were found in review of the first commit, which scanned each of them
+clean: it skipped any offset of more than 20 digits, read a comment after the keyword as "no
+number", and skipped offset 0 and a missing number in every file. They were run through
+pypdf 5.1.0, PDFium (pypdfium2), and pdfminer.six.
 
 "Incomplete" is `pdf annotation xref offset inside stream` unless noted.
 
@@ -63,10 +73,14 @@ return the hidden text: pypdf 5.1.0, pdfminer.six 20260107, PDFium 153.0.7999.0 
 - **Candidates.** Every occurrence of the bytes `startxref` that a number follows is a
   candidate, wherever it is written. The bytes between the keyword and the number may be any
   that a reader skips as whitespace, a vertical tab among them.
-- **Skipped.** An occurrence with no number after it, and one whose offset is 0. No reader
-  gets a section from either.
-- **Malformed.** A sign or a dot in front of the number. pypdf, PDFium, and pdf.js read
-  `+12` as 12.
+- **The number.** Comments between the keyword and the number are skipped and leading zeros
+  dropped, as readers do.
+- **Offset 0 or no number.** Both name the start of the file. When the file opens with an
+  xref stream (the first stream in its first 8 KiB is `/Type /XRef`), that stream is a
+  candidate at offset 0, as it was on main. Otherwise the occurrence is skipped: offset 0 is
+  the `%PDF` header, and a linearized file's first-page trailer carries it by design.
+- **Malformed.** A sign or a dot in front of the number (pypdf, PDFium, and pdf.js read
+  `+12` as 12), or more than 20 digits after the leading zeros.
 - **Trailer.** The lexer stops at the `startxref` that follows the dictionary.
 - **Blank lines** between a classic table's subsections and before `trailer` are stepped
   over.
@@ -96,7 +110,8 @@ reader first, which is unchanged here.
 ## Commands and results (this container)
 
 - Full `uv run pytest -q tests`: 647 passed, 5 skipped.
-- `tests/test_pdfxref.py`: 28 tests. Eleven of the new cases fail on main's `pdfxref.py`:
+- `tests/test_pdfxref.py`: 36 tests after the review fix; its eight new cases fail on the
+  first commit. Of the first 28, eleven fail on main's `pdfxref.py`:
   the five placements of the keyword, the skipped mentions, the followed comment, the
   linearized file, the linearized file that hides an object, the blank line, and the
   section parsed once. The test that a `startxref` in a comment is not a candidate is
@@ -132,6 +147,9 @@ pass.
 - **Prose that looks like a pointer is held.** `startxref 99999` in an uncompressed comment
   or string is followed, leads nowhere, and makes the scan incomplete. The word with no
   number after it is not.
+- **A file with no table at its start and `startxref 0` is rebuilt by its reader.** How a
+  reader rebuilds a table from object headers is not modelled, here or on main, as for a
+  file with no `startxref` at all.
 - **Four readers.** The table above is what four readers return. Another reader may find the
   keyword some other way.
 - **Not a rendering check.** Which annotations a reader shows is still not resolved; every

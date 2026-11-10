@@ -28,9 +28,10 @@ _MAX_ENTRIES = 100_000
 _MAX_HOPS = 32
 _MAX_WIDTH = 8
 _TRAILER_END = frozenset({b"startxref"})
-# The keyword, any byte a reader skips as whitespace, then the offset (group 1) or the start
-# of a number only some readers accept (group 2).
-_STARTXREF = re.compile(rb"startxref[\x00\t\n\x0b\f\r ]*+(?:([0-9]++)|([+\-.]))?")
+# The keyword, any bytes a reader skips before a number (whitespace and whole comments), then
+# the offset (group 1) or the start of a number only some readers accept (group 2).
+_STARTXREF = re.compile(rb"startxref(?:[\x00\t\n\x0b\f\r ]++|%[^\r\n]*+)*+(?:([0-9]++)|([+\-.]))?")
+_START_WINDOW = 8192
 _ENTRY = re.compile(rb"(\d{10}) (\d{5}) ([nf])(?: \n|\r\n| \r)")
 
 
@@ -57,25 +58,48 @@ def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
     lexing what is around it: one inside a comment, a literal string, or a stream body is
     taken by PDFium and pdf.js, and pypdf and pdfminer.six take one inside a string.
 
-    An occurrence is skipped when no reader gets a section from it: the offset is 0, or what
-    follows the keyword is not a number. Offset 0 is the ``%PDF`` header, and a linearized
-    file's first-page trailer ends with ``startxref 0`` by design; the live pointer is the
-    last one in the file, which names the first-page section, whose ``/Prev`` names the main
-    one. A sign or a dot after the keyword is malformed: three readers read ``+12`` as 12.
+    PDFium and pypdf skip a comment between the keyword and the number, and every reader
+    takes a number with leading zeros, so both give the offset.
+
+    Offset 0, and a keyword that no number follows, name the start of the file. pdf.js and
+    pdfminer.six read an xref stream there when the file opens with one, so the occurrence is
+    then a candidate at offset 0. Otherwise it is skipped: offset 0 is the ``%PDF`` header, a
+    linearized file's first-page trailer ends with ``startxref 0`` by design, and the word
+    alone is prose. The live pointer of a linearized file is the last one, which names the
+    first-page section, whose ``/Prev`` names the main one.
+
+    A sign or a dot after the keyword is malformed: three readers read ``+12`` as 12. So is an
+    offset of more than 20 digits after its leading zeros, which is past the end of any file.
     """
     found: list[int] = []
+    at_start: bool | None = None
     for count, match in enumerate(_STARTXREF.finditer(data)):
         if count % 4096 == 0:
             budget.check()
         if match.group(2) is not None:
             raise ContentLimit("pdf xref malformed")
-        digits = match.group(1)
-        if digits is None or len(digits) > 20 or int(digits) == 0:
-            continue
-        found.append(int(digits))
+        digits = (match.group(1) or b"").lstrip(b"0")
+        if len(digits) > 20:
+            raise ContentLimit("pdf xref malformed")
+        if not digits:
+            if at_start is None:
+                at_start = _xref_stream_at_start(data)
+            if not at_start:
+                continue
+        found.append(int(digits or b"0"))
         if len(found) > _MAX_HOPS:
             raise ContentLimit("pdf xref malformed")
     return found
+
+
+def _xref_stream_at_start(data: bytes) -> bool:
+    """True when the first stream in the window ``_xref_stream`` reads at offset 0 is an xref
+    stream, which is what a reader sent to offset 0 parses as the table."""
+    keyword = re.search(rb"stream\r?\n", data[:_START_WINDOW])
+    if keyword is None:
+        return False
+    dictionary = _pdf_stream_dict(data, keyword.start())
+    return isinstance(dictionary, dict) and dictionary.get(b"/Type") == b"/XRef"
 
 
 def xref_file_offsets(
@@ -195,7 +219,7 @@ def _xref_stream(
     budget: Budget,
     decoded: dict[int, bytes | None] | None = None,
 ) -> tuple[dict[int, XrefEntry], dict[bytes, PdfValue]]:
-    window = data[at : at + 8192]
+    window = data[at : at + _START_WINDOW]
     keyword = re.search(rb"stream\r?\n", window)
     if keyword is None:
         raise ContentLimit("pdf xref malformed")

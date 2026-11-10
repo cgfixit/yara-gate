@@ -439,9 +439,71 @@ def test_startxref_is_a_candidate_wherever_it_is_written(rules_copy: Path, kind:
     assert result.incomplete_reason == "pdf annotation xref offset inside stream", kind
 
 
+@pytest.mark.parametrize("kind", ["zeros", "comment", "comment line", "comment lines"])
+def test_startxref_number_is_read_as_readers_read_it(rules_copy: Path, kind: str) -> None:
+    # pypdf, PDFium and pdfminer.six take an offset with any number of leading zeros. PDFium
+    # skips comments between the keyword and the number, and pypdf one on the keyword's line.
+    # All return the hidden annotation.
+    base = _hiding("classic")
+    at = base.rindex(b"startxref\n")
+    number = base[at + len(b"startxref\n") :].split(b"\n")[0]
+    tail = {
+        "zeros": b"startxref\n" + number.rjust(24, b"0"),
+        "comment": b"startxref %c\n" + number,
+        "comment line": b"startxref\n%c\n" + number,
+        "comment lines": b"startxref\n% a\r\n\t%12\n " + number,
+    }[kind]
+    result = _scan(base[:at] + tail + b"\n%%EOF\n", rules_copy)
+    assert result.verdict.value == "incomplete", kind
+    assert result.incomplete_reason == "pdf annotation xref offset inside stream", kind
+
+
+def test_startxref_number_past_twenty_digits_is_malformed(rules_copy: Path) -> None:
+    result = _scan(_benign("classic") + b"\nstartxref " + b"9" * 21 + b"\n", rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf xref malformed"
+
+
+def _xref_stream_first(tail: bytes, hide: bool = True) -> bytes:
+    """A file that opens with its xref stream, object 6, as a reader sent to offset 0 finds
+    it. With ``hide`` the entry for annotation 5 points into object 4's stream."""
+    buf = bytearray(b"%PDF-1.5\n")
+    offsets = {6: len(buf)}
+    buf += b"6 0 obj\n<< /Type /XRef /Size 7 /W [1 4 2] /Root 1 0 R /Length 49 >>\nstream\n"
+    rows_at = len(buf)
+    buf += b"\0" * 49 + b"\nendstream\nendobj\n"
+    for number, body in enumerate(_objects(), 1):
+        offsets[number] = len(buf)
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    inner = b"QQ" + b"5 0 obj\n" + _link(PHRASE) + b"\nendobj\n" + b"QQQ"
+    offsets[4] = len(buf)
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(inner) + inner + b"endstream\nendobj\n"
+    offsets[5] = buf.index(b"5 0 obj", offsets[4])
+    if not hide:
+        offsets[5] = len(buf)
+        buf += b"5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    rows = [_entry(0, 0, 65535)] + [_entry(1, offsets[number]) for number in range(1, 7)]
+    buf[rows_at : rows_at + 49] = b"".join(rows)
+    return bytes(buf) + tail
+
+
+@pytest.mark.parametrize("tail", [b"startxref\n0\n", b"startxref\n000\n", b"startxref\nx\n"])
+def test_startxref_zero_reads_an_xref_stream_the_file_opens_with(
+    rules_copy: Path, tail: bytes
+) -> None:
+    # pdf.js and pdfminer.six, sent to offset 0 or given no number, parse the first object as
+    # the table: pdfminer.six returns the hidden annotation for ``startxref 0``.
+    result = _scan(_xref_stream_first(tail + b"%%EOF\n"), rules_copy)
+    assert result.verdict.value == "incomplete", tail
+    assert result.incomplete_reason == "pdf annotation xref offset inside stream", tail
+    shown = _scan(_xref_stream_first(tail + b"%%EOF\n", hide=False), rules_copy)
+    assert shown.incomplete_reason is None, tail
+
+
 def test_startxref_that_gives_no_section_is_skipped(rules_copy: Path) -> None:
     # The word in prose, with no number after it, and the ``startxref 0`` a linearized file's
-    # first-page trailer ends with: no reader gets a section from either.
+    # first-page trailer ends with, in a file that does not open with an xref stream: no
+    # reader gets a section from either.
     mentions = b"\n% the startxref keyword\n(startxref)\n% startxref 0\nstartxref\n%12\n"
     result = _scan(_benign("classic") + mentions, rules_copy)
     assert result.incomplete_reason is None
