@@ -1,6 +1,7 @@
 """Decode annotation Contents text strings, separately from page glyph strings."""
 
 import re
+from bisect import bisect_right
 from collections.abc import Iterator
 
 from yara_gate.content import (
@@ -260,10 +261,16 @@ def _reject_xref_inside(
     offsets = xref_file_offsets(data, budget, decoded)
     if not offsets:
         return
-    for offset in offsets:
-        for begin, end in spans:
-            if begin <= offset < end:
-                raise ContentLimit("pdf annotation xref offset inside stream")
+    ordered = sorted(spans)
+    begins = [begin for begin, _ in ordered]
+    for count, offset in enumerate(offsets):
+        if count % 4096 == 0:
+            budget.check()
+        # Landed spans do not overlap, so only the last one that begins at or before the
+        # offset can hold it.
+        index = bisect_right(begins, offset) - 1
+        if index >= 0 and offset < ordered[index][1]:
+            raise ContentLimit("pdf annotation xref offset inside stream")
         window = data[offset : offset + 64] if 0 <= offset < len(data) else b""
         if _OBJECT_AT.match(window) is None:
             raise ContentLimit("pdf xref malformed")

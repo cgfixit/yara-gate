@@ -402,9 +402,147 @@ def test_generation_mismatch_inside_a_stream_is_incomplete(rules_copy: Path) -> 
     assert result.incomplete_reason == "pdf object header inside stream"
 
 
-def test_startxref_inside_a_comment_is_not_a_candidate(rules_copy: Path) -> None:
-    data = _benign("classic") + b"\n% startxref 99999\n(startxref 99999)\n"
+def _pointed(pointer: bytes, junk: bytes = b"QQ") -> bytes:
+    """The classic hiding file with ``pointer`` in place of its ``startxref`` lines."""
+    data = _hiding("classic").replace(b"stream\nQQ5 0 obj", b"stream\n" + junk + b"5 0 obj")
+    head, _, tail = data.rpartition(b"startxref\n")
+    return head + pointer.replace(b"@", tail.split()[0])
+
+
+def test_startxref_is_found_wherever_its_bytes_are(rules_copy: Path) -> None:
+    # pdf.js 6.5.438, MuPDF 1.28.6, and qpdf 11.9.1 read the in-stream phrase from each of
+    # these. They search backward for the bytes and do not lex the file to reach them.
+    shapes = {
+        "one ( in a stream": _pointed(b"startxref\n@\n%%EOF\n", junk=b"(Q"),
+        "comment": _pointed(b"% startxref\n@\n%%EOF\n"),
+        "string": _pointed(b"(startxref\n@\n%%EOF\n)\n"),
+        "after a letter": _pointed(b"Xstartxref\n@\n%%EOF\n"),
+    }
+    for name, data in shapes.items():
+        result = _scan(data, rules_copy)
+        assert result.verdict.value == "incomplete", name
+        assert result.incomplete_reason == "pdf annotation xref offset inside stream", name
+
+
+def test_unreadable_startxref_in_a_comment_is_incomplete(rules_copy: Path) -> None:
+    for tail in (b"\n% startxref 99999\n", b"\n(startxref 99999)\n", b"\n% startxref\n"):
+        result = _scan(_benign("classic") + tail, rules_copy)
+        assert result.verdict.value == "incomplete", tail
+        assert result.incomplete_reason == "pdf xref malformed", tail
+
+
+_LINEARIZATION = b"<< /Linearized 1 /L %010d /H [ 100 10 ] /O 3 /E 100 /N 1 /T 100 >>"
+
+
+def _first_page_file(
+    body: bytes = b"(\xff\x00 (", *, hide: bool = False, dummy: bool = True
+) -> bytes:
+    """qpdf's layout: the linearization dictionary, the first-page section and its dummy
+    pointer, the first page's objects, the others, the main section, and the real pointer.
+
+    With ``hide``, annotation object 5 is inside object 4's stream, only the first-page
+    section lists it, and the pointer at the end names a table that does not.
+    """
+    catalog, pages, page = _objects()
+    if hide:
+        body = b"QQ5 0 obj\n" + _link(PHRASE) + b"\nendobj\nQQQ"
+    stream = b"<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream"
+    at: dict[int, int] = dict.fromkeys(range(1, 7), 0)
+    length = main = 0
+    for _ in range(2):  # every number is fixed-width, so the second pass has the offsets
+        buf = bytearray(b"%PDF-1.4\n")
+        at[6] = len(buf)
+        buf += b"6 0 obj\n" + _LINEARIZATION % length + b"\nendobj\n"
+        first = len(buf)
+        buf += b"xref\n3 4\n" + b"".join(b"%010d 00000 n \n" % at[n] for n in (3, 4, 5, 6))
+        buf += b"trailer\n<< /Size 7 /Root 1 0 R /Prev %010d >>\n" % main
+        buf += b"startxref\n0\n%%EOF\n" if dummy else b""
+        visible = [] if hide else [(5, _link(PHRASE))]
+        for number, text in ((3, page), (4, stream), *visible, (1, catalog), (2, pages)):
+            at[number] = len(buf)
+            buf += b"%d 0 obj\n%s\nendobj\n" % (number, text)
+        if hide:
+            at[5] = at[4] + buf[at[4] :].find(b"stream\n") + len(b"stream\nQQ")
+        main = len(buf)
+        buf += b"xref\n0 3\n0000000000 65535 f \n"
+        buf += b"".join(b"%010d 00000 n \n" % at[n] for n in (1, 2))
+        if hide:
+            # The table the last pointer names lists the page and its stream, not object 5.
+            buf += b"3 2\n" + b"".join(b"%010d 00000 n \n" % at[n] for n in (3, 4))
+        buf += b"trailer\n<< /Size 7 /Root 1 0 R >>\n"
+        buf += b"startxref\n%010d\n%%%%EOF\n" % (main if hide else first)
+        length = len(buf)
+    return bytes(buf)
+
+
+def test_linearized_file_reads_like_its_plain_save(rules_copy: Path) -> None:
+    data = _first_page_file()
+    assert data.count(b"startxref") == 2
+    assert b"startxref\n0\n%%EOF\n" in data
+    budget = Budget(time.monotonic() + 30)
+    assert pdf_annotation_texts(data, PdfObjects(data, budget), budget) == [PHRASE]
     result = _scan(data, rules_copy)
+    plain = _scan(_benign("classic"), rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict == plain.verdict
+    assert [f.rule_id for f in result.findings] == [f.rule_id for f in plain.findings]
+
+
+def test_linearized_first_page_section_is_checked(rules_copy: Path) -> None:
+    # pdf.js 6.5.438 reads the section after a linearization dictionary without looking
+    # for startxref, and shows the in-stream phrase from both files.
+    for dummy in (True, False):
+        data = _first_page_file(hide=True, dummy=dummy)
+        assert data.count(b"startxref") == 1 + dummy
+        result = _scan(data, rules_copy)
+        assert result.verdict.value == "incomplete", dummy
+        assert result.incomplete_reason == "pdf annotation xref offset inside stream", dummy
+
+
+def test_linearization_dictionary_that_hides_its_end_is_incomplete(rules_copy: Path) -> None:
+    data = _first_page_file()
+    for extra in (b"/X (endobj) ", b"/X 1 % endobj\n", b"/X ) "):
+        broken = data.replace(b"<< /Linearized", b"<< " + extra + b"/Linearized", 1)
+        result = _scan(broken, rules_copy)
+        assert result.verdict.value == "incomplete", extra
+        assert result.incomplete_reason == "pdf xref malformed", extra
+
+
+def test_zero_pointer_is_passed_over_only_before_a_final_pointer(rules_copy: Path) -> None:
+    # pypdf 6.17.0 takes the pointer above the last %%EOF. Given 0 it rebuilds the table
+    # from every "N G obj" it finds, and reads the in-stream phrase from both files.
+    only = _pointed(b"startxref\n0\n%%EOF\n")
+    benign = _benign("classic")
+    table = benign[benign.rfind(b"xref\n0 6") : benign.rfind(b"startxref")]
+    then_no_eof = only + table + b"startxref\n%d" % len(only)
+    for name, data in (("only", only), ("then a pointer without %%EOF", then_no_eof)):
+        result = _scan(data, rules_copy)
+        assert result.verdict.value == "incomplete", name
+        assert result.incomplete_reason == "pdf xref malformed", name
+
+
+def test_trailer_is_read_when_stream_bytes_follow_it(rules_copy: Path) -> None:
+    # An incremental update appends objects after the first trailer and its pointer.
+    old = _benign("classic")
+    old_at = int(old.rpartition(b"startxref\n")[2].split()[0])
+    buf = bytearray(old)
+    added = len(buf)
+    buf += b"6 0 obj\n<< /Length 4 >>\nstream\n(\xff\x00(\nendstream\nendobj\n"
+    new = b"xref\n6 1\n%010d 00000 n \ntrailer\n<< /Size 7 /Root 1 0 R /Prev %d >>\n" % (
+        added,
+        old_at,
+    )
+    result = _scan(_finish(buf, new), rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
+
+
+def test_blank_line_before_trailer_is_read(rules_copy: Path) -> None:
+    # MuPDF 1.28.6 writes one between the last entry and the keyword.
+    data = _benign("classic")
+    spaced = data.replace(b" \ntrailer", b" \n\ntrailer")
+    assert spaced != data
+    result = _scan(spaced, rules_copy)
     assert result.incomplete_reason is None
     assert result.verdict.value == "advisory"
 

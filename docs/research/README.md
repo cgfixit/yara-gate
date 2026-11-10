@@ -63,6 +63,7 @@ the November 10 spellings.
 | [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 to B6 are the backlog's open candidates |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
+| [probe_pdf_readers.py](probe_pdf_readers.py) | No | Cross-reference shapes that reach an annotation inside a stream: the gate's verdict beside what pdf.js, PDFium, MuPDF, qpdf, and pypdf show, for whichever of them is installed. `--scan DIR` reports real files |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |
 
 ## Adding a note

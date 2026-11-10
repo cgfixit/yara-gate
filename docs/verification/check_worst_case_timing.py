@@ -118,6 +118,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(stream + b"BT /F1 12 Tf ", b"3 Tr (a) Tj 0 Tr (b) Tj "),
         "pdf text blocks exceed 20000",
     )
+    # One classic table of 99,000 entries, 1,000 of them empty landed streams: every offset
+    # is looked up among the stream spans. Then a file of pointers, which stops at the 33rd.
+    yield "pdf-xref-offsets.pdf", _xref_pdf(1000, 98000), None
+    yield "pdf-startxref-flood.pdf", _filled(b"%PDF-1.7\n", b"startxref\n7\n"), "pdf xref malformed"
     # Two content streams, so the /Contents continuation index runs over every match: once a
     # rescanned 4 KiB window per match (a 30 s timeout here), and once a page object apiece.
     # Each /Length is the body `BT ET \\n` and lands on that stream's own endstream.
@@ -200,6 +204,25 @@ def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
             raise RuntimeError("content stream is not one landed span")
         return header + body + marker
     raise RuntimeError("content stream length does not fit")
+
+
+def _xref_pdf(streams: int, others: int) -> bytes:
+    """Objects that are empty landed streams, then plain ones, and one table that lists all."""
+    buf = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for number in range(1, streams + others + 1):
+        offsets.append(len(buf))
+        body = b"<</Length 0>>stream\nendstream" if number <= streams else b"0"
+        buf += b"%d 0 obj %s endobj\n" % (number, body)
+    table = b"xref\n0 %d\n0000000000 65535 f \n" % (len(offsets) + 1)
+    table += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    table += b"trailer\n<< /Size %d >>\nstartxref\n" % (len(offsets) + 1)
+    # The pointer is as wide as the file size, so the padding before the table is known.
+    tail = b"%d\n%%%%EOF\n" % SIZE
+    at = SIZE - len(table) - len(tail)
+    if at < len(buf) or len(b"%d" % at) != len(b"%d" % SIZE):
+        raise RuntimeError("xref table does not fit")
+    return bytes(buf) + b" " * (at - len(buf)) + table + b"%d\n%%%%EOF\n" % at
 
 
 def _cmap_pdf(

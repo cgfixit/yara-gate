@@ -330,13 +330,32 @@ same header pattern was absent from 348 fonts under `/usr/share/fonts` and
 454 PNG or JPEG files under `/usr/share/pixmaps` and `/usr/share/icons`.
 
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. A candidate is a `startxref` keyword at the start of a line,
-outside comments and literal or hex strings, with or without a following
-`%%EOF`. A comment or string that contains the word is not a candidate. A
-candidate that is present and does not parse still makes the scan incomplete.
+can be clean. A candidate is every occurrence of the bytes `startxref`, with or
+without a following `%%EOF`. A reader finds the keyword by searching backward
+from the end of the file for those bytes, so one in a comment, in a string,
+after a letter, or after a stream body is followed like any other. A candidate
+that is present and does not parse still makes the scan incomplete, and so
+does one with no number after it.
+
+A linearized file's first-page trailer ends `startxref 0`. Offset 0 is the
+`%PDF` header, so that pointer names no section. It is passed over only when
+the file ends with `startxref`, a non-zero offset, and `%%EOF`, each on a line
+of its own and followed by nothing but whitespace: the pointer every reader
+takes in its place. A zero pointer in any other file is malformed, because a
+reader that takes it rebuilds the table from the object headers it accepts.
+When the first object in the first 1024 bytes is a linearization dictionary,
+the section after it is a candidate as well, with or without a `startxref`
+that names it, because a reader that honours linearization reads it by
+position. A linearization dictionary that holds a comment or a string, or that
+does not lex, is malformed. The
+[record](verification/2026-11-10-pdf-linearized-xref.md) has the reader
+versions each of these was observed with and the real files measured.
+
 Each candidate includes its `/Prev` chain. Classic 20-byte tables,
 Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
-hybrid `/XRefStm` are read. A newer section overrides an older one inside one
+hybrid `/XRefStm` are read. Whitespace may separate a table's last entry from
+`trailer` or from its next subsection, and a trailer dictionary is read up to
+the `startxref` after it. A newer section overrides an older one inside one
 candidate. At one trailer, a classic offset and a stream offset for the same
 object are both checked. The landed span includes the newline and `endstream`
 the length ends on, so an offset on those bytes is inside the span. A type-1
