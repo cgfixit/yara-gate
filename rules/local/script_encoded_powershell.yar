@@ -10,13 +10,22 @@ rule script_encoded_powershell {
         technique = "T1059.001"
     strings:
         $command = /\b(powershell|pwsh)(\.exe)?["']?[ \t]+[^\r\n;|&]{1,1024}/ nocase ascii wide
-        $encoded = /[ \t]-(e|ec|enc|encodedcommand)[ \t]+["']?[A-Za-z0-9+\/]{40,512}={0,2}(["' \t\r\n]|$)/ nocase ascii wide
-        $hidden = /[ \t]-w(indowstyle)?[ \t]+(hidden|h)\b/ nocase ascii wide
-        $bypass = /[ \t]-(ep|executionpolicy)[ \t]+(bypass|unrestricted)\b/ nocase ascii wide
+        // powershell.exe and pwsh take any prefix of a parameter name that is long enough to be
+        // unambiguous (-e, -en, -enco; -w, -win; -ex, -exec), with - or / in front. The window
+        // style may be any prefix of Hidden (h, hid) or its number, 1. The encoded value is read
+        // from its first 40 characters, so a command of any length counts.
+        $encoded = /[ \t][-\/](ec|e(n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?[A-Za-z0-9+\/]{40}/ nocase ascii wide
+        $hidden = /[ \t][-\/]w(i(n(d(o(w(s(t(y(l(e)?)?)?)?)?)?)?)?)?)?[ \t]+["']?(h(i(d(d(e(n)?)?)?)?)?|1)\b/ nocase ascii wide
+        $bypass = /[ \t][-\/](ep|ex(e(c(u(t(i(o(n(p(o(l(i(c(y)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?(bypass|unrestricted)\b/ nocase ascii wide
+        // The parser also accepts a doubled dash, an en dash, an em dash, or a horizontal bar.
+        // These are separate strings so the common spellings above keep a three-byte literal
+        // to search for; one pattern for every prefix left the engine with the letter e alone.
+        $encoded_dash = /[ \t](--|\xe2\x80[\x93-\x95])(ec|e(n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?[A-Za-z0-9+\/]{40}/ nocase ascii wide
+        $hidden_dash = /[ \t](--|\xe2\x80[\x93-\x95])w(i(n(d(o(w(s(t(y(l(e)?)?)?)?)?)?)?)?)?)?[ \t]+["']?(h(i(d(d(e(n)?)?)?)?)?|1)\b/ nocase ascii wide
+        $bypass_dash = /[ \t](--|\xe2\x80[\x93-\x95])(ep|ex(e(c(u(t(i(o(n(p(o(l(i(c(y)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?(bypass|unrestricted)\b/ nocase ascii wide
     condition:
         for any i in (1..#command) : (
-            $encoded in (@command[i]..@command[i] + !command[i] - 1) and
-            ($hidden in (@command[i]..@command[i] + !command[i] - 1) or
-             $bypass in (@command[i]..@command[i] + !command[i] - 1))
+            any of ($encoded*) in (@command[i]..@command[i] + !command[i] - 1) and
+            any of ($hidden*, $bypass*) in (@command[i]..@command[i] + !command[i] - 1)
         )
 }

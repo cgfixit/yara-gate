@@ -8,7 +8,8 @@ rule script_osascript_shell {
         verdict_on_match = "advisory"
         reference = "https://attack.mitre.org/techniques/T1059/002/"
     strings:
-        $run = /\bosascript\b[^\r\n]{0,80}-e\b[\s\S]{0,200}do shell script/ nocase ascii wide
+        // The script arrives through -e, or through a here-document (osascript <<EOF).
+        $run = /\bosascript\b[^\r\n]{0,80}(-e\b|<<)[\s\S]{0,200}do shell script/ nocase ascii wide
     condition:
         $run
 }

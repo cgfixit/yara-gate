@@ -42,8 +42,10 @@ rule unix_privilege_persistence {
         reference = "https://attack.mitre.org/techniques/T1548/003/"
         technique = "T1548.003"
     strings:
-        $sudoers = /\bNOPASSWD:[ \t]*ALL\b[^\r\n]{0,120}>>?[ \t]*\/etc\/sudoers/ nocase ascii wide
-        $preload = />>?[ \t]*\/etc\/ld\.so\.preload\b/ nocase ascii wide
+        // A redirect, or a pipe into tee: sudo applies to tee, not to a shell redirect, so
+        // echo ... | sudo tee -a /etc/sudoers is the usual way to append as root.
+        $sudoers = /\bNOPASSWD:[ \t]*ALL\b[^\r\n]{0,120}(>>?[ \t]*|\|[ \t]*(sudo[ \t]+)?tee[ \t]+(-a[ \t]+|--append[ \t]+)?)\/etc\/sudoers/ nocase ascii wide
+        $preload = /(>>?[ \t]*|\|[ \t]*(sudo[ \t]+)?tee[ \t]+(-a[ \t]+|--append[ \t]+)?)\/etc\/ld\.so\.preload\b/ nocase ascii wide
         // A key that arrives by download; a local public key appended by hand does not match.
         $sshkey = /\b(curl|wget)\b[^\r\n]{0,200}>>?[ \t]*[^\r\n]{0,80}\.ssh\/authorized_keys\b/ nocase ascii wide
         $tcc = /\bTCC\.db\b[^\r\n]{0,160}\b(insert|replace)[ \t]+(or[ \t]+replace[ \t]+)?into[ \t]+access\b/ nocase ascii wide

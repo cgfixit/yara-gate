@@ -9,8 +9,9 @@ rule script_clear_quarantine {
         reference = "https://attack.mitre.org/techniques/T1553/001/"
     strings:
         // A mid-sentence mention is not a command. The cue is a line or shell separator.
-        // -d, -rd, -dr and -r -d delete the attribute. -c, -cr and -rc clear all of them.
-        $cmd = /(^|[\n;&|])[ \t]*(sudo[ \t]+)?xattr[ \t]+(-[rsv]+[ \t]+)?-[rsv]*(d[rsv]*[ \t]+com\.apple\.quarantine\b|c[rsv]*[ \t])/ nocase ascii wide
+        // -d, -rd, -dr, -r -d and -d -r delete the attribute. -c, -cr and -rc clear all of them.
+        // The tool may be named by its path, /usr/bin/xattr.
+        $cmd = /(^|[\n;&|])[ \t]*(sudo[ \t]+)?(\/usr\/bin\/)?xattr[ \t]+(-[rsv]+[ \t]+)?-[rsv]*(d[rsv]*[ \t]+(-[rsv]+[ \t]+)?com\.apple\.quarantine\b|c[rsv]*[ \t])/ nocase ascii wide
     condition:
         $cmd
 }

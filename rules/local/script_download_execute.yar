@@ -11,25 +11,35 @@ rule script_download_execute {
         // The download needs a target: a word that is not a flag or a backslash (or curl's
         // attached -Kfile, --config= or --url=), so prose that names the idiom ("no `curl | bash`",
         // a table cell "curl \| sh") is not a command.
-        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
+        // The interpreter may be named by path or through env (| /bin/bash, | /usr/bin/env sh),
+        // and |& pipes stderr as well.
+        $shell = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|&?[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?((\/usr)?(\/local)?\/bin\/(env[ \t]+)?|env[ \t]+)?(sh|bash|zsh|python[23]?|perl)\b/ nocase ascii wide
+        // A download piped to Node with no program argument runs as JavaScript, the one-liner in
+        // the 2026 VS Code task lures. node parse.js and node -e "..." read it as data.
+        $shell_node = /\b(curl|wget)\b[^\r\n|]{0,256}[ \t](["']?[A-Za-z0-9$\/~.(@{]|-[A-Za-z]*(?-i:K)[^ \t\r\n|]|--(config|url)=)[^\r\n|]{0,256}\|&?[ \t]*(sudo[ \t]+(-[A-Za-z]+[ \t]+)*)?((\/usr)?(\/local)?\/bin\/(env[ \t]+)?|env[ \t]+)?(node|nodejs)([ \t]+-)?[ \t]*([\r\n;&|)#"'`]|$)/ nocase ascii wide
         // Python reading the download as JSON data. This is an allowlist of one shape, never a
         // denylist of dangerous names: `-m json.tool`, or a -c program that is exactly
         // `import json,sys; print(json.load(sys.stdin)['k'][0])` (or json.loads of stdin.read())
         // with literal subscripts, closed on the same line and followed by a boundary. Any other
         // program, adjacent quoted segments, or an unlisted executor keeps the $shell match.
         // It exempts the $shell match at the same offset only.
-        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|[ \t]*python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+["'](import[ ]+(json|json,[ ]*sys|sys,[ ]*json);[ ]*)?print\(json\.(load\(sys\.stdin\)|loads\(sys\.stdin\.read\(\)\))(\[('[A-Za-z0-9_.-]{1,64}'|"[A-Za-z0-9_.-]{1,64}"|-?[0-9]{1,4})\]){0,8}\)["'][ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
+        $shell_data = /\b(curl|wget)\b[^\r\n|]{0,512}\|&?[ \t]*((\/usr)?(\/local)?\/bin\/(env[ \t]+)?|env[ \t]+)?python[23]?(\.exe)?[ \t]+(-m[ \t]+json\.tool\b|-c[ \t]+["'](import[ ]+(json|json,[ ]*sys|sys,[ ]*json);[ ]*)?print\(json\.(load\(sys\.stdin\)|loads\(sys\.stdin\.read\(\)\))(\[('[A-Za-z0-9_.-]{1,64}'|"[A-Za-z0-9_.-]{1,64}"|-?[0-9]{1,4})\]){0,8}\)["'][ \t]*(\r|\n|[;&|)<>.,`]|$))/ nocase ascii wide
         // bash <(curl ...) and sh -c "$(curl ...)" run the download without a pipe.
         $subst = /\b(sh|bash|zsh)[ \t]+(-c[ \t]+["']?)?[<$]\([ \t]*(curl|wget)\b/ nocase ascii wide
+        // eval "$(curl ...)" and source <(curl ...) run the download in the current shell.
+        // An assignment such as VERSION=$(curl ...) is not a run and does not match.
+        $subst_eval = /\beval[ \t]+["']?\$\([ \t]*(curl|wget)\b/ nocase ascii wide
+        $subst_source = /(^|[\r\n;&|({ \t])(source|\.)[ \t]+<\([ \t]*(curl|wget)\b/ nocase ascii wide
         // iwr and irm are the built-in aliases that ClickFix command lines use.
-        $powershell = /\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm)\b[^\r\n]{0,256}(Invoke-Expression|\bIEX\b)/ nocase ascii wide
-        $powershell_reverse = /\b(Invoke-Expression|IEX)\b[^\r\n]{0,256}\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm)\b/ nocase ascii wide
+        // Resolve-DnsName is the DNS form: the next stage arrives in a TXT record and goes to iex.
+        $powershell = /\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName)\b[^\r\n]{0,256}(Invoke-Expression|\bIEX\b)/ nocase ascii wide
+        $powershell_reverse = /\b(Invoke-Expression|IEX)\b[^\r\n]{0,256}\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName)\b/ nocase ascii wide
         // A python -c one-liner whose quoted program fetches a URL and runs the result, in either
         // order. A Python file that does both is a program, not a one-liner, and is left alone.
         $py = /\bpython[23]?(\.exe)?[ \t]+(-[A-Za-z]+[ \t]+)*-c[ \t]+["'][^\r\n]{0,512}/ nocase ascii wide
         $py_fetch = /\b(urlopen|urlretrieve|requests\.(get|post)|http\.client|HTTPSConnection)\b/ ascii wide
         $py_exec = /\b(exec|eval|os\.system|os\.popen|subprocess\.(run|call|Popen|check_output))[ \t]*\(/ ascii wide
-        $doc = /(the following command|common lure|for example)[^\r\n]{0,160}(\r?\n[ \t]*)?\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|python[23]?)\b/ nocase
+        $doc = /(the following command|common lure|for example)[^\r\n]{0,160}(\r?\n[ \t]*)?\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName|python[23]?)\b/ nocase
     condition:
         // A documentary phrase exempts only the match whose first byte its own span covers:
         // the phrase on the same line as the command or on the line above it.
@@ -37,7 +47,7 @@ rule script_download_execute {
             not for any j in (1..#doc) : (@doc[j] <= @shell[i] and @shell[i] < @doc[j] + !doc[j])
             and not for any k in (1..#shell_data) : (@shell_data[k] == @shell[i])
         ) or
-        for any of ($subst, $powershell, $powershell_reverse) : (
+        for any of ($shell_node, $subst*, $powershell, $powershell_reverse) : (
             for any i in (1..#) : (
                 not for any j in (1..#doc) : (@doc[j] <= @[i] and @[i] < @doc[j] + !doc[j])
             )
