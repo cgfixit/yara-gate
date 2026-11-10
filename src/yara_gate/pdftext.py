@@ -72,7 +72,8 @@ MAX_CMAP_TOKENS = 3 * MAX_CMAP_TOTAL
 MAX_FONT_VARIANTS = 4
 MAX_FONT_REFERENCES = 64
 # Raw definitions of one object number read as a font or a font resource dictionary. A font
-# with more is also given an unresolved reading, so its text is reported as unmapped
+# with more is also given an unresolved reading, and a resource dictionary with more leaves
+# every name unsettled, so the text is reported as unmapped
 # (docs/verification/2026-11-10-pdf-font-definitions.md).
 MAX_FONT_DEFINITIONS = MAX_PDF_DEFINITIONS
 # Bytes read past the lookup's 4 KB window, over every long font object in one file. Objects
@@ -188,7 +189,12 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     for stream in streams:
         if stream.number is not None:
             by_number.setdefault(stream.number, []).append(stream.text)
-    fonts = _fonts(data, streams, objects, _Cmaps(by_number, budget), budget)
+    definitions = _Definitions(data, objects, budget)
+    fonts = _fonts(data, streams, definitions, _Cmaps(by_number, budget), budget)
+    if definitions.resources_unread:
+        # A /Font resource dictionary has more definitions than were read, so what a name
+        # means in the unread ones is not known: no text in the file counts as decoded.
+        result.unmapped = True
     box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
     # Keep the existing font approximation in file order. Visibility needs stronger evidence
@@ -316,7 +322,7 @@ def _page_content(data: bytes, stream: PdfStream) -> bool:
 def _fonts(
     data: bytes,
     streams: list[PdfStream],
-    objects: Lookup,
+    definitions: _Definitions,
     cmaps: _Cmaps,
     budget: Budget,
 ) -> dict[bytes, list[Font]]:
@@ -335,10 +341,12 @@ def _fonts(
             for match in _FONT_RESOURCE_REF.finditer(source)
         )
     # One pass over the file finds every wanted object; a lookup per key would rescan it.
-    definitions = _Definitions(data, objects, budget)
-    definitions.prime(number for number, _ in indirect)
+    definitions.prime(indirect)
     for number in sorted({number for number, _ in indirect}):
-        dictionaries.extend(body for body, _ in definitions(number)[0])
+        bodies, complete = definitions(number)
+        dictionaries.extend(body for body, _ in bodies)
+        if not complete:
+            definitions.resources_unread = True
     for dictionary in dictionaries:
         for ref in _NAME_REF.finditer(dictionary):
             name = _name(ref.group(1))
@@ -351,7 +359,7 @@ def _fonts(
     # By object number: a reference's generation does not choose among the definitions.
     cache: dict[int, list[Font]] = {}
     fonts: dict[bytes, list[Font]] = {}
-    definitions.prime(number for refs in references.values() for number, _ in refs)
+    definitions.prime(key for refs in references.values() for key in refs)
     for name, refs in references.items():
         found: list[Font] = []
         alternates: list[Font] = []
@@ -390,9 +398,12 @@ class _Definitions:
     (docs/verification/2026-11-10-pdf-font-definitions.md). Each definition is therefore one
     some reader may use, and the caller reads every one.
 
-    Raw definitions come first, in the order of ``_likeliest``. Then come the bodies only the
-    lookup has: object-stream members, which it returns for generation 0. A body is the
-    lookup's window; ``to_unicode`` reads a raw definition to its ``endobj``.
+    Raw definitions come first, in the order of ``_likeliest``: the first
+    ``MAX_FONT_DEFINITIONS`` in the file, the last of them replaced by the file's last when
+    there are more. Then come the bodies only the lookup has: its own definitions under each
+    generation a reference names, so nothing a generation-exact lookup read is dropped by the
+    cap, and object-stream members, which it returns for generation 0. A body is the lookup's
+    window; ``to_unicode`` reads a raw definition to its ``endobj``.
     """
 
     def __init__(self, data: bytes, objects: Lookup, budget: Budget) -> None:
@@ -400,41 +411,55 @@ class _Definitions:
         self._objects = objects
         self._check = budget.check
         self._starts: dict[int, list[int]] = {}
+        self._complete: dict[int, bool] = {}
+        self._generations: dict[int, set[int]] = {}
         self._long: dict[int, re.Match[bytes] | None] = {}
         self._read = 0
+        # Set by ``_fonts`` when a /Font resource dictionary has definitions that were not read.
+        self.resources_unread = False
 
-    def prime(self, numbers: Iterable[int]) -> None:
-        """Find every header of the wanted object numbers in one pass over the file."""
-        wanted = {number for number in numbers if number not in self._starts}
-        if not wanted:
-            return
-        found: dict[int, list[int]] = {number: [] for number in wanted}
-        for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
-            if count % 4096 == 0:
-                self._check()
-            key = _pdf_header_key(match.group(1), match.group(2))
-            slot = None if key is None else found.get(key[0])
-            if slot is not None and len(slot) <= MAX_FONT_DEFINITIONS:
-                slot.append(match.end())
-        self._starts.update(found)
-        _prime(self._objects, {(number, 0) for number in wanted})
+    def prime(self, refs: Iterable[tuple[int, int]]) -> None:
+        """Find every header of the referenced object numbers in one pass over the file."""
+        keys = set(refs)
+        for number, generation in keys:
+            self._generations.setdefault(number, {0}).add(generation)
+        wanted = {number for number, _ in keys if number not in self._starts}
+        if wanted:
+            found: dict[int, list[int]] = {number: [] for number in wanted}
+            last: dict[int, int] = {}
+            for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
+                if count % 4096 == 0:
+                    self._check()
+                key = _pdf_header_key(match.group(1), match.group(2))
+                if key is None or key[0] not in found:
+                    continue
+                if len(found[key[0]]) < MAX_FONT_DEFINITIONS:
+                    found[key[0]].append(match.end())
+                else:
+                    last[key[0]] = match.end()
+            for number, slot in found.items():
+                self._complete[number] = number not in last
+                if number in last:
+                    slot[-1:] = [last[number]]
+            self._starts.update(found)
+        _prime(self._objects, keys | {(number, 0) for number, _ in keys})
 
     def __call__(self, number: int) -> tuple[list[tuple[bytes, int | None]], bool]:
         """Each definition's body with its file offset (None when only the lookup has it), and
         whether that is all of them: False when the raw definitions pass the cap."""
         if number not in self._starts:
-            self.prime([number])
-        starts = self._starts[number]
+            self.prime([(number, 0)])
         found: list[tuple[bytes, int | None]] = [
             (self._data[start : start + _PDF_VALUE_WINDOW], start)
-            for start in _likeliest(starts[:MAX_FONT_DEFINITIONS])
+            for start in _likeliest(self._starts[number])
         ]
         seen = {body for body, _ in found}
-        for body in self._objects(number, 0):
-            if body not in seen:
-                seen.add(body)
-                found.append((body, None))
-        return found, len(starts) <= MAX_FONT_DEFINITIONS
+        for generation in sorted(self._generations.get(number, {0})):
+            for body in self._objects(number, generation):
+                if body not in seen:
+                    seen.add(body)
+                    found.append((body, None))
+        return found, self._complete[number]
 
     def to_unicode(self, start: int) -> tuple[re.Match[bytes] | None, bool]:
         """The /ToUnicode reference of the raw definition at ``start``, read to its ``endobj``,

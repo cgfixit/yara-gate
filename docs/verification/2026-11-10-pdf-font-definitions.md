@@ -120,7 +120,11 @@ above. Nothing here was run against Acrobat, Preview, or a browser.
   raw definitions (`MAX_FONT_DEFINITIONS`), or a long definition that could not be read to
   its end, gets an unresolved reading as well. Text shown in it is
   `heuristic_pdf_text_unmapped`, as for a name that means five fonts
-  ([2026-11-07-pdf-font-readings.md](2026-11-07-pdf-font-readings.md)).
+  ([2026-11-07-pdf-font-readings.md](2026-11-07-pdf-font-readings.md)). Past 64, the first 63
+  and the file's last are read, with whatever the lookup returns under each generation a
+  reference names. A `/Font` resource dictionary with more than 64 leaves every name
+  unsettled, so the whole file's text is reported as unmapped (see
+  [Review finding](#review-finding-the-cap-on-a-resource-dictionary)).
 - **Not chosen:** following the cross-reference table to one definition (readers disagree,
   and the file's author writes the table); an incomplete reason past the cap (a file saved
   five times with a re-subset font would exit 2 under every policy).
@@ -142,7 +146,8 @@ above. Nothing here was run against Acrobat, Preview, or a browser.
 - Fixtures and cases: `samples.redefined_font_pdf`, `samples.redefined_map_pdf`; 15 cases
   in `check_added_rules.font_definition_cases()`; 12 `fonts` cases and three `B7` cases in
   `docs/research/probe_detection_gaps.py`; `pdf-font-definitions.pdf` in
-  `check_worst_case_timing.py`; 18 tests (11 functions) in `tests/test_pdftext.py`.
+  `check_worst_case_timing.py`; 22 tests (15 functions) in `tests/test_pdftext.py`, four of
+  them from the review finding below.
 
 ## Real generator output
 
@@ -194,16 +199,49 @@ the deadline. This change adds the check, so the scan ends at the deadline as in
 The comparison itself is still quadratic and still over the 10 s ceiling, so that input is
 not in the tripwire; it is a separate change.
 
+## Review finding: the cap on a resource dictionary
+
+Raised by the Codex review of `3707639` on
+[#206](https://github.com/cgfixit/yara-gate/pull/206) and reproduced before any change.
+Going by object number had dropped the lookup under the generation a reference names, and
+the caller that reads an indirect `/Font` dictionary ignored the cap. Fixtures: a page whose
+`/Font` is `20 1 R` or `20 0 R`, object 20 defined many times, a 5 KB object between groups
+so that no lookup window reaches the next one. `shown` means the phrase was decoded.
+
+| Fixture | main `2b6eda8` | `3707639` | with the fix |
+| --- | --- | --- | --- |
+| `/Font 20 1 R`: 64 decoy `20 0 obj`, then `20 1 obj` with the phrase font | shown | **not shown, no note** | shown, unmapped |
+| the same with one more decoy `20 0 obj` after it | shown | **not shown, no note** | shown, unmapped |
+| `/Font 20 0 R`: 70 `20 0 obj`, the phrase font in the 66th | not shown, no note | not shown, no note | not shown, unmapped |
+| font `6 1 R`: 64 decoy `6 0 obj`, `6 1 obj` phrase, one more decoy | shown | not shown, unmapped | shown, unmapped |
+| font defined 81 times, phrase map in the last | not shown, no note | not shown, unmapped | shown, unmapped |
+
+The first two rows were a regression against main with no note, which is the case this
+change exists to prevent. The fix:
+
+- `_Definitions.prime` takes references, not numbers. Past the cap it keeps the first 63
+  headers and the file's last, and records that the list is not complete.
+- `_Definitions.__call__` also asks the lookup under each generation a reference names, so
+  whatever the generation-exact lookup on main read is still read.
+- `_fonts` records a truncated `/Font` dictionary in `resources_unread`, and `pdf_text`
+  then sets `unmapped`: what a name means in the unread definitions is not known.
+
+The outcome matrix of the fixtures above this section is unchanged by the fix, and so are
+the two probes, the 230 added-rule cases, and the precision corpus. Timing after the fix:
+`check_worst_case_timing.py` PASS on 30 inputs, `pdf-font-definitions.pdf` 5.95 s, slowest
+`pdf-page-objects.pdf` 7.10 s; one font named under 65,536 generations 2.09 s.
+
 ## Commands and results (this container)
 
-- `uv run pytest -q tests/test_pdftext.py`: 45 passed. With `pdftext.py` from `2b6eda8`,
-  13 of the 18 new tests fail; the other five are controls main already holds. One existing
+- `uv run pytest -q tests/test_pdftext.py`: 49 passed after the review fix (45 before it).
+  With `pdftext.py` from `2b6eda8`, 13 of the first 18 new tests fail and the other five
+  are controls main already holds; the four from the review finding fail on `3707639`. One existing
   test, `test_an_overflowing_tounicode_font_has_a_second_reading`, calls `_font` directly
   and was moved to the new signature with its assertion unchanged. A broader
   focused run (`tests/test_pdftext.py tests/test_pdf_text_folding.py
   tests/test_worst_case_timing.py tests/test_scanner.py tests/test_pdfannotations.py
   tests/test_phase1c_readers.py tests/test_heuristics.py tests/test_pages_deploy.py
-  tests/test_demo.py`): 369 passed.
+  tests/test_demo.py`): 373 passed.
 - `docs/verification/check_added_rules.py`: passed, 230 cases plus 4 vendor-override cases.
 - `docs/research/probe_detection_gaps.py --verify`: exit 0; 236 `ok`, no FAIL or STALE; the
   ten open cases are B1 to B6 and the new B7. CLI agent-ingest intake filed every case as

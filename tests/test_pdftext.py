@@ -466,7 +466,55 @@ def test_the_loop_over_a_names_fonts_checks_the_deadline(
     monkeypatch.setattr(pdftext, "_font", counted)
     # The deadline passes while the first font is read: the second is not started.
     with pytest.raises(ContentLimit, match="timeout"):
-        pdftext._fonts(
-            data, streams, objects, pdftext._Cmaps({}, Budget(math.inf)), Expiring(math.inf)
-        )
+        budget = Expiring(math.inf)
+        definitions = pdftext._Definitions(data, objects, budget)
+        pdftext._fonts(data, streams, definitions, pdftext._Cmaps({}, Budget(math.inf)), budget)
     assert len(read) == 1
+
+
+def _over_the_cap(reference: bytes, *definitions: tuple[int, int, int]) -> pdftext.PdfText:
+    """Read a page whose /Font is ``reference``, an indirect dictionary, object 20.
+
+    Each ``(count, generation, font)`` adds ``count`` definitions of object 20 that bind /F1
+    to font 5 (a decoy map) or font 6 (the phrase map). A 5 KB object follows each group, so
+    no definition's lookup window reaches the next group's.
+    """
+    objects = [
+        (7, 0, samples._stream(_bfchar(3))),
+        (8, 0, samples._stream(_bfchar(0))),
+        (5, 0, samples._glyph_font(7)),
+        (6, 0, samples._glyph_font(8)),
+    ]
+    for count, generation, font in definitions:
+        objects += [(20, generation, b"<< /F1 %d 0 R >>" % font)] * count
+        objects.append((30, 0, b"<< /Pad (" + b" " * 5000 + b") >>"))
+    data = samples._one_page_pdf(PHRASE, b"9 0 R", objects)
+    return _read(data.replace(b"/Font << /F1 9 0 R >>", b"/Font " + reference))
+
+
+def test_a_resource_dictionary_under_the_referenced_generation_is_read_past_the_cap() -> None:
+    # The generation the page names is still looked up exactly, so a definition the
+    # generation-exact lookup read is not dropped when the object number has more than 64.
+    last = _over_the_cap(b"20 1 R", (64, 0, 5), (1, 1, 6))
+    assert _shown(last) and last.unmapped
+    between = _over_the_cap(b"20 1 R", (64, 0, 5), (1, 1, 6), (1, 0, 5))
+    assert _shown(between) and between.unmapped
+
+
+def test_a_resource_dictionary_past_the_definition_cap_is_reported_unmapped() -> None:
+    # What /F1 means in the unread definitions is not known, so the text counts as unread.
+    within = _over_the_cap(b"20 0 R", (63, 0, 5), (1, 0, 6))
+    assert _shown(within) and not within.unmapped
+    past = _over_the_cap(b"20 0 R", (65, 0, 5), (1, 0, 6), (4, 0, 5))
+    assert not _shown(past) and past.unmapped
+
+
+def test_a_font_under_the_referenced_generation_is_read_past_the_cap() -> None:
+    fonts = [(0, 3)] * 64 + [(1, 0), (0, 3)]
+    text = _defined(*fonts, reference=1)
+    assert _shown(text) and text.unmapped
+
+
+def test_the_last_definition_is_read_past_the_cap() -> None:
+    text = _defined(*[(0, 3)] * 80, (0, 0))
+    assert _shown(text) and text.unmapped
