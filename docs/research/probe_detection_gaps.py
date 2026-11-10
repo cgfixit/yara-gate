@@ -1403,6 +1403,7 @@ def reader_cases() -> list[Case]:
         *hidden_text_cases(),
         *font_reading_cases(),
         *backlog_cases(),
+        *hidden_html_cases(),
     ]
 
 
@@ -1862,6 +1863,43 @@ def backlog_cases() -> list[Case]:
             b'{"targets":[{"target_name":"a","include_dirs":'
             b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
             "clean",
+        ),
+    ]
+
+
+def hidden_html_cases() -> list[Case]:
+    """Shown text that ``agent_hidden_html`` held, beside hidden text it must still hold.
+
+    docs/verification/2026-11-10-hidden-html-text.md: a fractional font size and a comment
+    that has already closed are not hiding cues.
+    """
+    lexical = "agent_hidden_html"
+    plain = f"{PHRASE_RULE} without {lexical}"
+
+    def page(body: str, head: str = "") -> bytes:
+        return f"<!doctype html><html><head>{head}</head><body>{body}</body></html>".encode()
+
+    return [
+        Case(
+            "html",
+            "html hidden comment, shown copy after it",
+            "a.html",
+            page(f"<!-- {PHRASE} --><p>The page quotes it: {PHRASE}</p>"),
+            lexical,
+        ),
+        Case(
+            "html",
+            "html fractional font size, phrase shown",
+            "a.html",
+            page(f'<p style="font-size:0.9em">A note on the attack. {PHRASE}</p>'),
+            plain,
+        ),
+        Case(
+            "html",
+            "html phrase shown after closed comments",
+            "a.html",
+            page(f"<p>Quoted<!-- --> <!-- -->text: {PHRASE}</p>"),
+            plain,
         ),
     ]
 
