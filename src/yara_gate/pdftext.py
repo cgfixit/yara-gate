@@ -177,13 +177,7 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     # nothing to tell apart, so the page tree is not read at all.
     pages = None
     if any(len(found) > 1 for found in fonts.values()):
-        pages = page_font_refs(
-            data,
-            objects,
-            {stream.number for stream in streams if stream.number is not None},
-            budget,
-            MAX_FONT_REFERENCES,
-        )
+        pages = page_font_refs(data, objects, streams, budget, MAX_FONT_REFERENCES)
     if pages:
         _prime(
             objects,
@@ -211,6 +205,10 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
         ):
             continue
         page = _page_content(data, stream)
+        if state.name is not None:
+            # A font selected in an earlier stream is carried in by its name and read through
+            # every font the name means: which stream a reader continues from is not known.
+            state.fonts = fonts.get(state.name, [])
         selected: Mapping[bytes, list[Font]] = fonts
         names = pages.get(number) if page and pages and number is not None else None
         if names and number is not None:
@@ -811,6 +809,8 @@ class _TextState:
     """The selected font and size, render mode, and fill colour, which outlive one stream."""
 
     fonts: list[Font] = field(default_factory=list)
+    # The resource name ``fonts`` was selected by, so the next stream can look it up again.
+    name: bytes | None = None
     size: float = 0.0
     selected: bool = False
     render: int = 0
@@ -952,6 +952,7 @@ def _blocks(
     """
     operands: list[object] = []
     current: list[Font] = state.fonts
+    name = state.name
     size = state.size
     sized = state.selected
     render = state.render
@@ -964,7 +965,9 @@ def _blocks(
     clip: Box | None = None
     clipping = False
     # q saves, and Q restores, the whole graphics state: the CTM, the clip, and the text state.
-    saved: list[tuple[Matrix, list[Font], float, float, int, bool, bool, Box | None]] = []
+    saved: list[
+        tuple[Matrix, list[Font], bytes | None, float, float, int, bool, bool, Box | None]
+    ] = []
     line = _IDENTITY_MATRIX
     paragraphs = _Paragraphs(result, budget)
     hidden = _Paragraphs(result, budget, hidden=True)
@@ -1043,12 +1046,12 @@ def _blocks(
             hidden.end_block()
         elif op == b"q":
             if len(saved) < 64:
-                saved.append((ctm, current, size, leading, render, white, white_stroke, clip))
+                saved.append((ctm, current, name, size, leading, render, white, white_stroke, clip))
         elif op == b"Q":
             if saved:
-                ctm, current, size, leading, render, white, white_stroke, clip = saved.pop()
+                ctm, current, name, size, leading, render, white, white_stroke, clip = saved.pop()
                 state.fonts, state.size, state.render, state.white = current, size, render, white
-                state.white_stroke = white_stroke
+                state.name, state.white_stroke = name, white_stroke
         elif op in (b"m", b"l") and (values := numbers(2)) is not None:
             extend(values)
         elif op == b"c" and (values := numbers(6)) is not None:
@@ -1078,10 +1081,11 @@ def _blocks(
         elif op == b"cm" and (values := numbers(6)) is not None:
             ctm = _multiply((values[0], values[1], values[2], values[3], values[4], values[5]), ctm)
         elif op == b"Tf" and len(operands) >= 2 and isinstance(operands[-2], _Name):
-            current = fonts.get(operands[-2].value, [])
+            name = operands[-2].value
+            current = fonts.get(name, [])
             size = operands[-1] if isinstance(operands[-1], float) else size
             sized = True
-            state.fonts, state.size, state.selected = current, size, True
+            state.fonts, state.name, state.size, state.selected = current, name, size, True
         elif op == b"Tr" and (values := numbers(1)) is not None:
             render = int(values[0]) if values[0].is_integer() else 0
             state.render = render

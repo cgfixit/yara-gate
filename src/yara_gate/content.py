@@ -1983,6 +1983,9 @@ class PdfObjects:
         self.decoded: dict[int, bytes | None] = {}
         # True when an object stream could not be read, so an object may be defined in it.
         self._opaque = False
+        # Each readable object stream: its ``stream`` keyword offset and its members' object
+        # numbers in the order its header lists them.
+        self._tables: list[tuple[int, list[int]]] = []
 
     def prime(self, keys: Iterable[tuple[int, int]]) -> None:
         self._raw.prime(keys)
@@ -2010,6 +2013,13 @@ class PdfObjects:
         if self._members is None:
             self._members = self._index()
         return self._opaque
+
+    def member_tables(self) -> list[tuple[int, list[int]]]:
+        """Each readable object stream: the offset of its ``stream`` keyword, and its members'
+        object numbers in header order (a cross-reference entry names a member by position)."""
+        if self._members is None:
+            self._members = self._index()
+        return self._tables
 
     def stream_members(self) -> Iterator[tuple[int, memoryview]]:
         """Bounded, already budgeted object-stream members; no raw-header lookalikes."""
@@ -2040,6 +2050,7 @@ class PdfObjects:
                 self._opaque = True
                 continue
             decoded, numbers, offsets, origin = member
+            self._tables.append((start.start(), numbers))
             self._streams.append(decoded)
             stream = len(self._streams) - 1
             bounds = [*offsets[1:], len(decoded) - origin]

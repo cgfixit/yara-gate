@@ -1449,7 +1449,8 @@ def font_reading_cases() -> list[Case]:
             f"{unmapped} without {PHRASE_RULE}",
         ),
         # A page beside a decoy that draws the same stream with another font. The shown page
-        # is found however its dictionary is spelled, or the file-wide union is read.
+        # is found however its dictionary is spelled, or the file-wide union is read. A stream
+        # something other than a page's /Contents references is read through the union too.
         Case(
             "fonts",
             "pdf shown page beside a decoy page",
@@ -1469,6 +1470,17 @@ def font_reading_cases() -> list[Case]:
             "pdf shown page with /F1 listed twice",
             "a.pdf",
             samples.decoy_page_pdf(PHRASE, page % (b"/Contents", b"/F1 6 0 R /F1 7 0 R")),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf decoy's stream is also an appearance",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 6 0 R >> >> /Annots "
+                b"[<< /Type /Annot /Subtype /Stamp /Rect [0 0 9 9] /AP << /N 5 0 R >> >>] >>",
+            ),
             PHRASE_RULE,
         ),
         Case(

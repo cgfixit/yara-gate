@@ -38,7 +38,9 @@ class XrefUse(Enum):
 
 @dataclass(frozen=True)
 class XrefEntry:
-    """One object in one xref section. Only ``resolved`` carries a file offset."""
+    """One object in one xref section. ``resolved`` carries a file offset. ``compressed``
+    carries the object stream's number as ``offset`` and the member's position in it as
+    ``generation``."""
 
     use: XrefUse
     offset: int = 0
@@ -115,35 +117,77 @@ def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
     return found
 
 
-def xref_file_offsets(
-    data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
-) -> list[int] | None:
-    """Type-1 offsets from every ``startxref``, or None when there are none.
+@dataclass(frozen=True)
+class XrefTables:
+    """Every section any ``startxref`` reaches.
+
+    ``offsets`` are the type-1 offsets a reader can seek: within one ``/Prev`` chain a newer
+    section overrides an older one. ``resolved`` and ``compressed`` hold every type-1 entry as
+    (object number, offset) and every type-2 entry as (object number, object stream number,
+    position in it), from every section, overridden or not.
+    """
+
+    offsets: list[int]
+    resolved: frozenset[tuple[int, int]]
+    compressed: frozenset[tuple[int, int, int]]
+
+
+def xref_tables(
+    data: bytes,
+    budget: Budget,
+    decoded: dict[int, bytes | None] | None = None,
+    *,
+    anywhere: bool = False,
+    entries: bool = True,
+) -> XrefTables | None:
+    """The entries of every ``startxref``'s sections, or None when there is no ``startxref``.
 
     Readers do not agree on which ``startxref`` is live, so each one is a
     candidate, whether or not ``%%EOF`` follows it. A candidate includes its
     ``/Prev`` chain. Malformed structure, an unsupported filter or predictor,
     too many entries or candidates, and a spent deadline raise ``ContentLimit``.
     ``decoded`` is the stream cache ``pdf_streams`` already inflated.
+
+    With ``anywhere``, every occurrence of the bytes ``startxref`` is a candidate, which is
+    what a reader searching backward from the end of the file can find. The default takes
+    only a keyword at a line start outside comments and literal strings, as the scanner
+    reads the file from the top; bytes inside a stream body can leave that scanner inside a
+    string, so it may see none where a reader sees one. Without ``entries`` only ``offsets``
+    is filled.
     """
-    candidates = _startxref_candidates(data, budget)
+    if anywhere:
+        candidates = [match.start() for match in re.finditer(rb"startxref", data)]
+        if len(candidates) > _MAX_HOPS:
+            raise ContentLimit("pdf xref malformed")
+    else:
+        candidates = _startxref_candidates(data, budget)
     if not candidates:
         return None
     union: list[int] = []
     seen: set[int] = set()
+    resolved: set[tuple[int, int]] | None = set() if entries else None
+    compressed: set[tuple[int, int, int]] | None = set() if entries else None
     for marker in candidates:
         budget.check()
         number = re.match(rb"[\x00\t\n\f\r ]*(\d+)", data[marker + len(b"startxref") :])
         if number is None:
             raise ContentLimit("pdf xref malformed")
         found: dict[int, list[int]] = {}
-        _section(data, int(number.group(1)), budget, set(), found, decoded)
+        _section(data, int(number.group(1)), budget, set(), found, decoded, resolved, compressed)
         for offsets in found.values():
             for offset in offsets:
                 if offset not in seen:
                     seen.add(offset)
                     union.append(offset)
-    return union
+    return XrefTables(union, frozenset(resolved or ()), frozenset(compressed or ()))
+
+
+def xref_file_offsets(
+    data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
+) -> list[int] | None:
+    """Type-1 offsets from every ``startxref``, or None when there are none."""
+    tables = xref_tables(data, budget, decoded, entries=False)
+    return None if tables is None else tables.offsets
 
 
 def _section(
@@ -153,6 +197,8 @@ def _section(
     seen: set[int],
     found: dict[int, list[int]],
     decoded: dict[int, bytes | None] | None = None,
+    resolved: set[tuple[int, int]] | None = None,
+    compressed: set[tuple[int, int, int]] | None = None,
 ) -> None:
     budget.check()
     if at in seen or len(seen) >= _MAX_HOPS or not 0 <= at < len(data):
@@ -166,10 +212,17 @@ def _section(
         stream = {}
     previous = trailer.get(b"/Prev")
     if isinstance(previous, bytes) and previous.isdigit():
-        _section(data, int(previous), budget, seen, found, decoded)
+        _section(data, int(previous), budget, seen, found, decoded, resolved, compressed)
     sibling = trailer.get(b"/XRefStm")
     if isinstance(sibling, bytes) and sibling.isdigit():
         stream, _trailer = _xref_stream(data, int(sibling), budget, decoded)
+    if resolved is not None and compressed is not None:
+        for table in (classic, stream):
+            for number, listed in table.items():
+                if listed.use is XrefUse.RESOLVED:
+                    resolved.add((number, listed.offset))
+                elif listed.use is XrefUse.COMPRESSED:
+                    compressed.add((number, listed.offset, listed.generation))
     defined = set(classic) | set(stream)
     for number in defined:
         offsets: list[int] = []
@@ -323,7 +376,7 @@ def _stream_entries(
             elif kind == 1:
                 entries[number] = XrefEntry(XrefUse.RESOLVED, field2, field3)
             elif kind == 2:
-                entries[number] = XrefEntry(XrefUse.COMPRESSED)
+                entries[number] = XrefEntry(XrefUse.COMPRESSED, field2, field3)
             else:
                 raise ContentLimit("pdf xref malformed")
         total += count

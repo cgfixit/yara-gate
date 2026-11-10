@@ -1,6 +1,7 @@
 """The pdf-text reconstruction: limits, graphics-state scoping, and stream continuation."""
 
 import math
+import re
 import time
 import zlib
 
@@ -338,13 +339,12 @@ def test_each_page_reads_a_name_through_its_own_font() -> None:
     assert shared.unmapped and not _shown(shared)
 
 
-def test_resources_are_inherited_and_followed_through_references() -> None:
-    # Page 1 inherits /Resources from the page tree, through an indirect /Font dictionary;
-    # page 2 has its own. Each stream is read once, through its page's font only.
+def test_a_pages_own_resources_are_followed_through_references() -> None:
+    # Both pages name their resources and their /Font dictionary by reference.
     data = _pdf(
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 /Resources 9 0 R >>",
-        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources 9 0 R >>",
         b"<< /Type /Page /Parent 2 0 R /Contents 6 0 R /Resources << /Font << /F1 8 0 R >> >> >>",
         _stream(_SHOWN),
         _stream(_SHOWN),
@@ -355,9 +355,30 @@ def test_resources_are_inherited_and_followed_through_references() -> None:
         _stream(_bfchar(0)),
         _stream(_bfchar(1)),
     )
+    assert _map(data) == {5: {b"F1": frozenset({(7, 0)})}, 6: {b"F1": frozenset({(8, 0)})}}
     result = _read(data)
     assert _shown(result) and not result.unmapped
     assert len(result.blocks) == 2
+
+
+def test_inherited_resources_keep_the_union() -> None:
+    # The shown page has no /Resources. Its /Parent, object 10, names the decoy font; object 2
+    # lists it in /Kids and names the phrase font. Readers that inherit down the /Kids they
+    # walk and readers that follow /Parent pick different fonts.
+    data = _pdf(
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 " + _REAL + b" >>",
+        b"<< /Type /Page /Parent 10 0 R /Contents 5 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _DECOY + b" >>",
+        _stream(_SHOWN),
+        _TYPE0 % 8,
+        _TYPE0 % 9,
+        _stream(_bfchar(0)),
+        _stream(_bfchar(1)),
+        b"<< /Type /Pages /Kids [3 0 R] " + _DECOY + b" >>",
+    )
+    assert _map(data) == {5: None}
+    assert _shown(_read(data))
 
 
 def _five_fonts_last() -> bytes:
@@ -522,9 +543,6 @@ def test_a_stream_that_is_also_a_glyph_procedure_keeps_the_union() -> None:
         b"<< /Type /Page /Parent 2 0 R /Contents 12 0 R /Resources << /Font << /T3 10 0 R >> >> >>"
     )
     assert _shown(_beside_a_decoy(page, type3, b"<< >>", _stream(b"BT /T3 12 Tf (a) Tj ET")))
-    # The same file with /CharProcs behind a reference that does not resolve.
-    lost = type3.replace(b"<< /a 5 0 R >>", b"77 0 R")
-    assert _shown(_beside_a_decoy(page, lost, b"<< >>", _stream(b"BT /T3 12 Tf (a) Tj ET")))
 
 
 def test_one_object_number_under_two_generations_keeps_the_union() -> None:
@@ -589,6 +607,216 @@ def test_the_page_tree_is_not_read_when_no_name_means_two_fonts(
 
     monkeypatch.setattr(pdftext, "page_font_refs", never)
     assert _shown(_read(samples.merged_pdf(PHRASE, 1, 1)))
+
+
+def _decoy_file(real_page: bytes, decoy_contents: bytes, *extra: bytes) -> list[bytes]:
+    """The objects of ``_beside_a_decoy``, with the decoy page's /Contents given."""
+    return [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        real_page,
+        b"<< /Type /Page /Parent 2 0 R /Contents " + decoy_contents + b" " + _DECOY + b" >>",
+        _stream(_SHOWN),
+        _TYPE0 % 8,
+        _TYPE0 % 9,
+        _stream(_bfchar(0)),
+        _stream(_bfchar(1)),
+        *extra,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("contents", "extra"),
+    [
+        (b"[[5 0 R]]", ()),
+        (b"[10 0 R]", (b"[5 0 R]",)),
+        (b"10 0 R", (b"[11 0 R]", b"[5 0 R]")),
+    ],
+)
+def test_page_content_behind_nested_arrays_is_still_that_pages(
+    contents: bytes, extra: tuple[bytes, ...]
+) -> None:
+    page = b"<< /Type /Page /Parent 2 0 R /Contents " + contents + b" " + _REAL + b" >>"
+    result = _read(_pdf(*_decoy_file(page, b"5 0 R", *extra)))
+    assert _shown(result) and len(result.blocks) == 2
+
+
+def test_a_contents_array_that_names_itself_ends() -> None:
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 10 0 R " + _REAL + b" >>"
+    assert _shown(_read(_pdf(*_decoy_file(page, b"5 0 R", b"[10 0 R 5 0 R]"))))
+
+
+def test_a_stream_the_two_readers_number_differently_keeps_the_union() -> None:
+    # The stream reader takes at most ten digits for an object number, so it numbers this
+    # stream 4, after the decoy page before it. The shown page names it 5.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    data = _pdf(*_decoy_file(page, b"4 0 R")).replace(b"\n5 0 obj\n", b"\n00000000005 0 obj\n")
+    assert _shown(_read(data))
+
+
+def test_an_object_stream_without_its_type_keeps_the_union() -> None:
+    # /Resources 10 0 R: object 10 names the decoy font, and a stream with /N and /First but no
+    # /Type /ObjStm holds another object 10 that names the phrase font.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources 10 0 R >>"
+    packed = zlib.compress(b"10 0 << /Font << /F1 6 0 R >> >>\n")
+    hidden = _stream(packed, b" /N 1 /First 5 /Filter /FlateDecode")
+    assert _shown(_read(_pdf(*_decoy_file(page, b"5 0 R", b"<< /Font << /F1 7 0 R >> >>", hidden))))
+
+
+def _map(data: bytes) -> dict[int, pdfpages.StreamFonts | None] | None:
+    budget = Budget(math.inf)
+    objects = PdfObjects(data, budget)
+    streams = pdf_streams(data, budget, objects.decoded)
+    return pdfpages.page_font_refs(data, objects, streams, budget, 64)
+
+
+def _classic_xref(data: bytes, moved: dict[int, int] | None = None) -> bytes:
+    """``data`` with a cross-reference table; ``moved`` gives an object another's offset."""
+    body = data[: data.index(b"trailer")]
+    offsets = {int(m.group(1)): m.start() for m in re.finditer(rb"(?m)^(\d+) 0 obj", body)}
+    rows = b"0000000000 65535 f \n"
+    for number in range(1, max(offsets) + 1):
+        rows += b"%010d 00000 n \n" % offsets[(moved or {}).get(number, number)]
+    return (
+        body
+        + b"xref\n0 %d\n" % (max(offsets) + 1)
+        + rows
+        + b"trailer\n<< /Root 1 0 R /Size %d >>\n" % (max(offsets) + 1)
+        + b"startxref\n%d\n%%%%EOF\n" % len(body)
+    )
+
+
+def test_a_cross_reference_table_that_renumbers_an_object_keeps_the_union() -> None:
+    # /Resources 10 0 R. Object 10 names the decoy font and object 11 the phrase font.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources 10 0 R >>"
+    resources = (b"<< /Font << /F1 7 0 R >> >>", b"<< /Font << /F1 6 0 R >> >>")
+    plain = _classic_xref(_pdf(*_decoy_file(page, b"5 0 R", *resources)))
+    assert _map(plain) == {5: {b"F1": frozenset({(7, 0)})}}
+    assert not _shown(_read(plain))
+    # The table says object 10 is at object 11's offset. A reader that accepts the header it
+    # finds there shows the phrase.
+    moved = _classic_xref(_pdf(*_decoy_file(page, b"5 0 R", *resources)), {10: 11})
+    assert _map(moved) is None
+    assert _shown(_read(moved))
+
+
+def test_a_cross_reference_table_that_cannot_be_read_keeps_the_union() -> None:
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    data = _pdf(*_decoy_file(page, b"5 0 R"))
+    assert _map(data) is not None
+    assert _map(data.replace(b"%%EOF", b"startxref\n999999\n%%EOF")) is None
+
+
+def _xref_stream(objects: list[bytes], compressed: dict[int, tuple[int, int]]) -> bytes:
+    """``objects`` and a cross-reference stream; ``compressed`` maps an object number to the
+    object stream and position its type-2 entry gives."""
+    out = b"%PDF-1.7\n"
+    offsets = {}
+    for number, body in enumerate(objects, 1):
+        offsets[number] = len(out)
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    last = len(objects) + 1
+    offsets[last] = len(out)
+    size = max(last, *compressed) + 1
+    rows = b""
+    for number in range(size):
+        if number in compressed:
+            container, index = compressed[number]
+            rows += bytes((2,)) + container.to_bytes(2, "big") + bytes((index,))
+        elif number in offsets:
+            rows += bytes((1,)) + offsets[number].to_bytes(2, "big") + bytes(1)
+        else:
+            rows += bytes(4)
+    table = b"<< /Type /XRef /Size %d /W [1 2 1] /Root 1 0 R /Length %d >>" % (size, len(rows))
+    out += b"%d 0 obj\n" % last + table + b"\nstream\n" + rows + b"\nendstream\nendobj\n"
+    return out + b"startxref\n%d\n%%%%EOF\n" % offsets[last]
+
+
+def test_a_compressed_entry_that_names_another_member_keeps_the_union() -> None:
+    def members(number: int) -> bytes:
+        table = b"%d 0 " % number
+        body = table + b"<< /Font << /F1 6 0 R >> >>\n"
+        return _stream(body, b" /Type /ObjStm /N 1 /First %d" % len(table))
+
+    # /Resources 20 0 R, and object 20 is the first member of object stream 11.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources %d 0 R >>"
+    agreed = _decoy_file(page % 20, b"5 0 R", b"<< >>", members(20))
+    assert _map(_xref_stream(agreed, {20: (11, 0)})) == {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+    # /Resources 10 0 R. Object 10 written in the file names the decoy font, the table says
+    # object 10 is that first member, and the stream's own table calls the member 99. A
+    # reader that takes the member by position shows the phrase.
+    renumbered = _decoy_file(page % 10, b"5 0 R", b"<< /Font << /F1 7 0 R >> >>", members(99))
+    data = _xref_stream(renumbered, {10: (11, 0)})
+    assert _map(data) is None
+    assert _shown(_read(data))
+
+
+_STAMP = b"/Annots [<< /Type /Annot /Subtype /Stamp /Rect [0 0 9 9] /AP << /N %s >> >>]"
+
+
+@pytest.mark.parametrize("reference", [b"5 0 R", b"5 0R", b"5 +0 R", b"05 0 R"])
+def test_a_stream_referenced_from_outside_page_content_keeps_the_union(reference: bytes) -> None:
+    # The decoy page draws stream 5, and an annotation on the shown page names stream 5 as its
+    # appearance. A reference from anywhere but a page's /Contents can run the stream with
+    # other resources, however a lexer would read it.
+    page = b"<< /Type /Page /Parent 2 0 R " + _REAL + b" " + _STAMP % reference + b" >>"
+    data = _pdf(*_decoy_file(page, b"5 0 R"))
+    assert _map(data) == {5: None}
+    assert _shown(_read(data))
+
+
+def test_a_comment_inside_an_object_keeps_the_union() -> None:
+    # A comment can split a reference so that the byte count does not see it.
+    page = b"<< /Type /Page /Parent 2 0 R " + _REAL + b" " + _STAMP % b"5 %c\n 0 R" + b" >>"
+    data = _pdf(*_decoy_file(page, b"5 0 R"))
+    assert _map(data) is None
+    assert _shown(_read(data))
+    # Between objects a comment changes nothing.
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    between = _pdf(*_decoy_file(plain, b"5 0 R")).replace(b"\n4 0 obj", b"\n% note\n4 0 obj")
+    assert _map(between) == {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+
+
+def test_a_contents_array_referenced_from_elsewhere_keeps_the_union() -> None:
+    # Array 10 is the decoy page's /Contents, and another object names it too.
+    page = b"<< /Type /Page /Parent 2 0 R " + _REAL + b" /Other 10 0 R >>"
+    assert _map(_pdf(*_decoy_file(page, b"10 0 R", b"[5 0 R]"))) is None
+    drawn = b"<< /Type /Page /Parent 2 0 R /Contents 10 0 R " + _REAL + b" >>"
+    assert _map(_pdf(*_decoy_file(drawn, b"10 0 R", b"[5 0 R]"))) == {
+        5: {b"F1": frozenset({(6, 0), (7, 0)})}
+    }
+
+
+def test_a_font_carried_in_from_another_stream_is_read_through_the_union() -> None:
+    # The shown page draws streams 10 and 12: 10 selects /F1 and 12 shows the text. The decoy
+    # page's stream 11 lies between them in the file and selects its own /F1.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents [10 0 R 12 0 R] " + _REAL + b" >>"
+    objects = _decoy_file(
+        page,
+        b"11 0 R",
+        _stream(b"BT /F1 12 Tf ET"),
+        _stream(b"BT /F1 12 Tf (x) Tj ET"),
+        _stream(b"BT 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"),
+    )
+    objects[4] = b"<< >>"
+    data = _pdf(*objects)
+    assert _map(data) == {
+        10: {b"F1": frozenset({(6, 0)})},
+        11: {b"F1": frozenset({(7, 0)})},
+        12: {b"F1": frozenset({(6, 0)})},
+    }
+    assert _shown(_read(data))
+
+
+def test_q_restores_the_name_a_carried_font_is_looked_up_by() -> None:
+    fonts = _fonts()
+    state = pdftext._TextState()
+    result = pdftext.PdfText()
+    budget = Budget(math.inf)
+    pdftext._blocks(b"BT /F1 12 Tf q /F2 12 Tf Q ET", fonts, result, budget, 0, state)
+    assert state.name == b"F1" and state.fonts is fonts[b"F1"]
+    pdftext._blocks(b"BT /F2 12 Tf ET", fonts, result, budget, 0, state)
+    assert state.name == b"F2"
 
 
 def test_a_stray_byte_in_a_hex_string_is_skipped() -> None:

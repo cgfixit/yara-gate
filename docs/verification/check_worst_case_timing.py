@@ -136,11 +136,11 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, page),
         None,
     )
-    # Page dictionaries the per-page font map reads. /F1 means two fonts (objects 3 and 4), so
-    # the map is built. Every second object is a page, which keeps the pages just under the
-    # 2 MiB the map reads; the others are the same bytes with the key misspelled. First, pages
-    # that all draw one stream, each naming ten fonts no other page names. Second, pages
-    # under a 32-level /Parent chain, each holding a 150-byte string.
+    # Inputs for the per-page font map. /F1 means two fonts (objects 3 and 4), so the map is
+    # built. First, pages that all draw one stream, each naming ten fonts no other page names;
+    # every second object is a page, which keeps the pages just under the 2 MiB the map
+    # parses, and the others are the same bytes with the key misspelled. Second, one page and
+    # an array of about 260,000 references to its content stream, which the map counts.
     cmap = b"begincmap 1 beginbfchar <61> <0061> endbfchar endcmap"
     text = (
         b"%PDF-1.7\n1 0 obj<</Length 22>>stream\nBT /F1 12 Tf (a) Tj ET\nendstream endobj\n"
@@ -164,18 +164,17 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             + b">>>>>>endobj\n"
         )
 
-    def nested(n: int) -> bytes:
-        if n < 39:
-            return b"%d 0 obj<</Type/Pages/Parent %d 0 R>>endobj\n" % (n, n - 1)
-        key = b"/Contents" if n % 2 else b"/Contentz  "
-        return (
-            b"%d 0 obj<</Type/Page/Parent 38 0 R" % n
-            + key
-            + b" 1 0 R/Pad(%s)>>endobj\n" % (b"x" * 150)
-        )
-
     yield "pdf-page-fonts.pdf", _numbered(text, named), None
-    yield "pdf-page-parents.pdf", _numbered(text, nested), None
+    page = b"7 0 obj<</Type/Page/Contents 1 0 R/Resources<</Font<</F1 4 0 R>>>>>>endobj\n"
+    opening, closing = text + page + b"8 0 obj[", b"]endobj\n%%EOF\n"
+    # Padded so the annotation reader stays under its own token limit.
+    reference = b"1 0 R".ljust(16)
+    count, rest = divmod(SIZE - len(opening) - len(closing), len(reference))
+    yield (
+        "pdf-page-references.pdf",
+        opening + reference * count + b" " * rest + closing,
+        None,
+    )
     # Ambiguous SVG scope above the proof budget must keep the strict result without
     # repeatedly counting tag offsets for each of the active-content matches.
     scope = b"<html>" + b"</svg><svg/>" * 1020 + b"<script " * 1024 + b"onload=" * 1024
@@ -345,7 +344,7 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
         "pdf-font-readings.pdf": "pdf-text",
         "pdf-page-fonts.pdf": "pdf-text",
-        "pdf-page-parents.pdf": "pdf-text",
+        "pdf-page-references.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
         "pdf-white-areas.pdf": "pdf-hidden-text",
     }.get(name)
