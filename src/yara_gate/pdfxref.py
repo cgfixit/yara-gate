@@ -8,7 +8,7 @@ which one wins.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from yara_gate.content import (
@@ -78,35 +78,78 @@ def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
     return found
 
 
-def xref_file_offsets(
-    data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
-) -> list[int] | None:
-    """Type-1 offsets from every ``startxref``, or None when the file has none to follow.
+@dataclass(frozen=True)
+class XrefTables:
+    """Every section any ``startxref`` reaches.
+
+    ``offsets`` are the type-1 offsets a reader can seek: within one ``/Prev`` chain a newer
+    section overrides an older one. ``resolved`` and ``compressed`` hold every type-1 entry as
+    (object number, offset, generation) and every type-2 entry as (object number, object
+    stream number, position in it), and ``free`` every object number with a free entry, from
+    every section, overridden or not.
+    """
+
+    offsets: list[int]
+    resolved: frozenset[tuple[int, int, int]]
+    compressed: frozenset[tuple[int, int, int]]
+    free: frozenset[int]
+
+
+def xref_tables(
+    data: bytes,
+    budget: Budget,
+    decoded: dict[int, bytes | None] | None = None,
+    *,
+    entries: bool = True,
+) -> XrefTables | None:
+    """The entries of every ``startxref``'s sections, or None when the file has none to follow.
 
     Readers do not agree on which ``startxref`` is live, so each one is a
     candidate, whether or not ``%%EOF`` follows it (``_startxref_candidates``).
     A candidate includes its ``/Prev`` chain. Malformed structure, an
     unsupported filter or predictor, too many entries or candidates, and a
     spent deadline raise ``ContentLimit``. ``decoded`` is the stream cache
-    ``pdf_streams`` already inflated.
+    ``pdf_streams`` already inflated. Without ``entries`` only ``offsets`` is filled.
     """
     candidates = _startxref_candidates(data, budget)
     if not candidates:
         return None
     union: list[int] = []
     seen: set[int] = set()
+    listed = _Listed() if entries else None
     # Each section is parsed once, however many candidates and /Prev chains reach it.
     parsed: _Parsed = {}
     for at in dict.fromkeys(candidates):
         budget.check()
         found: dict[int, list[int]] = {}
-        _section(data, at, budget, set(), found, decoded, parsed)
+        _section(data, at, budget, set(), found, decoded, parsed, listed)
         for offsets in found.values():
             for offset in offsets:
                 if offset not in seen:
                     seen.add(offset)
                     union.append(offset)
-    return union
+    if listed is None:
+        return XrefTables(union, frozenset(), frozenset(), frozenset())
+    return XrefTables(
+        union, frozenset(listed.resolved), frozenset(listed.compressed), frozenset(listed.free)
+    )
+
+
+def xref_file_offsets(
+    data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
+) -> list[int] | None:
+    """Type-1 offsets from every ``startxref``, or None when there are none."""
+    tables = xref_tables(data, budget, decoded, entries=False)
+    return None if tables is None else tables.offsets
+
+
+@dataclass
+class _Listed:
+    """Every entry of every section walked, for ``XrefTables``."""
+
+    resolved: set[tuple[int, int, int]] = field(default_factory=set)
+    compressed: set[tuple[int, int, int]] = field(default_factory=set)
+    free: set[int] = field(default_factory=set)
 
 
 # (is it read as an xref stream, offset) -> the section's entries and its trailer
@@ -121,6 +164,7 @@ def _section(
     found: dict[int, list[int]],
     decoded: dict[int, bytes | None] | None,
     parsed: _Parsed,
+    listed: _Listed | None = None,
 ) -> None:
     budget.check()
     if at in seen or len(seen) >= _MAX_HOPS or not 0 <= at < len(data):
@@ -135,12 +179,21 @@ def _section(
     stream: dict[int, XrefEntry] = {}
     previous = trailer.get(b"/Prev")
     if isinstance(previous, bytes) and previous.isdigit():
-        _section(data, int(previous), budget, seen, found, decoded, parsed)
+        _section(data, int(previous), budget, seen, found, decoded, parsed, listed)
     sibling = trailer.get(b"/XRefStm")
     if isinstance(sibling, bytes) and sibling.isdigit():
         if (True, int(sibling)) not in parsed:
             parsed[True, int(sibling)] = _xref_stream(data, int(sibling), budget, decoded)
         stream = parsed[True, int(sibling)][0]
+    if listed is not None:
+        for table in (classic, stream):
+            for number, each in table.items():
+                if each.use is XrefUse.RESOLVED:
+                    listed.resolved.add((number, each.offset, each.generation))
+                elif each.use is XrefUse.COMPRESSED:
+                    listed.compressed.add((number, each.offset, each.generation))
+                else:
+                    listed.free.add(number)
     defined = set(classic) | set(stream)
     for number in defined:
         offsets: list[int] = []
