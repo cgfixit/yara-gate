@@ -447,7 +447,8 @@ are never joined. Unreadable supported annotation contents are incomplete; rich
 text `/RC`, form-field values, and unsupported stream filters are not decoded
 by this reader. Text a reader hides (render mode 3 or 7, white on nothing
 painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
-hidden shapes or slides in Office) is also scanned on its own, and an override
+hidden shapes or slides in Office; in HTML, an exact inline hiding declaration, a
+comment, a `data-*` value, or a `template`) is also scanned on its own, and an override
 phrase there adds the advisory `heuristic_hidden_text`, so `agent-document` holds a
 document whose hidden text instructs the model while it still passes one that
 quotes an attack in plain sight. An OCR text layer is render mode 3, so a scanned
