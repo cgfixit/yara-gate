@@ -17,7 +17,7 @@ import tempfile
 import time
 import zipfile
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from yara_gate.scanner import scan_bytes
@@ -136,6 +136,32 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, page),
         None,
     )
+    # Page dictionaries the per-page font map reads: small pages that all draw one stream, each
+    # naming fonts no other page names, and pages under a 31-level /Parent chain.
+    text = b"%PDF-1.7\n1 0 obj<</Length 22>>stream\nBT /F1 12 Tf (a) Tj ET\nendstream endobj\n"
+    yield (
+        "pdf-page-fonts.pdf",
+        _numbered(
+            text,
+            lambda n: (
+                b"%d 0 obj<</Type/Page/Contents 1 0 R/Resources<</Font<</F%d %d 0 R"
+                b"/G%d 2 0 R>>>>>>endobj\n" % (n, n, n, n)
+            ),
+        ),
+        None,
+    )
+    yield (
+        "pdf-page-parents.pdf",
+        _numbered(
+            text,
+            lambda n: (
+                b"%d 0 obj<</Type/Pages/Parent %d 0 R>>endobj\n" % (n, n - 1)
+                if n < 34
+                else b"%d 0 obj<</Type/Page/Parent 33 0 R/Contents 1 0 R>>endobj\n" % n
+            ),
+        ),
+        None,
+    )
     # Ambiguous SVG scope above the proof budget must keep the strict result without
     # repeatedly counting tag offsets for each of the active-content matches.
     scope = b"<html>" + b"</svg><svg/>" * 1020 + b"<script " * 1024 + b"onload=" * 1024
@@ -243,6 +269,16 @@ def _cmap_pdf(
     raise RuntimeError("cmap stream length does not fit")
 
 
+def _numbered(prefix: bytes, objects: Callable[[int], bytes]) -> bytes:
+    """``prefix``, then ``objects(n)`` for n from 2 while they fit, padded to 4 MiB."""
+    out = bytearray(prefix)
+    number = 2
+    while len(out) + len(body := objects(number)) <= SIZE - 6:
+        out += body
+        number += 1
+    return bytes(out + b" " * (SIZE - 6 - len(out)) + b"%%EOF\n")
+
+
 def _filled(prefix: bytes, token: bytes) -> bytes:
     count, rest = divmod(SIZE - len(prefix), len(token))
     return prefix + token * count + b" " * rest
@@ -294,6 +330,8 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
         "pdf-font-readings.pdf": "pdf-text",
+        "pdf-page-fonts.pdf": "pdf-text",
+        "pdf-page-parents.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
         "pdf-white-areas.pdf": "pdf-hidden-text",
     }.get(name)

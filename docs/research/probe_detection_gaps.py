@@ -1394,13 +1394,16 @@ def reader_cases() -> list[Case]:
 
 
 def font_reading_cases() -> list[Case]:
-    """A resource name meaning more fonts than the reader decodes each string with (four).
+    """A resource name meaning a different font on each page, as merged PDFs keep every /F1.
 
-    Merged PDFs keep every source's /F1, so a name can mean one font per source. Text only a
-    fifth font decodes is not read; the scan reports it as unmapped text instead of clean
-    (docs/verification/2026-11-07-pdf-font-readings.md). Benign merges pay the same note.
+    Each page's content stream is read through its own page's fonts
+    (docs/verification/2026-11-10-pdf-page-fonts.md), so a phrase only the fifth page's font
+    decodes is found and a benign merge is clean. A stream that every page draws can mean every
+    page's /F1; past four readings it is still reported as unmapped text
+    (docs/verification/2026-11-07-pdf-font-readings.md).
     """
     unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Quarterly notes for the spring review."
     return [
         Case(
             "fonts",
@@ -1414,28 +1417,35 @@ def font_reading_cases() -> list[Case]:
             "pdf name with five fonts, phrase in fifth",
             "a.pdf",
             samples.merged_pdf(PHRASE, 5, 5),
-            f"{unmapped} without {PHRASE_RULE}",
+            f"{PHRASE_RULE} without {unmapped}",
         ),
         Case(
             "fonts",
             "pdf name with five fonts, phrase in first",
             "a.pdf",
             samples.merged_pdf(PHRASE, 5, 1),
-            PHRASE_RULE,
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf one stream on five pages, phrase in fifth",
+            "a.pdf",
+            samples.merged_pdf(PHRASE, 5, 5, shared_stream=True),
+            f"{unmapped} without {PHRASE_RULE}",
         ),
         Case(
             "fonts",
             "pdf merged name, four fonts (benign)",
             "a.pdf",
-            samples.merged_pdf("Quarterly notes for the spring review.", 4, 1),
+            samples.merged_pdf(benign, 4, 1),
             "clean",
         ),
         Case(
             "fonts",
             "pdf merged name, five fonts (benign)",
             "a.pdf",
-            samples.merged_pdf("Quarterly notes for the spring review.", 5, 1),
-            unmapped,
+            samples.merged_pdf(benign, 5, 1),
+            "clean",
         ),
     ]
 

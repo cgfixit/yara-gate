@@ -2004,6 +2004,13 @@ class PdfObjects:
             return [b""]
         return found
 
+    @property
+    def opaque(self) -> bool:
+        """True when an object stream could not be read, so an object may be defined in it."""
+        if self._members is None:
+            self._members = self._index()
+        return self._opaque
+
     def stream_members(self) -> Iterator[tuple[int, memoryview]]:
         """Bounded, already budgeted object-stream members; no raw-header lookalikes."""
         if self._members is None:

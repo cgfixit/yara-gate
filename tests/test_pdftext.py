@@ -271,9 +271,13 @@ def _read(data: bytes) -> pdftext.PdfText:
     return pdftext.pdf_text(data, pdf_streams(data, budget, objects.decoded), objects, budget)
 
 
-def _pages(content: bytes, *cmaps: bytes) -> pdftext.PdfText:
-    """Read a file whose pages each show ``content`` in /F1, each through its own map."""
-    return _read(samples.shared_name_pdf([(content, cmap) for cmap in cmaps]))
+def _pages(content: bytes, *cmaps: bytes, shared: bool = True) -> pdftext.PdfText:
+    """Read a file whose pages show ``content`` in /F1, each page through its own map.
+
+    With ``shared`` every page draws one content stream, so its /F1 can mean any page's font.
+    """
+    pages = [(content, cmap) for cmap in cmaps]
+    return _read(samples.shared_name_pdf(pages, shared_stream=shared))
 
 
 def _bfchar(shift: int) -> bytes:
@@ -287,6 +291,7 @@ def _bfchar(shift: int) -> bytes:
 def test_a_carried_reading_past_the_cap_is_reported_unmapped() -> None:
     # An overflowing range gives the last font a second reading, ordered after every font's
     # first: three fonts and that one are five readings, so the carried one is not decoded.
+    # The pages share one content stream, so the stream can mean every page's /F1.
     overflow = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FF80>\nendbfrange\nendcmap\n"
     content = b"BT /F1 12 Tf 72 700 Td <00C1> Tj ET"
     assert not _pages(content, _bfchar(1), _bfchar(2), overflow).unmapped
@@ -303,6 +308,155 @@ def test_fonts_past_the_reference_cap_are_reported_unmapped(
     # The third font, which alone maps the phrase, is never resolved or decoded.
     three = _pages(content, _bfchar(1), _bfchar(2), _bfchar(0))
     assert not _shown(three) and three.unmapped
+
+
+def _pdf(*objects: bytes) -> bytes:
+    """Objects numbered from 1, then a trailer naming object 1 as the root."""
+    out = b"%PDF-1.7\n"
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+
+def _stream(body: bytes, extra: bytes = b"") -> bytes:
+    return b"<< /Length %d" % len(body) + extra + b" >>\nstream\n" + body + b"\nendstream"
+
+
+_TYPE0 = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode %d 0 R >>"
+_SHOWN = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+
+
+def test_each_page_reads_a_name_through_its_own_font() -> None:
+    # Five pages, five fonts under /F1, the phrase only in the fifth: each page's stream is
+    # decoded once, through its own page's font, so nothing is past the cap.
+    fonts = [_bfchar(shift) for shift in (4, 3, 2, 1, 0)]
+    separate = _pages(_SHOWN, *fonts, shared=False)
+    assert _shown(separate) and not separate.unmapped
+    assert len(separate.blocks) == 5
+    # One stream drawn by all five pages can mean any of them: the cap applies again.
+    shared = _pages(_SHOWN, *fonts)
+    assert shared.unmapped and not _shown(shared)
+
+
+def test_resources_are_inherited_and_followed_through_references() -> None:
+    # Page 1 inherits /Resources from the page tree, through an indirect /Font dictionary;
+    # page 2 has its own. Each stream is read once, through its page's font only.
+    data = _pdf(
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 /Resources 9 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 6 0 R /Resources << /Font << /F1 8 0 R >> >> >>",
+        _stream(_SHOWN),
+        _stream(_SHOWN),
+        _TYPE0 % 11,
+        _TYPE0 % 12,
+        b"<< /Font 10 0 R >>",
+        b"<< /F1 7 0 R >>",
+        _stream(_bfchar(0)),
+        _stream(_bfchar(1)),
+    )
+    result = _read(data)
+    assert _shown(result) and not result.unmapped
+    assert len(result.blocks) == 2
+
+
+def _five_fonts_last() -> bytes:
+    return samples.merged_pdf(PHRASE, 5, 5)
+
+
+def test_an_unreadable_page_object_keeps_the_union_for_the_whole_file() -> None:
+    # An object holding /Contents that does not parse could be a page drawing any stream with
+    # any font, so every stream is read through the file-wide union again.
+    broken = _five_fonts_last().replace(
+        b"trailer", b"99 0 obj\n<< /Contents 4 0 R /Kids [ >>\nendobj\ntrailer"
+    )
+    assert _read(_five_fonts_last()).unmapped is False
+    assert _read(broken).unmapped
+
+
+def test_a_name_the_page_does_not_list_is_read_through_the_union() -> None:
+    # The page's /Font has only /F1; /F2 is defined in a dictionary no page uses. A reader has
+    # no /F2 there, so the scanner keeps the file-wide reading of it.
+    data = samples.merged_pdf(PHRASE, 1, 1).replace(b"BT /F1 12 Tf", b"BT /F2 12 Tf")
+    data = data.replace(b"trailer", b"99 0 obj\n<< /Font << /F2 5 0 R >> >>\nendobj\ntrailer")
+    assert _shown(_read(data))
+
+
+def test_resources_defined_twice_keep_the_union_for_their_streams() -> None:
+    # An incremental update redefines the page's resource dictionary with another font. A
+    # reader may take either definition, so that page's stream is read through the union.
+    head = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 4 0 R /Resources 5 0 R >>",
+        _stream(_SHOWN),
+        b"<< /Font << /F1 6 0 R >> >>",
+        _TYPE0 % 8,
+        _TYPE0 % 9,
+        _stream(_bfchar(1)),
+        _stream(_bfchar(0)),
+    )
+    once = _read(_pdf(*head))
+    assert not _shown(once) and len(once.blocks) == 1
+    twice = _pdf(*head).replace(
+        b"trailer", b"5 0 obj\n<< /Font << /F1 7 0 R >> >>\nendobj\ntrailer"
+    )
+    assert _shown(_read(twice))
+
+
+def _objstm(members: list[tuple[int, bytes]], *, first: int | None = None) -> bytes:
+    header = b""
+    body = b""
+    for number, member in members:
+        header += b"%d %d " % (number, len(body))
+        body += member + b"\n"
+    packed = zlib.compress(header + body)
+    first = len(header) if first is None else first
+    return _stream(
+        packed, b" /Type /ObjStm /N %d /First %d /Filter /FlateDecode" % (len(members), first)
+    )
+
+
+def test_pages_inside_an_object_stream_are_read() -> None:
+    pages = [
+        (
+            3,
+            b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R "
+            b"/Resources << /Font << /F1 7 0 R >> >> >>",
+        ),
+        (
+            4,
+            b"<< /Type /Page /Parent 2 0 R /Contents 6 0 R "
+            b"/Resources << /Font << /F1 8 0 R >> >> >>",
+        ),
+    ]
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+        b"<< >>",
+        b"<< >>",
+        _stream(_SHOWN),
+        _stream(_SHOWN),
+        _TYPE0 % 9,
+        _TYPE0 % 10,
+        _stream(_bfchar(0)),
+        _stream(_bfchar(1)),
+        _objstm(pages),
+    ]
+    # Objects 3 and 4 are also written as empty dictionaries, as an update would leave them.
+    result = _read(_pdf(*objects))
+    assert _shown(result) and len(result.blocks) == 2
+
+
+def test_an_unreadable_object_stream_keeps_the_union() -> None:
+    # A page could be defined inside an object stream that does not decode.
+    base = _five_fonts_last()
+    hidden = base.replace(
+        b"trailer",
+        b"99 0 obj\n" + _objstm([(98, b"<< >>")], first=9999) + b"\nendobj\ntrailer",
+    )
+    assert not _read(base).unmapped
+    assert _read(hidden).unmapped
 
 
 def test_a_stray_byte_in_a_hex_string_is_skipped() -> None:
