@@ -27,6 +27,10 @@ from yara_gate.content import (
 _MAX_ENTRIES = 100_000
 _MAX_HOPS = 32
 _MAX_WIDTH = 8
+_TRAILER_END = frozenset({b"startxref"})
+# The keyword, any byte a reader skips as whitespace, then the offset (group 1) or the start
+# of a number only some readers accept (group 2).
+_STARTXREF = re.compile(rb"startxref[\x00\t\n\x0b\f\r ]*+(?:([0-9]++)|([+\-.]))?")
 _ENTRY = re.compile(rb"(\d{10}) (\d{5}) ([nf])(?: \n|\r\n| \r)")
 
 
@@ -46,98 +50,57 @@ class XrefEntry:
 
 
 def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
-    """Line-start ``startxref`` keywords outside comments and literal strings."""
+    """The section offset each ``startxref`` in the file gives, in file order.
+
+    Every occurrence of the bytes counts, wherever it is written. Readers find the keyword by
+    searching the end of the file for the bytes or for a line that holds them, without
+    lexing what is around it: one inside a comment, a literal string, or a stream body is
+    taken by PDFium and pdf.js, and pypdf and pdfminer.six take one inside a string.
+
+    An occurrence is skipped when no reader gets a section from it: the offset is 0, or what
+    follows the keyword is not a number. Offset 0 is the ``%PDF`` header, and a linearized
+    file's first-page trailer ends with ``startxref 0`` by design; the live pointer is the
+    last one in the file, which names the first-page section, whose ``/Prev`` names the main
+    one. A sign or a dot after the keyword is malformed: three readers read ``+12`` as 12.
+    """
     found: list[int] = []
-    index = 0
-    size = len(data)
-    line_start = True
-    comment = False
-    depth = 0
-    escaped = False
-    hex_string = False
-    while index < size:
-        if index % 65536 == 0:
+    for count, match in enumerate(_STARTXREF.finditer(data)):
+        if count % 4096 == 0:
             budget.check()
-        byte = data[index]
-        if comment:
-            if byte in b"\r\n":
-                comment = False
-                line_start = True
-            index += 1
+        if match.group(2) is not None:
+            raise ContentLimit("pdf xref malformed")
+        digits = match.group(1)
+        if digits is None or len(digits) > 20 or int(digits) == 0:
             continue
-        if depth:
-            if escaped:
-                escaped = False
-            elif byte == 0x5C:
-                escaped = True
-            elif byte == 0x28:
-                depth += 1
-            elif byte == 0x29:
-                depth -= 1
-            line_start = byte in b"\r\n"
-            index += 1
-            continue
-        if hex_string:
-            if byte == 0x3E:
-                hex_string = False
-            line_start = byte in b"\r\n"
-            index += 1
-            continue
-        if byte == 0x25:
-            comment = True
-            line_start = False
-            index += 1
-            continue
-        if byte == 0x28:
-            depth = 1
-            line_start = False
-            index += 1
-            continue
-        if byte == 0x3C and index + 1 < size and data[index + 1] != 0x3C:
-            hex_string = True
-            line_start = False
-            index += 1
-            continue
-        if line_start and data.startswith(b"startxref", index):
-            after = index + len(b"startxref")
-            if after >= size or data[after : after + 1] in b"\x00\t\n\f\r ":
-                found.append(index)
-                if len(found) > _MAX_HOPS:
-                    raise ContentLimit("pdf xref malformed")
-                index = after
-                line_start = False
-                continue
-        if byte in b"\r\n":
-            line_start = True
-        elif byte not in b"\x00\t\f ":
-            line_start = False
-        index += 1
+        found.append(int(digits))
+        if len(found) > _MAX_HOPS:
+            raise ContentLimit("pdf xref malformed")
     return found
 
 
 def xref_file_offsets(
     data: bytes, budget: Budget, decoded: dict[int, bytes | None] | None = None
 ) -> list[int] | None:
-    """Type-1 offsets from every ``startxref``, or None when there are none.
+    """Type-1 offsets from every ``startxref``, or None when the file has none to follow.
 
     Readers do not agree on which ``startxref`` is live, so each one is a
-    candidate, whether or not ``%%EOF`` follows it. A candidate includes its
-    ``/Prev`` chain. Malformed structure, an unsupported filter or predictor,
-    too many entries or candidates, and a spent deadline raise ``ContentLimit``.
-    ``decoded`` is the stream cache ``pdf_streams`` already inflated.
+    candidate, whether or not ``%%EOF`` follows it (``_startxref_candidates``).
+    A candidate includes its ``/Prev`` chain. Malformed structure, an
+    unsupported filter or predictor, too many entries or candidates, and a
+    spent deadline raise ``ContentLimit``. ``decoded`` is the stream cache
+    ``pdf_streams`` already inflated.
     """
     candidates = _startxref_candidates(data, budget)
     if not candidates:
         return None
     union: list[int] = []
     seen: set[int] = set()
-    for marker in candidates:
+    # Each section is parsed once, however many candidates and /Prev chains reach it.
+    parsed: _Parsed = {}
+    for at in dict.fromkeys(candidates):
         budget.check()
-        number = re.match(rb"[\x00\t\n\f\r ]*(\d+)", data[marker + len(b"startxref") :])
-        if number is None:
-            raise ContentLimit("pdf xref malformed")
         found: dict[int, list[int]] = {}
-        _section(data, int(number.group(1)), budget, set(), found, decoded)
+        _section(data, at, budget, set(), found, decoded, parsed)
         for offsets in found.values():
             for offset in offsets:
                 if offset not in seen:
@@ -146,30 +109,38 @@ def xref_file_offsets(
     return union
 
 
+# (is it read as an xref stream, offset) -> the section's entries and its trailer
+_Parsed = dict[tuple[bool, int], tuple[dict[int, XrefEntry], dict[bytes, PdfValue]]]
+
+
 def _section(
     data: bytes,
     at: int,
     budget: Budget,
     seen: set[int],
     found: dict[int, list[int]],
-    decoded: dict[int, bytes | None] | None = None,
+    decoded: dict[int, bytes | None] | None,
+    parsed: _Parsed,
 ) -> None:
     budget.check()
     if at in seen or len(seen) >= _MAX_HOPS or not 0 <= at < len(data):
         raise ContentLimit("pdf xref malformed")
     seen.add(at)
-    if data.startswith(b"xref", at):
-        classic, trailer = _classic(data, at, budget)
-        stream: dict[int, XrefEntry] = {}
-    else:
-        classic, trailer = _xref_stream(data, at, budget, decoded)
-        stream = {}
+    as_stream = not data.startswith(b"xref", at)
+    if (as_stream, at) not in parsed:
+        parsed[as_stream, at] = (
+            _xref_stream(data, at, budget, decoded) if as_stream else _classic(data, at, budget)
+        )
+    classic, trailer = parsed[as_stream, at]
+    stream: dict[int, XrefEntry] = {}
     previous = trailer.get(b"/Prev")
     if isinstance(previous, bytes) and previous.isdigit():
-        _section(data, int(previous), budget, seen, found, decoded)
+        _section(data, int(previous), budget, seen, found, decoded, parsed)
     sibling = trailer.get(b"/XRefStm")
     if isinstance(sibling, bytes) and sibling.isdigit():
-        stream, _trailer = _xref_stream(data, int(sibling), budget, decoded)
+        if (True, int(sibling)) not in parsed:
+            parsed[True, int(sibling)] = _xref_stream(data, int(sibling), budget, decoded)
+        stream = parsed[True, int(sibling)][0]
     defined = set(classic) | set(stream)
     for number in defined:
         offsets: list[int] = []
@@ -189,8 +160,12 @@ def _classic(
     pos = _whitespace(data, pos)
     entries: dict[int, XrefEntry] = {}
     total = 0
-    while not data.startswith(b"trailer", pos):
+    while True:
         budget.check()
+        # MuPDF leaves a blank line between the last entry and ``trailer``.
+        pos = _whitespace(data, pos)
+        if data.startswith(b"trailer", pos):
+            break
         head = re.match(rb"(\d+) (\d+)", data[pos : pos + 40])
         if head is None:
             raise ContentLimit("pdf xref malformed")
@@ -348,8 +323,13 @@ def _integer(raw: bytes) -> int:
 
 
 def _trailer(data: bytes, pos: int) -> dict[bytes, PdfValue]:
+    """The trailer dictionary at ``data[pos:]``.
+
+    The lexer stops at the ``startxref`` that follows the dictionary. A linearized file's
+    first-page trailer is followed by objects and their stream bytes, which do not lex.
+    """
     pos = _whitespace(data, pos)
-    tokens = _pdf_tokens(data, pos, min(len(data), pos + 65536))
+    tokens = _pdf_tokens(data, pos, min(len(data), pos + 65536), _TRAILER_END)
     if not tokens or tokens[0] != b"<<":
         raise ContentLimit("pdf xref malformed")
     try:

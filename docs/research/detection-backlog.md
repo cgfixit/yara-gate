@@ -181,6 +181,8 @@ overturn.
 | A literal key appended to `authorized_keys` | An administrator's own key looks the same. A downloaded key is matched |
 | ClickOnce manifests, `node -e` in `postinstall`, joining CSV cells or JSON array elements | Recorded earlier; see the [October 30 roadmap](detection-roadmap-2026-10-30.md) and [#171](https://github.com/cgfixit/yara-gate/issues/171) |
 | A semantic classifier, OCR, URL reputation, or detonation inside the gate | Outside the scan contract. A classifier belongs after the gate, as advisory evidence with its own provenance |
+| Leave a `startxref` inside a comment, a string, or a stream body out of the cross-reference check | Readers find the keyword by searching bytes or lines and do not lex around it. With it in a comment or the middle of a line, PDFium and pdf.js still return an annotation hidden in a stream; in a literal string, pypdf and pdfminer.six do too; and the old scanner lost the keyword after one `(` byte in any stream body, which is most real files ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)). Every occurrence that a number follows is a candidate |
+| Skip a `startxref` whose offset is past the end of the file, as offset 0 is skipped | Offset 0 is what a linearized file's first-page trailer carries. Any other pointer that leads nowhere is a broken or forged file, and the scan stays incomplete (`pdf xref malformed`), as before. Prose such as `startxref 99999` in an uncompressed comment or string is held by this |
 
 ## Keeping the detector current
 
