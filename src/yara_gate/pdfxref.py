@@ -8,7 +8,7 @@ which one wins.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from yara_gate.content import (
@@ -123,13 +123,15 @@ class XrefTables:
 
     ``offsets`` are the type-1 offsets a reader can seek: within one ``/Prev`` chain a newer
     section overrides an older one. ``resolved`` and ``compressed`` hold every type-1 entry as
-    (object number, offset) and every type-2 entry as (object number, object stream number,
-    position in it), from every section, overridden or not.
+    (object number, offset, generation) and every type-2 entry as (object number, object
+    stream number, position in it), and ``free`` every object number with a free entry, from
+    every section, overridden or not.
     """
 
     offsets: list[int]
-    resolved: frozenset[tuple[int, int]]
+    resolved: frozenset[tuple[int, int, int]]
     compressed: frozenset[tuple[int, int, int]]
+    free: frozenset[int]
 
 
 def xref_tables(
@@ -149,7 +151,8 @@ def xref_tables(
     ``decoded`` is the stream cache ``pdf_streams`` already inflated.
 
     With ``anywhere``, every occurrence of the bytes ``startxref`` is a candidate, which is
-    what a reader searching backward from the end of the file can find. The default takes
+    what a reader searching backward from the end of the file can find; one that gives
+    offset 0 is skipped. The default takes
     only a keyword at a line start outside comments and literal strings, as the scanner
     reads the file from the top; bytes inside a stream body can leave that scanner inside a
     string, so it may see none where a reader sees one. Without ``entries`` only ``offsets``
@@ -165,21 +168,28 @@ def xref_tables(
         return None
     union: list[int] = []
     seen: set[int] = set()
-    resolved: set[tuple[int, int]] | None = set() if entries else None
-    compressed: set[tuple[int, int, int]] | None = set() if entries else None
+    listed = _Listed() if entries else None
     for marker in candidates:
         budget.check()
         number = re.match(rb"[\x00\t\n\f\r ]*(\d+)", data[marker + len(b"startxref") :])
         if number is None:
             raise ContentLimit("pdf xref malformed")
+        if anywhere and int(number.group(1)) == 0:
+            # The first-page trailer of a linearized file ends in ``startxref 0``. Offset 0
+            # is the file header: a reader sent there finds no table and rebuilds one.
+            continue
         found: dict[int, list[int]] = {}
-        _section(data, int(number.group(1)), budget, set(), found, decoded, resolved, compressed)
+        _section(data, int(number.group(1)), budget, set(), found, decoded, listed)
         for offsets in found.values():
             for offset in offsets:
                 if offset not in seen:
                     seen.add(offset)
                     union.append(offset)
-    return XrefTables(union, frozenset(resolved or ()), frozenset(compressed or ()))
+    if listed is None:
+        return XrefTables(union, frozenset(), frozenset(), frozenset())
+    return XrefTables(
+        union, frozenset(listed.resolved), frozenset(listed.compressed), frozenset(listed.free)
+    )
 
 
 def xref_file_offsets(
@@ -190,6 +200,15 @@ def xref_file_offsets(
     return None if tables is None else tables.offsets
 
 
+@dataclass
+class _Listed:
+    """Every entry of every section walked, for ``XrefTables``."""
+
+    resolved: set[tuple[int, int, int]] = field(default_factory=set)
+    compressed: set[tuple[int, int, int]] = field(default_factory=set)
+    free: set[int] = field(default_factory=set)
+
+
 def _section(
     data: bytes,
     at: int,
@@ -197,32 +216,33 @@ def _section(
     seen: set[int],
     found: dict[int, list[int]],
     decoded: dict[int, bytes | None] | None = None,
-    resolved: set[tuple[int, int]] | None = None,
-    compressed: set[tuple[int, int, int]] | None = None,
+    listed: _Listed | None = None,
 ) -> None:
     budget.check()
     if at in seen or len(seen) >= _MAX_HOPS or not 0 <= at < len(data):
         raise ContentLimit("pdf xref malformed")
     seen.add(at)
     if data.startswith(b"xref", at):
-        classic, trailer = _classic(data, at, budget)
+        classic, trailer = _classic(data, at, budget, listed is not None)
         stream: dict[int, XrefEntry] = {}
     else:
         classic, trailer = _xref_stream(data, at, budget, decoded)
         stream = {}
     previous = trailer.get(b"/Prev")
     if isinstance(previous, bytes) and previous.isdigit():
-        _section(data, int(previous), budget, seen, found, decoded, resolved, compressed)
+        _section(data, int(previous), budget, seen, found, decoded, listed)
     sibling = trailer.get(b"/XRefStm")
     if isinstance(sibling, bytes) and sibling.isdigit():
         stream, _trailer = _xref_stream(data, int(sibling), budget, decoded)
-    if resolved is not None and compressed is not None:
+    if listed is not None:
         for table in (classic, stream):
-            for number, listed in table.items():
-                if listed.use is XrefUse.RESOLVED:
-                    resolved.add((number, listed.offset))
-                elif listed.use is XrefUse.COMPRESSED:
-                    compressed.add((number, listed.offset, listed.generation))
+            for number, each in table.items():
+                if each.use is XrefUse.RESOLVED:
+                    listed.resolved.add((number, each.offset, each.generation))
+                elif each.use is XrefUse.COMPRESSED:
+                    listed.compressed.add((number, each.offset, each.generation))
+                else:
+                    listed.free.add(number)
     defined = set(classic) | set(stream)
     for number in defined:
         offsets: list[int] = []
@@ -234,7 +254,7 @@ def _section(
 
 
 def _classic(
-    data: bytes, at: int, budget: Budget
+    data: bytes, at: int, budget: Budget, bounded: bool = False
 ) -> tuple[dict[int, XrefEntry], dict[bytes, PdfValue]]:
     pos = at + len(b"xref")
     if pos >= len(data) or data[pos : pos + 1] not in b"\r\n \t":
@@ -244,6 +264,11 @@ def _classic(
     total = 0
     while not data.startswith(b"trailer", pos):
         budget.check()
+        if bounded:
+            # MuPDF leaves a blank line between the last entry and ``trailer``.
+            pos = _whitespace(data, pos)
+            if data.startswith(b"trailer", pos):
+                break
         head = re.match(rb"(\d+) (\d+)", data[pos : pos + 40])
         if head is None:
             raise ContentLimit("pdf xref malformed")
@@ -263,7 +288,7 @@ def _classic(
                 entries[start + index] = XrefEntry(XrefUse.FREE, 0, generation)
             pos += 20
         total += count
-    trailer = _trailer(data, pos + len(b"trailer"))
+    trailer = _trailer(data, pos + len(b"trailer"), bounded)
     return entries, trailer
 
 
@@ -400,9 +425,16 @@ def _integer(raw: bytes) -> int:
     return int.from_bytes(raw, "big") if raw else 0
 
 
-def _trailer(data: bytes, pos: int) -> dict[bytes, PdfValue]:
+def _trailer(data: bytes, pos: int, bounded: bool = False) -> dict[bytes, PdfValue]:
+    """The trailer dictionary at ``data[pos:]``.
+
+    With ``bounded`` the lexer stops at the ``startxref`` that follows the dictionary. The
+    first-page trailer of a linearized file is followed by objects and their stream bytes,
+    which do not lex.
+    """
     pos = _whitespace(data, pos)
-    tokens = _pdf_tokens(data, pos, min(len(data), pos + 65536))
+    until = frozenset({b"startxref"}) if bounded else frozenset()
+    tokens = _pdf_tokens(data, pos, min(len(data), pos + 65536), until)
     if not tokens or tokens[0] != b"<<":
         raise ContentLimit("pdf xref malformed")
     try:

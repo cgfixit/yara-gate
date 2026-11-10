@@ -1483,6 +1483,41 @@ def font_reading_cases() -> list[Case]:
             ),
             PHRASE_RULE,
         ),
+        # Spellings of the shown page that real readers follow and a strict parser does not
+        # (docs/research/probe_pdf_reader_agreement.py): the page map is not built for the file.
+        Case(
+            "fonts",
+            "pdf shown page, reference written 5.0 0 R",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Contents 5.0 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> >>",
+            ),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page, a string where a key belongs",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 (x R /Contents 5 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> ()) >>",
+            ),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page, a second /Resources#00 key",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> /Resources#00 << /Font << /F1 7 0 R >> >> >>",
+            ),
+            PHRASE_RULE,
+        ),
         Case(
             "fonts",
             "pdf merged name, four fonts (benign)",

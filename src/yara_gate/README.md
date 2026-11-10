@@ -8,7 +8,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`content.py`](content.py) constructs bounded in-memory archive and text views without extracting members to disk.
 - [`pdftext.py`](pdftext.py) reconstructs supported PDF text operators and fonts, without rendering the page.
 - [`pdfannotations.py`](pdfannotations.py) decodes annotation `/Contents` strings, separately from page text.
-- [`pdfpages.py`](pdfpages.py) maps each page content stream to the fonts its page's own resources name, so a merged file's `/F1` is read per page; a file or stream whose structure readers could resolve differently keeps the file-wide fonts.
+- [`pdfpages.py`](pdfpages.py) maps each page content stream to the fonts its page's own resources name, so a merged file's `/F1` is read per page; a file that is not plainly written throughout, or a stream readers could resolve differently, keeps the file-wide fonts.
 - [`pdfxref.py`](pdfxref.py) resolves cross-reference offsets so an object inside a length-proven stream cannot scan clean.
 - [`filetype.py`](filetype.py) identifies content from bytes and checks filename/type mismatches.
 - [`heuristics.py`](heuristics.py) adds structural and behavioral indicators for supported formats alongside YARA findings.

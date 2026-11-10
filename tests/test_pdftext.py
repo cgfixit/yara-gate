@@ -670,18 +670,31 @@ def _map(data: bytes) -> dict[int, pdfpages.StreamFonts | None] | None:
     return pdfpages.page_font_refs(data, objects, streams, budget, 64)
 
 
-def _classic_xref(data: bytes, moved: dict[int, int] | None = None) -> bytes:
-    """``data`` with a cross-reference table; ``moved`` gives an object another's offset."""
+def _classic_xref(
+    data: bytes,
+    moved: dict[int, int] | None = None,
+    free: tuple[int, ...] = (),
+    generation: dict[int, int] | None = None,
+    size: int | None = None,
+) -> bytes:
+    """``data`` with a cross-reference table. ``moved`` gives an object another's offset,
+    ``free`` marks objects free, ``generation`` is the generation an entry gives, and
+    ``size`` leaves the objects from that number on out of the table."""
     body = data[: data.index(b"trailer")]
-    offsets = {int(m.group(1)): m.start() for m in re.finditer(rb"(?m)^(\d+) 0 obj", body)}
+    offsets = {int(m.group(1)): m.start() for m in re.finditer(rb"(?m)^(\d+) \d+ obj", body)}
+    size = size or max(offsets) + 1
     rows = b"0000000000 65535 f \n"
-    for number in range(1, max(offsets) + 1):
-        rows += b"%010d 00000 n \n" % offsets[(moved or {}).get(number, number)]
+    for number in range(1, size):
+        if number in free:
+            rows += b"0000000000 00001 f \n"
+            continue
+        offset = offsets[(moved or {}).get(number, number)]
+        rows += b"%010d %05d n \n" % (offset, (generation or {}).get(number, 0))
     return (
         body
-        + b"xref\n0 %d\n" % (max(offsets) + 1)
+        + b"xref\n0 %d\n" % size
         + rows
-        + b"trailer\n<< /Root 1 0 R /Size %d >>\n" % (max(offsets) + 1)
+        + b"trailer\n<< /Root 1 0 R /Size %d >>\n" % size
         + b"startxref\n%d\n%%%%EOF\n" % len(body)
     )
 
@@ -754,23 +767,281 @@ def test_a_compressed_entry_that_names_another_member_keeps_the_union() -> None:
 _STAMP = b"/Annots [<< /Type /Annot /Subtype /Stamp /Rect [0 0 9 9] /AP << /N %s >> >>]"
 
 
-@pytest.mark.parametrize("reference", [b"5 0 R", b"5 0R", b"5 +0 R", b"05 0 R"])
+@pytest.mark.parametrize("reference", [b"5 0 R", b"5 0R", b"05 0 R", b"5\t0\r\nR"])
 def test_a_stream_referenced_from_outside_page_content_keeps_the_union(reference: bytes) -> None:
     # The decoy page draws stream 5, and an annotation on the shown page names stream 5 as its
     # appearance. A reference from anywhere but a page's /Contents can run the stream with
-    # other resources, however a lexer would read it.
+    # other resources.
     page = b"<< /Type /Page /Parent 2 0 R " + _REAL + b" " + _STAMP % reference + b" >>"
     data = _pdf(*_decoy_file(page, b"5 0 R"))
     assert _map(data) == {5: None}
     assert _shown(_read(data))
 
 
-def test_a_comment_inside_an_object_keeps_the_union() -> None:
-    # A comment can split a reference so that the byte count does not see it.
+@pytest.mark.parametrize(
+    "reference",
+    [
+        b"5.0 0 R",  # pdfminer.six, PDFium and pdf.js read object 5
+        b"5. 0 R",
+        b"5 0.0 R",
+        b"5- 0 R",
+        b"5 +0 R",
+        b"+5 0 R",
+        b"5 0 R#",  # pypdf takes the one byte R
+        b"5 0 Rx",
+        b"5\x0b0 R",  # a vertical tab separates tokens for pypdf and pdfminer.six
+        b"5 0\x0bR",
+        b"5\x000 R",
+        b"5\x0c0 R",
+        b"8388608 0 R /Also 5 0 R",  # past the largest object number
+    ],
+)
+def test_a_reference_only_some_readers_take_keeps_the_union_for_the_file(
+    reference: bytes,
+) -> None:
+    # The shown page's /Contents is written so that the page parser here does not follow it,
+    # and readers do. Any ``R`` that is not a plain reference turns the map off.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents " + reference + b" " + _REAL + b" >>"
+    data = _pdf(*_decoy_file(page, b"5 0 R"))
+    assert _map(data) is None
+    assert _shown(_read(data))
+
+
+@pytest.mark.parametrize("odd", [b"\x00", b"\x0b", b"\x0c", b"\x80", b"\x7f", b"\x1f"])
+def test_a_byte_plain_files_do_not_have_keeps_the_union_for_the_file(odd: bytes) -> None:
+    # Lexers differ on which of these separate tokens. Inside a literal string, a stream, or
+    # a comment between objects they separate nothing.
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    both = {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+    assert _map(_pdf(*_decoy_file(plain[:-2] + odd + b">>", b"5 0 R"))) is None
+    assert _map(_pdf(*_decoy_file(plain[:-2] + b"/T (" + odd + b") >>", b"5 0 R"))) == both
+    between = _pdf(*_decoy_file(plain, b"5 0 R")).replace(b"\n4 0 obj", b"\n%" + odd + b"\n4 0 obj")
+    assert _map(between) == both
+    stream = _pdf(*_decoy_file(plain, b"5 0 R", _stream(b"q " + odd + b" Q")))
+    assert _map(stream) == both
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        # PDFium skips a string where a key belongs and reads the bytes inside it as tokens.
+        b"<< /Type /Page /Parent 2 0 (x R /Contents 5 0 R %s ()) >>",
+        b"<< /Type /Page /Parent 2 0 R (/Contents 5 0 R %s) >>",
+        # Containers that do not close, close out of order, or leave a key without a value.
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 9 9 /Contents 5 0 R %s >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R %s >> >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R %s /Last >>",
+        b"<< /Type /Page /Parent 2 0 R /A [ << ] >> /Contents 5 0 R %s >>",
+        # Tokens only some lexers read.
+        b"<< /Type /Page /Parent 2 0 R /Rotate 9e1 /Contents 5 0 R %s >>",
+        b"<< /Type /Page /Parent 2 0 R /Rotate 90- /Contents 5 0 R %s >>",
+        b"<< /Type /Page /Parent 2 0 R /T <41 ( 42> /Contents 5 0 R %s /Y (z) >>",
+        b"<< /Type /Page /Parent 2 0 R /T <4G> /Contents 5 0 R %s >>",
+        b"<< /Type /Page /Parent 2 0 R /T True /Contents 5 0 R %s >>",
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R %s >> junk",
+    ],
+)
+def test_an_object_that_is_not_one_well_formed_value_keeps_the_union_for_the_file(
+    page: bytes,
+) -> None:
+    # Readers recover from malformed syntax in different ways, and what one of them makes of
+    # it cannot be counted here.
+    data = _pdf(*_decoy_file(page % _REAL, b"5 0 R"))
+    assert _map(data) is None
+    assert _shown(_read(data))
+
+
+def test_anything_but_sections_and_trailers_between_objects_keeps_the_union() -> None:
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    data = _pdf(*_decoy_file(plain, b"5 0 R"))
+    assert _map(data) is not None
+    assert _map(data.replace(b"\n4 0 obj", b"\n/Contents 5 0 R\n4 0 obj")) is None
+    assert _map(data.replace(b"\n4 0 obj", b"\nendobj\n4 0 obj")) is None
+    assert _map(data.replace(b"%%EOF\n", b"%%EOF\n\x00\x00")) is None
+
+
+def test_a_name_with_an_escape_is_not_read() -> None:
+    # poppler cuts a name at an escaped NUL, so /Resources#00 is a second /Resources for it:
+    # null here, and the page then takes its parent's resources.
+    objects = _inheriting(b"<< /Font << /F1 7 0 R >> >> /Resources#00 null")
+    data = _pdf(*objects)
+    assert _map(data) == {5: None}
+    assert _shown(_read(data))
+    # An escape in an object the map does not read changes nothing.
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    named = _pdf(*_decoy_file(plain, b"5 0 R", b"<< /BaseFont /Arial#20Bold >>"))
+    assert _map(named) == {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+
+
+def test_a_stream_length_kept_in_another_object_is_stepped_over() -> None:
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    objects = _decoy_file(plain, b"5 0 R", b"%d" % len(_SHOWN))
+    objects[4] = b"<< /Length 10 0 R >>\nstream\n" + _SHOWN + b"\nendstream"
+    assert _map(_pdf(*objects)) == {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+    # One that is not written as a plain reference is not looked up.
+    objects[4] = objects[4].replace(b"10 0 R", b"10 00000000 R")
+    assert _map(_pdf(*objects)) is None
+
+
+def test_a_page_written_in_the_trailer_keeps_the_union() -> None:
+    # No object 3: the shown page is a dictionary inside the trailer, which pypdf and pdf.js
+    # read. Its reference to stream 5 is one no page object here accounts for.
+    inline = (
+        b"trailer\n<< /Root << /Type /Catalog /Pages << /Type /Pages /Count 1 /Kids ["
+        b" << /Type /Page /Contents 5 %s0 R " + _REAL + b" >> ] >> >> >>"
+    )
+    data = _pdf(*_decoy_file(b"<< >>", b"5 0 R"))
+    written = data.replace(b"trailer\n<< /Root 1 0 R >>", inline % b"")
+    assert _map(written) == {5: None}
+    assert _shown(_read(written))
+    # A comment between objects is skipped, so it can split that reference; the ``R`` left
+    # standing alone turns the map off.
+    split = data.replace(b"trailer\n<< /Root 1 0 R >>", inline % b"%c\n ")
+    assert _map(split) is None
+    assert _shown(_read(split))
+
+
+def test_a_header_search_that_does_not_look_past_obj_keeps_the_union() -> None:
+    # pypdf rebuilds a missing table by searching for two integers and the bytes ``obj``.
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    hidden = b"<< /Title (\n99 0 objX) >>"
+    assert _map(_pdf(*_decoy_file(plain, b"5 0 R", hidden))) is None
+    assert _map(_pdf(*_decoy_file(plain, b"5 0 R", b"<< /Title (99 objects) >>"))) is not None
+
+
+def _objstm_file(table: bytes, bodies: bytes, order: tuple[int, int] = (20, 21)) -> bytes:
+    """The decoy file with /Resources 20 0 R on the shown page and object stream 11, whose
+    header is ``table`` and whose objects are ``bodies``. The cross-reference stream lists
+    the members in ``order``, which is the order the header gives them."""
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources 20 0 R >>"
+    extra = b" /Type /ObjStm /N 2 /First %d" % len(table)
+    objects = _decoy_file(page, b"5 0 R", b"<< >>", _stream(table + bodies, extra))
+    return _xref_stream(objects, {number: (11, index) for index, number in enumerate(order)})
+
+
+def test_an_object_stream_that_is_not_written_plainly_keeps_the_union() -> None:
+    # pdfminer.six takes an object stream's objects in the order they are written; other
+    # readers go to the offsets in its header. They agree only when each member's place holds
+    # exactly one object.
+    real, decoy = b"<< /Font << /F1 6 0 R >> >>\n", b"<< /Font << /F1 7 0 R >> >>\n"
+    plain = _objstm_file(b"20 0 21 %d\n" % len(real), real + decoy)
+    assert _map(plain) == {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+    # An object before /First: counted in order it is the first member.
+    early = _objstm_file(b"20 0 21 %d\n" % len(decoy) + real, decoy + decoy)
+    # The header's offsets skip an object that comes first in order.
+    skipped = _objstm_file(
+        b"20 %d 21 %d\n" % (len(real), len(real) + len(decoy)), real + decoy + decoy
+    )
+    # Two objects in one member's place.
+    doubled = _objstm_file(b"21 0 20 %d\n" % (2 * len(decoy)), decoy + real + decoy, (21, 20))
+    # A member that is not one whole object.
+    cut = _objstm_file(b"20 0 21 %d\n" % len(real), real + b"<< /Font << /F1 7 0 R >>\n")
+    for data in (early, skipped, doubled, cut):
+        assert _map(data) is None
+        assert _shown(_read(data))
+
+
+def _inheriting(resources: bytes, *extra: bytes) -> list[bytes]:
+    """The shown page's own ``resources`` name the decoy font and its parent names the phrase
+    font: the phrase shows for a reader that takes the page's own entry for missing."""
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources " + resources + b" >>"
+    objects = _decoy_file(page, b"5 0 R", *extra)
+    objects[1] = b"<< /Type /Pages /Kids [3 0 R] /Count 1 " + _REAL + b" >>"
+    return objects
+
+
+def test_an_object_the_table_does_not_list_in_use_is_not_followed() -> None:
+    objects = _inheriting(b"10 0 R", b"<< /Font << /F1 7 0 R >> >>")
+    listed = _classic_xref(_pdf(*objects))
+    assert _map(listed) == {5: {b"F1": frozenset({(7, 0)})}}
+    assert not _shown(_read(listed))
+    # PDFium reads a free or unlisted object as null and takes the parent's resources.
+    freed = _classic_xref(_pdf(*objects), free=(10,))
+    assert _map(freed) == {5: None}
+    assert _shown(_read(freed))
+    unlisted = _classic_xref(_pdf(*objects), size=10)
+    assert _map(unlisted) == {5: None}
+    assert _shown(_read(unlisted))
+
+
+def test_a_reference_under_another_generation_is_not_followed() -> None:
+    # poppler reads a reference whose generation differs from the object's as null and
+    # takes the parent's resources; pdfminer.six ignores the generation.
+    objects = _inheriting(b"10 0 R", b"<< /Font << /F1 7 0 R >> >>")
+    header = _pdf(*objects).replace(b"\n10 0 obj", b"\n10 1 obj")
+    assert _map(header) == {5: None}
+    assert _shown(_read(header))
+    assert _map(_classic_xref(header, generation={10: 1})) == {5: None}
+    reference = _pdf(*_inheriting(b"10 1 R", b"<< /Font << /F1 7 0 R >> >>"))
+    assert _map(reference) == {5: None}
+    assert _shown(_read(reference))
+    # A table whose generation is not the header's does not agree with the headers.
+    assert _map(_classic_xref(_pdf(*objects), generation={10: 1})) is None
+
+
+def test_a_name_one_page_of_a_shared_stream_does_not_list_is_read_through_the_union() -> None:
+    # The shown page's own resources have no /Font. pdf.js then takes the parent's fonts, so
+    # the decoy page's /F1 does not settle the name for the stream they share.
+    data = _pdf(*_inheriting(b"<< >>"))
+    assert _map(data) == {5: {}}
+    assert _shown(_read(data))
+    listed = _pdf(*_inheriting(b"<< /Font << /F2 7 0 R >> >>"))
+    assert _map(listed) == {5: {}}
+    assert _shown(_read(listed))
+
+
+def test_a_font_that_is_not_one_definition_is_read_through_the_union() -> None:
+    # Font 7 is defined twice, so readers can differ on what /F1 means on the decoy page.
+    plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
+    objects = _decoy_file(plain, b"5 0 R")
+    data = _pdf(*objects).replace(b"trailer", b"7 0 obj\n" + objects[5] + b"\nendobj\ntrailer")
+    assert _map(data) == {5: {}}
+    assert _shown(_read(data))
+
+
+def test_a_font_behind_a_second_reference_is_read_through_the_union() -> None:
+    # The shown page's /F1 is object 10, which is only a reference to the phrase font.
+    # pdfminer.six and MuPDF follow it. The stream is shared with the decoy page, whose /F1
+    # must not settle the name.
+    # The parent names the phrase font directly, which is what puts it in the union.
+    data = _pdf(*_inheriting(b"<< /Font << /F1 10 0 R >> >>", b"6 0 R"))
+    assert _map(data) == {5: {}}
+    assert _shown(_read(data))
+
+
+def test_an_object_stream_member_is_not_followed_without_a_table() -> None:
+    # poppler, rebuilding a missing table, does not look inside object streams: the shown
+    # page's /Resources 20 0 R is null for it, and it takes the parent's resources.
+    table = b"20 0 "
+    member = _stream(
+        table + b"<< /Font << /F1 7 0 R >> >>\n", b" /Type /ObjStm /N 1 /First %d" % len(table)
+    )
+    objects = _inheriting(b"20 0 R", b"<< >>", member)
+    assert _map(_pdf(*objects)) == {5: None}
+    assert _shown(_read(_pdf(*objects)))
+    listed = _xref_stream(objects, {20: (11, 0)})
+    assert _map(listed) == {5: {b"F1": frozenset({(7, 0)})}}
+
+
+def test_a_comment_after_a_number_keeps_the_union() -> None:
+    # A comment can split a reference so that the count of references does not see it.
     page = b"<< /Type /Page /Parent 2 0 R " + _REAL + b" " + _STAMP % b"5 %c\n 0 R" + b" >>"
     data = _pdf(*_decoy_file(page, b"5 0 R"))
     assert _map(data) is None
     assert _shown(_read(data))
+    for split in (b"5 0 %c\n R", b"5 0 R /Rotate 90 %c\n"):
+        page = b"<< /Type /Page /Parent 2 0 R /Contents " + split + b" " + _REAL + b" >>"
+        assert _map(_pdf(*_decoy_file(page, b"5 0 R"))) is None
+
+
+def test_a_comment_that_cannot_split_a_reference_is_stepped_over() -> None:
+    # cairo writes ``/Type /Page % 1`` and reportlab a comment inside the trailer.
+    both = {5: {b"F1": frozenset({(6, 0), (7, 0)})}}
+    page = b"<< % first\n /Type /Page % 1\n /Parent 2 0 R % up\n /Contents 5 0 R " + _REAL + b" >>"
+    data = _pdf(*_decoy_file(page, b"5 0 R"))
+    assert _map(data) == both
+    trailer = b"trailer\n<< /ID [<00><00>]\n% written by a generator\n/Root 1 0 R >>"
+    assert _map(data.replace(b"trailer\n<< /Root 1 0 R >>", trailer)) == both
     # Between objects a comment changes nothing.
     plain = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>"
     between = _pdf(*_decoy_file(plain, b"5 0 R")).replace(b"\n4 0 obj", b"\n% note\n4 0 obj")

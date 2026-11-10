@@ -7,7 +7,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `src/yara_gate/cli.py`: Typer commands, recursive path scans, exit aggregation.
 - `scanner.py`, `content.py`, `filetype.py`, `heuristics.py` in that package: scan orchestration, bounded member/text views, type checks, PDF/Office indicators.
 - `pdfannotations.py`: annotation text strings and references, separate from page glyph text.
-- `pdfpages.py`: each page's own resources mapped to its content streams, so a font name is read through its own page's fonts. It narrows what is read, so it uses only structure every reader agrees on (object layout, cross-reference entries, reference counts); anything else keeps the file-wide union.
+- `pdfpages.py`: each page's own resources mapped to its content streams, so a font name is read through its own page's fonts. It narrows what is read, so it is built only for a file every reader reads the same way (every object one well-formed, plainly written value; cross-reference entries that agree with the headers; every reference to a stream accounted for); anything else keeps the file-wide union. `docs/research/probe_pdf_reader_agreement.py` checks it against real readers: run it, with a fuzz pass, before changing what the map accepts.
 - `pdfxref.py`: classic, stream, hybrid, and incremental cross-reference offsets used to reject an annotation hidden inside a length-proven stream.
 - `rtftext.py`: bounded RTF reader text, scoped formatting/codepages, and paragraph/cell boundaries.
 - `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.

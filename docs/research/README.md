@@ -62,6 +62,7 @@ the November 10 spellings.
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
 | [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 to B6 are the backlog's open candidates |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
+| [probe_pdf_reader_agreement.py](probe_pdf_reader_agreement.py) | No; it needs PDF readers that are not in the locked environment | Runs pypdf, pdfminer.six, PDFium, MuPDF, poppler, and pdf.js on fixtures and on random spellings of a page beside a decoy page, and fails when a reader shows text the per-page font map narrowed away. Run it before changing what `pdfpages.py` accepts |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |
 

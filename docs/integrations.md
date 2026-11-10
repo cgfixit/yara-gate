@@ -434,7 +434,8 @@ these notes still pass the notes-only `agent-document` read rule. A composite fo
 no readable `ToUnicode` map leaves text unread. Each page reads a font name through its
 own resources, so a merged PDF, whose sources each keep their own `/F1`, is read one font per
 page. Where a name still means more than four fonts (one content stream drawn by many pages,
-or a page tree the reader cannot follow), only four of them decode each string. Either case
+or a file whose syntax or page tree readers could resolve differently), only four of them
+decode each string. Either case
 is the note `heuristic_pdf_text_unmapped`, so `agent-ingest` holds the file instead of passing
 text it could not read; `agent-document` records it and passes the file, so give such a PDF
 to your own extractor's gate as well. Annotation `/Contents` strings are decoded separately
