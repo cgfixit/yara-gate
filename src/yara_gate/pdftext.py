@@ -439,6 +439,9 @@ class _FontReader:
         # By object number: a reference's generation does not choose among the definitions.
         self._cache: dict[int, list[Font]] = {}
         self._undefined: dict[tuple[int, int], bool] = {}
+        # Names that list the same references mean the same fonts, and a file can have
+        # thousands of them.
+        self._named: dict[frozenset[tuple[int, int]], tuple[Font, ...]] = {}
 
     def prime(self, refs: Iterable[tuple[int, int]]) -> None:
         self.definitions.prime(refs)
@@ -450,7 +453,11 @@ class _FontReader:
         after every font's first, so it never displaces a font the name also means within
         MAX_FONT_VARIANTS.
         """
-        keys = sorted(set(refs))
+        refs = frozenset(refs)
+        known = self._named.get(refs)
+        if known is not None:
+            return list(known)
+        keys = sorted(refs)
         found: list[Font] = []
         alternates: list[Font] = []
         if keys and all(self._is_undefined(key) for key in keys):
@@ -468,6 +475,7 @@ class _FontReader:
                 found.append(readings[0])
             alternates.extend(each for each in readings[1:] if each not in alternates)
         found.extend(each for each in alternates if each not in found)
+        self._named[refs] = tuple(found)
         return found
 
     def _is_undefined(self, key: tuple[int, int]) -> bool:
@@ -570,6 +578,12 @@ class _Definitions:
                     extra.append((body, None, generation))
         if looks is None:
             return [(body, start) for body, start, _ in raw + extra], complete, 0
+        if len(raw) == 1 and not extra and self._complete[number]:
+            # The usual font: one definition, nothing to order.
+            body, start, generation = raw[0]
+            if not looks(body):
+                return [], complete, 0
+            return [(body, start)], complete, int(generation in self._named.get(number, ()))
         # Past the cap the last raw header is the file's last, later than any body of the lookup.
         cut = len(raw) if self._complete[number] else len(raw) - 1
         head = [entry for entry in raw[:cut] if looks(entry[0])]
