@@ -193,4 +193,7 @@ Each no-op flood stays clean.
 - The browser check is one Chromium build. Other browsers, mail clients, and image viewers
   that render SVG without script were not run; an image viewer that runs no script makes
   every one of these shapes inert.
-- Hosted CI on macOS and Windows had not run when this was written.
+- Hosted CI on macOS and Windows had not run when this was written. It ran later on
+  `7f7bab3` and every job passed, the macOS timing step included. #210 then merged; the
+  re-run on the merged tree is in the
+  [phrase-rule generator record](2026-11-10-phrase-rule-generator.md#after-main-moved).

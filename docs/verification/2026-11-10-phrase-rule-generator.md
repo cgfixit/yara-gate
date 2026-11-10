@@ -5,7 +5,8 @@ Measured on this branch at `7f7bab3`: `main` at `838b11d` plus the
 the first commit of the same pull request,
 [#211](https://github.com/cgfixit/yara-gate/pull/211). The other open pull request,
 [#210](https://github.com/cgfixit/yara-gate/pull/210) (the cost of reading PDF fonts),
-shares no file with this change. Linux 6.18 x86_64 container, Python 3.12.3, YARA-X 1.23.0,
+shares no file with this change; it merged while this was being written, and the
+[last section](#after-main-moved) has the re-run on the merged tree. Linux 6.18 x86_64 container, Python 3.12.3, YARA-X 1.23.0,
 87 bundled local rules, zero skips, no vendor download. Every scan used a disposable copy of
 `rules/local`. Nothing was executed, unpacked to disk, or fetched.
 
@@ -126,6 +127,25 @@ In the working tree, a word added by hand to `agent_override_imperative.yar` mad
   their header, and no template, fragment file, or generator.
 - `pytest` on the rules loader, hunt, release, Pages build and deploy, and demo tests: 124
   passed. The whole suite is left to hosted CI.
+
+## After `main` moved
+
+#210 merged at `85b0be5` before this was published. `main` was merged into the branch
+(`d1d839b`), no file in conflict, and these were run again on the merged tree:
+
+- `lint_rules.py` (87 rules), `check_rule_generator.py` (22 checks), `check_rule_pairs.py`
+  (117 ids), `check_added_rules.py` (242 plus 4), `probe_rule_coverage.py --verify`,
+  `probe_detection_gaps.py --verify` (275 `ok`, 4 `open`), and
+  `measure_precision.py --fail-over`: all passed. The precision table and every gap-probe row
+  are the same as before the merge.
+- `check_worst_case_timing.py`: PASS, 36 inputs, every verdict and reason as before. Single
+  runs on this container gave `pdf-page-fonts.pdf` 7.10 s (7.37 s before the merge) and
+  `pdf-font-definitions.pdf` 7.55 s (6.71 s). The rules are the same bytes on both sides of
+  the merge, so that difference is #210's code and this container's run-to-run spread, which
+  one run each cannot separate.
+- `record_pages_demo.py --baseline`: outcomes match for the 64 scenarios under 3 policies.
+- `ruff check .`, `ruff format --check .`, `mypy --strict src scripts`,
+  `check_doc_links.py`, `check_text_controls.py`, and `yara-gate selftest`: passed.
 
 ## What was left written by hand
 

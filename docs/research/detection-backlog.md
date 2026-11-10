@@ -1,6 +1,6 @@
 # Detection backlog
 
-Last reviewed: November 10, 2026, on `main` at `838b11d` plus the
+Last reviewed: November 10, 2026, on `main` at `85b0be5` plus the
 [SVG link and zero-width run rules](../verification/2026-11-10-svg-links-and-invisible-runs.md)
 and the [phrase-rule generator](../verification/2026-11-10-phrase-rule-generator.md).
 Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
