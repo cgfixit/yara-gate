@@ -661,6 +661,82 @@ def svg_declarative_benign() -> bytes:
     return _svg('begin="0s"')
 
 
+def _svg_button(target: str) -> bytes:
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="48">'
+        f'<a href="{target}"><rect width="160" height="48" rx="8" fill="#1f6feb"/>'
+        '<text x="80" y="30" text-anchor="middle" fill="#ffffff">Open invoice</text></a></svg>\n'
+    ).encode()
+
+
+def svg_script_link() -> bytes:
+    """An SVG button whose link target is a ``javascript:`` URL: no script element, no handler.
+
+    The target is inert (``void`` of the page title), but ``void`` evaluates its operand, so a
+    browser runs whatever stands there when the button is activated.
+    """
+    return _svg_button("javascript:void(document.title)")
+
+
+def svg_noop_link_benign() -> bytes:
+    """The same button with the legacy no-op target, ``javascript:void(0)``, which runs nothing."""
+    return _svg_button("javascript:void(0)")
+
+
+_XHTML = 'xmlns="http://www.w3.org/1999/xhtml"'
+
+
+def _svg_diagram(first: str) -> bytes:
+    """A two-box diagram whose labels are ``foreignObject`` content, as diagram tools export."""
+    label = (
+        f'<foreignObject x="150" y="10" width="120" height="40"><div {_XHTML} '
+        'style="display: flex; align-items: center; justify-content: center;">'
+        "<span>Ledger</span></div></foreignObject>"
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="280" height="60">'
+        '<rect x="10" y="10" width="120" height="40" fill="none" stroke="#333333"/>'
+        '<rect x="150" y="10" width="120" height="40" fill="none" stroke="#333333"/>'
+        '<path d="M130 30 L150 30" stroke="#333333"/>'
+        f'<foreignObject x="10" y="10" width="120" height="40">{first}</foreignObject>'
+        f"{label}</svg>\n"
+    ).encode()
+
+
+def svg_diagram_frame() -> bytes:
+    """A diagram whose first label is a frame of another page; the address is never contacted."""
+    return _svg_diagram(f'<iframe {_XHTML} src="https://collector.invalid/form"></iframe>')
+
+
+def svg_diagram_benign() -> bytes:
+    """The same diagram with an ordinary text label, the shape draw.io and Mermaid write."""
+    return _svg_diagram(
+        f'<div {_XHTML} style="display: flex; align-items: center; justify-content: center;">'
+        "<span>Billing</span></div>"
+    )
+
+
+def zero_width_run_message() -> bytes:
+    """A message carrying the word "inert" as 40 zero-width characters, one bit each.
+
+    A zero-width space is 0 and a word joiner is 1. Neither is a joiner of letters, so the
+    result is the run and one note, not a note for every character.
+    """
+    bits = "".join(f"{byte:08b}" for byte in b"inert")
+    hidden = "".join("\u200b" if bit == "0" else "\u2060" for bit in bits)
+    return f"Thanks, the quarterly notes{hidden} are attached.\n".encode()
+
+
+def zero_width_joiners_benign() -> bytes:
+    """Ordinary joiners: a ZWNJ inside two Persian words, and a ZWJ family emoji."""
+    return (
+        "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 "
+        "\u06a9\u062a\u0627\u0628\u200c\u0647\u0627 \u0631\u0627 "
+        "\u0628\u0628\u06cc\u0646\u0645 "
+        "\U0001f468\u200d\U0001f469\u200d\U0001f467\n"
+    ).encode()
+
+
 _SHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _OOXML_TYPES = (
     b'<?xml version="1.0"?>'

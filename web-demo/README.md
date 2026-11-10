@@ -4,5 +4,5 @@ The [Pages demo guide](../docs/pages-demo.md) explains the build, privacy, and d
 
 - [`index.html`](index.html) defines the public replay page and its content security policy.
 - [`style.css`](style.css) styles its layouts and controls.
-- [`app.mjs`](app.mjs) implements navigation and renders the recorded results in the browser: the scoreboard, the per-policy strip of every pair, and the filters by channel and by how each attack was caught, all computed from the recordings.
+- [`app.mjs`](app.mjs) implements navigation and renders the recorded results in the browser: the scoreboard, the per-policy strip of every pair, a card for each way an attack was caught (its attacks held, its twins clean, and the views that read it), and the filters by channel and by how each attack was caught, all computed from the recordings.
 - [`recordings.json`](recordings.json) contains the reviewed, allowlisted results generated from inert examples by the real scanner.

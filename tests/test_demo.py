@@ -338,6 +338,8 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             {"ooxml-cell+text-folded"},
         ),
         "svg_handler": ("svg_handler_benign", "doc_svg_event_handler", {"raw", "text-folded"}),
+        "svg_link_script": ("svg_link_benign", "doc_svg_active_link", {"raw", "text-folded"}),
+        "svg_diagram_frame": ("svg_diagram_benign", "doc_svg_active_link", {"raw", "text-folded"}),
         "selector_run": ("selector_run_benign", "heuristic_variation_selector_run", {"raw"}),
         "svg_cdata_override": (
             "svg_cdata_benign",
