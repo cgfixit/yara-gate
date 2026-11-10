@@ -110,6 +110,11 @@ mypy, 533 links), the recorder matched #201's baseline of 58 examples, the build
 recordings, and `test_pages_deploy.py`, `test_pages_build.py`, `test_demo.py`, and
 `test_hunt.py` passed (40). The scratch merge was not pushed.
 
+#201 then merged as `799848f`. `main` was merged into this branch at `f314308` with the same
+three resolutions, and the checks were run again on that commit: the static checks passed (24
+files under mypy, 533 links), the recorder matched the 58-example baseline, the build validated
+174 recordings, and the five focused test files passed (63).
+
 ## Boundaries
 
 - Not run here: the macOS and Windows jobs, the full pytest suite, and `selftest`.
