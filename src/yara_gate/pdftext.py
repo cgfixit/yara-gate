@@ -5,7 +5,9 @@ A content stream rarely holds a sentence as one string. Word, LaTeX, and browser
 ``pdf-flate`` views see fragments. This module rebuilds each text block from the operators and
 decodes each string through its font: a simple font as WinAnsi bytes, a font with a ToUnicode
 CMap through that map. A composite (two-byte) font with no readable ToUnicode map cannot be
-decoded; the caller reports that as a coverage note instead of a silent clean.
+decoded; the caller reports that as a coverage note instead of a silent clean. A font object
+or ToUnicode map that the file defines more than once is read through every definition, since
+readers differ in which one they use.
 
 Nothing is rendered and no font program is read. Positions are not tracked, so text placed out
 of reading order is joined in stream order, and a sentence split across two text blocks is not
@@ -27,7 +29,7 @@ import binascii
 import math
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 
@@ -39,6 +41,12 @@ from yara_gate.content import (
     _pdf_stream_dict,
     _pdf_tokens,
     _pdf_value,
+)
+from yara_gate.heuristics import (
+    _PDF_HEADER,
+    _PDF_VALUE_WINDOW,
+    MAX_PDF_DEFINITIONS,
+    _pdf_header_key,
 )
 from yara_gate.pdfpages import page_font_refs
 
@@ -64,6 +72,15 @@ MAX_CMAP_TOKENS = 3 * MAX_CMAP_TOTAL
 # reported as unmapped text (docs/verification/2026-11-07-pdf-font-readings.md).
 MAX_FONT_VARIANTS = 4
 MAX_FONT_REFERENCES = 64
+# Raw definitions of one object number read as a font or a font resource dictionary. A font
+# with more is also given an unresolved reading, and a resource dictionary with more leaves
+# every name unsettled, so the text is reported as unmapped
+# (docs/verification/2026-11-10-pdf-font-definitions.md).
+MAX_FONT_DEFINITIONS = MAX_PDF_DEFINITIONS
+# Bytes read past the lookup's 4 KB window, over every long font object in one file. Objects
+# that do not overlap stay under it in any file this size or smaller; past it a long font is
+# given an unresolved reading instead of being read to its end.
+MAX_FONT_OBJECT_BYTES = 256 * 1024 * 1024
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
 
@@ -109,6 +126,9 @@ class Font:
     composite: bool
     cmap: dict[bytes, str] | None = None
     lengths: tuple[int, ...] = (1,)
+    # No font: what a reader that compares generations finds for a reference whose generation
+    # no definition has. It shows the string in a fallback font, read here as WinAnsi.
+    missing: bool = False
 
     @property
     def unreadable(self) -> bool:
@@ -128,6 +148,7 @@ class PdfText:
     ``unmapped`` is set when a composite font has no readable map, a font the file never
     resolves shows two-byte codes, or a string is shown in a resource name that means more
     fonts than ``MAX_FONT_VARIANTS`` (or ``MAX_FONT_REFERENCES``), so a reading went undecoded.
+    A font object or ToUnicode map defined more than once counts once per distinct definition.
 
     ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
     moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
@@ -166,10 +187,13 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     result = PdfText()
     if not data.startswith(b"%PDF"):
         return result
-    by_number: dict[int, bytes | None] = {
-        stream.number: stream.text for stream in streams if stream.number is not None
-    }
-    reader = _FontReader(data, objects, _Cmaps(by_number, budget))
+    # Every stream under one object number, in file order: a ToUnicode map defined twice is
+    # read through each definition.
+    by_number: dict[int, list[bytes | None]] = {}
+    for stream in streams:
+        if stream.number is not None:
+            by_number.setdefault(stream.number, []).append(stream.text)
+    reader = _FontReader(data, objects, _Cmaps(by_number, budget), budget)
     fonts = _fonts(data, streams, objects, reader, budget)
     # Each page content stream reads a name through its own page's fonts; a stream or name the
     # page tree does not settle keeps the file-wide union
@@ -179,10 +203,13 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     if any(len(found) > 1 for found in fonts.values()):
         pages = page_font_refs(data, objects, streams, budget, MAX_FONT_REFERENCES)
     if pages:
-        _prime(
-            objects,
+        reader.prime(
             {ref for names in pages.values() if names for refs in names.values() for ref in refs},
         )
+    if reader.definitions.resources_unread:
+        # A /Font resource dictionary has more definitions than were read, so what a name
+        # means in the unread ones is not known: no text in the file counts as decoded.
+        result.unmapped = True
     by_page: dict[int, Mapping[bytes, list[Font]]] = {}
     box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
@@ -326,6 +353,7 @@ def _fonts(
     budget: Budget,
 ) -> dict[bytes, list[Font]]:
     """Resource name to the distinct fonts it names anywhere in the file (pages may differ)."""
+    definitions = reader.definitions
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
     references: dict[bytes, set[tuple[int, int]]] = {}
@@ -340,9 +368,12 @@ def _fonts(
             for match in _FONT_RESOURCE_REF.finditer(source)
         )
     # One pass over the file finds every wanted object; a lookup per key would rescan it.
-    _prime(objects, indirect)
-    for key in sorted(indirect):
-        dictionaries.extend(objects(*key))
+    definitions.prime(indirect)
+    for number in sorted({number for number, _ in indirect}):
+        bodies, complete, _ = definitions(number)
+        dictionaries.extend(body for body, _ in bodies)
+        if not complete:
+            definitions.resources_unread = True
     for dictionary in dictionaries:
         for ref in _NAME_REF.finditer(dictionary):
             name = _name(ref.group(1))
@@ -353,7 +384,7 @@ def _fonts(
             elif key not in slot:
                 truncated.add(name)
     fonts: dict[bytes, list[Font]] = {}
-    _prime(objects, {key for refs in references.values() for key in refs})
+    reader.prime(key for refs in references.values() for key in refs)
     for name, refs in references.items():
         found = reader.readings(refs)
         unresolved = Font(True, None, (2,))
@@ -385,8 +416,9 @@ class _PageFonts(Mapping[bytes, list[Font]]):
         if name in self._names:
             if name not in self._resolved:
                 self._resolved[name] = self._reader.readings(self._names[name])
-            if self._resolved[name]:
-                return self._resolved[name]
+            resolved = self._resolved[name]
+            if resolved and not any(font.missing for font in resolved):
+                return resolved
         return self._union[name]
 
     def __iter__(self) -> Iterator[bytes]:
@@ -398,102 +430,328 @@ class _PageFonts(Mapping[bytes, list[Font]]):
 
 
 class _FontReader:
-    """Fonts by object reference, each read once whichever names and pages share it."""
+    """Fonts by object number, each read once whichever names and pages share it."""
 
-    def __init__(self, data: bytes, objects: Lookup, cmaps: _Cmaps) -> None:
-        self._data = data
-        self._objects = objects
+    def __init__(self, data: bytes, objects: Lookup, cmaps: _Cmaps, budget: Budget) -> None:
+        self.definitions = _Definitions(data, objects, budget)
         self._cmaps = cmaps
-        self._cache: dict[tuple[int, int], list[Font]] = {}
-        self._headers: dict[tuple[int, int], int] | None = None
+        self._check = budget.check
+        # By object number: a reference's generation does not choose among the definitions.
+        self._cache: dict[int, list[Font]] = {}
+        self._undefined: dict[tuple[int, int], bool] = {}
 
-    def raw(self, key: tuple[int, int]) -> bytes:
-        if self._headers is None:
-            self._headers = {}
-            for match in _OBJ_HEADER.finditer(self._data):
-                self._headers[(int(match.group(1)), int(match.group(2)))] = match.end()
-        start = self._headers.get(key)
-        if start is None:
-            return b""
-        end = self._data.find(b"endobj", start, start + _MAX_OBJECT_BYTES)
-        return self._data[start : end if end >= 0 else start + _MAX_OBJECT_BYTES]
+    def prime(self, refs: Iterable[tuple[int, int]]) -> None:
+        self.definitions.prime(refs)
 
     def readings(self, refs: Iterable[tuple[int, int]]) -> list[Font]:
-        """The distinct readings of ``refs``: every font's first, then any second ones.
+        """The distinct readings of ``refs``: every font's first, then any further ones.
 
-        A second reading of one font comes after every font's first, so it never displaces a
-        font the name also means within MAX_FONT_VARIANTS.
+        A further reading of one font (another definition of it, or a carried map) comes
+        after every font's first, so it never displaces a font the name also means within
+        MAX_FONT_VARIANTS.
         """
+        keys = sorted(set(refs))
         found: list[Font] = []
         alternates: list[Font] = []
-        for key in sorted(refs):
-            if key not in self._cache:
-                self._cache[key] = _font(self._objects(*key), self._cmaps, self.raw, key)
-            readings = self._cache[key]
+        if keys and all(self._is_undefined(key) for key in keys):
+            # No reference has a font under its own generation. A reader that compares
+            # generations (pdf.js) then has no font and shows the string in a fallback one.
+            # That reading comes first so the cap never drops it; the definitions under other
+            # generations, which a reader that ignores generations uses, follow.
+            found.append(Font(False, missing=True))
+        for number in sorted({number for number, _ in keys}):
+            self._check()
+            if number not in self._cache:
+                self._cache[number] = _font(number, self.definitions, self._cmaps)
+            readings = self._cache[number]
             if readings and readings[0] not in found:
                 found.append(readings[0])
             alternates.extend(each for each in readings[1:] if each not in alternates)
         found.extend(each for each in alternates if each not in found)
         return found
 
+    def _is_undefined(self, key: tuple[int, int]) -> bool:
+        if key not in self._undefined:
+            self._check()
+            self._undefined[key] = not self.definitions.exact(*key)
+        return self._undefined[key]
 
-def _font(
-    bodies: list[bytes],
-    cmaps: _Cmaps,
-    raw: Callable[[tuple[int, int]], bytes],
-    key: tuple[int, int],
-) -> list[Font]:
-    """The font's readings: one, or two when its ToUnicode map has an overflowing range."""
-    for body in bodies:
-        if b"/Font" not in body and b"/Subtype" not in body:
-            continue
+
+class _Definitions:
+    """Every definition of an object number, whatever generation its header or a reference has.
+
+    A file can define one object number more than once: an incremental update appends a new
+    ``6 0 obj``, a reused number carries a new generation, and an object stream can hold a
+    member that a raw definition also names. A reader takes one of them, and readers differ in
+    which. One that follows the cross-reference table takes the entry the last section names.
+    One that rebuilds a damaged table takes a later or higher-generation header. PDFium, MuPDF,
+    and pdfminer.six resolve a reference by object number alone, and pdf.js falls back to an
+    earlier generation, so ``6 0 R`` can reach ``6 1 obj``
+    (docs/verification/2026-11-10-pdf-font-definitions.md). Each definition is therefore one
+    some reader may use, and the caller reads every one.
+
+    The raw definitions kept are the first ``MAX_FONT_DEFINITIONS`` in the file, the last of
+    them replaced by the file's last when there are more. The lookup adds the bodies only it
+    has: its own definitions under each generation a reference names, and object-stream
+    members, which it returns for generation 0. A body is the lookup's window; ``to_unicode``
+    reads a raw definition to its ``endobj``.
+
+    With ``looks``, only the bodies it accepts are returned, ordered for a caller that decodes
+    a few of them. First comes the one a generation-exact lookup reads under each generation a
+    reference names: the first such body under that generation, so the cap never drops what a
+    reader that honours generations shows. The count of those leading bodies is returned with
+    them. Generation 0 is looked up for object-stream members whether or not a reference names
+    it, and is not among them unless one does. The other raw definitions follow in the order
+    of ``_likeliest``, then the other bodies of the lookup.
+    """
+
+    def __init__(self, data: bytes, objects: Lookup, budget: Budget) -> None:
+        self._data = data
+        self._objects = objects
+        self._check = budget.check
+        self._starts: dict[int, list[tuple[int, int]]] = {}
+        self._complete: dict[int, bool] = {}
+        self._generations: dict[int, set[int]] = {}
+        self._named: dict[int, set[int]] = {}
+        self._long: dict[int, re.Match[bytes] | None] = {}
+        self._read = 0
+        # Set by ``_fonts`` when a /Font resource dictionary has definitions that were not read.
+        self.resources_unread = False
+
+    def prime(self, refs: Iterable[tuple[int, int]]) -> None:
+        """Find every header of the referenced object numbers in one pass over the file."""
+        keys = set(refs)
+        for number, generation in keys:
+            self._generations.setdefault(number, {0}).add(generation)
+            self._named.setdefault(number, set()).add(generation)
+        wanted = {number for number, _ in keys if number not in self._starts}
+        if wanted:
+            found: dict[int, list[tuple[int, int]]] = {number: [] for number in wanted}
+            last: dict[int, tuple[int, int]] = {}
+            for count, match in enumerate(_PDF_HEADER.finditer(self._data)):
+                if count % 4096 == 0:
+                    self._check()
+                key = _pdf_header_key(match.group(1), match.group(2))
+                if key is None or key[0] not in found:
+                    continue
+                if len(found[key[0]]) < MAX_FONT_DEFINITIONS:
+                    found[key[0]].append((match.end(), key[1]))
+                else:
+                    last[key[0]] = (match.end(), key[1])
+            for number, slot in found.items():
+                self._complete[number] = number not in last
+                if number in last:
+                    slot[-1:] = [last[number]]
+            self._starts.update(found)
+        _prime(self._objects, keys | {(number, 0) for number, _ in keys})
+
+    def __call__(
+        self, number: int, looks: Callable[[bytes], bool] | None = None
+    ) -> tuple[list[tuple[bytes, int | None]], bool, int]:
+        """Each definition's body with its file offset (None when only the lookup has it),
+        whether that is all of them (False when a cap left some unread), and how many of the
+        leading bodies are the ones a generation-exact lookup reads."""
+        if number not in self._starts:
+            self.prime([(number, 0)])
+        complete = self._complete[number]
+        raw = [
+            (self._data[start : start + _PDF_VALUE_WINDOW], start, generation)
+            for start, generation in self._starts[number]
+        ]
+        seen = {(generation, body) for body, _, generation in raw}
+        extra: list[tuple[bytes, int | None, int]] = []
+        for generation in sorted(self._generations.get(number, {0})):
+            if len(extra) >= MAX_FONT_DEFINITIONS:
+                complete = False
+                break
+            for body in self._objects(number, generation):
+                if (generation, body) not in seen:
+                    seen.add((generation, body))
+                    extra.append((body, None, generation))
+        if looks is None:
+            return [(body, start) for body, start, _ in raw + extra], complete, 0
+        # Past the cap the last raw header is the file's last, later than any body of the lookup.
+        cut = len(raw) if self._complete[number] else len(raw) - 1
+        head = [entry for entry in raw[:cut] if looks(entry[0])]
+        tail = [entry for entry in raw[cut:] if looks(entry[0])]
+        extra = [entry for entry in extra if looks(entry[0])]
+        exact: dict[int, tuple[bytes, int | None, int]] = {}
+        for entry in head + extra + tail:
+            if entry[2] in self._named.get(number, ()):
+                exact.setdefault(entry[2], entry)
+        first = [exact[generation] for generation in sorted(exact)]
+        taken = {id(entry) for entry in first}
+        ordered = first + [entry for entry in _likeliest(head + tail) if id(entry) not in taken]
+        ordered += [entry for entry in extra if id(entry) not in taken]
+        return [(body, start) for body, start, _ in ordered], complete, len(first)
+
+    def exact(self, number: int, generation: int) -> bool:
+        """Whether a font is defined under exactly this generation, as a lookup that compares
+        generations finds it (an object-stream member counts as generation 0)."""
+        return any(_looks_like_a_font(body) for body in self._objects(number, generation))
+
+    def to_unicode(self, start: int) -> tuple[re.Match[bytes] | None, bool]:
+        """The /ToUnicode reference of the raw definition at ``start``, read to its ``endobj``,
+        and whether it was read: False once ``MAX_FONT_OBJECT_BYTES`` are spent.
+
+        Each definition is read once. Objects that do not overlap add up to the file's size at
+        most; headers with no ``endobj`` between them would each be read for 1 MiB.
+        """
+        if start not in self._long:
+            if self._read > MAX_FONT_OBJECT_BYTES:
+                return None, False
+            self._check()
+            end = self._data.find(b"endobj", start, start + _MAX_OBJECT_BYTES)
+            end = end if end >= 0 else min(len(self._data), start + _MAX_OBJECT_BYTES)
+            self._read += end - start
+            self._long[start] = _TO_UNICODE.search(self._data, start, end)
+        return self._long[start], True
+
+
+def _looks_like_a_font(body: bytes) -> bool:
+    return b"/Font" in body or b"/Subtype" in body
+
+
+def _likeliest[T](definitions: Sequence[T]) -> list[T]:
+    """Definitions in file order, reordered by how likely a reader is to use each.
+
+    The last comes first: an ordinary incremental update leaves it in use, and a reader that
+    rebuilds a table keeps the later of two headers. The first is next: a table can still name
+    it, and pdf.js keeps the first header's generation when a later one differs. The ones
+    between follow, latest first. The order only matters past ``MAX_FONT_VARIANTS`` readings,
+    where the rest are reported instead of decoded.
+    """
+    if len(definitions) < 3:
+        return list(reversed(definitions))
+    return [definitions[-1], definitions[0], *reversed(definitions[1:-1])]
+
+
+def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> list[Font]:
+    """The font's readings: one for each definition of the object and of its ToUnicode map,
+    then the second reading of each map that has an overflowing range. The readings of the
+    definition under each generation a reference names, through the last definition of its
+    map, come before the rest, so the cap on readings never drops them.
+
+    Text is decoded through each, because a reader uses one definition and this reader does not
+    know which (see ``_Definitions``). Equal readings count once. A font with more readings
+    than a string is decoded with, or more definitions than are read, also gets an unresolved
+    reading, so text shown in it is reported as unmapped instead of passing unread.
+    """
+    bodies, complete, exact = definitions(number, _looks_like_a_font)
+    kept: list[Font] = []
+    kept_carried: list[Font] = []
+    first: list[Font] = []
+    second: list[Font] = []
+    for index, (body, start) in enumerate(bodies):
+        cmaps.check()
         composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
         mapping = _TO_UNICODE.search(body)
-        if mapping is None and len(body) >= _LOOKUP_WINDOW:
+        if mapping is None and start is not None and len(body) >= _LOOKUP_WINDOW:
             # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
             # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
-            mapping = _TO_UNICODE.search(raw(key))
-        default = (2,) if composite else (1,)
-        parsed = None if mapping is None else cmaps.get(int(mapping.group(1)))
-        if parsed is None:
-            return [Font(composite, None, default)]
-        cmap, lengths, alternate = parsed
-        fonts = [Font(composite, cmap or None, lengths or default)]
-        if alternate:
-            fonts.append(Font(composite, alternate, lengths or default))
-        return fonts
-    return []
+            mapping, read = definitions.to_unicode(start)
+            complete = complete and read
+        mapped, carried, likeliest = cmaps.fonts(
+            None if mapping is None else int(mapping.group(1)), composite
+        )
+        if index < exact:
+            # A definition under a generation a reference names, read through the last
+            # definition of its map: the reading a lookup that takes one of each gives. Its
+            # carried reading follows every such first reading.
+            kept.extend(each for each in likeliest[:1] if each not in kept)
+            kept_carried.extend(each for each in likeliest[1:] if each not in kept_carried)
+        first.extend(each for each in mapped if each not in first)
+        second.extend(each for each in carried if each not in second)
+        if len(first) > MAX_FONT_VARIANTS and index + 1 >= exact:
+            break
+    found = kept + [each for each in kept_carried if each not in kept]
+    found += [each for each in first if each not in found]
+    found += [each for each in second if each not in found]
+    if len(found) > MAX_FONT_VARIANTS or not complete:
+        found = found[:MAX_FONT_VARIANTS]
+        unresolved = Font(True, None, (2,))
+        if unresolved not in found:
+            found.append(unresolved)
+    return found
+
+
+_ParsedCmap = tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]]
 
 
 class _Cmaps:
     """A file's ToUnicode maps by object number, each parsed once however many fonts share it.
 
-    Every token lexed counts toward ``MAX_CMAP_TOKENS`` and every entry written into any map,
-    overwrites included, toward ``MAX_CMAP_TOTAL``. Keys and decoded string storage are
-    charged before allocation. Exhaustion leaves the scan incomplete.
+    A stream number defined more than once has one map per definition, in the order of
+    ``_likeliest``; a reader uses one of them (see ``_Definitions``). Every token lexed counts
+    toward ``MAX_CMAP_TOKENS`` and every entry written into any map, overwrites included,
+    toward ``MAX_CMAP_TOTAL``. Keys and decoded string storage are charged before allocation.
+    Exhaustion leaves the scan incomplete.
     """
 
-    def __init__(self, streams: dict[int, bytes | None], budget: Budget) -> None:
+    def __init__(self, streams: dict[int, list[bytes | None]], budget: Budget) -> None:
         self._streams = streams
         self._budget = budget
-        self._parsed: dict[
-            int, tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]] | None
-        ] = {}
+        self.check = budget.check
+        self._parsed: dict[int, list[_ParsedCmap | None]] = {}
+        self._fonts: dict[tuple[int | None, bool], tuple[list[Font], list[Font], list[Font]]] = {}
         self.written = 0
         self.lexed = 0
         self.expanded = 0
 
-    def get(self, number: int) -> tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]] | None:
+    def get(self, number: int) -> list[_ParsedCmap | None]:
+        """One entry per definition of the stream: its map, or None when it holds no text.
+        A stream the file does not define is one None."""
         if number not in self._parsed:
-            data = self._streams.get(number)
-            self._parsed[number] = None
-            if data:
+            parsed: list[_ParsedCmap | None] = []
+            self._parsed[number] = parsed
+            for data in _likeliest(self._streams.get(number) or [None]):
+                if not data:
+                    if None not in parsed:
+                        parsed.append(None)
+                    continue
                 mapping, lengths, carried = _cmap(data, self._budget, self)
                 if carried:
                     self.spend(len(mapping))
                     carried = {**mapping, **carried}
-                self._parsed[number] = mapping, lengths, carried
+                parsed.append((mapping, lengths, carried))
         return self._parsed[number]
+
+    def fonts(
+        self, number: int | None, composite: bool
+    ) -> tuple[list[Font], list[Font], list[Font]]:
+        """What a font dictionary with this ToUnicode reference can be: a font per definition
+        of the map, the carried reading of each map with an overflowing range, and the one or
+        two readings through the map's last definition alone.
+
+        The answer is kept, so every font dictionary that shares a map gets the same objects
+        and comparing them is cheap. Collection stops once a string could not be decoded
+        through them all; the caller reports that.
+        """
+        key = (number, composite)
+        if key not in self._fonts:
+            default = (2,) if composite else (1,)
+            first: list[Font] = []
+            second: list[Font] = []
+            likeliest: list[Font] = []
+            for index, parsed in enumerate([None] if number is None else self.get(number)):
+                self.check()
+                readings: list[Font] = []
+                if parsed is None:
+                    readings.append(Font(composite, None, default))
+                else:
+                    cmap, lengths, alternate = parsed
+                    readings.append(Font(composite, cmap or None, lengths or default))
+                    if alternate:
+                        readings.append(Font(composite, alternate, lengths or default))
+                if index == 0:
+                    likeliest = readings
+                if readings[0] not in first:
+                    first.append(readings[0])
+                second.extend(each for each in readings[1:] if each not in second)
+                if len(first) > MAX_FONT_VARIANTS:
+                    break
+            self._fonts[key] = first, second, likeliest
+        return self._fonts[key]
 
     def spend(self, entries: int, expanded: int = 0) -> None:
         self._budget.check()
@@ -513,11 +771,6 @@ class _Cmaps:
 
 _LOOKUP_WINDOW = 4000
 _MAX_OBJECT_BYTES = 1 << 20
-
-
-_OBJ_HEADER = re.compile(
-    rb"(?<![0-9])([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+obj\b"
-)
 
 
 def _prime(objects: Lookup, keys: set[tuple[int, int]]) -> None:
@@ -697,6 +950,8 @@ class _Paragraphs:
         # consecutive strings nearly always share it, so a name of 64 fonts is checked once.
         self.checked: list[Font] | None = None
         self.unreadable = False
+        self.missing = False
+        self.limit = MAX_FONT_VARIANTS
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -712,15 +967,22 @@ class _Paragraphs:
         if variants is not self.checked:
             self.checked = variants
             self.unreadable = any(font.unreadable for font in variants)
+            self.missing = not fonts or any(font.missing for font in variants)
+            # The no-font reading is one WinAnsi pass and does not take a font's place.
+            self.limit = MAX_FONT_VARIANTS + (self.missing and bool(fonts))
+        limit = self.limit
         if self.unreadable:
             self.result.unmapped = True
-        elif not fonts and _two_byte(strings):
+        if self.missing and _two_byte(strings):
             # A font the file never resolves, whose codes are two bytes wide: decoding them as
-            # WinAnsi would yield noise, so the text counts as unread.
+            # WinAnsi would yield noise, so the text counts as unread in that reading.
             self.result.unmapped = True
-            return None
+            variants = [font for font in variants if not font.missing]
+            limit = MAX_FONT_VARIANTS
+            if not variants:
+                return None
         if (
-            len(variants) > MAX_FONT_VARIANTS
+            len(variants) > limit
             and not self.result.unmapped
             and any(isinstance(item, bytes) and item for item in strings)
         ):
@@ -730,7 +992,7 @@ class _Paragraphs:
         printed = False
         check = self.budget.check
         used = self.result.decoded_chars
-        for font in variants[:MAX_FONT_VARIANTS]:
+        for font in variants[:limit]:
             parts: list[str] = []
             for item in strings:
                 if isinstance(item, bytes):

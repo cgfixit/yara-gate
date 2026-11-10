@@ -161,8 +161,9 @@ def test_an_overflowing_bfrange_keeps_the_entry_cap(monkeypatch: pytest.MonkeyPa
 def test_an_overflowing_tounicode_font_has_a_second_reading() -> None:
     cmap = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FFFF>\nendbfrange\nendcmap\n"
     body = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R >>"
-    cmaps = pdftext._Cmaps({6: cmap}, Budget(math.inf))
-    fonts = pdftext._font([body], cmaps, lambda key: b"", (5, 0))
+    cmaps = pdftext._Cmaps({6: [cmap]}, Budget(math.inf))
+    data = b"%PDF-1.7\n5 0 obj\n" + body + b"\nendobj\n"
+    fonts = pdftext._font(5, pdftext._Definitions(data, lambda n, g: [], Budget(math.inf)), cmaps)
     assert [pdftext._decode(b"\x00\x41", font, 10, Budget(math.inf).check) for font in fonts] == [
         "@",
         "\U00010040",
@@ -1109,3 +1110,328 @@ def test_a_long_map_value_still_reaches_the_decoded_limit() -> None:
     assert pdftext._decode(b"\x00\x01" * 2, font, 100, lambda: None) == "x" * 100
     with pytest.raises(ContentLimit, match="pdf decoded text exceeds character limit"):
         pdftext._decode(b"\x00\x01" * 3, font, 100, lambda: None)
+
+
+def _defined(
+    *fonts: tuple[int, int], reference: int = 0, member: int | None = None
+) -> pdftext.PdfText:
+    """Read a page whose font, object 6, has one definition per ``(generation, shift)``."""
+    return _read(samples.redefined_font_pdf(PHRASE, fonts, reference=reference, member=member))
+
+
+@pytest.mark.parametrize("fonts", [((0, 0), (0, 3)), ((0, 3), (0, 0))])
+def test_every_definition_of_a_font_object_is_read(fonts: tuple[tuple[int, int], ...]) -> None:
+    # An incremental update appends a second ``6 0 obj``; a reader uses one of the two, so the
+    # phrase is found whichever definition maps it. The first alone used to be read.
+    text = _defined(*fonts)
+    assert _shown(text) and not text.unmapped
+
+
+@pytest.mark.parametrize(
+    ("fonts", "reference"),
+    [(((0, 3), (1, 0)), 0), (((1, 0), (0, 3)), 0), (((1, 3), (0, 0)), 1), (((0, 0),), 1)],
+)
+def test_a_font_definition_under_another_generation_is_read(
+    fonts: tuple[tuple[int, int], ...], reference: int
+) -> None:
+    # PDFium, MuPDF, and pdfminer.six resolve ``6 0 R`` by object number alone, and pdf.js
+    # falls back to an earlier generation, so ``6 1 obj`` is a definition of the same font.
+    text = _defined(*fonts, reference=reference)
+    assert _shown(text) and not text.unmapped
+
+
+@pytest.mark.parametrize(("raw", "member"), [(3, 0), (0, 3)])
+def test_an_object_stream_member_is_read_beside_a_raw_definition(raw: int, member: int) -> None:
+    text = _defined((0, raw), member=member)
+    assert _shown(text) and not text.unmapped
+
+
+@pytest.mark.parametrize("shifts", [(0, 3), (3, 0)])
+def test_every_definition_of_a_tounicode_map_is_read(shifts: tuple[int, int]) -> None:
+    # The same file one object along: the font is defined once and its map stream twice. The
+    # last map alone used to be read.
+    text = _read(samples.redefined_map_pdf(PHRASE, shifts))
+    assert _shown(text) and not text.unmapped
+
+
+def test_equal_definitions_are_one_reading() -> None:
+    text = _defined(*[(0, 0)] * 8)
+    assert _shown(text) and not text.unmapped
+    assert len(text.blocks) == 1
+
+
+def test_definitions_past_the_reading_cap_are_reported_unmapped() -> None:
+    # The last definition is read first, then the earliest, then the ones between. Four
+    # distinct definitions are four readings; with five, the second is not decoded, and the
+    # text counts as unmapped.
+    four = _defined((0, 1), (0, 0), (0, 2), (0, 3))
+    assert _shown(four) and not four.unmapped
+    for fonts in (
+        ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4)),
+        ((0, 1), (0, 2), (0, 3), (0, 4), (0, 0)),
+        ((0, 1), (0, 2), (0, 0), (0, 3), (0, 4)),
+    ):
+        read = _defined(*fonts)
+        assert _shown(read) and read.unmapped
+    second = _defined((0, 1), (0, 0), (0, 2), (0, 3), (0, 4))
+    assert not _shown(second) and second.unmapped
+    maps = _read(samples.redefined_map_pdf(PHRASE, (1, 0, 2, 3, 4)))
+    assert not _shown(maps) and maps.unmapped
+
+
+def test_definitions_past_the_definition_cap_are_reported_unmapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pdftext, "MAX_FONT_DEFINITIONS", 2)
+    assert not _defined((0, 0), (0, 0)).unmapped
+    # A third definition is not read, even though it equals the others here.
+    assert _defined((0, 0), (0, 0), (0, 0)).unmapped
+
+
+def _long_fonts(*tounicode: int) -> bytes:
+    """Font 6 defined once per map number, each with /ToUnicode past the lookup's 4 KB window."""
+    widths = b"/W [" + b"0 [500] " * 600 + b"]"
+    font = (
+        b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H " + widths + b" /ToUnicode %d 0 R >>"
+    )
+    objects = [(10 + shift, 0, samples._stream(_bfchar(shift))) for shift in (0, 3)]
+    objects += [(6, 0, font % number) for number in tounicode]
+    return samples._one_page_pdf(PHRASE, b"6 0 R", objects)
+
+
+@pytest.mark.parametrize("tounicode", [(10, 13), (13, 10)])
+def test_each_long_font_definition_is_read_to_its_own_end(tounicode: tuple[int, int]) -> None:
+    # Both definitions were read through the last one's /ToUnicode, so the first one's map
+    # was never used.
+    text = _read(_long_fonts(*tounicode))
+    assert _shown(text) and not text.unmapped
+
+
+def test_a_long_font_object_past_the_read_allowance_is_reported_unmapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pdftext, "MAX_FONT_OBJECT_BYTES", -1)
+    text = _read(_long_fonts(10))
+    assert not _shown(text) and text.unmapped
+
+
+def test_a_font_named_under_many_generations_is_read_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A reference's generation does not choose a definition, so 400 generations of one object
+    # number are one font: its definitions are read once, not once per reference.
+    data = samples.redefined_font_pdf(PHRASE, [(0, 3), (0, 0)])
+    names = b"".join(b"/G%d 6 %d R " % (index, index) for index in range(400))
+    data = data.replace(b"/F1 6 0 R", b"/F1 6 0 R " + names)
+    read: list[int] = []
+    font = pdftext._font
+
+    def counted(number: int, *rest: object) -> list[pdftext.Font]:
+        read.append(number)
+        return font(number, *rest)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pdftext, "_font", counted)
+    assert _shown(_read(data))
+    assert read == [6]
+
+
+def test_the_loop_over_a_names_fonts_checks_the_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = samples.redefined_font_pdf(PHRASE, [(0, 0)]).replace(
+        b"/F1 6 0 R", b"/F1 6 0 R /F2 4 0 R"
+    )
+    objects = PdfObjects(data, Budget(math.inf))
+    streams = pdf_streams(data, Budget(math.inf), objects.decoded)
+    read: list[int] = []
+    font = pdftext._font
+
+    class Expiring(Budget):
+        def check(self) -> None:
+            if read:
+                raise ContentLimit("timeout")
+
+    def counted(number: int, *rest: object) -> list[pdftext.Font]:
+        read.append(number)
+        return font(number, *rest)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pdftext, "_font", counted)
+    # The deadline passes while the first font is read: the second is not started.
+    with pytest.raises(ContentLimit, match="timeout"):
+        budget = Expiring(math.inf)
+        reader = pdftext._FontReader(data, objects, pdftext._Cmaps({}, Budget(math.inf)), budget)
+        pdftext._fonts(data, streams, objects, reader, budget)
+    assert len(read) == 1
+
+
+def _over_the_cap(reference: bytes, *definitions: tuple[int, int, int]) -> pdftext.PdfText:
+    """Read a page whose /Font is ``reference``, an indirect dictionary, object 20.
+
+    Each ``(count, generation, font)`` adds ``count`` definitions of object 20 that bind /F1
+    to font 5 (a decoy map) or font 6 (the phrase map). A 5 KB object follows each group, so
+    no definition's lookup window reaches the next group's.
+    """
+    objects = [
+        (7, 0, samples._stream(_bfchar(3))),
+        (8, 0, samples._stream(_bfchar(0))),
+        (5, 0, samples._glyph_font(7)),
+        (6, 0, samples._glyph_font(8)),
+    ]
+    for count, generation, font in definitions:
+        objects += [(20, generation, b"<< /F1 %d 0 R >>" % font)] * count
+        objects.append((30, 0, b"<< /Pad (" + b" " * 5000 + b") >>"))
+    data = samples._one_page_pdf(PHRASE, b"9 0 R", objects)
+    return _read(data.replace(b"/Font << /F1 9 0 R >>", b"/Font " + reference))
+
+
+def test_a_resource_dictionary_under_the_referenced_generation_is_read_past_the_cap() -> None:
+    # The generation the page names is still looked up exactly, so a definition the
+    # generation-exact lookup read is not dropped when the object number has more than 64.
+    last = _over_the_cap(b"20 1 R", (64, 0, 5), (1, 1, 6))
+    assert _shown(last) and last.unmapped
+    between = _over_the_cap(b"20 1 R", (64, 0, 5), (1, 1, 6), (1, 0, 5))
+    assert _shown(between) and between.unmapped
+
+
+def test_a_resource_dictionary_past_the_definition_cap_is_reported_unmapped() -> None:
+    # What /F1 means in the unread definitions is not known, so the text counts as unread.
+    within = _over_the_cap(b"20 0 R", (63, 0, 5), (1, 0, 6))
+    assert _shown(within) and not within.unmapped
+    past = _over_the_cap(b"20 0 R", (65, 0, 5), (1, 0, 6), (4, 0, 5))
+    assert not _shown(past) and past.unmapped
+
+
+def test_a_font_under_the_referenced_generation_is_read_past_the_cap() -> None:
+    fonts = [(0, 3)] * 64 + [(1, 0), (0, 3)]
+    text = _defined(*fonts, reference=1)
+    assert _shown(text) and text.unmapped
+
+
+def test_the_last_definition_is_read_past_the_cap() -> None:
+    text = _defined(*[(0, 3)] * 80, (0, 0))
+    assert _shown(text) and text.unmapped
+
+
+@pytest.mark.parametrize("count", [1, 2, 3, 5, 6, 9, 70])
+def test_the_definition_under_the_referenced_generation_is_never_dropped_by_the_cap(
+    count: int,
+) -> None:
+    # A reader that honours generations shows the first definition under the generation the
+    # page names, which is also what the generation-exact lookup read. Whatever the order and
+    # however many definitions there are, that one is decoded, and a phrase any other
+    # definition holds is either decoded or reported.
+    for reference in (0, 1, 2):
+        for at in sorted({*range(min(count, 8)), count - 1}):
+            for pattern in range(5):
+                fonts = [
+                    (
+                        (index * (pattern + 1) + pattern // 2) % 3,
+                        0 if index == at else 1 + index % 8,
+                    )
+                    for index in range(count)
+                ]
+                text = _defined(*fonts, reference=reference)
+                exact = next(
+                    (shift for generation, shift in fonts if generation == reference), None
+                )
+                assert _shown(text) or text.unmapped, (fonts, reference)
+                if exact == 0:
+                    assert _shown(text), (fonts, reference)
+
+
+def _numbered(font: bytes, content: bytes, *objects: tuple[int, int, bytes]) -> pdftext.PdfText:
+    """Read a page that shows ``content`` in ``/F1 <font>``, then ``objects`` as written."""
+    data = samples._one_page_pdf("", font, objects)
+    return _read(
+        data.replace(samples._stream(b"BT /F1 12 Tf 72 700 Td <> Tj ET"), _stream(content))
+    )
+
+
+def _maps(number: int, *shifts: int) -> list[tuple[int, int, bytes]]:
+    return [(number, 0, samples._stream(_bfchar(shift))) for shift in shifts]
+
+
+@pytest.mark.parametrize("fonts_first", [False, True])
+def test_a_map_defined_many_times_does_not_drop_the_referenced_generation(
+    fonts_first: bool,
+) -> None:
+    # ``6 0 obj`` is read too, and its map has four definitions. The page names ``6 1 R``, so
+    # the reading through ``6 1 obj`` comes before all four and is decoded.
+    fonts = [(6, 0, samples._glyph_font(7)), (6, 1, samples._glyph_font(8))]
+    maps = [*_maps(7, 1, 2, 3, 4), *_maps(8, 0)]
+    shown = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+    text = _numbered(b"6 1 R", shown, *(fonts + maps if fonts_first else maps + fonts))
+    assert _shown(text) and text.unmapped
+
+
+_OVERFLOW = _CMAP_HEAD + b"1 beginbfrange\n<0000> <00FF> <FF80>\nendbfrange\nendcmap\n"
+_CARRIED = b"BT /F1 12 Tf 72 700 Td <00C1> Tj ET"
+
+
+def _decoy_map(index: int) -> bytes:
+    return _CMAP_HEAD + b"1 beginbfchar\n<00C1> <%04X>\nendbfchar\nendcmap\n" % (0x58 + index)
+
+
+def test_the_carried_reading_of_a_maps_last_definition_is_kept_under_the_cap() -> None:
+    # One font, its map defined four times, the last with an overflowing range. A lookup that
+    # keeps the last definition reads that map both ways; three decoys before it do not push
+    # its carried reading past the cap.
+    maps = [(7, 0, samples._stream(_decoy_map(index))) for index in range(3)]
+    text = _numbered(
+        b"6 0 R",
+        _CARRIED,
+        *maps,
+        (7, 0, samples._stream(_OVERFLOW)),
+        (6, 0, samples._glyph_font(7)),
+    )
+    assert {"A", "\U00010041"} <= set(text.blocks) and text.unmapped
+
+
+@pytest.mark.parametrize("generations", [(0, 0, 0), (1, 2, 3)])
+def test_the_carried_reading_of_the_referenced_definition_is_kept_under_the_cap(
+    generations: tuple[int, int, int],
+) -> None:
+    # The font the page names maps through an overflowing range; three more definitions of
+    # the object, under the same generation or others, follow it.
+    objects = [(7, 0, samples._stream(_OVERFLOW)), (6, 0, samples._glyph_font(7))]
+    for index, generation in enumerate(generations):
+        objects.append((11 + index, 0, samples._stream(_decoy_map(index))))
+        objects.append((6, generation, samples._glyph_font(11 + index)))
+    text = _numbered(b"6 0 R", _CARRIED, *objects)
+    assert {"A", "\U00010041"} <= set(text.blocks) and text.unmapped
+
+
+def test_a_reference_no_generation_answers_is_also_read_without_a_font() -> None:
+    # pdf.js compares the generation, finds no ``6 1 obj``, and shows the string in a
+    # fallback font. ``6 0 obj`` is what a reader that ignores generations uses.
+    decoy = [(7, 0, samples._stream(_bfchar(3))), (6, 0, samples._glyph_font(7))]
+    shown = b"BT /F1 12 Tf 72 700 Td <" + PHRASE.encode().hex().encode() + b"> Tj ET"
+    assert not _shown(_numbered(b"6 0 R", shown, *decoy))
+    text = _numbered(b"6 1 R", shown, *decoy)
+    assert _shown(text) and not text.unmapped
+    # The no-font reading does not take one of the four places a definition has.
+    phrase = [(8, 0, samples._stream(_bfchar(0))), (6, 2, samples._glyph_font(8))]
+    crowd = [*_maps(7, 1, 2, 3, 4), (6, 0, samples._glyph_font(7))]
+    glyphs = b"BT /F1 12 Tf 72 700 Td " + _glyphs(PHRASE) + b" Tj ET"
+    assert _shown(_numbered(b"6 1 R", glyphs, *_maps(7, 1, 2, 3), *decoy[1:], *phrase))
+    assert _numbered(b"6 1 R", glyphs, *crowd, *phrase).unmapped
+
+
+def test_two_byte_codes_in_a_reference_no_generation_answers_are_reported() -> None:
+    # Read as WinAnsi the codes are noise, so the text counts as unread, as it does for a
+    # name the file never resolves.
+    decoy = [(7, 0, samples._stream(_bfchar(3))), (6, 0, samples._glyph_font(7))]
+    shown = b"BT /F1 12 Tf 72 700 Td <" + b"".join(b"00%02X" % c for c in b"Please") + b"> Tj ET"
+    assert not _numbered(b"6 0 R", shown, *decoy).unmapped
+    assert _numbered(b"6 1 R", shown, *decoy).unmapped
+
+
+def test_a_page_whose_font_no_generation_answers_keeps_the_union() -> None:
+    # The page map is only built for a file whose references resolve, but if a narrowed name
+    # ever has no font under its own generation, the stream is read through every page's.
+    budget = Budget(math.inf)
+    reader = pdftext._FontReader(
+        b"%PDF-1.7\n", lambda number, generation: [], pdftext._Cmaps({}, budget), budget
+    )
+    union = {b"F1": [pdftext.Font(False)]}
+    assert pdftext._PageFonts({b"F1": [(6, 1)]}, reader, union)[b"F1"] is union[b"F1"]
