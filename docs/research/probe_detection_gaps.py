@@ -1417,6 +1417,8 @@ def font_reading_cases() -> list[Case]:
     """
     unmapped = "heuristic_pdf_text_unmapped"
     benign = "Quarterly notes for the spring review."
+    page = b"<< /Type /Page /Parent 2 0 R %s 5 0 R /Resources << /Font << %s >> >> >>"
+    shown = b"/F1 6 0 R"
     return [
         Case(
             "fonts",
@@ -1445,6 +1447,29 @@ def font_reading_cases() -> list[Case]:
             "a.pdf",
             samples.merged_pdf(PHRASE, 5, 5, shared_stream=True),
             f"{unmapped} without {PHRASE_RULE}",
+        ),
+        # A page beside a decoy that draws the same stream with another font. The shown page
+        # is found however its dictionary is spelled, or the file-wide union is read.
+        Case(
+            "fonts",
+            "pdf shown page beside a decoy page",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/Contents", shown)),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page with an escaped /Contents key",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/C#6Fntents", shown)),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page with /F1 listed twice",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/Contents", b"/F1 6 0 R /F1 7 0 R")),
+            PHRASE_RULE,
         ),
         Case(
             "fonts",

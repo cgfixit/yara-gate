@@ -6,7 +6,7 @@ import zlib
 
 import pytest
 
-from yara_gate import pdftext, samples, scanner
+from yara_gate import pdfpages, pdftext, samples, scanner
 from yara_gate.content import Budget, ContentLimit, ContentUnit, PdfObjects, PdfStream, pdf_streams
 from yara_gate.models import Finding, FindingSource, Severity
 
@@ -457,6 +457,138 @@ def test_an_unreadable_object_stream_keeps_the_union() -> None:
     )
     assert not _read(base).unmapped
     assert _read(hidden).unmapped
+
+
+_REAL = b"/Resources << /Font << /F1 6 0 R >> >>"
+_DECOY = b"/Resources << /Font << /F1 7 0 R >> >>"
+
+
+def _beside_a_decoy(real_page: bytes, *extra: bytes) -> pdftext.PdfText:
+    """Object 3 is the page a reader shows; object 4 draws the same stream with a decoy font.
+
+    Font 6 maps the glyphs to the phrase and font 7 does not, so the phrase is read only when
+    stream 5 is read through the real page's font or through every font /F1 means.
+    """
+    return _read(
+        _pdf(
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            real_page,
+            b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _DECOY + b" >>",
+            _stream(_SHOWN),
+            _TYPE0 % 8,
+            _TYPE0 % 9,
+            _stream(_bfchar(0)),
+            _stream(_bfchar(1)),
+            *extra,
+        )
+    )
+
+
+def test_a_page_beside_a_decoy_is_read_through_its_own_font() -> None:
+    plain = _beside_a_decoy(b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _REAL + b" >>")
+    # Both pages draw stream 5, so it is read through both fonts: two readings, one block each.
+    assert _shown(plain) and len(plain.blocks) == 2
+
+
+def test_a_contents_key_written_with_an_escape_is_still_a_page() -> None:
+    escaped = b"<< /Type /Page /Parent 2 0 R /C#6Fntents 5 0 R " + _REAL + b" >>"
+    assert _shown(_beside_a_decoy(escaped))
+
+
+@pytest.mark.parametrize(
+    "resources",
+    [
+        b"/Resources << /Font << /F1 6 0 R /F1 7 0 R >> >>",
+        b"/Resources << /Font << /F1 7 0 R /F1 6 0 R >> >>",
+        _REAL + b" " + _DECOY,
+        _DECOY + b" " + _REAL,
+    ],
+)
+def test_a_repeated_key_keeps_the_union(resources: bytes) -> None:
+    # Readers disagree on which copy of a repeated key they keep.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + resources + b" >>"
+    assert _shown(_beside_a_decoy(page))
+
+
+def test_a_stream_that_is_also_a_glyph_procedure_keeps_the_union() -> None:
+    # Stream 5 is drawn by the decoy page and is also glyph /a of a Type 3 font whose own
+    # resources name the phrase font. A glyph procedure runs with its font's resources.
+    type3 = (
+        b"<< /Type /Font /Subtype /Type3 /CharProcs << /a 5 0 R >> /FirstChar 97 /LastChar 97 "
+        b"/Widths [1] " + _REAL + b" >>"
+    )
+    page = (
+        b"<< /Type /Page /Parent 2 0 R /Contents 12 0 R /Resources << /Font << /T3 10 0 R >> >> >>"
+    )
+    assert _shown(_beside_a_decoy(page, type3, b"<< >>", _stream(b"BT /T3 12 Tf (a) Tj ET")))
+    # The same file with /CharProcs behind a reference that does not resolve.
+    lost = type3.replace(b"<< /a 5 0 R >>", b"77 0 R")
+    assert _shown(_beside_a_decoy(page, lost, b"<< >>", _stream(b"BT /T3 12 Tf (a) Tj ET")))
+
+
+def test_one_object_number_under_two_generations_keeps_the_union() -> None:
+    # /Resources 10 0 R: object 10 generation 0 names the decoy, generation 1 the phrase font.
+    page = b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources 10 0 R >>"
+    data = _pdf(
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        page,
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R " + _DECOY + b" >>",
+        _stream(_SHOWN),
+        _TYPE0 % 8,
+        _TYPE0 % 9,
+        _stream(_bfchar(0)),
+        _stream(_bfchar(1)),
+        b"<< /Font << /F1 7 0 R >> >>",
+    ).replace(b"trailer", b"10 1 obj\n<< /Font << /F1 6 0 R >> >>\nendobj\ntrailer")
+    assert _shown(_read(data))
+
+
+@pytest.mark.parametrize(
+    "odd",
+    [
+        b"99 0 obj\n<< /Note (9 9 obj) >>\nendobj\n",  # header bytes in a string
+        b"% 9 9 obj\n",  # in a comment
+        b"99 0obj\n<< >>\nendobj\n",  # a header only a lexer reads
+        b"99 +0 obj\n<< >>\nendobj\n",
+        b"99 0 % gen\nobj\n<< >>\nendobj\n",
+        b"99 0 obj\n<< /Kid 9 9 obj >>\nendobj\n",  # an object opened inside another
+        b"99 0 obj\n<< >>\n",  # never closed
+        b"endobj\n",  # closed twice
+        b"99 0 obj\n<< /Length 3 >>\nstream\nabcdef\nendstream\nendobj\n",  # length does not land
+        b"99 0 obj\n<< /Note (unclosed >>\nendobj\n",
+    ],
+)
+def test_a_layout_that_is_not_a_plain_run_of_objects_keeps_the_union(odd: bytes) -> None:
+    # Five pages, five fonts under /F1: read per page nothing is past the cap. Anything a
+    # reader could take for an object the layout pass did not find puts every stream back on
+    # the file-wide union, where five fonts are past the cap.
+    assert not _read(_five_fonts_last()).unmapped
+    assert _read(_five_fonts_last().replace(b"trailer", odd + b"trailer")).unmapped
+
+
+def test_page_content_named_outside_every_object_keeps_the_union() -> None:
+    trailer = b"<< /Root 1 0 R /Contents 4 0 R >>"
+    assert _read(_five_fonts_last().replace(b"<< /Root 1 0 R >>", trailer)).unmapped
+
+
+def test_the_page_map_has_object_and_byte_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in (("MAX_PAGE_OBJECTS", 4), ("MAX_PAGE_BYTES", 300), ("MAX_OBJECTS", 10)):
+        with monkeypatch.context() as patch:
+            patch.setattr(pdfpages, name, value)
+            assert _read(_five_fonts_last()).unmapped, name
+    assert not _read(_five_fonts_last()).unmapped
+
+
+def test_the_page_tree_is_not_read_when_no_name_means_two_fonts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def never(*args: object) -> None:
+        raise AssertionError("page tree read")
+
+    monkeypatch.setattr(pdftext, "page_font_refs", never)
+    assert _shown(_read(samples.merged_pdf(PHRASE, 1, 1)))
 
 
 def test_a_stray_byte_in_a_hex_string_is_skipped() -> None:

@@ -131,28 +131,39 @@ def _tokens(
         yield token, position
         if token == b"stream":
             # Stream bodies are scanned by the existing stream readers, never as annotations.
-            dictionary = _pdf_stream_dict(data, start)
-            length = dictionary.get(b"/Length") if dictionary else None
-            if isinstance(length, tuple) and objects is not None:
-                bodies = objects(*length)
-                length = bodies[0].split(maxsplit=1)[0] if len(bodies) == 1 and bodies[0] else None
-            if isinstance(length, bytes) and length.isdigit() and len(length) < 10:
-                begin = position + (2 if data[position : position + 2] == b"\r\n" else 1)
-                end_at = begin + int(length)
-                ending = re.match(rb"[\r\n]*endstream\b", data[end_at : end_at + 32])
-                # The landed keyword is the boundary only when it is the first
-                # ``endstream`` in the span. An earlier one can hide an object that
-                # a reader stopping there would see. An object header alone does not:
-                # with no earlier keyword, those bytes are inside the body.
-                if ending and not _earlier_endstream(data, begin, end_at, budget):
-                    if spans is not None:
-                        # Include the newline and endstream the length landed on.
-                        # An offset on those bytes is not an object a reader seeks.
-                        spans.append((begin, end_at + ending.end()))
-                    position = end_at + ending.end()
-                    continue
-            # Missing, unaligned, or ambiguous. Resuming the lexer is not safe.
-            raise ContentLimit("pdf annotation stream length unaligned")
+            span = stream_span(data, start, position, budget, objects)
+            if span is None:
+                # Missing, unaligned, or ambiguous. Resuming the lexer is not safe.
+                raise ContentLimit("pdf annotation stream length unaligned")
+            if spans is not None:
+                spans.append(span)
+            position = span[1]
+
+
+def stream_span(
+    data: bytes, start: int, position: int, budget: Budget, objects: PdfObjects | None
+) -> tuple[int, int] | None:
+    """The body of the stream whose keyword is ``data[start:position]``, through the
+    ``endstream`` its ``/Length`` lands on; None when the length is missing or does not land.
+
+    The landed keyword is the boundary only when it is the first ``endstream`` in the span.
+    An earlier one can hide an object that a reader stopping there would see. An object
+    header alone does not: with no earlier keyword, those bytes are inside the body. The span
+    includes the newline and ``endstream`` the length landed on: an offset on those bytes is
+    not an object a reader seeks.
+    """
+    dictionary = _pdf_stream_dict(data, start)
+    length = dictionary.get(b"/Length") if dictionary else None
+    if isinstance(length, tuple) and objects is not None:
+        bodies = objects(*length)
+        length = bodies[0].split(maxsplit=1)[0] if len(bodies) == 1 and bodies[0] else None
+    if isinstance(length, bytes) and length.isdigit() and len(length) < 10:
+        begin = position + (2 if data[position : position + 2] == b"\r\n" else 1)
+        end_at = begin + int(length)
+        ending = re.match(rb"[\r\n]*endstream\b", data[end_at : end_at + 32])
+        if ending and not _earlier_endstream(data, begin, end_at, budget):
+            return begin, end_at + ending.end()
+    return None
 
 
 def _annotation(value: dict[bytes, PdfValue]) -> bool:

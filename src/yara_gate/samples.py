@@ -361,6 +361,35 @@ def merged_pdf(text: str, fonts: int, reading: int, *, shared_stream: bool = Fal
     )
 
 
+def decoy_page_pdf(text: str, page: bytes) -> bytes:
+    """A shown page beside a decoy that draws the same content stream with another font.
+
+    ``page`` is the body of object 3, the only page in /Kids; it draws stream 5, and font 6
+    maps the glyph ids back to ``text``. Object 4 is a page no reader shows: it draws stream 5
+    with font 7, which maps each id one character along. ``text`` is read only when stream 5
+    is read through the shown page's font or through every font /F1 means.
+    """
+    content = b"BT /F1 12 Tf 72 700 Td " + _glyph_ids(text) + b" Tj ET"
+    font = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode %d 0 R >>"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        page,
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        font % 8,
+        font % 9,
+        *(
+            b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream"
+            for cmap in (_to_unicode_cmap(text), _to_unicode_cmap(text, 1))
+        ),
+    )
+    out = bytearray(b"%PDF-1.7\n")
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
 def hex_glyph_line_pdf(payload: bytes = b"") -> bytes:
     """A line of text as one 588-digit hex string of glyph ids; ``payload`` shown after it."""
     return _hex_pdf(_HEX_LINE, b"(" + payload + b") Tj " if payload else b"")

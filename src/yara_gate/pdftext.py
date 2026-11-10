@@ -173,15 +173,17 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     fonts = _fonts(data, streams, objects, reader, budget)
     # Each page content stream reads a name through its own page's fonts; a stream or name the
     # page tree does not settle keeps the file-wide union
-    # (docs/verification/2026-11-10-pdf-page-fonts.md).
-    pages = page_font_refs(
-        data,
-        getattr(objects, "stream_members", None),
-        bool(getattr(objects, "opaque", True)),
-        {stream.number for stream in streams if stream.number is not None},
-        budget,
-        MAX_FONT_REFERENCES,
-    )
+    # (docs/verification/2026-11-10-pdf-page-fonts.md). Where no name means two fonts there is
+    # nothing to tell apart, so the page tree is not read at all.
+    pages = None
+    if any(len(found) > 1 for found in fonts.values()):
+        pages = page_font_refs(
+            data,
+            objects,
+            {stream.number for stream in streams if stream.number is not None},
+            budget,
+            MAX_FONT_REFERENCES,
+        )
     if pages:
         _prime(
             objects,
