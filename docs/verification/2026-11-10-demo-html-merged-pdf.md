@@ -61,6 +61,10 @@ listed, and **Run every pair** reported "63 of 63 results match the reviewed exp
 under each of `agent-ingest`, `agent-document`, and `default` (the broken-rule case is not in
 the workbench). No console errors.
 
+Workbench screenshots were recaptured at `9879a2a` under the same conditions; the
+[screenshot gallery](../../screenshots/README.md#workbench-with-31-pairs--november-10-2026)
+holds their hashes and provenance.
+
 ## Page changes
 
 - `web-demo/app.mjs` gains a plain-language name for `html-hidden-text`, which the page
