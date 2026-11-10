@@ -592,7 +592,14 @@ def test_page_content_named_outside_every_object_keeps_the_union() -> None:
 
 
 def test_the_page_map_has_object_and_byte_limits(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name, value in (("MAX_PAGE_OBJECTS", 4), ("MAX_PAGE_BYTES", 300), ("MAX_OBJECTS", 10)):
+    limits = (
+        ("MAX_PAGE_OBJECTS", 4),
+        ("MAX_PAGE_BYTES", 300),
+        ("MAX_OBJECTS", 10),
+        ("MAX_MERGES", 4),
+        ("MAX_DEPTH", 1),
+    )
+    for name, value in limits:
         with monkeypatch.context() as patch:
             patch.setattr(pdfpages, name, value)
             assert _read(_five_fonts_last()).unmapped, name

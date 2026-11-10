@@ -80,7 +80,7 @@ file-wide union, which is the behavior before this change.
 | A stream with `/N` and `/First` but no `/Type /ObjStm`; an object stream that could not be read or is not written plainly | the whole file |
 | A cross-reference entry that does not agree with the headers, or a table that cannot be read | the whole file |
 | A `/Contents` array that cannot be followed, or that something else references | the whole file |
-| More than 1,000,000 tokens, 100,000 objects, 20,000 objects with `/Contents`, 2 MiB of objects parsed, or 2,000 streams; an object number past 8,388,607 | the whole file |
+| More than 1,000,000 tokens, 100,000 objects, 20,000 objects with `/Contents`, 2 MiB of objects parsed, 250,000 font names given to streams over all pages, or 2,000 streams; an object number past 8,388,607 | the whole file |
 | A reference to the stream from anywhere but a parsed page's `/Contents` | that stream |
 | A page that draws it has no `/Resources` of its own, or its `/Resources` or `/Font` does not resolve | that stream |
 | A name one of the stream's pages does not list, or lists as anything but a reference to one font dictionary; a font carried in from an earlier stream | that name |
@@ -253,7 +253,14 @@ means two fonts, so the map is attempted:
 | an object stream of 60,000 small members | 2.07 s | 2.26 s | built |
 
 The map alone takes at most 0.8 s on these and on seven more inputs built to slow the token
-pass (digit runs, long whitespace, sign and dot soup, names, 15,000 page members). On the 121
+pass (digit runs, long whitespace, sign and dot soup, names, 15,000 page members).
+
+A review of `6e38a64` found that many pages which each draw many streams and name many
+fonts cost pages times streams times names. On 386 pages of 900 streams and 300 names in
+4 MiB the text reader took 21 s. The names given to streams are now counted, and past
+250,000 the map is given up: the same file takes 2.8 s, of which the map is 1.0 s. The same
+review's memory finding no longer holds: the pass keeps at most 100,000 objects, 31 MB at
+its peak on 8 MiB of tiny objects. On the 121
 real files the pass takes at most 0.33 s and the whole map 0.56 s.
 
 The real merges that are now read to the end take longer than on main, where they stopped

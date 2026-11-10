@@ -40,7 +40,8 @@ objects the map reads. ``page_font_refs`` returns None, for the whole file, when
   does not hold exactly one well-formed value. A reader may take the objects in the order
   they are written instead of at the header's offsets;
 - the file has more than ``MAX_OBJECTS`` objects or ``MAX_TOKENS`` tokens, more than
-  ``MAX_PAGE_OBJECTS`` objects hold ``/Contents``, or more than ``MAX_PAGE_BYTES`` are parsed;
+  ``MAX_PAGE_OBJECTS`` objects hold ``/Contents``, more than ``MAX_PAGE_BYTES`` are parsed, or
+  the pages give their streams more than ``MAX_MERGES`` font names between them;
 - an array a page's ``/Contents`` goes through cannot be followed, or is referenced from
   anywhere else.
 
@@ -167,11 +168,14 @@ MAX_PAGE_OBJECTS = 20_000
 MAX_PAGE_BYTES = 2 * 1024 * 1024
 # Objects in the file. The annotation reader holds a file past this as incomplete.
 MAX_OBJECTS = 100_000
+# Font names merged into streams, over all pages. A merge of a thousand pages with ten fonts
+# each makes ten thousand; many pages that each draw many streams and name many fonts would
+# otherwise cost pages times streams times names.
+MAX_MERGES = 250_000
 # Arrays inside arrays, and arrays behind references, followed from one /Contents.
 MAX_CONTENT_DEPTH = 32
 # Definitions of one object number, raw and in object streams, before it counts as unresolved.
 MAX_DEFINITIONS = 16
-_CHECK_EVERY = 256
 
 
 @dataclass(slots=True)
@@ -606,10 +610,10 @@ def page_font_refs(
     followed = _Followed()
     # Merged in place: a stream many pages draw is updated per page, never copied.
     mapped: dict[int, dict[bytes, set[Ref]] | None] = {}
+    merges = 0
     for count, value in enumerate(_pages([*layout.objects, *members], index)):
-        if count % _CHECK_EVERY == 0:
-            budget.check()
-        if count >= MAX_PAGE_OBJECTS or index.exhausted:
+        budget.check()
+        if count >= MAX_PAGE_OBJECTS or index.exhausted or merges > MAX_MERGES:
             return None
         if not isinstance(value, dict):
             continue
@@ -623,8 +627,14 @@ def page_font_refs(
             if named is None:
                 mapped[number] = None
             elif number not in mapped:
+                merges += len(named)
+                if merges > MAX_MERGES:
+                    return None
                 mapped[number] = {name: {ref} for name, ref in named.items()}
             elif (merged := mapped[number]) is not None:
+                merges += len(merged)
+                if merges > MAX_MERGES:
+                    return None
                 # A name is settled for the stream only when every page that draws it lists
                 # the name: a page that does not reads it from somewhere else.
                 for name in [name for name in merged if name not in named]:
