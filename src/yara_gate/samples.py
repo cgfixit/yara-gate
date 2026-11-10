@@ -280,11 +280,12 @@ def _glyph_pdf(runs: tuple[tuple[str, str], ...]) -> bytes:
     return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
-def shared_name_pdf(pages: list[tuple[bytes, bytes]]) -> bytes:
+def shared_name_pdf(pages: list[tuple[bytes, bytes]], *, shared_stream: bool = False) -> bytes:
     """One page per ``(content, ToUnicode map)``; each page's /F1 is its own Type0 font.
 
     A merged PDF looks like this: every source document keeps its own /F1, so the name means
-    one font per source. Fonts are numbered in page order.
+    one font per source. Fonts are numbered in page order. With ``shared_stream`` every page
+    draws the first page's content stream, so that stream can mean any page's /F1.
     """
     kids = b" ".join(b"%d 0 R" % (3 + 4 * index) for index in range(len(pages)))
     objects = [
@@ -295,7 +296,8 @@ def shared_name_pdf(pages: list[tuple[bytes, bytes]]) -> bytes:
         stream, font, tounicode = (4 + 4 * index + offset for offset in range(3))
         objects += [
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-            b"/Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>" % (font, stream),
+            b"/Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>"
+            % (font, 4 if shared_stream else stream),
             b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
             b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAA%c+Arial /Encoding /Identity-H "
             b"/ToUnicode %d 0 R >>" % (65 + index % 26, tounicode),
@@ -344,19 +346,50 @@ def _hex_pdf(text: str, after: bytes = b"", extra: bytes = b"") -> bytes:
     return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
-def merged_pdf(text: str, fonts: int, reading: int) -> bytes:
+def merged_pdf(text: str, fonts: int, reading: int, *, shared_stream: bool = False) -> bytes:
     """``fonts`` pages that all show ``text`` as glyph ids in /F1, each through its own font.
 
     Only font number ``reading`` (from 1) maps the ids back to ``text``; font k maps each
-    one k printable characters along, so no two fonts are equal.
+    one k printable characters along, so no two fonts are equal. ``shared_stream`` is passed
+    to ``shared_name_pdf``.
     """
     content = b"BT /F1 12 Tf 72 700 Td " + _glyph_ids(text) + b" Tj ET"
     return shared_name_pdf(
         [
             (content, _to_unicode_cmap(text, 0 if page == reading else page))
             for page in range(1, fonts + 1)
-        ]
+        ],
+        shared_stream=shared_stream,
     )
+
+
+def decoy_page_pdf(text: str, page: bytes) -> bytes:
+    """A shown page beside a decoy that draws the same content stream with another font.
+
+    ``page`` is the body of object 3, the only page in /Kids; it draws stream 5, and font 6
+    maps the glyph ids back to ``text``. Object 4 is a page no reader shows: it draws stream 5
+    with font 7, which maps each id one character along. ``text`` is read only when stream 5
+    is read through the shown page's font or through every font /F1 means.
+    """
+    content = b"BT /F1 12 Tf 72 700 Td " + _glyph_ids(text) + b" Tj ET"
+    font = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode %d 0 R >>"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        page,
+        b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        font % 8,
+        font % 9,
+        *(
+            b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream"
+            for cmap in (_to_unicode_cmap(text), _to_unicode_cmap(text, 1))
+        ),
+    )
+    out = bytearray(b"%PDF-1.7\n")
+    for number, body in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
 def hex_glyph_line_pdf(payload: bytes = b"") -> bytes:

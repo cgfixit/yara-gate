@@ -29,7 +29,7 @@ import binascii
 import math
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 
@@ -48,6 +48,7 @@ from yara_gate.heuristics import (
     MAX_PDF_DEFINITIONS,
     _pdf_header_key,
 )
+from yara_gate.pdfpages import page_font_refs
 
 MAX_TEXT_BLOCKS = 20_000
 MAX_BLOCK_CHARS = 64 * 1024
@@ -189,12 +190,24 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     for stream in streams:
         if stream.number is not None:
             by_number.setdefault(stream.number, []).append(stream.text)
-    definitions = _Definitions(data, objects, budget)
-    fonts = _fonts(data, streams, definitions, _Cmaps(by_number, budget), budget)
-    if definitions.resources_unread:
+    reader = _FontReader(data, objects, _Cmaps(by_number, budget), budget)
+    fonts = _fonts(data, streams, objects, reader, budget)
+    # Each page content stream reads a name through its own page's fonts; a stream or name the
+    # page tree does not settle keeps the file-wide union
+    # (docs/verification/2026-11-10-pdf-page-fonts.md). Where no name means two fonts there is
+    # nothing to tell apart, so the page tree is not read at all.
+    pages = None
+    if any(len(found) > 1 for found in fonts.values()):
+        pages = page_font_refs(data, objects, streams, budget, MAX_FONT_REFERENCES)
+    if pages:
+        reader.prime(
+            {ref for names in pages.values() if names for refs in names.values() for ref in refs},
+        )
+    if reader.definitions.resources_unread:
         # A /Font resource dictionary has more definitions than were read, so what a name
         # means in the unread ones is not known: no text in the file counts as decoded.
         result.unmapped = True
+    by_page: dict[int, Mapping[bytes, list[Font]]] = {}
     box = _page_box([data, *(stream.inflated for stream in streams if stream.inflated)], budget)
     tokens = 0
     # Keep the existing font approximation in file order. Visibility needs stronger evidence
@@ -216,7 +229,17 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
         ):
             continue
         page = _page_content(data, stream)
-        tokens = _blocks(body, fonts, result, budget, tokens, state, box if page else None, page)
+        if state.name is not None:
+            # A font selected in an earlier stream is carried in by its name and read through
+            # every font the name means: which stream a reader continues from is not known.
+            state.fonts = fonts.get(state.name, [])
+        selected: Mapping[bytes, list[Font]] = fonts
+        names = pages.get(number) if page and pages and number is not None else None
+        if names and number is not None:
+            if number not in by_page:
+                by_page[number] = _PageFonts(names, reader, fonts)
+            selected = by_page[number]
+        tokens = _blocks(body, selected, result, budget, tokens, state, box if page else None, page)
         if linked and page:
             previous = number
     return result
@@ -322,11 +345,12 @@ def _page_content(data: bytes, stream: PdfStream) -> bool:
 def _fonts(
     data: bytes,
     streams: list[PdfStream],
-    definitions: _Definitions,
-    cmaps: _Cmaps,
+    objects: Lookup,
+    reader: _FontReader,
     budget: Budget,
 ) -> dict[bytes, list[Font]]:
     """Resource name to the distinct fonts it names anywhere in the file (pages may differ)."""
+    definitions = reader.definitions
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
     references: dict[bytes, set[tuple[int, int]]] = {}
@@ -356,25 +380,10 @@ def _fonts(
                 slot.add(key)
             elif key not in slot:
                 truncated.add(name)
-    # By object number: a reference's generation does not choose among the definitions.
-    cache: dict[int, list[Font]] = {}
     fonts: dict[bytes, list[Font]] = {}
-    definitions.prime(key for refs in references.values() for key in refs)
+    reader.prime(key for refs in references.values() for key in refs)
     for name, refs in references.items():
-        found: list[Font] = []
-        alternates: list[Font] = []
-        for number in sorted({number for number, _ in refs}):
-            budget.check()
-            if number not in cache:
-                cache[number] = _font(number, definitions, cmaps)
-            readings = cache[number]
-            if readings and readings[0] not in found:
-                found.append(readings[0])
-            alternates.extend(each for each in readings[1:] if each not in alternates)
-        # A further reading of one font (another definition of it, or a carried map) comes
-        # after every font's first, so it never displaces a font the name also means within
-        # MAX_FONT_VARIANTS.
-        found.extend(each for each in alternates if each not in found)
+        found = reader.readings(refs)
         unresolved = Font(True, None, (2,))
         if name in truncated and unresolved not in found:
             # The fonts past the reference cap are never resolved: a composite font with no
@@ -383,6 +392,71 @@ def _fonts(
         if found:
             fonts[name] = found
     return fonts
+
+
+class _PageFonts(Mapping[bytes, list[Font]]):
+    """One content stream's fonts: its pages' fonts for the names they list, resolved when a
+    ``Tf`` selects one, and the file-wide union for every other name."""
+
+    def __init__(
+        self,
+        names: Mapping[bytes, Iterable[tuple[int, int]]],
+        reader: _FontReader,
+        union: Mapping[bytes, list[Font]],
+    ) -> None:
+        self._names = names
+        self._reader = reader
+        self._union = union
+        self._resolved: dict[bytes, list[Font]] = {}
+
+    def __getitem__(self, name: bytes) -> list[Font]:
+        if name in self._names:
+            if name not in self._resolved:
+                self._resolved[name] = self._reader.readings(self._names[name])
+            if self._resolved[name]:
+                return self._resolved[name]
+        return self._union[name]
+
+    def __iter__(self) -> Iterator[bytes]:
+        yield from self._names
+        yield from (name for name in self._union if name not in self._names)
+
+    def __len__(self) -> int:
+        return len(self._names) + sum(1 for name in self._union if name not in self._names)
+
+
+class _FontReader:
+    """Fonts by object number, each read once whichever names and pages share it."""
+
+    def __init__(self, data: bytes, objects: Lookup, cmaps: _Cmaps, budget: Budget) -> None:
+        self.definitions = _Definitions(data, objects, budget)
+        self._cmaps = cmaps
+        self._check = budget.check
+        # By object number: a reference's generation does not choose among the definitions.
+        self._cache: dict[int, list[Font]] = {}
+
+    def prime(self, refs: Iterable[tuple[int, int]]) -> None:
+        self.definitions.prime(refs)
+
+    def readings(self, refs: Iterable[tuple[int, int]]) -> list[Font]:
+        """The distinct readings of ``refs``: every font's first, then any further ones.
+
+        A further reading of one font (another definition of it, or a carried map) comes
+        after every font's first, so it never displaces a font the name also means within
+        MAX_FONT_VARIANTS.
+        """
+        found: list[Font] = []
+        alternates: list[Font] = []
+        for number in sorted({number for number, _ in refs}):
+            self._check()
+            if number not in self._cache:
+                self._cache[number] = _font(number, self.definitions, self._cmaps)
+            readings = self._cache[number]
+            if readings and readings[0] not in found:
+                found.append(readings[0])
+            alternates.extend(each for each in readings[1:] if each not in alternates)
+        found.extend(each for each in alternates if each not in found)
+        return found
 
 
 class _Definitions:
@@ -940,6 +1014,8 @@ class _TextState:
     """The selected font and size, render mode, and fill colour, which outlive one stream."""
 
     fonts: list[Font] = field(default_factory=list)
+    # The resource name ``fonts`` was selected by, so the next stream can look it up again.
+    name: bytes | None = None
     size: float = 0.0
     selected: bool = False
     render: int = 0
@@ -1061,7 +1137,7 @@ def _off_page(device: Matrix, size: float, strings: list[object], box: Box) -> b
 
 def _blocks(
     body: bytes,
-    fonts: dict[bytes, list[Font]],
+    fonts: Mapping[bytes, list[Font]],
     result: PdfText,
     budget: Budget,
     tokens: int,
@@ -1081,6 +1157,7 @@ def _blocks(
     """
     operands: list[object] = []
     current: list[Font] = state.fonts
+    name = state.name
     size = state.size
     sized = state.selected
     render = state.render
@@ -1093,7 +1170,9 @@ def _blocks(
     clip: Box | None = None
     clipping = False
     # q saves, and Q restores, the whole graphics state: the CTM, the clip, and the text state.
-    saved: list[tuple[Matrix, list[Font], float, float, int, bool, bool, Box | None]] = []
+    saved: list[
+        tuple[Matrix, list[Font], bytes | None, float, float, int, bool, bool, Box | None]
+    ] = []
     line = _IDENTITY_MATRIX
     paragraphs = _Paragraphs(result, budget)
     hidden = _Paragraphs(result, budget, hidden=True)
@@ -1172,12 +1251,12 @@ def _blocks(
             hidden.end_block()
         elif op == b"q":
             if len(saved) < 64:
-                saved.append((ctm, current, size, leading, render, white, white_stroke, clip))
+                saved.append((ctm, current, name, size, leading, render, white, white_stroke, clip))
         elif op == b"Q":
             if saved:
-                ctm, current, size, leading, render, white, white_stroke, clip = saved.pop()
+                ctm, current, name, size, leading, render, white, white_stroke, clip = saved.pop()
                 state.fonts, state.size, state.render, state.white = current, size, render, white
-                state.white_stroke = white_stroke
+                state.name, state.white_stroke = name, white_stroke
         elif op in (b"m", b"l") and (values := numbers(2)) is not None:
             extend(values)
         elif op == b"c" and (values := numbers(6)) is not None:
@@ -1207,10 +1286,11 @@ def _blocks(
         elif op == b"cm" and (values := numbers(6)) is not None:
             ctm = _multiply((values[0], values[1], values[2], values[3], values[4], values[5]), ctm)
         elif op == b"Tf" and len(operands) >= 2 and isinstance(operands[-2], _Name):
-            current = fonts.get(operands[-2].value, [])
+            name = operands[-2].value
+            current = fonts.get(name, [])
             size = operands[-1] if isinstance(operands[-1], float) else size
             sized = True
-            state.fonts, state.size, state.selected = current, size, True
+            state.fonts, state.name, state.size, state.selected = current, name, size, True
         elif op == b"Tr" and (values := numbers(1)) is not None:
             render = int(values[0]) if values[0].is_integer() else 0
             state.render = render

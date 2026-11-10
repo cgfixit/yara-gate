@@ -1409,13 +1409,18 @@ def reader_cases() -> list[Case]:
 
 
 def font_reading_cases() -> list[Case]:
-    """A resource name meaning more fonts than the reader decodes each string with (four).
+    """A resource name meaning a different font on each page, as merged PDFs keep every /F1.
 
-    Merged PDFs keep every source's /F1, so a name can mean one font per source. Text only a
-    fifth font decodes is not read; the scan reports it as unmapped text instead of clean
-    (docs/verification/2026-11-07-pdf-font-readings.md). Benign merges pay the same note.
+    Each page's content stream is read through its own page's fonts
+    (docs/verification/2026-11-10-pdf-page-fonts.md), so a phrase only the fifth page's font
+    decodes is found and a benign merge is clean. A stream that every page draws can mean every
+    page's /F1; past four readings it is still reported as unmapped text
+    (docs/verification/2026-11-07-pdf-font-readings.md).
     """
     unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Quarterly notes for the spring review."
+    page = b"<< /Type /Page /Parent 2 0 R %s 5 0 R /Resources << /Font << %s >> >> >>"
+    shown = b"/F1 6 0 R"
     return [
         Case(
             "fonts",
@@ -1429,28 +1434,105 @@ def font_reading_cases() -> list[Case]:
             "pdf name with five fonts, phrase in fifth",
             "a.pdf",
             samples.merged_pdf(PHRASE, 5, 5),
-            f"{unmapped} without {PHRASE_RULE}",
+            f"{PHRASE_RULE} without {unmapped}",
         ),
         Case(
             "fonts",
             "pdf name with five fonts, phrase in first",
             "a.pdf",
             samples.merged_pdf(PHRASE, 5, 1),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "fonts",
+            "pdf one stream on five pages, phrase in fifth",
+            "a.pdf",
+            samples.merged_pdf(PHRASE, 5, 5, shared_stream=True),
+            f"{unmapped} without {PHRASE_RULE}",
+        ),
+        # A page beside a decoy that draws the same stream with another font. The shown page
+        # is found however its dictionary is spelled, or the file-wide union is read. A stream
+        # something other than a page's /Contents references is read through the union too.
+        Case(
+            "fonts",
+            "pdf shown page beside a decoy page",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/Contents", shown)),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page with an escaped /Contents key",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/C#6Fntents", shown)),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page with /F1 listed twice",
+            "a.pdf",
+            samples.decoy_page_pdf(PHRASE, page % (b"/Contents", b"/F1 6 0 R /F1 7 0 R")),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf decoy's stream is also an appearance",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 6 0 R >> >> /Annots "
+                b"[<< /Type /Annot /Subtype /Stamp /Rect [0 0 9 9] /AP << /N 5 0 R >> >>] >>",
+            ),
+            PHRASE_RULE,
+        ),
+        # Spellings of the shown page that real readers follow and a strict parser does not
+        # (docs/research/probe_pdf_reader_agreement.py): the page map is not built for the file.
+        Case(
+            "fonts",
+            "pdf shown page, reference written 5.0 0 R",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Contents 5.0 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> >>",
+            ),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page, a string where a key belongs",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 (x R /Contents 5 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> ()) >>",
+            ),
+            PHRASE_RULE,
+        ),
+        Case(
+            "fonts",
+            "pdf shown page, a second /Resources#00 key",
+            "a.pdf",
+            samples.decoy_page_pdf(
+                PHRASE,
+                b"<< /Type /Page /Parent 2 0 R /Contents 5 0 R /Resources "
+                b"<< /Font << /F1 6 0 R >> >> /Resources#00 << /Font << /F1 7 0 R >> >> >>",
+            ),
             PHRASE_RULE,
         ),
         Case(
             "fonts",
             "pdf merged name, four fonts (benign)",
             "a.pdf",
-            samples.merged_pdf("Quarterly notes for the spring review.", 4, 1),
+            samples.merged_pdf(benign, 4, 1),
             "clean",
         ),
         Case(
             "fonts",
             "pdf merged name, five fonts (benign)",
             "a.pdf",
-            samples.merged_pdf("Quarterly notes for the spring review.", 5, 1),
-            unmapped,
+            samples.merged_pdf(benign, 5, 1),
+            "clean",
         ),
     ]
 
