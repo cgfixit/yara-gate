@@ -193,6 +193,9 @@ Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
 replays saved results for 58 inert examples, each of 28 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
+A link can open one example under one policy, for instance the
+[poisoned tool list under `agent-ingest`](https://cgfixit.github.io/yara-gate/#mcp_tool_poisoned/agent-ingest);
+the workbench accepts the same example id after `#` in its own address.
 
 ```bash
 uv run yara-gate demo --port 8765 --rules ~/Projects/yara-gate/rules

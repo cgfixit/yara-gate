@@ -25,7 +25,12 @@ encoded, split across formatting, disguised spelling, hidden from the reader, in
 an archive, file structure, or a plain pattern. The page derives that label from the
 attack's recorded `agent-ingest` findings (the view and source of each finding that
 the original bytes did not already produce); nothing is labelled by hand. Selecting
-either member sets the two side by side under the chosen policy. Each finding says which check or rule caught it, in which archive
+either member sets the two side by side under the chosen policy. Opening an
+example or changing the policy puts both in the address (`#mcp_tool_poisoned/agent-ingest`),
+so a link can point at one recording; the README's intake table links each channel
+to its example this way. The page looks the two parts up in the recordings and
+ignores anything else, and a test fails if a documented link names an example the
+catalog no longer has. Each finding says which check or rule caught it, in which archive
 member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
 folded for look-alikes and digits). A static section summarizes the

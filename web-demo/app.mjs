@@ -298,6 +298,7 @@ function policyButtons() {
     button.addEventListener('click', () => {
       state.policy = policy;
       render();
+      writeAddress();
     });
   }
 }
@@ -315,9 +316,24 @@ function twinColumn(parent, item, policy, isSelected) {
     : 'No findings', 'help');
 }
 
+// The address names the open example and policy (#example/policy), so a link can point at one
+// recording. Both parts are looked up in the recordings; anything else is ignored.
+function readAddress() {
+  const [id, policy] = location.hash.slice(1).split('/');
+  if (!byId.has(id)) return false;
+  state.example = id;
+  if (policies.includes(policy)) state.policy = policy;
+  return true;
+}
+function writeAddress() {
+  const address = '#' + state.example + '/' + state.policy;
+  if (location.hash !== address) history.replaceState(null, '', address);
+}
+
 function select(id, scroll) {
   state.example = id;
   render();
+  writeAddress();
   if (scroll) $('result-title').focus();
 }
 
@@ -371,7 +387,7 @@ function render() {
     ? ''
     : result.verdict === 'incomplete'
       ? 'No completed scan. Do not read an empty findings list as clean.'
-      : 'Nothing matched, though the scanner read ' + (Object.keys(result.views_scanned).length ? Object.keys(result.views_scanned).map(viewName).join('; ') : 'the original bytes') + '. This does not certify other content.';
+      : 'Nothing matched, though the scanner read the original bytes' + Object.keys(result.views_scanned).map((view) => '; ' + viewName(view)).join('') + '. This does not certify other content.';
   const twin = example.pair ? byId.get(example.pair) : null;
   $('twin').hidden = !twin;
   if (twin) {
@@ -421,5 +437,10 @@ definitions($('recording-source'), [
   ['Scanner source revision', recording.source_revision],
   ['Coverage scope', 'Bundled local rules only; no vendor packs. The deploy pipeline re-records from its source revision; verdicts and findings must match the reviewed baseline, or the deploy stops.']
 ]);
+const linked = readAddress();
 render();
 $('workbench').hidden = false;
+if (linked) $('result-title').focus();
+addEventListener('hashchange', () => {
+  if (readAddress()) render();
+});

@@ -378,7 +378,9 @@
       }
       const pairs = catalog.cases.filter((item) => item.kind === "detection").length;
       $("sample-count").textContent = pairs + " attack and benign-twin pairs, plus " + catalog.cases.filter((item) => item.kind === "failure").length + " fail-closed case. The public replay records the same catalog.";
-      $("sample").value = presets[0][0];
+      // An address such as http://127.0.0.1:8765/#mcp_tool_poisoned opens on that example.
+      const linked = location.hash.slice(1);
+      $("sample").value = byId.has(linked) ? linked : presets[0][0];
     }
     function describeSample() {
       const item = selected();

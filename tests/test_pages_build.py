@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -109,3 +110,19 @@ def test_pages_rejects_a_paired_failure(builder, tmp_path: Path) -> None:
     _edit_recordings(builder, lambda cases: cases["incomplete"].update(pair="plain"))
     with pytest.raises(ValueError, match="Every detection and control is paired"):
         builder.build(tmp_path / "site")
+
+
+def test_documented_demo_links_name_recorded_examples() -> None:
+    """A link such as .../yara-gate/#lookalike/agent-ingest must open a recording that exists."""
+    recorded = {
+        case["id"]
+        for case in json.loads((ROOT / "web-demo" / "recordings.json").read_text())["cases"]
+    }
+    link = re.compile(r"cgfixit\.github\.io/yara-gate/#([A-Za-z0-9_]+)(?:/([a-z-]+))?")
+    found = []
+    for path in [ROOT / "README.md", ROOT / "user-guide.md", *sorted((ROOT / "docs").glob("*.md"))]:
+        found += link.findall(path.read_text(encoding="utf-8"))
+    assert len(found) >= 8
+    for example, policy in found:
+        assert example in recorded, example
+        assert policy in {"", "default", "agent-ingest", "agent-document"}, policy
