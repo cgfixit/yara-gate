@@ -1,7 +1,8 @@
 """Decode annotation Contents text strings, separately from page glyph strings."""
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from contextlib import suppress
 
 from yara_gate.content import (
     MAX_EXTRACT_BYTES,
@@ -237,6 +238,21 @@ _STREAM_HEADER = re.compile(
     rb"(?=[\x00\t\n\f\r ()<>\[\]{}/%]|<<)"
 )
 _HEADER_BOUND = b"\x00\t\n\f\r ()<>[]{}/%"
+# A stream length kept in another object, ``/Length N G R``, as the lexer reads those four
+# tokens: any letter of the name as a ``#xx`` escape, whitespace or comments between the
+# tokens, and digit runs of any length. A comment that holds a ``/`` is left out, so nothing
+# after the name's own ``/`` can hold one: every attempt starts at a ``/``, the gaps and
+# digit runs are possessive, and so no byte is read by two attempts.
+_GAP = rb"(?:[\x00\t\n\f\r ]|%[^\r\n/]*)++"
+_INDIRECT_LENGTH = re.compile(
+    rb"/(?:L|#4[Cc])(?:e|#65)(?:n|#6[Ee])(?:g|#67)(?:t|#74)(?:h|#68)"
+    + _GAP
+    + rb"([0-9]++)"
+    + _GAP
+    + rb"([0-9]++)"
+    + _GAP
+    + rb"R(?![^\x00\t\n\f\r /<>\[\]()%{}])"
+)
 
 
 def _reject_headers_inside(data: bytes, spans: list[tuple[int, int]]) -> None:
@@ -269,6 +285,39 @@ def _reject_xref_inside(
             raise ContentLimit("pdf xref malformed")
 
 
+def prime_stream_lengths(
+    sources: Iterable[bytes | memoryview], objects: PdfObjects, budget: Budget
+) -> None:
+    """Find the object behind every indirect stream length in ``sources`` in one pass.
+
+    ``_tokens`` resolves ``/Length N G R`` to skip a stream body, and a lookup that was not
+    primed searches the whole file for its one object, so a file whose writer keeps every
+    length in its own object (qpdf's QDF mode does) costs a pass per stream. Priming only
+    records where the definitions are: each lookup returns what it would have returned.
+
+    This reads bytes, not tokens, so it also takes a match inside a string or a stream body,
+    which costs one unused entry. Past ``MAX_TEXT_PIECES`` objects it stops, and the lengths
+    after that are searched for one at a time as before.
+    """
+    written: set[tuple[bytes, ...]] = set()
+    for source in sources:
+        for count, match in enumerate(_INDIRECT_LENGTH.finditer(source)):
+            if count % 4096 == 0:
+                budget.check()
+            written.add(match.groups())
+            if len(written) >= MAX_TEXT_PIECES:
+                break
+        if len(written) >= MAX_TEXT_PIECES:
+            break
+    keys: set[tuple[int, int]] = set()
+    while written:
+        number, generation = written.pop()
+        # A digit run too long for int() does not parse as a dictionary value either.
+        with suppress(ValueError):
+            keys.add((int(number), int(generation)))
+    objects.prime(keys)
+
+
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
     if not data.startswith(b"%PDF"):
         return []
@@ -283,9 +332,16 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
                 values.append(entry[b"/Contents"])
 
     spans: list[tuple[int, int]] = []
+    prime_stream_lengths([data], objects, budget)
     collect(_dictionaries(data, objects, budget, strings, spans))
     _reject_headers_inside(data, spans)
     _reject_xref_inside(data, spans, budget, objects.decoded)
+    # A member may hold a stream of its own, and its length may be indirect as well. Only
+    # inflated members are read here: they are disjoint and counted by the budget. A member
+    # of an unfiltered object stream is a view of the file, which the pass above has read,
+    # and overlapping declarations can make those views many times the file.
+    inflated = (source for _, source in objects.stream_members() if source.obj is not data)
+    prime_stream_lengths(inflated, objects, budget)
     for number, source in objects.stream_members():
         body = bytes(source)
         strings.setdefault((number, 0), []).append(next(_tokens(body, budget), (b"", 0))[0])

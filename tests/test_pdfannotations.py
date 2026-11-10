@@ -5,10 +5,12 @@ import json
 import time
 import zipfile
 import zlib
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
 
+from yara_gate import pdfannotations
 from yara_gate.content import MAX_EXTRACT_BYTES, Budget, ContentLimit, PdfObjects, pdf_streams
 from yara_gate.heuristics import PdfRawObjects
 from yara_gate.pdfannotations import _text, pdf_annotation_texts
@@ -396,6 +398,118 @@ def test_unreadable_annotation_is_incomplete(body: bytes, reason: str, rules_cop
     result = scan_bytes(pdf(body), name="a.pdf", rules_dir=rules_copy)
     assert result.verdict.value == "incomplete"
     assert reason in (result.incomplete_reason or "")
+
+
+def _file_passes(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """One entry per search of the whole file for object definitions."""
+    passes: list[int] = []
+    prime = PdfRawObjects.prime
+
+    def counted(self: PdfRawObjects, keys: Iterable[tuple[int, int]]) -> None:
+        wanted = list(keys)
+        if any(key not in self._offsets for key in wanted):
+            passes.append(len(wanted))
+        prime(self, wanted)
+
+    monkeypatch.setattr(PdfRawObjects, "prime", counted)
+    return passes
+
+
+def _indirect_streams(reference: bytes, length: bytes = b"6") -> bytes:
+    """Twelve streams that each keep their length in the next object, then an annotation."""
+    out = b"%PDF-1.7\n"
+    for number in range(10, 34, 2):
+        out += b"%d 0 obj\n<< " % number + reference % (number + 1)
+        out += b" >>\nstream\nBT ET\nendstream\nendobj\n"
+        out += b"%d 0 obj\n" % (number + 1) + length + b"\nendobj\n"
+    return out + b"1 0 obj\n" + annot(encoded(PHRASE, "hex")) + b"\nendobj\n%%EOF\n"
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        b"/Length %d 0 R",
+        b"/#4cen#67t#68 %d 0 R",
+        b"/Length%%c\n%d%%c\r0%%c\nR",
+        b"/Length\x00000%d\x0c00\x00R",
+        b"/DecodeParms << /Length 7 0 R >> /Length 8 0 R /Length %d 0 R",
+    ],
+)
+def test_indirect_stream_lengths_are_found_in_one_pass(
+    reference: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = _indirect_streams(reference)
+    passes = _file_passes(monkeypatch)
+    assert read(data) == [PHRASE]
+    assert len(passes) == 1
+    # The same file with each length looked up on its own: same text, a pass per stream.
+    del passes[:]
+    monkeypatch.setattr(pdfannotations, "prime_stream_lengths", lambda *_: None)
+    assert read(data) == [PHRASE]
+    assert len(passes) == 12
+
+
+@pytest.mark.parametrize(
+    ("length", "expect"),
+    [
+        (b"6", [PHRASE]),
+        (b"3", "pdf annotation stream length unaligned"),
+        (b"(6)", "pdf annotation stream length unaligned"),
+    ],
+)
+def test_primed_stream_lengths_answer_as_unprimed(
+    length: bytes, expect: list[str] | str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def outcome(data: bytes) -> list[str] | str:
+        try:
+            return read(data)
+        except ContentLimit as exc:
+            return str(exc)
+
+    own = _indirect_streams(b"/Length %d 0 R", length)
+    shared = _indirect_streams(b"/Length 11 0 R %% %d\n", length)
+    cases = [
+        own,
+        shared,
+        # No object holds the length, two hold it, and 65 hold it.
+        shared.replace(b"11 0 obj", b"98 0 obj"),
+        shared.replace(b"13 0 obj", b"11 0 obj"),
+        shared + b"11 0 obj 6 endobj\n" * 64,
+    ]
+    primed = [outcome(data) for data in cases]
+    assert primed[:2] == [expect, expect]
+    assert primed[2:] == ["pdf annotation stream length unaligned"] * 3
+    monkeypatch.setattr(pdfannotations, "prime_stream_lengths", lambda *_: None)
+    assert [outcome(data) for data in cases] == primed
+
+
+def test_member_stream_lengths_are_found_in_one_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stream inside an inflated object-stream member, its length in another member."""
+    members = [
+        b"%d 0 obj << /Length %d 0 R >> stream\nBT ET\nendstream" % (number, number + 1)
+        for number in range(10, 34, 2)
+    ]
+    members += [b"6"] * 12 + [annot(encoded(PHRASE, "hex"))]
+    numbers = [*range(10, 34, 2), *range(11, 35, 2), 1]
+    offsets, at = [], 0
+    for member in members:
+        offsets.append(at)
+        at += len(member) + 1
+    header = b" ".join(b"%d %d" % pair for pair in zip(numbers, offsets, strict=True)) + b"\n"
+    body = zlib.compress(header + b"\n".join(members) + b"\n")
+    data = pdf(
+        b"<< /Type /ObjStm /N %d /First %d /Length %d /Filter /FlateDecode >>\nstream\n"
+        % (len(members), len(header), len(body))
+        + body
+        + b"\nendstream"
+    )
+    passes = _file_passes(monkeypatch)
+    assert read(data) == [PHRASE]
+    assert len(passes) == 1
+    del passes[:]
+    monkeypatch.setattr(pdfannotations, "prime_stream_lengths", lambda *_: None)
+    assert read(data) == [PHRASE]
+    assert len(passes) == 12
 
 
 def test_deadline_and_expansion_limits() -> None:

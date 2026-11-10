@@ -118,6 +118,24 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(stream + b"BT /F1 12 Tf ", b"3 Tr (a) Tj 0 Tr (b) Tj "),
         "pdf text blocks exceed 20000",
     )
+    # Content streams that each keep their /Length in the next object, as qpdf's QDF mode
+    # writes them, then one annotation. The annotation reader skips every body by its length,
+    # and looking each length up with its own pass over the file was a 30 s timeout
+    # (2026-11-10-pdf-indirect-lengths.md). The annotation's text is read only when every
+    # length before it landed.
+    body = b"BT ET".ljust(3999) + b"\n"
+    note = b"9 0 obj<</Type/Annot/Subtype/Text/Rect[0 0 9 9]/Contents(Reviewed.)>>endobj\n%%EOF\n"
+    lengths = bytearray(b"%PDF-1.7\n")
+    number = 10
+    while len(lengths) + len(body) + len(note) + 128 <= SIZE:
+        lengths += b"%d 0 obj<</Length %d 0 R>>stream\n" % (number, number + 1) + body
+        lengths += b"endstream endobj\n%d 0 obj %d endobj\n" % (number + 1, len(body))
+        number += 2
+    yield (
+        "pdf-indirect-lengths.pdf",
+        bytes(lengths) + b" " * (SIZE - len(lengths) - len(note)) + note,
+        None,
+    )
     # Two content streams, so the /Contents continuation index runs over every match: once a
     # rescanned 4 KiB window per match (a 30 s timeout here), and once a page object apiece.
     # Each /Length is the body `BT ET \\n` and lands on that stream's own endstream.
@@ -295,6 +313,7 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
         "pdf-font-readings.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
+        "pdf-indirect-lengths.pdf": "pdf-annotation",
         "pdf-white-areas.pdf": "pdf-hidden-text",
     }.get(name)
     if view is not None and not result.views_scanned.get(view):

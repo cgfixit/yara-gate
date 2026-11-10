@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 29 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 30 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -25,7 +25,9 @@ The ZIP end-record, comment-piece, and RTF group-depth floods must return their
 explicit incomplete cap reasons. Two added PDF annotation floods require the
 100,000-token dictionary cap and 1 MiB encoded-string cap. Four synthetic PDFs
 use a `/Length` that lands on `endstream`, so the tripwire measures page-text
-cost. Three ToUnicode CMap PDFs cover 200 fonts that each have their own
+cost. One PDF of 1,029 content streams keeps each `/Length` in the next object, as
+qpdf's QDF mode writes them, and must read the annotation that follows them
+([record](2026-11-10-pdf-indirect-lengths.md)). Three ToUnicode CMap PDFs cover 200 fonts that each have their own
 65,536-entry map, which must end `pdf cmap entries exceed 524288`; one map of
 unclosed `beginbfchar` markers; and one `bfrange` section of `[` tokens, which
 must end `pdf cmap tokens exceed 1572864`
