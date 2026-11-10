@@ -50,10 +50,20 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert len(plain["ruleset_sha256"]) == 64
         assert plain["scan_seconds"] >= 0
 
-        status, advisory = _post(port, {"sample": "base64"})
+        status, advisory = _post(port, {"sample": "advisory"})
         assert status == 200
         assert advisory["verdict"] == "advisory"
         assert advisory["exit_code"] == 0
+
+        # The broken-rule failure needs its own rules tree, so the workbench does not offer it.
+        for unknown in ("incomplete", "no_such_sample", "../plain"):
+            status, refused = _post(port, {"sample": unknown})
+            assert (status, refused) == (400, {"error": "rejected"})
+
+        status, unread = _post(port, {"sample": "unreadable_7z", "policy": "agent-document"})
+        assert status == 200
+        assert (unread["verdict"], unread["exit_code"]) == ("incomplete", 2)
+        assert unread["incomplete_reason"] == "unsupported archive"
 
         status, blocked = _post(port, {"sample": "pe_pdf"})
         assert status == 200
@@ -92,6 +102,26 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert "Local scan workbench" in html
         assert 'value="agent-ingest" selected' in html
         assert "__NONCE__" not in html
+        assert "__CATALOG__" not in html
+        embedded = html.split('id="catalog">', 1)[1].split("</script>", 1)[0]
+        assert "<" not in embedded
+        catalog = json.loads(embedded)
+        assert catalog["policies"] == ["default", "agent-ingest", "agent-document"]
+        listed = {case["id"]: case for case in catalog["cases"]}
+        assert "incomplete" not in listed
+        assert set(listed["plain"]) == {
+            "id",
+            "kind",
+            "channel",
+            "pair",
+            "title",
+            "description",
+            "name",
+            "expected",
+        }
+        assert all(
+            listed[case["pair"]]["pair"] == case["id"] for case in listed.values() if case["pair"]
+        )
         assert "nonce-" in policy
         assert page.headers["X-Content-Type-Options"] == "nosniff"
         assert page.headers["Cache-Control"] == "no-store"
@@ -324,6 +354,8 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             "agent_prompt_injection_phrases",
             {"text-folded"},
         ),
+        "html_svg_script": ("html_svg_icon_benign", "doc_svg_active", {"raw", "text-folded"}),
+        "mcp_tool_poisoned": ("mcp_tool_benign", "heuristic_mcp_hidden_instruction", {"raw"}),
     }
     try:
         for attack, (benign, rule_id, views) in expected.items():
@@ -340,3 +372,35 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     finally:
         server.shutdown()
         thread.join()
+
+
+def test_demo_catalog_matches_its_reviewed_expectations(rules_copy: Path) -> None:
+    """Every case the workbench offers scans to its expected verdict, and no twin has a finding."""
+    from yara_gate.demo import DemoRequest, scan_request
+    from yara_gate.showcase import BY_ID, CASES, POLICIES
+
+    hidden = {
+        "word_hidden_override": "ooxml-hidden-text",
+        "pdf_invisible_override": "pdf-hidden-text",
+    }
+    assert len(CASES) == len(BY_ID)
+    for case in CASES:
+        if case.pair is not None:
+            twin = BY_ID[case.pair]
+            assert twin.pair == case.id
+            assert {case.kind, twin.kind} == {"detection", "control"}
+            assert case.channel == twin.channel
+        if case.broken:
+            continue
+        for policy, verdict in zip(POLICIES, case.expected, strict=True):
+            view = scan_request(
+                DemoRequest(sample=case.id, policy=policy),  # type: ignore[arg-type]
+                rules_dir=rules_copy,
+            )
+            assert view.verdict == verdict, (case.id, policy)
+            if case.kind == "control":
+                assert view.findings == [], (case.id, policy)
+            if case.id in hidden:
+                assert ("heuristic_hidden_text", hidden[case.id]) in {
+                    (finding.rule_id, finding.view) for finding in view.findings
+                }
