@@ -1955,6 +1955,18 @@ def _pdf_stream_bytes(
     return inflated if decoded is None else decoded
 
 
+@dataclass(frozen=True)
+class PdfObjectStream:
+    """One readable object stream: the offset of its ``stream`` keyword, the object numbers
+    and offsets its header lists, in that order, its /First, and its decoded bytes."""
+
+    offset: int
+    numbers: list[int]
+    offsets: list[int]
+    first: int
+    data: bytes | memoryview
+
+
 class PdfObjects:
     """Every definition of a PDF object in one file: raw ``N G obj`` and object-stream members.
 
@@ -1983,6 +1995,8 @@ class PdfObjects:
         self.decoded: dict[int, bytes | None] = {}
         # True when an object stream could not be read, so an object may be defined in it.
         self._opaque = False
+        # Each readable object stream, in file order.
+        self._tables: list[PdfObjectStream] = []
 
     def prime(self, keys: Iterable[tuple[int, int]]) -> None:
         self._raw.prime(keys)
@@ -2003,6 +2017,21 @@ class PdfObjects:
         if len(found) > MAX_PDF_DEFINITIONS:
             return [b""]
         return found
+
+    @property
+    def opaque(self) -> bool:
+        """True when an object stream could not be read, so an object may be defined in it."""
+        if self._members is None:
+            self._members = self._index()
+        return self._opaque
+
+    def object_streams(self) -> list[PdfObjectStream]:
+        """Each readable object stream with its header as written. A cross-reference entry
+        names a member by its position in the header, and a reader may take the objects in
+        the order they are written instead of at the header's offsets."""
+        if self._members is None:
+            self._members = self._index()
+        return self._tables
 
     def stream_members(self) -> Iterator[tuple[int, memoryview]]:
         """Bounded, already budgeted object-stream members; no raw-header lookalikes."""
@@ -2033,6 +2062,7 @@ class PdfObjects:
                 self._opaque = True
                 continue
             decoded, numbers, offsets, origin = member
+            self._tables.append(PdfObjectStream(start.start(), numbers, offsets, origin, decoded))
             self._streams.append(decoded)
             stream = len(self._streams) - 1
             bounds = [*offsets[1:], len(decoded) - origin]

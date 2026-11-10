@@ -64,6 +64,7 @@ the November 10 spellings.
 | [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 and B3 to B6 are the backlog's open candidates |
 | [probe_html_hidden_browser.py](probe_html_hidden_browser.py), [html_hidden_oracle.js](html_hidden_oracle.js) | No; needs Node, Playwright, and Chromium | Compares the HTML hidden-text reader with what a browser draws, text by text. Run it after any change to `htmlhidden.py`, and when a browser changes its parser. See the [record](../verification/2026-11-10-hidden-html-text.md) |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
+| [probe_pdf_reader_agreement.py](probe_pdf_reader_agreement.py) | No; it needs PDF readers that are not in the locked environment | Runs pypdf, pdfminer.six, PDFium, MuPDF, poppler, and pdf.js on fixtures and on random spellings of a page beside a decoy page, and fails when a reader shows text the per-page font map narrowed away. Run it before changing what `pdfpages.py` accepts |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |
 

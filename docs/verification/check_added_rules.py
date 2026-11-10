@@ -462,14 +462,15 @@ def _overflow_cmap_cases() -> list[tuple[str, bytes, str | None]]:
 
 
 def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
-    """A resource name that means more fonts than the text reader decodes each string with.
+    """A resource name that means a different font on each page, as in a merged file.
 
-    Each page's /F1 is its own font, as in a merged file, and only the last maps the glyph
-    ids to the phrase. Past four readings the rest are not decoded, so the scan reports
-    ``heuristic_pdf_text_unmapped``; before docs/verification/2026-11-07-pdf-font-readings.md
-    five fonts scanned clean. An overflowing bfrange gives its font a second, carried reading
-    ordered after every font's first, so two decoys and that font are four readings, and
-    three decoys and that font are five.
+    Only the last page's /F1 maps the glyph ids to the phrase. Each page's content stream is
+    read through its own page's fonts (docs/verification/2026-11-10-pdf-page-fonts.md), so the
+    phrase is found however many pages there are; before that, past four fonts the scan
+    reported ``heuristic_pdf_text_unmapped`` (docs/verification/2026-11-07-pdf-font-readings.md).
+    A content stream that every page draws can mean every page's /F1, so there the four-reading
+    cap still applies and is still reported. An overflowing bfrange gives its font a second,
+    carried reading ordered after every font's first.
     """
     hit = "agent_override_imperative"
     unmapped = "heuristic_pdf_text_unmapped"
@@ -482,21 +483,25 @@ def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
     codes = [_bold(char) - 0xFFFF if char.isalpha() else ord(char) + 0x100 for char in _PDF_PHRASE]
     bold = b"BT /F1 12 Tf 72 700 Td " + _codes(codes) + b" Tj ET"
 
-    def behind(decoys: int) -> bytes:
+    def behind(decoys: int, *, shared: bool = False) -> bytes:
         # A decoy range ends below 0xFFFF - page, so it never overflows into a carried reading.
         decoy = _CMAP_HEAD + b"1 beginbfrange\n<0000> <FEFF> <%04X>\nendbfrange\nendcmap\n"
         return shared_name_pdf(
-            [(bold, decoy % page) for page in range(1, decoys + 1)] + [(bold, carried)]
+            [(bold, decoy % page) for page in range(1, decoys + 1)] + [(bold, carried)],
+            shared_stream=shared,
         )
 
     return [
         ("fonts-4-last.pdf", merged_pdf(_PDF_PHRASE, 4, 4), hit),
-        ("fonts-5-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5), unmapped),
-        ("fonts-8-last.pdf", merged_pdf(_PDF_PHRASE, 8, 8), unmapped),
+        ("fonts-5-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5), hit),
+        ("fonts-8-last.pdf", merged_pdf(_PDF_PHRASE, 8, 8), hit),
         ("fonts-4-plain.pdf", merged_pdf(benign, 4, 4), None),
-        ("fonts-5-plain.pdf", merged_pdf(benign, 5, 5), unmapped),
+        ("fonts-5-plain.pdf", merged_pdf(benign, 5, 5), None),
         ("fonts-2-carried.pdf", behind(2), hit),
-        ("fonts-3-carried.pdf", behind(3), unmapped),
+        ("fonts-3-carried.pdf", behind(3), hit),
+        ("fonts-4-shared-last.pdf", merged_pdf(_PDF_PHRASE, 4, 4, shared_stream=True), hit),
+        ("fonts-5-shared-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5, shared_stream=True), unmapped),
+        ("fonts-3-shared-carried.pdf", behind(3, shared=True), unmapped),
     ]
 
 
