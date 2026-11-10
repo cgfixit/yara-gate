@@ -156,6 +156,8 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 | Reverse shells through `telnet` with a FIFO, awk `/inet/tcp`, zsh `ztcp`, Node `net` with `child_process` | Verified clean | Rare beside the forms now matched; the Node form is a program, not a one-liner |
 | macOS stealer cluster: any two of `dscl . -authonly`, a hidden-answer dialog, `find-generic-password`, `ditto -c -k` with a POST, `killall Terminal`, `xattr -c` | Sourced, read: Unit 42, June 2026 | Each is matched alone as advisory. A two-of-six block needs MDM enrolment scripts as twins; vendor rules exclude MDM agents for these |
 | Override phrases in BOM-less UTF-16 with no ASCII | Verified clean for Korean; the same holds for Chinese, Japanese, and Russian | `decoded-utf16` needs a byte order mark or ASCII-heavy text. Decide once for all scripts |
+| PDF form XObjects read through their own `/Resources` | [2026-11-10-pdf-page-fonts.md](../verification/2026-11-10-pdf-page-fonts.md): page content streams now read each font name through their page's fonts; a form keeps the file-wide union, so a form drawn on several pages can still pass the four-reading cap (reported as `heuristic_pdf_text_unmapped`) | The form's dictionary sits before its stream and inherits nothing; needs the same fail-safe fallbacks and a tripwire input |
+| PDF fonts selected through an ExtGState `/Font` entry (`gs`) | Assessment: ISO 32000-1 8.4.5 allows it; no generator sample examined uses it | The `gs` operator is not followed for fonts today; needs a generator sample before a reader change |
 | Generate the phrase rules from a word list and one separator grammar | [#171](https://github.com/cgfixit/yara-gate/issues/171), deferred there | The line-break separator is written out 64 times in `agent_prompt_injection_phrases`, up from 32. Worth doing before the next phrase is added |
 
 ## Considered and not planned
@@ -176,6 +178,8 @@ overturn.
 | `api key`, `password`, `token` in `agent_secret_transfer_request` | "Copy your API key, then send a request to https://..." is every API quick-start |
 | "Do not tell the user" beside "use the X tool" | Agent system prompts say it. The tool-call tokens the rule requires are narrower on purpose |
 | Event-log clearing and firewall disabling | Maintenance and lab scripts run both; the public detection rules list administrators as the collision |
+| A PDF font name past four readings as an incomplete reason | Every benign merge of 5–7 sources would exit 2 under every policy, and `measure_precision.py --fail-over` fails on any benign incomplete ([2026-11-07-pdf-font-readings.md](../verification/2026-11-07-pdf-font-readings.md)). Per-page resolution ([2026-11-10-pdf-page-fonts.md](../verification/2026-11-10-pdf-page-fonts.md)) removed the case for merges |
+| Raise `MAX_FONT_VARIANTS` above four | Each reading emits its own text blocks, so benign merges reach the 20,000-block limit sooner, and every string costs one decode per reading |
 | `MpCmdRun -DownloadFile`, `Start-BitsTransfer`, `hh.exe http` | Downloaders with no run step. A download alone is not reported for `curl` either |
 | HTML `<img src="https://...{{...}}">` as an exfiltration template | Web and mail templates are written this way. The Markdown forms are matched |
 | A literal key appended to `authorized_keys` | An administrator's own key looks the same. A downloaded key is matched |

@@ -98,6 +98,12 @@ whole file. A decoy page that draws the same stream only adds its fonts to the u
   new: `pdf-page-fonts.pdf` (small pages that all draw one stream, each naming new fonts),
   5.94 s, and `pdf-page-parents.pdf` (pages under a 31-level `/Parent` chain), 4.38 s. The
   slowest was `pdf-page-objects.pdf` at 6.06 s.
+- `docs/verification/sweep_rule_changes.py` was not run. It scans with two rule trees and one
+  scanner, and this change is to the scanner, not the rules. The code-level equivalent is
+  the main-versus-branch run over the 28 generated PDFs above. This machine has three PDFs
+  outside the scratch sample.
+- `docs/research/detection-backlog.md` records the form XObject and ExtGState boundaries as
+  candidates. It records an incomplete reason, and a higher reading cap, as declined.
 - `check_rule_pairs.py` (115 rules), `lint_rules.py` (85 rules), `ruff check .`,
   `ruff format --check .`, and `mypy --strict src` (22 files): clean.
 
