@@ -248,6 +248,18 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         prefix + b" " * (SIZE - len(prefix) - len(suffix)) + suffix,
         None,
     )
+    # One font object defined until the file is full, over a ToUnicode map defined 1,900
+    # times: 64 definitions of the font are read, each map definition is parsed once, and the
+    # definitions past the cap make the text unmapped (2026-11-10-pdf-font-definitions.md).
+    body = b"begincmap 1 beginbfchar <0048> <0048> endbfchar endcmap"
+    page = (
+        b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources<</Font<</F1 6 0 R>>>>"
+        b"/Contents 4 0 R>>endobj\n4 0 obj<</Length 39>>stream\n"
+        b"BT /F1 12 Tf 72 700 Td <00480069> Tj ET\nendstream endobj\n"
+    )
+    maps = b"7 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body)
+    font = b"6 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode 7 0 R>>endobj\n"
+    yield "pdf-font-definitions.pdf", _filled(page + maps * 1900, font), None
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
@@ -369,6 +381,7 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "markdown-lines.md": "markdown-text",
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
+        "pdf-font-definitions.pdf": "pdf-text",
         "pdf-font-readings.pdf": "pdf-text",
         "pdf-page-fonts.pdf": "pdf-text",
         "pdf-page-references.pdf": "pdf-text",

@@ -42,7 +42,9 @@ class XrefUse(Enum):
 
 @dataclass(frozen=True)
 class XrefEntry:
-    """One object in one xref section. Only ``resolved`` carries a file offset."""
+    """One object in one xref section. ``resolved`` carries a file offset. ``compressed``
+    carries the object stream's number as ``offset`` and the member's position in it as
+    ``generation``."""
 
     use: XrefUse
     offset: int = 0
@@ -351,7 +353,7 @@ def _stream_entries(
             elif kind == 1:
                 entries[number] = XrefEntry(XrefUse.RESOLVED, field2, field3)
             elif kind == 2:
-                entries[number] = XrefEntry(XrefUse.COMPRESSED)
+                entries[number] = XrefEntry(XrefUse.COMPRESSED, field2, field3)
             else:
                 raise ContentLimit("pdf xref malformed")
         total += count

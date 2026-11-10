@@ -50,7 +50,7 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B1 and B3 to B6 are executable: each is
+Ordered by expected value for the agent-intake use. B1 and B3 to B7 are executable: each is
 an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
 benign boundary, so the probe fails when one starts to hold without its marker removed. B2
 (MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
@@ -147,6 +147,32 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 - **Boundary (verified clean).** `<!(node -p "require('node-addon-api').include_dir")`,
   the form native addons use.
 
+### B7. A PDF font dictionary read to its own end
+
+- **Gap (verified).** The text reader takes the first `/ToUnicode` reference in the 4 KB
+  after a font's object header. Two cases follow. A font dictionary that writes the key
+  twice, `/ToUnicode 10 0 R /ToUnicode 11 0 R`, is read through object 10 only; with a decoy
+  map first and the phrase map last the scan is clean. And a composite font with no map,
+  followed within 4 KB by another font that has one, is read through its neighbour's map, so
+  the `heuristic_pdf_text_unmapped` note it gets when it stands alone is not raised.
+- **Evidence.** Verified, direct runtime: `pdftotext` 24.02.0 (poppler) on the first case
+  shows the phrase, because it keeps the last key. Sourced, read on November 10: PDFium
+  assigns `map_[key]` for each key in order and pdf.js calls `Map.set`, so both keep the
+  last too. The second case was run against the gate only.
+- **Proposal.** Parse each font dictionary to its own closing `>>` with the tokenizer
+  `content.py` already has, and read the last `/ToUnicode` beside the first. A font whose
+  own dictionary has none gets no map from the next object.
+- **False-positive class.** Reading every `/ToUnicode` in the window instead would give
+  ordinary neighbouring fonts each other's maps and pass the four-reading cap on most
+  files. A Type0 font that has no map today and borrows one would start to raise the
+  note, which is the correct outcome and still needs a count on generator output first.
+- **Cost.** Tokenizing 4 KB per definition is far slower than the three searches done now.
+  It needs a per-file cap on parsed definitions, the unresolved reading past it, and a
+  timing input.
+- **Related, done.** A font object or `ToUnicode` map *defined* more than once is read
+  through every definition
+  ([2026-11-10-pdf-font-definitions.md](../verification/2026-11-10-pdf-font-definitions.md)).
+
 ### Further candidates, not yet in the probe
 
 | Candidate | Evidence | Why it is not built yet |
@@ -168,6 +194,7 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 | `conhost --headless`, `pcalua.exe -a`, `pushd \\host@SSL\` with `rundll32` | Sourced, read: Unit 42 timely threat intel, 2026 | The fetch-and-run half is matched when present. Each launcher alone needs a benign count |
 | `curl ... \| cmd` and `curl ... \| powershell` | Assessment | No campaign source found. `finger ... \| cmd` is matched |
 | Reverse shells through `telnet` with a FIFO, awk `/inet/tcp`, zsh `ztcp`, Node `net` with `child_process` | Verified clean | Rare beside the forms now matched; the Node form is a program, not a one-liner |
+| A PDF font redefined inside an object stream the gate cannot decode (a filter other than Flate, ASCIIHex, or ASCII85), beside a raw decoy | Verified clean on the gate: the raw decoy is the only definition read. Assessment for readers: one that follows a cross-reference stream to the member would use it; not run against a reader | An unreadable object stream can redefine any object, not only a font. The signal is a per-file note that some objects were not read, with its own benign count (LZW and encrypted object streams), not one more font reading |
 | macOS stealer cluster: any two of `dscl . -authonly`, a hidden-answer dialog, `find-generic-password`, `ditto -c -k` with a POST, `killall Terminal`, `xattr -c` | Sourced, read: Unit 42, June 2026 | Each is matched alone as advisory. A two-of-six block needs MDM enrolment scripts as twins; vendor rules exclude MDM agents for these |
 | Override phrases in BOM-less UTF-16 with no ASCII | Verified clean for Korean; the same holds for Chinese, Japanese, and Russian | `decoded-utf16` needs a byte order mark or ASCII-heavy text. Decide once for all scripts |
 | PDF form XObjects read through their own `/Resources` | [2026-11-10-pdf-page-fonts.md](../verification/2026-11-10-pdf-page-fonts.md): page content streams now read each font name through their page's fonts; a form keeps the file-wide union, so a form drawn on several pages can still pass the four-reading cap (reported as `heuristic_pdf_text_unmapped`) | The form's dictionary sits before its stream and inherits nothing; needs the same fail-safe fallbacks and a tripwire input |
@@ -212,6 +239,9 @@ overturn.
 | HTML `<img src="https://...{{...}}">` as an exfiltration template | Web and mail templates are written this way. The Markdown forms are matched |
 | A literal key appended to `authorized_keys` | An administrator's own key looks the same. A downloaded key is matched |
 | ClickOnce manifests, `node -e` in `postinstall`, joining CSV cells or JSON array elements | Recorded earlier; see the [October 30 roadmap](detection-roadmap-2026-10-30.md) and [#171](https://github.com/cgfixit/yara-gate/issues/171) |
+| Read one definition of a redefined PDF font or `ToUnicode` map, chosen by the cross-reference table | Readers disagree, and whoever writes the file writes the table. poppler 24.02 follows the table and takes the last definition when there is none; PDFium keeps a later or higher-generation header when it rebuilds; pdf.js keeps the first header's generation. Every definition is read instead, and more than four distinct ones are reported ([2026-11-10-pdf-font-definitions.md](../verification/2026-11-10-pdf-font-definitions.md)) |
+| Match a PDF font reference's generation to the object header | PDFium, MuPDF, and pdfminer.six resolve a reference by object number alone, and pdf.js falls back to an earlier generation (source read November 10). poppler 24.02 and pypdf do compare it, so `6 1 obj` under `6 0 R` is a reading some readers show, not one to drop |
+| An incomplete result for a PDF font with more than four distinct definitions | A file saved incrementally five times with a re-subset font would exit 2 under every policy. The unread definitions are the `heuristic_pdf_text_unmapped` note, as for a name that means five fonts ([2026-11-07-pdf-font-readings.md](../verification/2026-11-07-pdf-font-readings.md)) |
 | A semantic classifier, OCR, URL reputation, or detonation inside the gate | Outside the scan contract. A classifier belongs after the gate, as advisory evidence with its own provenance |
 | Leave a `startxref` inside a comment, a string, or a stream body out of the cross-reference check | Readers find the keyword by searching bytes or lines and do not lex around it. With it in a comment or the middle of a line, PDFium and pdf.js still return an annotation hidden in a stream; in a literal string, pypdf and pdfminer.six do too; and the old scanner lost the keyword after one `(` byte in any stream body, which is most real files ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)). Every occurrence that a number follows is a candidate |
 | Skip a `startxref` whose offset is past the end of the file, as offset 0 is skipped | Offset 0 is what a linearized file's first-page trailer carries. Any other pointer that leads nowhere is a broken or forged file, and the scan stays incomplete (`pdf xref malformed`), as before. Prose such as `startxref 99999` in an uncompressed comment or string is held by this |

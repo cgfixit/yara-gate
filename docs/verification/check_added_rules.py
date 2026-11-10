@@ -23,6 +23,8 @@ from yara_gate.samples import (
     hex_outline_title_pdf,
     merged_pdf,
     mini_pe,
+    redefined_font_pdf,
+    redefined_map_pdf,
     shared_name_pdf,
 )
 from yara_gate.scanner import scan_file
@@ -505,6 +507,51 @@ def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
     ]
 
 
+def font_definition_cases() -> list[tuple[str, bytes, str | None]]:
+    """A font object, or its ToUnicode map, that the file defines more than once.
+
+    The page shows the phrase as glyph ids in /F1, object 6. One definition maps the ids to the
+    phrase and the others map each id a few printable characters along. A reader uses one
+    definition, and readers differ in which, so each gives a reading
+    (docs/verification/2026-11-10-pdf-font-definitions.md). Before that record the first
+    definition of the font and the last of the map were the only ones read, and the cases
+    marked "was clean" scanned clean. Past four distinct definitions the rest are not decoded,
+    which is reported as ``heuristic_pdf_text_unmapped``; the last and the first are read first.
+    """
+    hit = "agent_override_imperative"
+    unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Release notes for the spring update."
+    five = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+    second = [(0, 1), (0, 0), (0, 2), (0, 3), (0, 4)]
+    return [
+        ("font-twice-first.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 0), (0, 3)]), hit),
+        # Was clean: an incremental update's later definition.
+        ("font-twice-last.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3), (0, 0)]), hit),
+        # Was clean: ``6 1 obj`` holds the phrase map and the page says ``6 0 R``.
+        ("font-generation.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3), (1, 0)]), hit),
+        # Was clean: the page says ``6 1 R``, and ``6 0 obj`` holds the phrase map.
+        (
+            "font-reference-generation.pdf",
+            redefined_font_pdf(_PDF_PHRASE, [(1, 3), (0, 0)], reference=1),
+            hit,
+        ),
+        # Was clean: a raw decoy, and the phrase map's font inside an object stream.
+        ("font-objstm-member.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3)], member=0), hit),
+        # Was clean: the font is defined once and its map stream twice, the phrase map first.
+        ("font-map-twice-first.pdf", redefined_map_pdf(_PDF_PHRASE, [0, 3]), hit),
+        ("font-map-twice-last.pdf", redefined_map_pdf(_PDF_PHRASE, [3, 0]), hit),
+        # The last, the first, and the two before the last are decoded; the second is not.
+        ("font-five-first.pdf", redefined_font_pdf(_PDF_PHRASE, five), hit),
+        ("font-five-last.pdf", redefined_font_pdf(_PDF_PHRASE, five[::-1]), hit),
+        ("font-five-second.pdf", redefined_font_pdf(_PDF_PHRASE, second), unmapped),
+        ("font-twice-plain.pdf", redefined_font_pdf(benign, [(0, 3), (0, 0)]), None),
+        ("font-generation-plain.pdf", redefined_font_pdf(benign, [(0, 3), (1, 0)]), None),
+        ("font-map-twice-plain.pdf", redefined_map_pdf(benign, [3, 0]), None),
+        ("font-five-equal-plain.pdf", redefined_font_pdf(benign, [(0, 0)] * 5), None),
+        ("font-five-plain.pdf", redefined_font_pdf(benign, five), unmapped),
+    ]
+
+
 def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     """The pdf-text view: kerned, hex, wrapped, and glyph-id text, and its near misses."""
     unmapped = "heuristic_pdf_text_unmapped"
@@ -704,6 +751,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         *pdf_text_cases(),
         *_overflow_cmap_cases(),
         *font_reading_cases(),
+        *font_definition_cases(),
         *_encoded_text_cases(),
         *hex_string_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.
