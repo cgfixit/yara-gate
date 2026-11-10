@@ -33,7 +33,7 @@ Read the open issues: each is a lead to plan, defer with a reason, or mark as
 already closed by a merged PR.
 
 Sync with `uv sync --frozen --group dev` and run the cheap gates once: Ruff,
-`mypy --strict src`, `docs/verification/lint_rules.py`,
+`mypy --strict src scripts`, `docs/verification/lint_rules.py`,
 `docs/verification/check_rule_pairs.py`, `docs/verification/check_added_rules.py`,
 `docs/verification/measure_precision.py --fail-over`, and
 `docs/research/probe_rule_coverage.py --verify --benign-stdlib`. Check `uv lock --check`
