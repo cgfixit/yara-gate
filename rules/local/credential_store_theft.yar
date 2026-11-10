@@ -27,7 +27,7 @@ rule macos_stealer_password_check {
         technique = "T1555.001"
     strings:
         $authonly = /\bdscl[ \t]+(\.|\/Local\/Default)[ \t]+-?authonly\b/ nocase ascii wide
-        $store = /Login Data|Cookies\.binarycookies|key4\.db|logins\.json|\bExodus\b|\bElectrum\b|\bMetaMask\b|nkbihfbeogaeaoehlefnkodbefgpgknn|\bAtomic Wallet\b|\bCoinomi\b/ nocase ascii wide
+        $store = /Login\\? Data|Cookies\.binarycookies|key4\.db|logins\.json|\bExodus\b|\bElectrum\b|\bMetaMask\b|nkbihfbeogaeaoehlefnkodbefgpgknn|\bAtomic Wallet\b|\bCoinomi\b/ nocase ascii wide
     condition:
         $authonly and $store
 }

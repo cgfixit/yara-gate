@@ -1,7 +1,7 @@
 rule web_html_smuggling {
     meta:
         author = "yara-gate"
-        description = "Base64 decoding and Blob URL creation near a script, executable, disk image or archive download"
+        description = "Base64 decoding and Blob URL creation near a script, executable, installer, shortcut, disk image or archive download"
         intent = "Advisory on HTML that rebuilds a downloadable file"
         severity = "advisory"
         verdict_on_match = "advisory"
@@ -10,7 +10,7 @@ rule web_html_smuggling {
         $decode = /\batob[ \t\r\n]*\(/ ascii wide
         $blob = /\bnew[ \t\r\n]+Blob[ \t\r\n]*\(/ ascii wide
         $url = /\b(URL|webkitURL)[ \t]*\.[ \t]*createObjectURL[ \t\r\n]*\(/ ascii wide
-        $download = /(\.download[ \t]*=[ \t]*|\.setAttribute\([ \t]*["']download["'][ \t]*,[ \t]*)["'][^"'\r\n]{1,120}\.(exe|dll|js|jse|vbs|vbe|wsf|hta|lnk|iso|img|vhd|vhdx|zip|7z)["']/ nocase ascii wide
+        $download = /(\.download[ \t]*=[ \t]*|\.setAttribute\([ \t]*["']download["'][ \t]*,[ \t]*)["'][^"'\r\n]{1,120}\.(exe|dll|scr|pif|cpl|xll|js|jse|vbs|vbe|wsf|hta|bat|cmd|ps1|lnk|url|chm|one|msi|msix|appx|jar|iso|img|vhd|vhdx|dmg|pkg|zip|7z|rar|cab)["']/ nocase ascii wide
     condition:
         for any i in (1..#download) : (
             $decode in (@download[i] - 4096..@download[i] + 4096) and

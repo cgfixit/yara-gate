@@ -1,7 +1,7 @@
 rule win_lolbin_download {
     meta:
         author = "yara-gate"
-        description = "certutil, bitsadmin, or msiexec command that fetches an HTTP(S) URL, or finger output piped into a shell"
+        description = "certutil, bitsadmin, or msiexec command that fetches an HTTP(S) URL, or finger output piped into a shell or called line by line"
         intent = "Advisory on a Windows built-in used as a downloader or remote installer, not on a mention of the tool"
         severity = "advisory"
         verdict_on_match = "advisory"
@@ -12,7 +12,11 @@ rule win_lolbin_download {
         $bitsadmin = /\bbitsadmin(\.exe)?["']?[ \t]+[^\r\n;&|]{0,128}\/(transfer|addfile)\b[^\r\n;&|]{0,256}\bhttps?:\/\// nocase ascii wide
         // finger user@host | cmd: the ClickFix stage that reads a script from a finger server.
         $finger = /\bfinger(\.exe)?["']?[ \t]+[^\s@|&;"']{1,64}@[A-Za-z0-9][A-Za-z0-9.-]{2,252}[^\r\n|]{0,40}\|[ \t]*(cmd|powershell|pwsh|sh|bash)(\.exe)?\b/ nocase ascii wide
-        $msiexec = /\bmsiexec(\.exe)?["']?[ \t]+[^\r\n;&|]{0,64}\/(i|package|a)[ \t]+["']?https?:\/\// nocase ascii wide
+        // The same stage without a pipe: for /f ... in ('finger user@host') do call %h runs
+        // each line the server returns.
+        $finger_for = /\bfor[ \t]+\/f\b[^\r\n]{0,96}\bin[ \t]*\([ \t]*['`]finger(\.exe)?[ \t]+[^\s@|&;"']{1,64}@[A-Za-z0-9][A-Za-z0-9.-]{2,252}['`][ \t]*\)[ \t]*do[ \t]+(call|cmd|start)\b/ nocase ascii wide
+        // msiexec reads -i and /i the same way.
+        $msiexec = /\bmsiexec(\.exe)?["']?[ \t]+[^\r\n;&|]{0,64}[\/-](i|package|a)[ \t]+["']?https?:\/\// nocase ascii wide
     condition:
         any of them
 }
