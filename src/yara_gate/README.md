@@ -22,4 +22,5 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`samples.py`](samples.py) creates inert synthetic examples, including EICAR; [`selftest.py`](selftest.py) exercises a fixture matrix.
 - [`showcase.py`](showcase.py) is the demo catalog: each attack beside a benign near-twin, with the verdict expected under each policy. The workbench scans it and `scripts/record_pages_demo.py` records it for the public replay.
 - [`rtftext.py`](rtftext.py) reads bounded RTF text through formatting, codepages, and hex or Unicode escapes, one piece per paragraph, cell, or story.
+- [`htmlhidden.py`](htmlhidden.py) reads the HTML text a browser does not show (comments, `data-*` values, and elements hidden by one exact inline declaration), without rendering; it follows the HTML parser's tree and claims nothing that depends on layout or on a stylesheet.
 - [`py.typed`](py.typed) marks the package as providing type information.

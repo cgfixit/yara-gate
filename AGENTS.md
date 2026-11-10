@@ -9,6 +9,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `pdfannotations.py`: annotation text strings and references, separate from page glyph text.
 - `pdfxref.py`: classic, stream, hybrid, and incremental cross-reference offsets used to reject an annotation hidden inside a length-proven stream.
 - `rtftext.py`: bounded RTF reader text, scoped formatting/codepages, and paragraph/cell boundaries.
+- `htmlhidden.py`: HTML text a browser does not show, read without rendering. A claim rests on one exact inline declaration; a change there is checked against a browser with `docs/research/probe_html_hidden_browser.py`.
 - `models.py`, `quarantine.py`, `report.py`: verdict/policy contracts, intake and relocation, JSON/SARIF.
 - `rules.py`, `hunt.py`: rule discovery/compilation/cache, vendor updates, candidate generation and promotion.
 - `showcase.py`, `samples.py`: the demo catalog (each attack beside a benign near-twin, with expected verdicts) and the inert fixtures it and `selftest.py` build. `launchd.py` writes the macOS watcher plist.
