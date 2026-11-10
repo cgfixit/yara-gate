@@ -1,8 +1,39 @@
 # Verification screenshots
 
-This directory preserves Computer Use captures and the user-supplied demo image
-without editing or re-encoding. The README features the November 1 workbench
-below. Earlier captures retain their original implementation provenance.
+This directory preserves Computer Use captures, the user-supplied demo image, and
+the November 10 headless-browser captures without editing or re-encoding. The
+README features the November 10 workbench run below. Earlier captures retain their
+original implementation provenance.
+
+## Shared demo catalog — November 10, 2026
+
+| Workbench: every pair, scanned live | Workbench: attack beside its twin |
+| --- | --- |
+| ![Workbench run of every pair under agent-ingest](yara-gate-catalog-workbench-run.png) | ![Invisible PDF text held beside its clean twin](yara-gate-catalog-workbench-pair.png) |
+
+| Public page: every pair at a glance | Public page: filtered by how the attack was caught |
+| --- | --- |
+| ![Scoreboard and per-policy strip on the public page](yara-gate-catalog-pages-strip.png) | ![Catalog filtered to attacks hidden from the reader](yara-gate-catalog-pages-caught-by.png) |
+
+Four original PNG captures, 2560 × 1800 (a 1280 × 900 viewport at device scale 2),
+taken November 10, 2026, about 03:37 UTC, by headless Chromium 153.0.8010.12
+through Playwright in a Linux container. These are not Computer Use captures and
+show no browser chrome. Source: clean `claude/festive-curie-up7rx3` at `38f23b5`.
+The workbench was `yara-gate demo` on `127.0.0.1` with a disposable copy of the 85
+bundled rules, no vendor packs, and a disposable `HOME`; the public page was the
+four-file artifact built by `scripts/build_pages.py` from the committed recordings
+(recorded at `e2d9d57`) and served from a loopback directory, not the hosted site.
+All fixtures are inert and synthetic. The run shown reports 57 of 57 results as
+expected under `agent-ingest`; that is evidence for the curated pairs, not a
+production false-positive rate. See the
+[verification record](../docs/verification/2026-11-10-demo-catalog.md).
+
+| File | SHA-256 |
+| --- | --- |
+| `yara-gate-catalog-workbench-run.png` | `db42a90bfb2d0457e1f2193ac332191811c919ea982509adf5b6a9abff1f9e43` |
+| `yara-gate-catalog-workbench-pair.png` | `ce31ab56217f0655346681017456b716daae9d0f6ed32a300b49d6db1a0ab7d3` |
+| `yara-gate-catalog-pages-strip.png` | `9191803746d075305ba461c676cb04373e8039e9f4514dc7921fdd9391785146` |
+| `yara-gate-catalog-pages-caught-by.png` | `775692f7f539d8d243565ec7e97af6bcd2e6be8ee23faf078e656f547a856edb` |
 
 ## Intake/read-boundary scanner check — November 6, 2026
 

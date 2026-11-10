@@ -192,12 +192,13 @@ uv run yara-gate demo --rules rules
 
 The local workbench calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It lists the catalog the public demo records ([`showcase.py`](src/yara_gate/showcase.py)): 28 attacks, each beside a benign near-twin, and a 7z archive the scanner cannot open. **Scan pair side by side** scans an attack and its twin under the selected policy. **Run every pair** scans the whole catalog and counts the attacks held, the twins that stayed clean, and the findings on twins, marking any result that differs from the reviewed expectation; with bundled rules it reports 28 of 28 held under `agent-ingest`, 28 of 28 twins clean, and 0 findings on twins. The result shows the decision, original finding severity, and the view or check that found it, in plain words. The workbench binds to `127.0.0.1` and scans in memory. See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser). Root [`demo.html`](demo.html) links to both demos and shows how to start the local workbench.
 
-![The local workbench explains an advisory held by agent-ingest](screenshots/yara-gate-workbench-hold.jpg)
+![The local workbench scans every attack and benign twin and counts the results](screenshots/yara-gate-catalog-workbench-run.png)
 
-Captured November 1 with the 80 bundled rules of that revision and no vendor packs; the tree now ships 85, and the workbench has since gained the shared catalog, the side-by-side pair, and the run of every pair. See
-[verification](docs/verification/2026-11-01-demo-workbench.md) and
-[screenshot provenance](screenshots/README.md#november-1-local-scan-workbench)
-for the exercised revision, scenarios, and limits.
+Captured November 10 in headless Chromium at `38f23b5`, with the 85 bundled rules and no vendor packs. See
+[verification](docs/verification/2026-11-10-demo-catalog.md) and
+[screenshot provenance](screenshots/README.md#shared-demo-catalog--november-10-2026)
+for the exercised revision, scenarios, and limits; the
+[November 1 captures](screenshots/README.md#november-1-local-scan-workbench) show the earlier workbench.
 
 ## Public recorded demo
 

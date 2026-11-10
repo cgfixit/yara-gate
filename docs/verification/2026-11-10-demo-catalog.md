@@ -145,7 +145,8 @@ Corrected against the code at the base revision:
 - The caught-by label is derived from recorded findings by a fixed rule in `app.mjs`. It
   describes which view or check produced the finding, not the attacker's intent.
 - Acceptance used headless Chromium only; Firefox, Safari, and a screen reader were not run.
-- No screenshot was added under `screenshots/`; the README's workbench capture predates
-  this change and its caption says so.
+- Four headless-Chromium captures taken at `38f23b5` are under `screenshots/`, with
+  fingerprints in its README. They show the loopback workbench and a local build of the
+  public artifact, not the hosted site, and are not Computer Use captures.
 - The hosted site changes only when this reaches `main` and the deploy gate passes; the
   deploy re-records at that commit and must match this baseline.
