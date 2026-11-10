@@ -965,14 +965,29 @@ _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|p
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
 # Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
 # or a request to read a key or client config and pass it along in another argument.
+# "No need to mention this to the user" and "this tool immediately as the first step" are the
+# wording of the line-jumping proof of concept, and "don't notify the user about it" of the
+# WhatsApp one. "No need to tell the user to wait" directs the user and hides nothing, and a
+# notification tool says "do not notify the user more than once an hour", so "notify" needs
+# the pronoun: the thing kept from the user is this, it, or that.
+#
+# A description is a docstring, hard-wrapped and indented, so the words of a phrase are as
+# often apart by a line break and four spaces as by one space. Each space written in the
+# pattern stands for any run of whitespace, a no-break space included. No alternative starts
+# with one, so a long run is read once for the phrase it follows and the search stays linear.
 _HIDDEN_INSTRUCTION = re.compile(
-    r"(?i)do not (tell|mention|inform|reveal|show)( this| it| that)?( to)? the user"
-    r"|don'?t (tell|mention)( this| it)?( to)? the user"
-    r"|ignore (all )?previous instructions"
-    r"|<\s*important\s*>"
-    r"|before (using|calling|running) this tool,? (read|open|cat)\b"
-    r"|~?/?\.ssh/|\bid_(rsa|ed25519)\b|\bmcp\.json\b"
-    r"|\bpass (its|the|their|this) contents?\b|\b(as|in) an? sidenote\b"
+    (
+        r"(?i)do not (tell|mention|inform|reveal|show)( this| it| that)?( to)? the user"
+        r"|don'?t (tell|mention|inform)( this| it| that)?( to)? the user"
+        r"|no need to (tell|mention|inform)( this| it| that)?( to)? the user(?! to\b)"
+        r"|(do not|don'?t|no need to) notify the user (about|of) (this|it|that)\b"
+        r"|\bthis tool immediately as the (very )?first step\b"
+        r"|ignore (all )?previous instructions"
+        r"|<\s*important\s*>"
+        r"|before (using|calling|running) this tool,? (read|open|cat)\b"
+        r"|~?/?\.ssh/|\bid_(rsa|ed25519)\b|\bmcp\.json\b"
+        r"|\bpass (its|the|their|this) contents?\b|\b(as|in) an? sidenote\b"
+    ).replace(" ", r"\s+")
 )
 
 

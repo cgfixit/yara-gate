@@ -2,15 +2,38 @@ rule agent_hidden_html {
     meta:
         author = "yara-gate"
         description = "Hidden HTML or a Markdown comment with an instruction-like phrase within 256 bytes"
-        intent = "Advisory when an instruction follows a hiding cue: display none, visibility hidden, a font size of 0 or 1 px, an offset of -1000 px or more that moves the text off screen, a screen-reader-only class, the hidden attribute, an HTML comment, or a Markdown reference-style comment. The cue alone is ordinary markup and is not reported; white or transparent text and zero opacity are not cues, because dark themes and fade-in animations use them on text a reader sees"
+        intent = "Advisory when an instruction follows a hiding cue: display none, visibility hidden, a font size of zero, under one pixel, or 1 px, an offset of -1000 px or more that moves the text off screen, a screen-reader-only class, the hidden attribute, or a Markdown reference-style comment; or when it sits inside an HTML comment, before the comment closes. The cue alone is ordinary markup and is not reported. A fractional size such as 0.9em or 0.875rem is ordinary small text, and text after a comment has closed is shown (React, Vue, and Angular write comment markers beside the text they render), so neither is a cue; white or transparent text and zero opacity are not cues, because dark themes and fade-in animations use them on text a reader sees. More than 1,024 comment openers that each have a phrase within 256 bytes keep the earlier test, in which the comment does not have to be open"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
     strings:
         // CSS is not computed: each cue is a spelling that hides text in most pages, read lexically.
-        $hidden = /(display\s*:\s*none|font-size\s*:\s*0|visibility\s*:\s*hidden|<!--|font-size\s*:\s*1p[xt]|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)?)|developer mode|do anything now|(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
+        // The size cue is a real zero with a CSS unit or none and something that ends the value
+        // (0, 0px;, 0.0em"), a fraction of a pixel or point, 1px or 1pt, or under a tenth of an
+        // em. A bare "font-size:0" prefix also read 0.9em and 0.875rem, which are ordinary small
+        // text. The unit is a list, not any letters: text-folded spells 0.5em as 0.sem. Digit
+        // runs are bounded: an open-ended 0+ cost 30 times more on a file of long zero runs.
+        $hidden = /(display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)?)|developer mode|do anything now|(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
         // Same DAN carve-out as agent_prompt_injection_phrases: case-sensitive, so "Dan" stays clean.
-        $hidden_dan = /(?i:display\s*:\s*none|font-size\s*:\s*0|visibility\s*:\s*hidden|<!--|font-size\s*:\s*1p[xt]|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(?i:you are now)\b[\s\S]{0,96}\bDAN\b/ ascii wide
+        $hidden_dan = /(?i:display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(?i:you are now)\b[\s\S]{0,96}\bDAN\b/ ascii wide
+        // A comment opener and the nearest phrase after it. The gaps are lazy, so each opener is
+        // paired with the first phrase that follows; a greedy gap would reach a later, shown
+        // phrase and the test below would then drop the hidden one. The pattern keeps the shape
+        // "cue, any 256 bytes, phrase" so the engine searches for the two ends apart; whether
+        // the comment is still open is decided in the condition, on offsets. YARA-X does not
+        // mix greedy and lazy quantifiers in one pattern, so the optional parts are lazy too.
+        $comment = /<!--[\s\S]{0,256}?(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}?\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)??)|developer mode|do anything now|(without|no)( any)?? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
+        $comment_dan = /<!--[\s\S]{0,256}?(?i:you are now)\b[\s\S]{0,96}?\bDAN\b/ ascii wide
+        $close = "-->" ascii wide
     condition:
-        any of them
+        $hidden or $hidden_dan
+        // The phrase is inside the comment when no --> lies between the opener and the phrase's
+        // end. Text after a closed comment is shown, so it stays with the phrase rules. One
+        // range count per match; past 1,024 matches the comment is not required to be open,
+        // which is the test this rule had before, so a flood cannot make the condition slow.
+        or #comment > 1024 or #comment_dan > 1024
+        or for any i in (1..#comment): ( #close in (@comment[i]..@comment[i] + !comment[i]) == 0 )
+        or for any i in (1..#comment_dan): (
+            #close in (@comment_dan[i]..@comment_dan[i] + !comment_dan[i]) == 0
+        )
 }
