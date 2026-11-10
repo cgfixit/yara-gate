@@ -1,0 +1,49 @@
+name: independent-verdict
+
+# Fails while a PR is labeled verification-pending so an independent verdict
+# cannot still be outstanding at merge. Labels are read from the event payload;
+# this workflow does not check out the PR and needs no token scopes.
+# After merge, add "independent-verdict" as a required status check on main;
+# the workflow alone does not block the merge button.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  independent-verdict:
+    name: independent-verdict
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Fail while verification-pending is set
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          raw = os.environ.get("PR_LABELS") or "[]"
+          if raw == "null":
+              raw = "[]"
+          labels = json.loads(raw)
+          if not isinstance(labels, list):
+              print("unexpected labels payload:", raw)
+              sys.exit(1)
+          names = {name for name in labels if isinstance(name, str)}
+          if "verification-pending" in names:
+              print(
+                  "PR is labeled verification-pending; "
+                  "independent verdict is still outstanding."
+              )
+              sys.exit(1)
+          print("No verification-pending label; independent-verdict passes.")
+          print("Labels:", sorted(names))
+          PY
