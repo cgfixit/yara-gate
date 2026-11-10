@@ -598,5 +598,42 @@
     "name": "variant_shortcut_help.html",
     "text": "<h1>Keyboard shortcuts</h1><p>Press <kbd>Cmd</kbd> + <kbd>V</kbd> to paste and <kbd>Cmd</kbd> + <kbd>Space</kbd> for Spotlight.</p><script>navigator.clipboard.writeText(x);</script>",
     "expected": null
+  },
+  {
+    "name": "svg_active_link.svg",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><a href=\"javascript:alert(1)\"><text y=\"20\">open</text></a></svg>",
+    "expected": "doc_svg_active_link"
+  },
+  {
+    "name": "svg_active_link_utf16.bin",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><a href=\"javascript:alert(1)\"><text y=\"20\">open</text></a></svg>",
+    "expected": "doc_svg_active_link",
+    "encoding": "utf-16"
+  },
+  {
+    "name": "svg_active_link_zip.zip",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><a href=\"javascript:alert(1)\"><text y=\"20\">open</text></a></svg>",
+    "expected": "doc_svg_active_link",
+    "container": "zip"
+  },
+  {
+    "name": "svg_active_link_animate.svg",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><a><set attributeName=\"href\" to=\"javascript:alert(1)\"/><text y=\"20\">open</text></a></svg>",
+    "expected": "doc_svg_active_link"
+  },
+  {
+    "name": "svg_active_link_foreign_form.svg",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><foreignObject width=\"200\" height=\"80\"><form xmlns=\"http://www.w3.org/1999/xhtml\" action=\"https://example.invalid/\"><input name=\"u\"/></form></foreignObject></svg>",
+    "expected": "doc_svg_active_link"
+  },
+  {
+    "name": "svg_active_link_void.svg",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><a href=\"javascript:void(0)\"><text y=\"20\">open</text></a></svg>",
+    "expected": null
+  },
+  {
+    "name": "svg_active_link_label.svg",
+    "text": "<svg xmlns=\"http://www.w3.org/2000/svg\"><foreignObject width=\"90\" height=\"20\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><span>Start</span></div></foreignObject></svg>",
+    "expected": null
   }
 ]

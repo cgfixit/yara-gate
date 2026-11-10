@@ -16,8 +16,9 @@ open candidates of ``docs/research/detection-backlog.md``, each beside a control
 boundary; a ``backlog`` case without a number is one of those.
 
 Nothing is executed, unpacked to disk, or fetched. Fixtures are built in memory from a plain
-English override phrase and harmless SVG handler bodies (``void 0``). A short CLI pass copies a
-few fixtures into a disposable inbox and records where intake files them.
+English override phrase, harmless SVG handler bodies (``void 0``), and an ``alert(1)`` link
+target. A short CLI pass copies a few fixtures into a disposable inbox and records where intake
+files them.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,10 +53,7 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 
 # Gaps that still miss on this tree, by case label. Remove a label when its fix lands.
 OPEN: dict[str, str] = {
-    "backlog svg link with a javascript: target": "B1",
-    "backlog svg foreignObject holding an iframe": "B1",
     "backlog html white text holding the phrase": "B3",
-    "backlog zero-width bit run": "B4",
     "backlog ansi concealed phrase": "B5",
     "backlog gyp command expansion, output discarded": "B6",
     "backlog pdf font with two /ToUnicode keys, phrase in last": "B7",
@@ -1917,6 +1916,18 @@ def hidden_text_cases() -> list[Case]:
     ]
 
 
+def sample_run_pdf() -> bytes:
+    """A FlateDecode stream: text, then 16 zero-width characters between non-UTF-8 bytes."""
+    text = b"BT /F1 12 Tf (Quarterly report) Tj ET\n" * 20
+    noise = bytes([0xFF, 0xFE, 0x80, 0x81]) * 5
+    packed = zlib.compress(text + noise + ("\u200b\u200c" * 8).encode() + noise + text)
+    return (
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n5 0 obj\n"
+        + samples._stream(packed, b"/Filter /FlateDecode ")
+        + b"\nendobj\n%%EOF\n"
+    )
+
+
 def backlog_cases() -> list[Case]:
     """Open candidates of docs/research/detection-backlog.md, beside what already holds.
 
@@ -1952,8 +1963,8 @@ def backlog_cases() -> list[Case]:
             "B1",
             "backlog svg link with a javascript: target",
             "a.svg",
-            svg('<a href="javascript:void 0"><text y="20">open</text></a>'),
-            "any",
+            svg('<a href="javascript:alert(1)"><text y="20">open</text></a>'),
+            "doc_svg_active_link",
         ),
         Case(
             "B1",
@@ -1964,13 +1975,30 @@ def backlog_cases() -> list[Case]:
                 'xmlns="http://www.w3.org/1999/xhtml" src="https://example.invalid/"></iframe>'
                 "</foreignObject>"
             ),
-            "any",
+            "doc_svg_active_link",
         ),
         Case(
             "backlog",
             "backlog svg link with an https target (benign)",
             "a.svg",
             svg('<a href="https://example.invalid/"><text y="20">open</text></a>'),
+            "clean",
+        ),
+        Case(
+            "backlog",
+            "backlog svg link with the void(0) no-op target (benign)",
+            "a.svg",
+            svg('<a href="javascript:void(0)"><text y="20">open</text></a>'),
+            "clean",
+        ),
+        Case(
+            "backlog",
+            "backlog svg foreignObject diagram label (benign)",
+            "a.svg",
+            svg(
+                '<foreignObject width="90" height="20"><div xmlns="http://www.w3.org/1999/xhtml">'
+                "<span>Start</span></div></foreignObject>"
+            ),
             "clean",
         ),
         # B2: tool-poisoning wording outside the heuristic's list.
@@ -2037,7 +2065,40 @@ def backlog_cases() -> list[Case]:
             "backlog zero-width bit run",
             "a.txt",
             ("Quarterly notes" + "\u200b\u200c" * 40 + " attached.").encode(),
-            "heuristic_invisible_run",
+            "agent_invisible_run",
+        ),
+        Case(
+            "backlog",
+            "backlog zero-width run of 15 (benign)",
+            "a.txt",
+            ("Quarterly notes" + "\u200b" * 15 + " attached.").encode(),
+            "agent_invisible_unicode without agent_invisible_run",
+        ),
+        # The run is not an instruction: in hidden Word text it is the run alone, not a hidden
+        # instruction. In a decoded PDF stream, where bytes can be image samples, a run with
+        # non-UTF-8 bytes on both sides is dropped, as a lone control is.
+        Case(
+            "backlog",
+            "backlog zero-width run in hidden Word text",
+            "a.docx",
+            docx_paragraph(vanished("x" + "\u200b\u200c" * 40 + "y")),
+            f"agent_invisible_run without {HIDDEN_TEXT}",
+        ),
+        Case(
+            "backlog",
+            "backlog zero-width run of 16 between pdf sample bytes (benign)",
+            "a.pdf",
+            sample_run_pdf(),
+            "agent_invisible_unicode without agent_invisible_run",
+        ),
+        Case(
+            "backlog",
+            "backlog persian joiners (benign)",
+            "a.txt",
+            # "I want to see the books": a ZWNJ inside each of two words.
+            "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645 "
+            "\u06a9\u062a\u0627\u0628\u200c\u0647\u0627\n".encode(),
+            "clean",
         ),
         # B5: text a terminal conceals (SGR 8). The phrase is a note, as if it were shown.
         Case(

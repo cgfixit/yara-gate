@@ -175,6 +175,12 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ("agent_prompt_injection_phrases", base64.b64encode(phrase), b"aW5zdHJ1Y3Rpb24=\n"),
         ("agent_hidden_html", hidden_html(), b'<div style="display:none">Navigation</div>\n'),
         ("agent_invisible_unicode", "a\u200bb\n".encode(), b"ab\n"),
+        # Bytes carried one bit per zero-width character; a run of 15 is still only the note.
+        (
+            "agent_invisible_run",
+            ("Quarterly notes" + "\u200b\u200c" * 40 + " attached.\n").encode(),
+            ("Quarterly notes" + "\u200b" * 15 + " attached.\n").encode(),
+        ),
         # Trojan Source: the same override is a note in prose and a block in source code.
         ("agent_bidi_source", 'x = "a\u202eb"\n'.encode(), 'x = "a\u202eb"\n'.encode()),
         (
@@ -333,6 +339,27 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             "doc_svg_event_handler",
             b'<html><svg><image href="x" onerror="void 0"/></svg></html>',
             b'<html><svg><rect/></svg><image src="x" onerror="void 0"></html>',
+        ),
+        # A javascript: link target runs script without a script element or a handler; the
+        # legacy no-op target, void(0), stays clean.
+        (
+            "doc_svg_active_link",
+            b'<svg><a href="javascript:alert(1)"><text>open</text></a></svg>',
+            b'<svg><a href="javascript:void(0)"><text>open</text></a></svg>',
+        ),
+        # A foreignObject that frames a page; a diagram label inside one, and the word after it
+        # has closed, stay clean.
+        (
+            "doc_svg_active_link",
+            b'<svg><foreignObject><iframe src="https://example.invalid/"></iframe>'
+            b"</foreignObject></svg>",
+            b"<svg><foreignObject><div>Start</div></foreignObject><text>iframe</text></svg>",
+        ),
+        # In a page only a link inside the svg counts; a page link beside an icon does not.
+        (
+            "doc_svg_active_link",
+            b'<html><svg><a href="javascript:alert(1)"><text>open</text></a></svg></html>',
+            b'<html><a href="javascript:history.back()">Back</a><svg><rect/></svg></html>',
         ),
         (
             "script_download_execute",

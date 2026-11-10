@@ -538,9 +538,14 @@ def _pdf_text_findings(
     return found + hidden
 
 
-# Rules whose match is not an instruction to the reader: Unicode-control notes (their own
-# conjunction covers them) and the base64 rules, which are left to the raw bytes.
-_NOT_INSTRUCTIONS = UNICODE_CONTROL_RULES | {"agent_base64_blob", "agent_base64_executable"}
+# Rules that match invisible characters by their UTF-8 bytes: the Unicode-control notes and the
+# zero-width run, which is advisory and so not one of the notes the conjunction reads. In a
+# decoded PDF stream their bytes can be image samples, so a match needs UTF-8 text beside it.
+_CONTROL_BYTES_RULES = UNICODE_CONTROL_RULES | {"agent_invisible_run"}
+
+# Rules whose match is not an instruction to the reader: the invisible-character rules (the
+# notes' own conjunction covers them) and the base64 rules, which are left to the raw bytes.
+_NOT_INSTRUCTIONS = _CONTROL_BYTES_RULES | {"agent_base64_blob", "agent_base64_executable"}
 
 
 def _hidden_text_findings(
@@ -830,7 +835,7 @@ def _yara_findings(
                 continue
         if mode not in ("note", "advisory", "block"):
             mode = "block"
-        located = _first_match(rule, data, text_only=samples and rule_id in UNICODE_CONTROL_RULES)
+        located = _first_match(rule, data, text_only=samples and rule_id in _CONTROL_BYTES_RULES)
         if located is None:
             # Every match of a control rule sits in bytes that are not UTF-8 text.
             continue
