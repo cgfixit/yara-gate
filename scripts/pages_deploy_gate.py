@@ -1,6 +1,6 @@
 """Decide whether a main commit may be published to GitHub Pages.
 
-The pages-demo workflow runs this with a read-only token before it builds anything. It allows
+The demo-results-page workflow runs this with a read-only token before it builds anything. It allows
 only the newest commit on main, and only once every other check on that commit has finished
 green: the ci workflow, CodeQL, and any other check suite. It fails closed: a red, cancelled,
 or timed-out check, an API error, or a check still running at the deadline stops the deploy.
@@ -25,7 +25,7 @@ from collections.abc import Callable
 from typing import Any
 
 API = "https://api.github.com"
-SELF = ".github/workflows/pages-demo.yml"
+SELF = ".github/workflows/demo-results-page.yml"
 CI = ".github/workflows/ci.yml"
 GREEN = frozenset({"success", "skipped", "neutral"})
 PAGE = 100

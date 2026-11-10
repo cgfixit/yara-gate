@@ -42,7 +42,7 @@ Use `yara-gate demo` on loopback to inspect your own content. This public compan
 has no paste box, file picker, upload endpoint, or localhost bridge. It does not
 install a CyClaw or CG-agent-harness integration. The
 [integration contract](integrations.md) still governs real callers and same-byte
-checks. The root `demo.html` is a launcher for the local workbench and this public replay.
+checks.
 
 ## Guided workflows
 
@@ -153,7 +153,7 @@ A merge to `main` publishes the demo in three jobs:
    environment. Deploys run one at a time and are never cancelled mid-deploy; a
    newer pending deploy replaces an older pending one.
 
-**Actions → pages-demo → Run workflow** on `main` redeploys the current `main`
+**Actions → demo-results-page → Run workflow** on `main` redeploys the current `main`
 through the same gate. On any other branch the workflow does nothing.
 
 The standing repository configuration:

@@ -190,7 +190,6 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 ## 9. Try a verdict in the browser
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
-The root [`demo.html`](demo.html) is a launcher for the two demos.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
 replays saved results for 58 inert examples, each of 28 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).

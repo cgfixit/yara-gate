@@ -2,7 +2,7 @@
 
 import re
 import unicodedata
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -114,7 +114,7 @@ def _rule(
     scope: str,
     confirmed_by: str,
 ) -> str:
-    created = date.today().isoformat()
+    created = datetime.now(UTC).date().isoformat()
     body = [
         f"rule hunt_{sha12} {{",
         "    meta:",

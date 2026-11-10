@@ -15,7 +15,7 @@ Runtime: `src/yara_gate/`, bundled rules, the loopback demo, and integration han
 - Untrusted files, stdin, or library bytes cross into the local CLI/scanner; [scanner.py](../src/yara_gate/scanner.py), [content.py](../src/yara_gate/content.py), [pdftext.py](../src/yara_gate/pdftext.py), [pdfannotations.py](../src/yara_gate/pdfannotations.py), [pdfxref.py](../src/yara_gate/pdfxref.py), and [rtftext.py](../src/yara_gate/rtftext.py) apply bounded scans and derived views. The deadline does not hard-preempt every third-party parser.
 - Inbox entries cross a filesystem boundary into quarantine; [quarantine.py](../src/yara_gate/quarantine.py) checks file identity and type, bounds intake, writes reports, and routes results. Outside-inbox scans stay in place. The consumer must enforce the handoff in [integrations](integrations.md).
 - A browser reaches the local demo over HTTP on `127.0.0.1`; [demo.py](../src/yara_gate/demo.py) checks Host and Origin and bounds requests. Loopback is not a same-user isolation boundary; do not expose it remotely.
-- Operator-authorized rule downloads cross HTTPS to external hosts; [rules.py](../src/yara_gate/rules.py) checks destinations, pins for installs, redirects and token handling, and stages changes. The separate [Pages workflow](../.github/workflows/pages-demo.yml) publishes allowlisted static recordings, not a scanner.
+- Operator-authorized rule downloads cross HTTPS to external hosts; [rules.py](../src/yara_gate/rules.py) checks destinations, pins for installs, redirects and token handling, and stages changes. The separate [Pages workflow](../.github/workflows/demo-results-page.yml) publishes allowlisted static recordings, not a scanner.
 
 ```mermaid
 flowchart LR

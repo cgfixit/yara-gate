@@ -1,4 +1,4 @@
-name: pages-demo
+name: demo-results-page
 
 # Pull requests validate the public demo without deploying it. A merge to main deploys it once
 # ci has passed on that commit and every other check on it (CodeQL included) is green. A
@@ -11,13 +11,15 @@ on:
       - scripts/build_pages.py
       - scripts/record_pages_demo.py
       - scripts/pages_deploy_gate.py
-      - .github/workflows/pages-demo.yml
+      - .github/workflows/demo-results-page.yml
       # Scanner or rule changes can change the recorded outcomes the page shows.
       - src/**
       - rules/**
       - pyproject.toml
       - uv.lock
-  workflow_run:
+  # The gate job below accepts only a successful ci run for a push to main in this repository
+  # whose head is github.sha. It checks out github.sha, never a ref or artifact from the event.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [ci]
     types: [completed]
     branches: [main]
@@ -28,7 +30,7 @@ permissions:
 
 concurrency:
   # Deploys run one at a time, and a newer pending deploy replaces an older pending one.
-  group: pages-demo-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  group: demo-results-page-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -50,9 +52,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
-      actions: read
-      checks: read
-      contents: read
+      actions: read # list the workflow runs on the commit
+      checks: read # read every other check's conclusion
+      contents: read # check out the gate script and read main's head
     outputs:
       deploy: ${{ steps.gate.outputs.deploy }}
       sha: ${{ steps.gate.outputs.sha }}
@@ -129,8 +131,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      pages: write
-      id-token: write
+      pages: write # publish the uploaded artifact
+      id-token: write # the OIDC token deploy-pages uses to prove the run's identity
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

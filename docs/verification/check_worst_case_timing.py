@@ -312,7 +312,7 @@ def main() -> None:
             parser.error("worker requires --rules")
         scan_case(args.case, args.rules)
         return
-    revision = subprocess.check_output(  # noqa: S603 - fixed argv, repository metadata
+    revision = subprocess.check_output(  # fixed argv, repository metadata
         ["git", "rev-parse", "HEAD"],  # noqa: S607
         cwd=ROOT,
         text=True,

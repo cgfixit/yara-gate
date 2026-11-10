@@ -38,7 +38,7 @@ build-backend = "hatchling.build"
 "tests/fixtures/benign" = "yara_gate/bundled_rules/benign"
 
 [dependency-groups]
-dev = ["mypy>=1.11", "pytest>=8.2", "ruff>=0.6"]
+dev = ["mypy>=1.11", "pytest>=8.2", "ruff>=0.6", "zizmor>=1.32"]
 
 [tool.ruff]
 line-length = 100
@@ -46,7 +46,9 @@ target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "S"]
+# PGH004 and RUF100 keep each `noqa` narrow and live: one that names no rule, or whose rule no
+# longer fires there, would hide a later finding on that line. DTZ keeps recorded times in UTC.
+select = ["E", "F", "I", "UP", "B", "S", "DTZ", "PGH004", "PLE", "RUF100", "T10"]
 
 [tool.ruff.lint.per-file-ignores]
 # Typer requires Option() calls in argument defaults.

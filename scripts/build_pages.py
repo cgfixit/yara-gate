@@ -5,6 +5,7 @@ import json
 import re
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
 
 SOURCE = Path(__file__).resolve().parents[1] / "web-demo"
 POLICIES = {"default", "agent-ingest", "agent-document"}
@@ -105,7 +106,7 @@ def is_count(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def validate_recordings(data: dict) -> None:
+def validate_recordings(data: dict[str, Any]) -> None:
     require(set(data) == {"schema", "source_revision", "captured_at", "cases"}, "Recording fields")
     require(data["schema"] == 2, "Recording schema")
     require(re.fullmatch(r"[0-9a-f]{40}", data["source_revision"]) is not None, "Source revision")

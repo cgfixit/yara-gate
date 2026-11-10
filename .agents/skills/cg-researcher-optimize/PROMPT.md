@@ -82,15 +82,18 @@ execution.
 1. **Baseline.** Record the revision, the YARA-X version
    (`uv run python -c "import importlib.metadata as m; print(m.version('yara-x'))"`),
    the local rule count (`rg -N '^rule ' rules/local | wc -l`), and the results of:
-   `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy --strict src`,
+   `uv run ruff check .`, `uv run ruff format --check .`,
+   `uv run mypy --strict src scripts`,
    `uv run python docs/verification/lint_rules.py`,
    `uv run python docs/verification/check_rules_lock.py`,
    `uv run python docs/verification/check_rule_pairs.py`,
    `uv run python docs/verification/check_added_rules.py`,
    `uv run python docs/verification/measure_precision.py --fail-over`,
-   `uv run python docs/verification/check_scan_only.py`, and
+   `uv run python docs/verification/check_scan_only.py`,
+   `uv run python docs/verification/check_doc_links.py`, and
    `uv run python docs/research/probe_rule_coverage.py --verify --benign-stdlib`.
-   Lint the workflows with actionlint v1.7.12. Check dependencies with
+   Lint the workflows with actionlint v1.7.12 and
+   `uv run zizmor --offline --pedantic .github`. Check dependencies with
    `uv lock --check` and compare each locked version with PyPI. A red baseline
    changes the plan: fixing it comes first.
 2. **Read-only scan, about 5 minutes.** No edits, no installs beyond the locked
@@ -201,8 +204,9 @@ reproduced-leads row fills all five columns.
 - Verify by running the changed code with inert input. Leave the broad pytest and
   selftest suites to hosted CI. Add focused tests for new behavior and run only
   those by node id, after showing they fail on the old source.
-- Run Ruff lint and format on changed Python, `mypy --strict src` when a contract
-  changes, and actionlint on changed workflows.
+- Run Ruff lint and format on changed Python, `mypy --strict src scripts` when a
+  contract changes, actionlint and zizmor on changed workflows, and
+  `docs/verification/check_doc_links.py` after moving a file or a heading.
 - Commit as `[type] - Sentence` with the reproduced failure, the change, the
   benign boundary, and the commands run. Open **draft** PRs, follow CI to a
   result, and do not merge.

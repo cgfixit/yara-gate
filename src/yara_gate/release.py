@@ -116,7 +116,7 @@ def _check_reason(reason: str) -> str:
 def _exclusive(path: Path) -> Iterator[None]:
     """Hold an exclusive lock on ``path`` (created if missing) for the duration."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle: IO[bytes] = open(path, "a+b")  # noqa: SIM115 - closed in finally
+    handle: IO[bytes] = open(path, "a+b")  # closed in finally
     try:
         if sys.platform == "win32":
             import msvcrt
