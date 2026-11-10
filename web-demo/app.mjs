@@ -13,7 +13,7 @@ const help = {
   'agent-ingest': 'For messages and tool results. Holds notes and advisories; requires a complete clean result before reading.',
   'agent-document': 'For retrieved documents. Permits the exact notes-only result; holds advisories. Messages still need agent-ingest.'
 };
-const kindTag = { detection: 'Attack', control: 'Benign twin', failure: 'Failure' };
+const kindTag = { detection: 'Attack', control: 'Benign twin', failure: 'Fail-closed case' };
 // Plain-language names for the derived views a finding can come from.
 const viewNames = {
   raw: 'the original bytes',
@@ -28,9 +28,14 @@ const viewNames = {
   'ooxml-text': 'the joined text of an Office document',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
   'ooxml-comment': 'one Office comment with its text runs rejoined',
+  'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
+  'pdf-hidden-text': 'PDF text a viewer does not paint (invisible mode, white, tiny, or off the page)',
   'pdf-annotation': 'one PDF annotation with its text string decoded',
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
+  'markdown-text': 'one Markdown paragraph with its inline markup removed',
+  'notebook-text': 'one notebook cell with its lines rejoined',
+  'comment-text': 'consecutive source comment lines rejoined',
   'pdf-flate': 'an inflated PDF stream',
   'pdf-text': 'one PDF text block, read through its font maps',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'
@@ -42,7 +47,39 @@ const sources = {
 };
 const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channel: 'All' };
+const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channel: 'All', method: 'All' };
+
+// How an attack was caught, read from its recorded agent-ingest findings: which view or check
+// produced a finding that the bytes as sent did not. Nothing here is labelled by hand.
+const methodNames = {
+  hidden: 'Hidden from the reader',
+  folded: 'Disguised spelling',
+  rebuilt: 'Split across formatting',
+  decoded: 'Encoded',
+  container: 'Inside an archive',
+  structure: 'File structure',
+  pattern: 'Plain pattern'
+};
+const rebuiltViews = new Set(['ooxml-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-text', 'pdf-paragraph', 'rtf-text']);
+function methodsOf(item) {
+  const findings = item.results['agent-ingest'].findings;
+  const tags = new Set();
+  // A rule that already matched the bytes as sent needed no derived view.
+  const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+  for (const finding of findings) {
+    const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
+    if (finding.view.includes('hidden') || finding.rule_id.includes('hidden')) tags.add('hidden');
+    else if (finding.source !== 'yara') tags.add('structure');
+    else if (!plain.has(finding.rule_id)) {
+      if (finding.view !== base || base === 'text-folded') tags.add('folded');
+      if (rebuiltViews.has(base)) tags.add('rebuilt');
+      else if (base !== 'text-folded') tags.add('decoded');
+    }
+  }
+  if (!tags.size && findings.some((finding) => finding.member_path.length)) tags.add('container');
+  if (!tags.size) tags.add('pattern');
+  return Object.keys(methodNames).filter((key) => tags.has(key));
+}
 
 // Fictional context only. Decisions always come from the selected fixture's recording.
 const stories = [
@@ -60,7 +97,13 @@ const stories = [
     sender: 'Example model catalog · dummy artifact', task: 'ML · artifact intake', file: 'model.pt' },
   { id: 'devcontainer', label: 'Repository intake', title: 'Review a development environment',
     brief: 'A repository asks to initialize a dev container. The suspicious config downloads and runs a script on the host; the twin creates a host folder and installs inside the container.',
-    sender: 'Example repository · dummy checkout', task: 'Engineering · environment review', file: 'devcontainer.json' }
+    sender: 'Example repository · dummy checkout', task: 'Engineering · environment review', file: 'devcontainer.json' },
+  { id: 'mcp_tool_poisoned', label: 'Tool onboarding', title: 'Review a new tool server',
+    brief: 'An agent platform lists the tools of a new MCP server. One description, 58th of 60, tells the model to read a private key and stay quiet; the twin lists sixty ordinary tools. No server is contacted.',
+    sender: 'Example tool server · simulated response', task: 'Platform · tool review', file: 'tools.json' },
+  { id: 'pdf_invisible_override', label: 'Invoice intake', title: 'Read a supplier invoice',
+    brief: 'A finance assistant reads a PDF invoice. One line is drawn as invisible text and carries an instruction; the twin carries an ordinary invisible text layer, as a scanned page does.',
+    sender: 'billing@example.invalid', task: 'Finance · invoice intake', file: 'invoice.pdf' }
 ];
 
 function storyButtons() {
@@ -128,16 +171,55 @@ function scoreboard() {
   const held = detections.filter((item) => item.results['agent-ingest'].verdict === 'block').length;
   const clean = controls.filter((item) => policies.every((policy) => item.results[policy].verdict === 'clean' && item.results[policy].findings.length === 0)).length;
   const stayed = failures.filter((item) => policies.every((policy) => item.results[policy].verdict === 'incomplete')).length;
+  const twinFindings = controls.reduce((sum, item) => sum + policies.reduce((count, policy) => count + item.results[policy].findings.length, 0), 0);
   const sample = cases.find((item) => item.kind !== 'failure').results.default;
   $('score-held').textContent = held + ' / ' + detections.length;
   $('score-held-label').textContent = 'attacks held under agent-ingest';
   $('score-clean').textContent = clean + ' / ' + controls.length;
-  $('score-clean-label').textContent = 'benign twins clean, zero findings, every policy';
+  $('score-clean-label').textContent = 'benign twins clean under every policy';
+  $('score-findings').textContent = String(twinFindings);
+  $('score-findings-label').textContent = 'findings across ' + controls.length * policies.length + ' benign-twin recordings';
   $('score-failure').textContent = stayed + ' / ' + failures.length;
-  $('score-failure-label').textContent = 'failed scan held as incomplete';
+  $('score-failure-label').textContent = 'unfinished scans held as incomplete';
   $('score-rules').textContent = String(sample.compiled_rules);
   $('score-rules-label').textContent = 'bundled rules · YARA-X ' + sample.engine_version;
   $('scoreboard').hidden = false;
+}
+
+const marks = { block: '✕', clean: '✓', advisory: '!', incomplete: '?' };
+function strip() {
+  const root = $('strip');
+  for (const item of recording.cases) {
+    if (item.kind === 'control') continue;
+    const column = text(root, 'span', '', 'strip-col');
+    for (const member of item.pair ? [item, byId.get(item.pair)] : [item]) {
+      const cell = text(column, 'button', '', 'cell');
+      cell.type = 'button';
+      cell.dataset.example = member.id;
+      cell.addEventListener('click', () => select(member.id, true));
+    }
+  }
+}
+function renderStrip() {
+  const policy = state.policy;
+  let held = 0;
+  let clean = 0;
+  for (const cell of document.querySelectorAll('.cell')) {
+    const item = byId.get(cell.dataset.example);
+    const verdict = item.results[policy].verdict;
+    cell.className = 'cell ' + verdict;
+    cell.textContent = marks[verdict];
+    cell.setAttribute('aria-label', kindTag[item.kind] + ': ' + item.title + '. Recorded ' + verdict + ' under ' + policy + '.');
+    cell.title = kindTag[item.kind] + ' · ' + item.title + ' · ' + verdict;
+    cell.setAttribute('aria-pressed', String(item.id === state.example));
+    if (item.kind === 'detection' && verdict === 'block') held += 1;
+    if (item.kind === 'control' && verdict === 'clean') clean += 1;
+  }
+  const pairs = recording.cases.filter((item) => item.kind === 'detection').length;
+  const rest = pairs - held;
+  $('evidence-policy').textContent = policy;
+  $('evidence-summary').textContent = 'Under ' + policy + ': ' + held + ' of ' + pairs + ' attacks held, ' + clean + ' of ' + pairs + ' benign twins clean.'
+    + (rest ? ' The other ' + rest + ' attack' + (rest === 1 ? ' is' : 's are') + ' reported with findings and exit 0' + (policy === 'agent-document' ? ', because a retrieved document may quote an override phrase.' : ', because this policy is for manual inspection.') : '');
 }
 
 function caseButton(parent, item) {
@@ -146,6 +228,7 @@ function caseButton(parent, item) {
   card.dataset.example = item.id;
   text(card, 'span', kindTag[item.kind], 'card-kind');
   text(card, 'span', item.title, 'card-title');
+  if (item.kind === 'detection') text(card, 'span', 'Caught: ' + methodsOf(item).map((key) => methodNames[key].toLowerCase()).join(' + '), 'card-how');
   const chips = text(card, 'span', '', 'chips');
   for (const policy of policies) chip(chips, item.results[policy].verdict, policyLabels[policy][1]);
   card.addEventListener('click', () => select(item.id, true));
@@ -161,6 +244,7 @@ function gallery() {
     const members = !twin ? [item] : item.kind === 'detection' ? [item, twin] : [twin, item];
     const row = text(root, 'div', '', 'pair' + (twin ? '' : ' single'));
     row.dataset.channel = item.channel;
+    row.dataset.methods = members[0].kind === 'detection' ? methodsOf(members[0]).join(' ') : '';
     text(row, 'span', item.channel, 'channel');
     const halves = text(row, 'div', '', 'halves');
     for (const member of members) {
@@ -170,24 +254,38 @@ function gallery() {
   }
 }
 
-function channelFilters() {
-  const counts = new Map();
-  for (const row of document.querySelectorAll('.pair')) counts.set(row.dataset.channel, (counts.get(row.dataset.channel) || 0) + 1);
-  for (const [channel, count] of [['All', document.querySelectorAll('.pair').length], ...counts]) {
-    const button = text($('channels'), 'button', channel + ' · ' + count, 'filter');
+function filterButtons(root, key, entries) {
+  for (const [value, label] of entries) {
+    const button = text(root, 'button', label, 'filter');
     button.type = 'button';
-    button.dataset.channel = channel;
+    button.dataset[key] = value;
     button.addEventListener('click', () => {
-      state.channel = channel;
+      state[key] = value;
       applyFilter();
     });
   }
+}
+
+function galleryFilters() {
+  const rows = Array.from(document.querySelectorAll('.pair'));
+  const channels = new Map();
+  for (const row of rows) channels.set(row.dataset.channel, (channels.get(row.dataset.channel) || 0) + 1);
+  filterButtons($('channels'), 'channel', [['All', 'All · ' + rows.length], ...Array.from(channels, ([channel, count]) => [channel, channel + ' · ' + count])]);
+  const used = Object.keys(methodNames).filter((key) => rows.some((row) => row.dataset.methods.split(' ').includes(key)));
+  filterButtons($('methods'), 'method', [['All', 'Any'], ...used.map((key) => [key, methodNames[key] + ' · ' + rows.filter((row) => row.dataset.methods.split(' ').includes(key)).length])]);
   applyFilter();
 }
 
 function applyFilter() {
-  for (const row of document.querySelectorAll('.pair')) row.hidden = state.channel !== 'All' && row.dataset.channel !== state.channel;
-  for (const button of document.querySelectorAll('.filter')) button.setAttribute('aria-pressed', String(button.dataset.channel === state.channel));
+  let shown = 0;
+  for (const row of document.querySelectorAll('.pair')) {
+    row.hidden = (state.channel !== 'All' && row.dataset.channel !== state.channel)
+      || (state.method !== 'All' && !row.dataset.methods.split(' ').includes(state.method));
+    if (!row.hidden) shown += 1;
+  }
+  for (const button of document.querySelectorAll('#channels .filter')) button.setAttribute('aria-pressed', String(button.dataset.channel === state.channel));
+  for (const button of document.querySelectorAll('#methods .filter')) button.setAttribute('aria-pressed', String(button.dataset.method === state.method));
+  $('gallery-count').textContent = shown ? 'Showing ' + shown + ' recorded row' + (shown === 1 ? '' : 's') + '.' : 'No recorded pair matches both filters.';
 }
 
 function policyButtons() {
@@ -236,6 +334,12 @@ function render() {
   $('example-kind').className = 'tag kind-' + example.kind;
   $('example-channel').textContent = example.channel;
   $('example-description').textContent = example.description;
+  $('example-how').replaceChildren();
+  const attack = example.kind === 'detection' ? example : example.pair ? byId.get(example.pair) : null;
+  if (attack) {
+    text($('example-how'), 'span', example.kind === 'detection' ? 'Caught:' : 'Its attack was caught:', 'how-label');
+    for (const key of methodsOf(attack)) text($('example-how'), 'span', methodNames[key], 'tag');
+  }
   $('decision').className = 'decision ' + result.verdict;
   $('verdict').textContent = 'Recorded ' + result.verdict;
   $('exit-policy').textContent = 'Exit ' + result.exit_code + ' · ' + policy;
@@ -244,7 +348,7 @@ function render() {
       ? ['Passed: a benign twin with no findings', 'The same channel and shape as an attack, with ordinary content. A complete clean result lets a real integration read these exact bytes as untrusted data.']
       : ['No findings in this example', 'In a real integration, a complete clean result permits reading the same bytes as untrusted data. It never authorizes following embedded instructions.'],
     block: ['Held before the agent reads it', 'The input would be held before agent access. A policy can promote the verdict while each finding keeps its original severity.'],
-    incomplete: ['The failed scan stayed held', 'The scanner could not finish. A real caller must hold the input and resolve the failure; partial findings are not clearance.'],
+    incomplete: ['The unfinished scan stayed held', 'The scanner could not finish. A real caller must hold the input and resolve the failure; partial findings are not clearance.'],
     advisory: policy === 'agent-document'
       ? ['Notes recorded for this document', 'This recording contains notes alone. The document policy permits this exact case; a message still requires a complete clean agent-ingest result.']
       : ['Findings reported for review', 'The default policy reports this example with exit 0. An agent caller must choose its input policy and inspect the complete record.']
@@ -297,13 +401,15 @@ function render() {
     ['Bytes handed to YARA', String(result.bytes_scanned)]
   ]);
   $('json').textContent = JSON.stringify(result, null, 2);
+  renderStrip();
   $('status').textContent = 'Showing recorded ' + result.verdict + ' / exit ' + result.exit_code + ' for ' + example.title + ' under ' + policy + '. No scan was run in your browser.';
 }
 
 scoreboard();
+strip();
 storyButtons();
 gallery();
-channelFilters();
+galleryFilters();
 policyButtons();
 $('twin-open').addEventListener('click', () => {
   const pair = byId.get(state.example).pair;
