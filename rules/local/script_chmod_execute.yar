@@ -9,8 +9,9 @@ rule script_chmod_execute {
         reference = "https://attack.mitre.org/techniques/T1222/002/"
     strings:
         // The launch may follow on the next line or on the same line after && or ;. A path under
-        // a temp directory or the home directory counts as a launch; /usr/bin does not.
-        $chain = /\bchmod[ \t]+(\+x|[ugoa]{1,3}\+[rw]{0,2}x|[0-7]{3,4})\b[^\n]{0,120}(\n|&&|;)[ \t]*(\.\/|bash[ \t]|sh[ \t]|zsh[ \t]|\/(private\/)?(var\/)?tmp\/|~\/)/ nocase ascii wide
+        // a temp directory or the home directory counts as a launch; /usr/bin does not. sudo,
+        // nohup, setsid, or exec may stand before the launch.
+        $chain = /\bchmod[ \t]+(\+x|[ugoa]{1,3}\+[rw]{0,2}x|[0-7]{3,4})\b[^\n]{0,120}(\n|&&|;)[ \t]*((sudo|nohup|setsid|exec)[ \t]+){0,2}(\.\/|bash[ \t]|sh[ \t]|zsh[ \t]|\/(private\/)?(var\/)?tmp\/|~\/)/ nocase ascii wide
     condition:
         $chain
 }

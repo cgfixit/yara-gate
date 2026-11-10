@@ -14,9 +14,11 @@ rule shortcut_powershell_encoded {
         (lnk.relative_path matches /(^|[\\\/])(powershell|pwsh)\.exe$/i or
          lnk.local_base_path matches /(^|[\\\/])(powershell|pwsh)\.exe$/i or
          lnk.common_path_suffix matches /(^|[\\\/])(powershell|pwsh)\.exe$/i) and
-        lnk.cmd_line_args matches /(^|[ \t])-(e|ec|enc|encodedcommand)[ \t]+["']?[A-Za-z0-9+\/]{40,512}={0,2}(["' \t\r\n]|$)/i and
-        (lnk.cmd_line_args matches /(^|[ \t])-w(indowstyle)?[ \t]+(hidden|h)\b/i or
-         lnk.cmd_line_args matches /(^|[ \t])-(ep|executionpolicy)[ \t]+bypass\b/i)
+        // The same parameter spellings as script_encoded_powershell: any unambiguous prefix,
+        // after -, --, or /, and an encoded value of any length.
+        lnk.cmd_line_args matches /(^|[ \t])(-{1,2}|\/)(ec|e(n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?[A-Za-z0-9+\/]{40}/i and
+        (lnk.cmd_line_args matches /(^|[ \t])(-{1,2}|\/)w(i(n(d(o(w(s(t(y(l(e)?)?)?)?)?)?)?)?)?)?[ \t]+["']?(h(i(d(d(e(n)?)?)?)?)?|1)\b/i or
+         lnk.cmd_line_args matches /(^|[ \t])(-{1,2}|\/)(ep|ex(e(c(u(t(i(o(n(p(o(l(i(c(y)?)?)?)?)?)?)?)?)?)?)?)?)?)[ \t]+["']?(bypass|unrestricted)\b/i)
 }
 
 rule shortcut_mshta_remote {

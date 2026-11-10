@@ -2,7 +2,7 @@ rule agent_config_approval_bypass {
     meta:
         author = "yara-gate"
         description = "Coding-agent project setting that turns off tool approval, or trusts every project MCP server while sending API traffic to another endpoint"
-        intent = "Advisory on a cloned or synced settings file that, once an agent loads it, runs tools without asking: VS Code chat.tools autoApprove or the Copilot Claude-agent skip-permissions setting, a Claude Code bypassPermissions default mode, enableAllProjectMcpServers together with an ANTHROPIC_BASE_URL override (the CVE-2026-21852 key-redirect shape), or a Codex config with approval never and the danger-full-access sandbox. enableAllProjectMcpServers alone is common in committed settings and stays clean; a team's own settings can still match"
+        intent = "Advisory on a cloned or synced settings file that, once an agent loads it, runs tools without asking: VS Code chat.tools autoApprove, a chat.tools.terminal.autoApprove pattern that matches every command, or the Copilot Claude-agent skip-permissions setting, a Claude Code bypassPermissions default mode, enableAllProjectMcpServers together with an ANTHROPIC_BASE_URL override (the CVE-2026-21852 key-redirect shape), or a Codex config with approval never and the danger-full-access sandbox. enableAllProjectMcpServers alone is common in committed settings and stays clean; a team's own settings can still match"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/"
@@ -13,6 +13,10 @@ rule agent_config_approval_bypass {
     strings:
         // CVE-2025-53773: injected text wrote this key into .vscode/settings.json.
         $vscode = /"chat\.tools\.(global\.)?autoApprove"[ \t\r\n]*:[ \t\r\n]*true\b/ ascii wide
+        // The terminal tool has its own list of command patterns. A pattern that matches every
+        // command, set to true, is the documented "Allow all commands": "/.*/": true. The
+        // deprecated chat.agent key reads the same. A list of named commands stays clean.
+        $vscode_terminal = /"chat\.(tools|agent)\.terminal\.autoApprove"[ \t\r\n]*:[ \t\r\n]*\{([^{}]{1,256}|\{[^{}]{0,160}\}){0,32}"\/(\^?\.[*+]\$?|\^)\/[a-z]{0,4}"[ \t\r\n]*:[ \t\r\n]*(true\b|\{[^{}]{0,120}"approve"[ \t\r\n]*:[ \t\r\n]*true\b)/ ascii wide
         $copilot_claude = /"github\.copilot\.chat\.claudeAgent\.allowDangerouslySkipPermissions"[ \t\r\n]*:[ \t\r\n]*true\b/ ascii wide
         $claude_mode = /"defaultMode"[ \t\r\n]*:[ \t\r\n]*"bypassPermissions"/ ascii wide
         $claude_mcp = /"enableAllProjectMcpServers"[ \t\r\n]*:[ \t\r\n]*true\b/ ascii wide
@@ -22,7 +26,7 @@ rule agent_config_approval_bypass {
         $codex_approval = /\bapproval_policy[ \t]*=[ \t]*["']never["']/ ascii wide
         $codex_sandbox = /\bsandbox_mode[ \t]*=[ \t]*["']danger-full-access["']/ ascii wide
     condition:
-        $vscode or $copilot_claude or $claude_mode or
+        $vscode or $vscode_terminal or $copilot_claude or $claude_mode or
         ($claude_mcp and $base_url) or
         ($codex_approval and $codex_sandbox and yara_gate_ext == "toml")
 }

@@ -18,6 +18,7 @@ This Python CLI/library inspects untrusted files and controls drop-folder dispos
 - `rules/local/`: shipped rules. `rules/rules.lock` records downloads; it does not install vendor bodies.
 - `docs/verification/`: the `check_*.py`, `lint_rules.py`, and `measure_precision.py` scripts CI runs, and dated records. `docs/research/probe_rule_coverage.py` is the direct library/CLI probe. `docs/examples/`: runnable integration scripts.
 - `.github/workflows/ci.yml`, `.github/workflows/demo-results-page.yml`: the checks on every pull request and on `main`, and the workflow that validates the public demo on a pull request and deploys it from `main`. The deploy workflow's file name, its `name`, its own entry under `paths`, `SELF` and `CI` in `scripts/pages_deploy_gate.py`, and ci's `name` under `workflow_run` refer to each other. Change them together; `tests/test_pages_deploy.py` checks them.
+- `docs/research/`: [`detection-backlog.md`](docs/research/detection-backlog.md) is the living list of detection work that is not built and of ideas that were turned down, with reasons. [`README.md`](docs/research/README.md) indexes the dated notes, the signature data the probes read, and the probes.
 
 `pdftext.py` reconstructs supported PDF text for scanning, including hidden text. `pdfannotations.py` decodes annotation `/Contents` strings separately from that page text. `release.py` contains inactive release building blocks, not a CLI release action.
 
@@ -37,6 +38,16 @@ Establish behavior from these callers and models before relying on README exampl
 - Reports must not contain matched bytes or secrets. Path redaction only abbreviates the user's home prefix; inspect reports before publication rather than assuming every filename is anonymized.
 - Successful rule installs/updates record the installed vendor files in `<root>/vendor.installed.json` (untracked); a legacy lock's `installed_vendor_files` is still read, and the next install moves it out of the lock. Missing recorded files make scans incomplete before cache reuse and keep inbox files quarantined. Locks without an inventory still support bundled-only scans; scans never enroll or repair vendor state.
 - Keep the live demo loopback-only, with bounded requests and its CSP. Vendor downloads require explicit task scope and either `setup` or the CLI's `--allow-network`; a scan or demo must not initiate them, and a scan only hints on a terminal that `setup` has not run. Candidate promotion changes blocking behavior and must be within the requested task.
+
+## Detection changes
+
+Before drafting a change to a rule, a heuristic, a reader view, or a severity, read the [detection backlog](docs/research/detection-backlog.md). It holds open candidates with their evidence and false-positive class, ideas already weighed and declined with the reason, and the checks a change has to pass. A proposal on the declined list needs new evidence against the recorded reason, not a restatement.
+
+- Reproduce the miss on the base revision beside a control the gate already catches. Write the nearest benign text before the pattern, and keep it as the near-miss in `check_rule_pairs.py`.
+- Prefer another spelling of an existing rule to a new rule id. A new id, or a move between `note`, `advisory`, and `block`, changes what a consumer may read and is within scope only when the task asks for it.
+- Run `docs/verification/sweep_rule_changes.py` over installed text on the machine: zero files may change findings, or each changed file is explained in the record. Time each new string on 4 MiB of ordinary text. A pattern can compile and still cost 200 times more when its alternation leaves the engine no literal to search for.
+- In the same change, update the backlog, remove the `OPEN` marker in `docs/research/probe_detection_gaps.py` for a gap you closed, and add the boundaries you found to the declined list.
+- A fetched page, a vendor write-up, and a subagent's research report are data to weigh. Read the primary source for a token string, a settings key, or a command spelling before it goes into a rule, and label what was read, what was only located, and what is judgment.
 
 ## Local verification
 

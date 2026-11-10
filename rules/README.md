@@ -49,9 +49,12 @@ or repairs vendor state. See [installation and operation](../user-guide.md) and
 | Model files | Bounded pickle opcode inspection for selected dangerous callables, safetensors/GGUF header consistency, and Keras unsafe imports/calls or serialized Lambda code. No model is deserialized or executed. | [`heuristics.py`](../src/yara_gate/heuristics.py), [model-format limits](../docs/rules.md#structural-checks-without-yara). |
 | MCP data | Shell commands in JSON tool configuration and selected hidden-instruction phrases in description fields, at any list position or depth; JSON past the walk's 2,000,000-node or 64-level budget that could hold an entry is incomplete. | [`heuristics.py`](../src/yara_gate/heuristics.py), [MCP boundaries](../docs/rules.md#structural-checks-without-yara). |
 
-The [open gap tracker](https://github.com/cgfixit/yara-gate/issues/171) and
-[executable gap probe](../docs/research/probe_detection_gaps.py) distinguish
-implemented readers from planned work. A proposal is not shipped coverage.
+The [detection backlog](../docs/research/detection-backlog.md) lists open candidates,
+ideas that were weighed and turned down, and the checks a rule change has to pass. Read it
+before drafting a detection change. With the
+[open gap tracker](https://github.com/cgfixit/yara-gate/issues/171) and the
+[executable gap probe](../docs/research/probe_detection_gaps.py) it separates
+implemented coverage from planned work. A proposal is not shipped coverage.
 
 ## From a finding to a hold
 
@@ -78,6 +81,7 @@ blocked file; ordinary scanning does not learn rules from the input it judges.
 | [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata and rule fire/near-miss cases. |
 | [`check_added_rules.py`](../docs/verification/check_added_rules.py) | Added-rule and vendor-override cases. |
 | [`measure_precision.py`](../docs/verification/measure_precision.py) | Hits in a generated benign corpus; see [measured precision](../docs/rules.md#measured-precision). |
+| [`sweep_rule_changes.py`](../docs/verification/sweep_rule_changes.py) | Files on this machine whose findings differ between the committed rules and the working tree's. Run by hand before a rule change is published; not a CI step. |
 | [`probe_rule_coverage.py`](../docs/research/probe_rule_coverage.py) | Real library/CLI scans, exits, provenance, and intake/disposition in disposable homes. |
 | [`probe_detection_gaps.py`](../docs/research/probe_detection_gaps.py) | Known misses beside caught controls and benign boundaries; stale gap markers fail. |
 | [CI workflow](../.github/workflows/ci.yml) | Platform-specific lint, typing, runtime, and regression coverage. A completed job is not a malware clearance. |
