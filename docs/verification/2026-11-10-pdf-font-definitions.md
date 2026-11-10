@@ -170,8 +170,9 @@ advisory / block / block on both, from `agent_base64_blob`, as recorded on Novem
 
 `check_worst_case_timing.py`: PASS, 30 inputs of exactly 4 MiB. The new
 `pdf-font-definitions.pdf` (one font object defined until the file is full, over a map
-defined 1,900 times) took 5.44 s, advisory with `heuristic_pdf_text_unmapped`; main takes
-4.93 s on the same bytes. The slowest input was `pdf-page-objects.pdf` at 6.91 s.
+defined 1,900 times) took 5.84 s, advisory with `heuristic_pdf_text_unmapped`; in a
+side-by-side run main took 4.93 s and this change 5.74 s on the same bytes. The slowest
+input was `pdf-page-objects.pdf` at 6.84 s.
 
 Other 4 MiB inputs written for this change, one run each, base and change:
 
@@ -201,11 +202,14 @@ not in the tripwire; it is a separate change.
   and was moved to the new signature with its assertion unchanged. A broader
   focused run (`tests/test_pdftext.py tests/test_pdf_text_folding.py
   tests/test_worst_case_timing.py tests/test_scanner.py tests/test_pdfannotations.py
-  tests/test_phase1c_readers.py tests/test_heuristics.py`): 348 passed.
+  tests/test_phase1c_readers.py tests/test_heuristics.py tests/test_pages_deploy.py
+  tests/test_demo.py`): 369 passed.
 - `docs/verification/check_added_rules.py`: passed, 230 cases plus 4 vendor-override cases.
-- `docs/research/probe_detection_gaps.py --verify`: exit 0; no FAIL or STALE; the ten open
-  cases are B1 to B6 and the new B7. CLI agent-ingest intake filed every case as blocked.
-- `docs/research/probe_rule_coverage.py --verify`: exit 0, `"passed": true`, no failures.
+- `docs/research/probe_detection_gaps.py --verify`: exit 0; 236 `ok`, no FAIL or STALE; the
+  ten open cases are B1 to B6 and the new B7. CLI agent-ingest intake filed every case as
+  blocked.
+- `docs/research/probe_rule_coverage.py --verify`: exit 0, with 607 library, 55 CLI, and 9
+  benign observations and no failures.
 - `docs/verification/measure_precision.py --fail-over`: exit 0, 328 benign files, zero
   incomplete. `heuristic_pdf_text_unmapped` hits 1 file (0.30%, `pdf/merged-5-fonts.pdf`),
   as before; the other hits are the four tagged Windows files.
@@ -244,6 +248,6 @@ not in the tripwire; it is a separate change.
 ## Open pull request #205
 
 [#205](https://github.com/cgfixit/yara-gate/pull/205) (`6e38a64`, per-page font resources)
-edits the same functions. A trial merge of the two heads conflicts in `pdftext.py`,
-`docs/rules.md`, and `tests/test_pdftext.py`; the resolution and the checks run on the
-merged tree are in this change's pull request description.
+edits the same functions. A trial merge of the two heads conflicts in `pdftext.py` and in
+one line of `docs/rules.md`; the resolution and the checks run on the merged tree are in
+this change's pull request description.
