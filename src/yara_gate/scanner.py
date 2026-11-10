@@ -64,6 +64,7 @@ from yara_gate.heuristics import (
     tag_findings,
     variation_findings,
 )
+from yara_gate.htmlhidden import html_also_shown, html_hidden_texts
 from yara_gate.models import (
     DOCUMENT_HOLD,
     DOCUMENT_NOTES,
@@ -473,6 +474,12 @@ def _scan_file(
                 pieces += _with_folded_pieces("comment-text", comments, budget)
             if any(texts for _, texts in pieces):
                 findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
+            if decoded is not None:
+                findings.extend(
+                    _html_hidden_findings(
+                        rules, unit, decoded[0], findings[unit_start:], budget, yara, ext, base
+                    )
+                )
             conjunction = control_conjunction(findings[unit_start:])
             if conjunction is not None:
                 conjunction.member_path = list(unit.member_path)
@@ -559,20 +566,85 @@ def _hidden_text_findings(
         return []
     for label, pieces in _with_folded_pieces(view, texts, budget):
         for found in _piece_findings(rules, unit, [(label, pieces)], budget, yara, ext, name):
-            if (
-                found.rule_id.startswith("agent_")
-                and found.rule_id not in _NOT_INSTRUCTIONS
-                and found.severity in (Severity.note, Severity.advisory)
-            ):
-                return [
-                    Finding(
-                        rule_id="heuristic_hidden_text",
-                        severity=Severity.advisory,
-                        source=FindingSource.heuristic,
-                        member_path=list(unit.member_path),
-                        view=label,
-                    )
-                ]
+            if _is_instruction(found):
+                return [_hidden_text(unit, label)]
+    return []
+
+
+def _is_instruction(found: Finding) -> bool:
+    """A note or advisory match of an ``agent_`` rule that reads as an instruction."""
+    return (
+        found.rule_id.startswith("agent_")
+        and found.rule_id not in _NOT_INSTRUCTIONS
+        and found.severity in (Severity.note, Severity.advisory)
+    )
+
+
+def _hidden_text(unit: ContentUnit, view: str) -> Finding:
+    return Finding(
+        rule_id="heuristic_hidden_text",
+        severity=Severity.advisory,
+        source=FindingSource.heuristic,
+        member_path=list(unit.member_path),
+        view=view,
+    )
+
+
+# The also-shown test reads the page's shown text once for each hidden piece that holds an
+# instruction. Past this many bytes of it in one member, a piece counts as hidden untested.
+_ALSO_SHOWN_BYTES = 256 * 1024 * 1024
+
+
+def _html_hidden_findings(
+    rules: object,
+    unit: ContentUnit,
+    text: str,
+    found: Sequence[Finding],
+    budget: Budget,
+    yara: Callable[..., list[Finding]],
+    ext: str,
+    name: str,
+) -> list[Finding]:
+    """``heuristic_hidden_text`` when an instruction rule matches HTML text a browser hides.
+
+    ``found`` are the member's findings so far. The lexical rule ``agent_hidden_html`` keeps
+    reporting what it already reports: when it matched this member, nothing is added, so a
+    file it holds today gives the same findings. Otherwise each hidden piece
+    (``htmlhidden.html_hidden_texts``) is scanned on its own as ``html-hidden-text``, then folded
+    as ``html-hidden-text+text-folded`` when that spelling differs. The first piece that holds
+    an instruction and whose text the page does not also show is the finding, once per member,
+    labeled with the view. A piece the page also shows (a share widget's copy of the title, a
+    mail preheader that repeats the first line) is not hidden from the reader and is skipped.
+    Hidden text with no instruction reports nothing: menus, dialogs, templates, and tracking
+    attributes hide text on every page.
+    """
+    if any(item.rule_id == "agent_hidden_html" for item in found):
+        return []
+    hidden = html_hidden_texts(unit.name, text, budget)
+    if not hidden.pieces:
+        return []
+    view = "html-hidden-text"
+    read = 0
+    _SCANNERS.reuse = True
+    try:
+        for piece in hidden.pieces:
+            budget.check()
+            folded = folded_text(piece)
+            spellings = [(view, piece)]
+            if folded != piece:
+                spellings.append((view + FOLDED_SUFFIX, folded))
+            for label, spelling in spellings:
+                hits = yara(rules, _derived(spelling, budget), ext, label, name=name)
+                if not any(_is_instruction(hit) for hit in hits):
+                    continue
+                if read <= _ALSO_SHOWN_BYTES:
+                    read += len(hidden.shown)
+                    if html_also_shown(hidden, piece):
+                        break
+                return [_hidden_text(unit, label)]
+    finally:
+        _SCANNERS.reuse = False
+        _SCANNERS.pair = None
     return []
 
 
