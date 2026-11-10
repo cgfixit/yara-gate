@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -80,6 +81,23 @@ def test_gate_skips_a_commit_main_has_moved_past() -> None:
         return {"sha": "b" * 40}
 
     assert gate.decide(fetch, "o/r", SHA, run_id=9, timeout=0, interval=0) is False
+
+
+def test_gate_and_deploy_workflow_name_each_other() -> None:
+    # The gate knows the two workflows by path. After a rename it would judge the deploy
+    # workflow's other runs on the commit (a manual run, a cancelled one) as someone else's.
+    assert (ROOT / gate.SELF).is_file() and (ROOT / gate.CI).is_file()
+    deploy = (ROOT / gate.SELF).read_text(encoding="utf-8")
+    ci = (ROOT / gate.CI).read_text(encoding="utf-8")
+    # A pull request that edits the deploy workflow or the gate must run the workflow.
+    assert f"      - {gate.SELF}\n" in deploy
+    assert "      - scripts/pages_deploy_gate.py\n" in deploy
+    # workflow_run matches ci by its name; a mismatch stops every deploy without an error.
+    name = re.search(r"^name: (\S+)$", ci, re.MULTILINE)
+    assert name is not None
+    assert f"    workflows: [{name[1]}]\n" in deploy
+    own = re.search(r"^name: (\S+)$", deploy, re.MULTILINE)
+    assert own is not None and f"{own[1]}.yml" == Path(gate.SELF).name
 
 
 def test_baseline_guard_allows_provenance_and_refuses_outcomes() -> None:

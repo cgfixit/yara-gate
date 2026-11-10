@@ -137,7 +137,7 @@ A merge to `main` publishes the demo in three jobs:
    environment. Deploys run one at a time and are never cancelled mid-deploy; a
    newer pending deploy replaces an older pending one.
 
-**Actions → pages-demo → Run workflow** on `main` redeploys the current `main`
+**Actions → demo-results-page → Run workflow** on `main` redeploys the current `main`
 through the same gate. On any other branch the workflow does nothing.
 
 The standing repository configuration:
