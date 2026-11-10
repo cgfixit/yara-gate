@@ -503,9 +503,9 @@ def _pdf_text_findings(
     A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
     assembled from two paragraphs. A paragraph view exists only when a word in bold or a
     wrapped line split it across blocks. One finding per rule is kept for each view. A
-    composite font whose strings could not be decoded, or a font name that means more fonts
-    than are decoded, leaves text unread, which is reported as the note
-    ``heuristic_pdf_text_unmapped``.
+    composite font whose strings could not be decoded, a font name that means more fonts
+    than are decoded, or a font named in a way PDF readers disagree on, leaves text unread or
+    in doubt, which is reported as the note ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
     extra: list[Finding] = []

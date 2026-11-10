@@ -5,7 +5,9 @@ A content stream rarely holds a sentence as one string. Word, LaTeX, and browser
 ``pdf-flate`` views see fragments. This module rebuilds each text block from the operators and
 decodes each string through its font: a simple font as WinAnsi bytes, a font with a ToUnicode
 CMap through that map. A composite (two-byte) font with no readable ToUnicode map cannot be
-decoded; the caller reports that as a coverage note instead of a silent clean.
+decoded; the caller reports that as a coverage note instead of a silent clean. Which font a
+resource name means is read from every font resource dictionary in the file, and a name
+written in a way readers disagree on is reported the same way (``_FontNames``).
 
 Nothing is rendered and no font program is read. Positions are not tracked, so text placed out
 of reading order is joined in stream order, and a sentence split across two text blocks is not
@@ -37,6 +39,7 @@ from yara_gate.content import (
     ContentLimit,
     PdfStream,
     _pdf_stream_dict,
+    _pdf_string_end,
     _pdf_tokens,
     _pdf_value,
 )
@@ -63,6 +66,21 @@ MAX_CMAP_TOKENS = 3 * MAX_CMAP_TOTAL
 # reported as unmapped text (docs/verification/2026-11-07-pdf-font-readings.md).
 MAX_FONT_VARIANTS = 4
 MAX_FONT_REFERENCES = 64
+# One font resource dictionary is read for this many bytes and to this depth of nested
+# dictionaries and arrays. One that does not close within them leaves the names it holds
+# unknown, so every string the file shows is reported as unmapped
+# (docs/verification/2026-11-10-pdf-font-dictionaries.md).
+MAX_FONT_DICTIONARY_BYTES = 1 << 20
+MAX_FONT_NESTING = 64
+# A font dictionary written in place of a reference, and a literal string inside a font
+# resource dictionary, are read up to this size; all such fonts in one file up to the total.
+MAX_INLINE_FONT_BYTES = 64 * 1024
+MAX_INLINE_FONT_TOTAL = 16 * 1024 * 1024
+# References to an object whose whole value is another reference are followed this far.
+MAX_REFERENCE_CHAIN = 16
+# Font resource dictionaries longer than the object lookup's window are found again by their
+# headers and read in place: this many of them, and MAX_FONT_DICTIONARY_BYTES in all.
+MAX_LONG_FONT_DICTIONARIES = 8
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
 
@@ -82,13 +100,39 @@ _LITERAL_ESCAPES = {
     ord("\\"): b"\\",
 }
 
-_FONT_RESOURCES = re.compile(rb"/Font[\x00\t\n\f\r ]*<<(.{0,8192}?)>>", re.DOTALL)
-_FONT_RESOURCE_REF = re.compile(
-    rb"/Font[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
+# Whitespace as the most lenient reader lexes it: the six characters of ISO 32000-1 7.2.2, the
+# vertical tab (pypdf and pdfminer.six), and 0x80 and 0xFF (PDFium).
+_SPACE = rb"\x00\t\n\x0b\f\r \x80\xff"
+_DISPUTED_SPACE = re.compile(rb"[\x0b\x80\xff]")
+_REGULAR = rb"[^" + _SPACE + rb"()<>\[\]{}/%]"
+# The key of a font resource dictionary as a lexer decodes it: each letter written plainly or
+# as its #xx escape, ending where a name ends for some reader.
+_FONT_KEY = re.compile(rb"/(?:F|#46)(?:o|#6[Ff])(?:n|#6[Ee])(?:t|#74)(?!" + _REGULAR + rb")")
+# One token of a font resource dictionary per match, after any whitespace: a comment, ``<<``,
+# ``>>``, a literal string's opening parenthesis, a hex string, ``[``, ``]``, a name, a word
+# (a number, ``R``, a keyword), or a stray delimiter. No alternative can match the same bytes
+# twice, so a lexing pass is linear.
+_FONT_LEX = re.compile(
+    rb"[" + _SPACE + rb"]*+(?:"
+    rb"(%[^\r\n]*+)"
+    rb"|(<<)"
+    rb"|(>>)"
+    rb"|(\()"
+    rb"|(<[0-9A-Fa-f" + _SPACE + rb"]*+>)"
+    rb"|(\[)"
+    rb"|(\])"
+    rb"|/(" + _REGULAR + rb"*+)"
+    rb"|(" + _REGULAR + rb"++)"
+    rb"|(.))",
+    re.DOTALL,
 )
-_NAME_REF = re.compile(
-    rb"/([^\x00\t\n\f\r ()<>\[\]{}/%]{1,127})"
-    rb"[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
+# An object number as readers that take more than digits read it: ``+6``, ``6.0``, ``6.``,
+# ``6-``, and ``6-1`` all name object 6 to at least one of them.
+_LOOSE_NUMBER = re.compile(rb"\+*+0*+([0-9]++)[0-9.+\-]*+\Z")
+_LOOSE_GENERATION = re.compile(rb"[+\-]*+([0-9]++)")
+# A word that ends an object or starts the next: a dictionary still open here does not close.
+_OBJECT_END = frozenset(
+    {b"obj", b"endobj", b"stream", b"endstream", b"xref", b"trailer", b"startxref"}
 )
 _TO_UNICODE = re.compile(
     rb"/ToUnicode[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
@@ -127,6 +171,9 @@ class PdfText:
     ``unmapped`` is set when a composite font has no readable map, a font the file never
     resolves shows two-byte codes, or a string is shown in a resource name that means more
     fonts than ``MAX_FONT_VARIANTS`` (or ``MAX_FONT_REFERENCES``), so a reading went undecoded.
+    It is also set when a string is shown in a name whose font is not written as a plain
+    reference or a dictionary, or in any name once a font resource dictionary was not read as
+    every reader reads it (``unsettled``).
 
     ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
     moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
@@ -141,6 +188,9 @@ class PdfText:
     hidden_blocks: list[str] = field(default_factory=list)
     hidden_paragraphs: list[str] = field(default_factory=list)
     decoded_chars: int = field(default=0, repr=False)
+    # A font resource dictionary was not read as every reader reads it: any string shown may
+    # be in a font this reader does not have, so the first one shown sets ``unmapped``.
+    unsettled: bool = field(default=False, repr=False)
 
     @property
     def hidden(self) -> list[str]:
@@ -177,6 +227,7 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     predecessors = _contents_predecessors(data, occurrences, budget) if len(streams) > 1 else {}
     previous: int | None = None
     state = _TextState()
+    result.unsettled = getattr(fonts, "unsettled", False)
     for stream in streams:
         body = stream.text
         number = stream.number
@@ -293,42 +344,411 @@ def _page_content(data: bytes, stream: PdfStream) -> bool:
     return dictionary is not None and not (_NOT_PAGE_KEYS & dictionary.keys())
 
 
+Ref = tuple[int, int]
+
+
+def _reference(words: list[bytes]) -> tuple[list[Ref], bool] | None:
+    """The objects a value's words refer to, and whether the reference is written plainly.
+
+    Plain is ``N G R`` in digits. Readers also follow other spellings, and each row here was
+    run (docs/verification/2026-11-10-pdf-font-dictionaries.md): a sign or a fraction on
+    either number (``+6``, ``6.0``, ``6-``), ``R`` joined to the generation (``6 0R``), and a
+    generation that is not a number, which pdfminer.six never reads. Those are read as the
+    object number's leading digits, under the written generation and generation 0. None when
+    the words are no reference to any reader tested.
+    """
+    if len(words) == 3 and words[2][:1] == b"R":
+        number, generation, plain = words[0], words[1], words[2] == b"R"
+    elif len(words) == 2 and len(words[1]) > 1 and words[1][-1:] == b"R":
+        number, generation, plain = words[0], words[1][:-1], False
+    else:
+        return None
+    digits = _LOOSE_NUMBER.match(number)
+    if digits is None or len(digits.group(1)) > 10:
+        return None
+    key = int(digits.group(1))
+    written = _LOOSE_GENERATION.match(generation)
+    # A generation is at most 65535; one with more digits than that names no object.
+    count = written.group(1).lstrip(b"0") if written is not None else b""
+    other = int(count) if 0 < len(count) <= 5 else 0
+    if plain and number.isdigit() and generation.isdigit() and len(count) <= 5:
+        return [(key, other)], True
+    return [(key, 0), (key, other)] if other else [(key, 0)], False
+
+
+def _object_start(body: bytes, position: int = 0) -> tuple[int | None, list[Ref], bool]:
+    """How the object value at ``body[position:]`` begins.
+
+    The offset just past ``<<`` when it is a dictionary. Otherwise the objects it refers to
+    when its whole value is a reference (``10 0 obj 6 0 R endobj``), which pdfminer.six,
+    PDFium, and MuPDF follow to the object named, and whether that reference is plain.
+    """
+    words: list[bytes] = []
+    for _ in range(8):
+        match = _FONT_LEX.match(body, position)
+        if match is None:
+            break
+        position = match.end()
+        group = match.lastindex
+        if group == 1:
+            continue
+        if group == 2 and not words:
+            return position, [], True
+        if group != 9 or match.group(9) in _OBJECT_END:
+            break
+        words.append(match.group(9))
+        if len(words) == 3:
+            break
+    keys, plain = _reference(words) or ([], True)
+    return None, keys, plain
+
+
+class _Frame:
+    """A dictionary or array that is open while a font resource dictionary is read."""
+
+    __slots__ = ("array", "compound", "font", "key", "owner", "start", "words")
+
+    def __init__(self, start: int, *, font: bool = False, array: bool = False) -> None:
+        self.start = start
+        # A font resource dictionary: each entry is a resource name and its font.
+        self.font = font
+        self.array = array
+        # The resource name this dictionary is the font of, when it is written in place of a
+        # reference.
+        self.owner: bytes | None = None
+        # The last name read at this level, the words after it, and whether its value holds
+        # anything else (a string, an array, a dictionary).
+        self.key: bytes | None = None
+        self.words: list[bytes] = []
+        self.compound = False
+
+
+class _FontNames:
+    """What a file's font resource dictionaries say each resource name means.
+
+    A font resource dictionary is the value of a ``/Font`` key, whatever holds the key, as
+    before; the union over the file is what a content stream's names are read through. Each
+    is read by a tokenizer, to its own closing ``>>``, through nested dictionaries, strings,
+    and comments. ``references`` maps a name to the font objects it refers to, and ``inline``
+    to the font dictionaries written in its place.
+
+    Readers disagree on what is not written plainly, so what is not settled is reported
+    instead of passing unread. A name in ``unread`` has a value that is no plain reference
+    and no dictionary: a reference only some readers follow (also read, as they read it), or
+    nothing this reader follows. It is given an unresolved reading, so text shown in it is
+    reported as unmapped. ``unsettled`` is set when the names themselves are in doubt: a
+    dictionary that does not close within its limits, a byte only some readers take for
+    whitespace between a dictionary's tokens, or a dictionary reached through a reference
+    that is not plain. Every string the file shows is then reported as unmapped.
+    """
+
+    def __init__(self, check: Callable[[], None]) -> None:
+        self.references: dict[bytes, set[Ref]] = {}
+        self.inline: dict[bytes, list[bytes]] = {}
+        self.unread: set[bytes] = set()
+        # Objects named by ``/Font N G R``: each is a font resource dictionary.
+        self.dictionaries: set[Ref] = set()
+        self.unsettled = False
+        self._check = check
+        self._inline_bytes = 0
+        self._long_bytes = 0
+
+    def read(self, source: bytes) -> None:
+        """Read every font resource dictionary written in ``source``.
+
+        A ``/Font`` key inside a dictionary already being read is handled by that reading,
+        so no byte is lexed twice however the keys nest.
+        """
+        covered = 0
+        for count, match in enumerate(_FONT_KEY.finditer(source)):
+            if count % 4096 == 0:
+                self._check()
+            if match.start() >= covered:
+                covered = max(covered, self._value(source, match.end()))
+
+    def _value(self, source: bytes, position: int) -> int:
+        """Read what follows a ``/Font`` key: a dictionary, or a reference to one.
+
+        Returns where the reading of a dictionary stopped, and 0 for anything else.
+        """
+        words: list[bytes] = []
+        disputed = False
+        for _ in range(8):
+            match = _FONT_LEX.match(source, position)
+            if match is None:
+                break
+            group = match.lastindex or 0
+            gap = match.start(group) - (group == 8)
+            if gap > position and _DISPUTED_SPACE.search(source, position, gap):
+                disputed = True
+            position = match.end()
+            if group == 1:
+                continue
+            if group == 2 and not words:
+                position, closed = self._dictionary(source, position)
+                self.unsettled = self.unsettled or disputed or not closed
+                return position
+            if group != 9:
+                break
+            words.append(match.group(9))
+            if len(words) == 3:
+                break
+        self._resource_reference(words, disputed)
+        return 0
+
+    def _resource_reference(self, words: list[bytes], disputed: bool = False) -> None:
+        keys, plain = _reference(words) or ([], True)
+        self.dictionaries.update(keys)
+        if keys and (disputed or not plain):
+            self.unsettled = True
+
+    def _dictionary(self, source: bytes, position: int) -> tuple[int, bool]:
+        """Read the font resource dictionary whose ``<<`` ends at ``position``.
+
+        Returns where reading stopped and whether the dictionary closed. It does not close
+        when an object ends first, a string does not end, or a limit is reached; the entries
+        read by then are kept, and the caller reports the rest.
+        """
+        limit = min(len(source), position + MAX_FONT_DICTIONARY_BYTES)
+        stack = [_Frame(position - 2, font=True)]
+        lex = _FONT_LEX.match
+        count = 0
+        while position < limit:
+            match = lex(source, position, limit)
+            if match is None:
+                break
+            count += 1
+            if count % 4096 == 0:
+                self._check()
+            group = match.lastindex or 0
+            top = stack[-1]
+            if top.font and not self.unsettled:
+                gap = match.start(group) - (group == 8)
+                if gap > position and _DISPUTED_SPACE.search(source, position, gap):
+                    self.unsettled = True
+            position = match.end()
+            if group == 1:
+                continue
+            if group == 8:
+                if not top.array:
+                    self._entry(top)
+                    top.key = _name(match.group(8))
+            elif group == 9:
+                word = match.group(9)
+                if word in _OBJECT_END:
+                    break
+                if top.key is not None and len(top.words) < 4:
+                    top.words.append(word)
+            elif group in (2, 6):
+                if len(stack) >= MAX_FONT_NESTING:
+                    break
+                child = _Frame(match.start(group), array=group == 6)
+                if group == 2 and top.key is not None and not top.words and not top.compound:
+                    child.font = top.key == b"Font"
+                    if top.font:
+                        # A font dictionary in place of a reference: it settles this entry
+                        # when it closes.
+                        child.owner, top.key = top.key, None
+                top.compound = True
+                stack.append(child)
+            elif group in (3, 7):
+                if group == 7 and not top.array:
+                    continue
+                stack.pop()
+                self._entry(top)
+                if top.owner is not None:
+                    self._inline(top.owner, source, top.start, position)
+                if not stack:
+                    return position, True
+            elif group == 4:
+                stop = min(limit, position + MAX_INLINE_FONT_BYTES)
+                end = _pdf_string_end(source, position, stop)
+                if end < 0:
+                    position = stop
+                    break
+                position = end
+                top.compound = True
+            else:
+                top.compound = True
+        for frame in stack:
+            self._entry(frame)
+            if frame.owner is not None:
+                self.references.setdefault(frame.owner, set())
+                self.unread.add(frame.owner)
+        return position, False
+
+    def _entry(self, frame: _Frame) -> None:
+        """Record the entry that ends here: ``frame.key`` and the value read after it."""
+        key, words, compound = frame.key, frame.words, frame.compound
+        frame.key, frame.compound = None, False
+        if words:
+            frame.words = []
+        if key is None or frame.array:
+            return
+        keys, plain = (None if compound else _reference(words)) or ([], False)
+        if frame.font:
+            self.references.setdefault(key, set())
+            if not plain:
+                self.unread.add(key)
+            for each in keys:
+                self._refer(key, each)
+        elif key == b"Font" and keys:
+            self.dictionaries.update(keys)
+            self.unsettled = self.unsettled or not plain
+
+    def _refer(self, name: bytes, key: Ref) -> None:
+        slot = self.references.setdefault(name, set())
+        if len(slot) < MAX_FONT_REFERENCES:
+            slot.add(key)
+        elif key not in slot:
+            self.unread.add(name)
+
+    def _inline(self, name: bytes, source: bytes, start: int, end: int) -> None:
+        """Keep the bytes of a font dictionary written as ``name``'s value."""
+        slot = self.inline.setdefault(name, [])
+        self.references.setdefault(name, set())
+        size = end - start
+        if (
+            size > MAX_INLINE_FONT_BYTES
+            or len(slot) >= MAX_FONT_REFERENCES
+            or self._inline_bytes + size > MAX_INLINE_FONT_TOTAL
+        ):
+            self.unread.add(name)
+            return
+        body = source[start:end]
+        if body not in slot:
+            slot.append(body)
+            self._inline_bytes += size
+
+    def follow(self, data: bytes, objects: Lookup) -> None:
+        """Read the dictionaries that ``/Font N G R`` names, then follow each reference to an
+        object whose whole value is another reference.
+
+        Each level of references is found in one pass over the file. A chain longer than
+        ``MAX_REFERENCE_CHAIN`` is not followed to its end, which is reported.
+        """
+        seen: set[Ref] = set()
+        level = self.dictionaries
+        long = 0
+        for _ in range(MAX_REFERENCE_CHAIN + 1):
+            level = level - seen
+            if not level:
+                break
+            seen |= level
+            _prime(objects, level)
+            following: set[Ref] = set()
+            for count, key in enumerate(sorted(level)):
+                if count % 256 == 0:
+                    self._check()
+                for body in objects(*key):
+                    start, keys, plain = _object_start(body)
+                    following.update(keys)
+                    if start is None:
+                        self.unsettled = self.unsettled or not plain
+                        continue
+                    if self._dictionary(body, start)[1]:
+                        continue
+                    # The lookup's window ended inside the dictionary: read the object itself.
+                    whole = len(body) >= _LOOKUP_WINDOW and long < MAX_LONG_FONT_DICTIONARIES
+                    long += 1
+                    if not (whole and self._whole(data, key)):
+                        self.unsettled = True
+            # A dictionary read just now can itself hold ``/Font N G R``.
+            level = following | self.dictionaries
+        else:
+            self.unsettled = self.unsettled or bool(level - seen)
+        self._follow_fonts(objects)
+
+    def _whole(self, data: bytes, key: Ref) -> bool:
+        """Read each raw definition of ``key`` in place; True when every one closed.
+
+        The bytes read this way, over the whole file, stay within one dictionary's limit, so
+        definitions that overlap are not each read to that limit.
+        """
+        header = re.compile(rb"(?<![0-9])0*%d[\x00\t\n\f\r ]++0*%d[\x00\t\n\f\r ]++obj\b" % key)
+        found = False
+        for match in header.finditer(data):
+            self._check()
+            start = _object_start(data, match.end())[0]
+            if start is None:
+                continue
+            if self._long_bytes > MAX_FONT_DICTIONARY_BYTES:
+                return False
+            end, closed = self._dictionary(data, start)
+            self._long_bytes += end - start
+            if not closed:
+                return False
+            found = True
+        return found
+
+    def _follow_fonts(self, objects: Lookup) -> None:
+        """Add, to each name, the objects its references reach through other references."""
+        targets: dict[Ref, list[tuple[Ref, bool]]] = {}
+        level = {key for refs in self.references.values() for key in refs}
+        for _ in range(MAX_REFERENCE_CHAIN + 1):
+            level = {key for key in level if key not in targets}
+            if not level:
+                break
+            _prime(objects, level)
+            following: set[Ref] = set()
+            for count, key in enumerate(sorted(level)):
+                if count % 256 == 0:
+                    self._check()
+                found: list[tuple[Ref, bool]] = []
+                for body in objects(*key):
+                    _, keys, plain = _object_start(body)
+                    found.extend((each, plain) for each in keys)
+                targets[key] = found
+                following.update(each for each, _ in found)
+            level = following
+        for count, (name, refs) in enumerate(self.references.items()):
+            if count % 256 == 0:
+                self._check()
+            frontier = {key for key in refs if targets.get(key)}
+            for _ in range(MAX_REFERENCE_CHAIN):
+                reached: set[Ref] = set()
+                for key in frontier:
+                    for target, plain in targets.get(key, ()):
+                        if not plain:
+                            self.unread.add(name)
+                        if target not in refs:
+                            reached.add(target)
+                if not reached:
+                    break
+                for target in sorted(reached):
+                    self._refer(name, target)
+                frontier = reached
+            else:
+                self.unread.add(name)
+
+
+class _Fonts(dict[bytes, list[Font]]):
+    """Resource name to fonts. ``unsettled`` is set when a font resource dictionary could not
+    be read as every reader reads it, so a name may mean a font that is not here."""
+
+    unsettled = False
+
+
 def _fonts(
     data: bytes,
     streams: list[PdfStream],
     objects: Lookup,
     cmaps: _Cmaps,
     budget: Budget,
-) -> dict[bytes, list[Font]]:
+) -> _Fonts:
     """Resource name to the distinct fonts it names anywhere in the file (pages may differ)."""
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
-    references: dict[bytes, set[tuple[int, int]]] = {}
-    truncated: set[bytes] = set()
-    dictionaries: list[bytes] = []
-    indirect: set[tuple[int, int]] = set()
+    names = _FontNames(budget.check)
     for source in sources:
         budget.check()
-        dictionaries.extend(match.group(1) for match in _FONT_RESOURCES.finditer(source))
-        indirect.update(
-            (int(match.group(1)), int(match.group(2)))
-            for match in _FONT_RESOURCE_REF.finditer(source)
-        )
-    # One pass over the file finds every wanted object; a lookup per key would rescan it.
-    _prime(objects, indirect)
-    for key in sorted(indirect):
-        dictionaries.extend(objects(*key))
-    for dictionary in dictionaries:
-        for ref in _NAME_REF.finditer(dictionary):
-            name = _name(ref.group(1))
-            slot = references.setdefault(name, set())
-            key = (int(ref.group(2)), int(ref.group(3)))
-            if len(slot) < MAX_FONT_REFERENCES:
-                slot.add(key)
-            elif key not in slot:
-                truncated.add(name)
+        names.read(source)
+    names.follow(data, objects)
+    # A name whose value no reading settles is treated as one past the reference cap.
+    references, truncated = names.references, names.unread
     cache: dict[tuple[int, int], list[Font]] = {}
-    fonts: dict[bytes, list[Font]] = {}
+    fonts = _Fonts()
+    fonts.unsettled = names.unsettled
     _prime(objects, {key for refs in references.values() for key in refs})
     headers: dict[tuple[int, int], int] | None = None
 
@@ -364,6 +784,14 @@ def _fonts(
             found.append(unresolved)
         if found:
             fonts[name] = found
+    for name, bodies in names.inline.items():
+        # A font dictionary written in place of a reference is the whole font object.
+        slot = fonts.setdefault(name, [])
+        for body in bodies:
+            budget.check()
+            # ``body`` is the whole dictionary, so there is no longer object to read.
+            inline = _font([body], cmaps, lambda _key: b"", (0, 0))
+            slot.extend(each for each in inline if each not in slot)
     return fonts
 
 
@@ -642,7 +1070,11 @@ class _Paragraphs:
         if variants is not self.checked:
             self.checked = variants
             self.unreadable = any(font.unreadable for font in variants)
-        if self.unreadable:
+        if self.unreadable or (
+            self.result.unsettled
+            and not self.result.unmapped
+            and any(isinstance(item, bytes) and item for item in strings)
+        ):
             self.result.unmapped = True
         elif not fonts and _two_byte(strings):
             # A font the file never resolves, whose codes are two bytes wide: decoding them as

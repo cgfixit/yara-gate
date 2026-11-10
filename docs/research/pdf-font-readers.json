@@ -1,0 +1,305 @@
+{
+  "versions": {
+    "pypdf": "5.1.0",
+    "pdfminer.six": "20260107",
+    "MuPDF": "PyMuPDF 2.1: Python bindings for the MuPDF 1.28.6 library",
+    "PDFium": "pypdfium2 5.13.0, PDFium 153.0.7999.0",
+    "poppler": "pdftotext version 24.02.0",
+    "pdf.js": "pdfjs-dist 6.5.438"
+  },
+  "rows": {
+    "plain": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "repeated name, last copy": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "pdf.js"
+    ],
+    "repeated name, first copy": [
+      "pypdf",
+      "poppler"
+    ],
+    "6.0 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "pdf.js"
+    ],
+    "6. 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "pdf.js"
+    ],
+    "6 0.0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "pdf.js"
+    ],
+    "+6 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "pdf.js"
+    ],
+    "6 +0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "pdf.js"
+    ],
+    "6- 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "pdf.js"
+    ],
+    "6 0R": [
+      "pdfminer.six",
+      "pdf.js"
+    ],
+    "6<VT>0 R": [
+      "pdfminer.six"
+    ],
+    "6 0<VT>R": [
+      "pdfminer.six"
+    ],
+    "escaped key, listed second": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "/F1 10 0 R, object 10 is 6 0 R": [
+      "pdfminer.six",
+      "MuPDF"
+    ],
+    "6.9 0 R": [
+      "pdfminer.six",
+      "PDFium"
+    ],
+    "06 0 R": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "00000000006 0 R": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "++6 0 R": [
+      "pdfminer.six"
+    ],
+    "6+ 0 R": [
+      "pdfminer.six",
+      "PDFium"
+    ],
+    "6-1 0 R": [
+      "PDFium",
+      "MuPDF"
+    ],
+    "6.0.0 0 R": [
+      "PDFium"
+    ],
+    "-6 0 R": [],
+    "6e0 0 R": [],
+    "0x6 0 R": [],
+    "6 00000000 R": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "6 -0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "6 .0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "pdf.js"
+    ],
+    "6 0.9 R": [
+      "pdfminer.six",
+      "PDFium"
+    ],
+    "6 -1 R": [
+      "pdfminer.six",
+      "PDFium"
+    ],
+    "6 x R": [
+      "pdfminer.six"
+    ],
+    "6 1 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF"
+    ],
+    "6 R": [],
+    "6 0 0 R": [],
+    "6 0.0R": [
+      "pdfminer.six",
+      "pdf.js"
+    ],
+    "+6 +0R": [
+      "pdfminer.six",
+      "poppler",
+      "pdf.js"
+    ],
+    "6 0 R0": [
+      "pypdf"
+    ],
+    "6 0 r": [],
+    "60R": [],
+    "6 %c<LF>0 %c<LF>R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "6<NUL>0<NUL>R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "6<80>0<80>R": [
+      "PDFium"
+    ],
+    "6<FF>0<FF>R": [
+      "PDFium"
+    ],
+    "6<BS>0<BS>R": [],
+    "6<A0>0<A0>R": [],
+    "null": [],
+    "[6 0 R]": [],
+    "(6 0 R)": [],
+    "inline font dictionary": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "key /#46ont": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "key /Font, comment, <<": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "name /F#31": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "9000 spaces before the entry": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "empty dictionary before the entry": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "string holding >> before the entry": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "comment holding >> before the entry": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "/F1<80>6 0 R": [
+      "PDFium"
+    ],
+    "/F1<VT>6 0 R": [
+      "pdfminer.six"
+    ],
+    "/Font [<< /F1 6 0 R >>]": [],
+    "/Font 11 0 R": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "/Font 11.0 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "pdf.js"
+    ],
+    "/Font 11 0R": [
+      "pdfminer.six",
+      "poppler",
+      "pdf.js"
+    ],
+    "/Font 12 0 R, object 12 is 11 0 R": [
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF"
+    ],
+    "/Font 11 0 R, 5000 spaces before the entry": [
+      "pypdf",
+      "pdfminer.six",
+      "PDFium",
+      "MuPDF",
+      "poppler",
+      "pdf.js"
+    ],
+    "/F1 through two references": [
+      "pdfminer.six",
+      "MuPDF"
+    ],
+    "/F1 through twelve references": [
+      "pdfminer.six"
+    ]
+  }
+}

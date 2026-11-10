@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 29 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 31 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -31,7 +31,10 @@ unclosed `beginbfchar` markers; and one `bfrange` section of `[` tokens, which
 must end `pdf cmap tokens exceed 1572864`
 ([record](2026-11-07-cmap-entry-budget.md)). An HTML page just under the SVG scope
 test's 1,024-match cap runs every scope loop to its end, and a PDF of 64 fonts
-under one resource name covers the per-string font readings. The RTF reader now rejects the unclosed nesting
+under one resource name covers the per-string font readings. Two PDFs cover the font
+resource dictionaries: `/Font<<` repeated, which never closes and must end at the annotation
+reader's token cap after the text reader finishes, and as many objects as fit, each named by
+its own `/Font N 0 R` ([record](2026-11-10-pdf-font-dictionaries.md)). The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 

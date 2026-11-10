@@ -47,6 +47,7 @@ under [`docs/verification/`](../verification/), not here.
 | [delivery-signatures.json](delivery-signatures.json) | `probe_rule_coverage.py` | Delivery commands, pages, and parsed shortcuts |
 | [unix-signatures.json](unix-signatures.json) | `probe_rule_coverage.py` | macOS and Linux commands |
 | [windows-format-signatures.json](windows-format-signatures.json) | `probe_rule_coverage.py` | Windows script-host, shortcut-family, and document formats |
+| [pdf-font-readers.json](pdf-font-readers.json) | `probe_pdf_font_readers.py` | Which of six PDF readers showed the text for each spelling of a font resource, and the reader versions, as run on November 10 |
 | [rule-coverage-baseline.json](rule-coverage-baseline.json) | nothing; a record | The first probe run, October 8 |
 | [external-content-boundaries-2026-10-23.json](external-content-boundaries-2026-10-23.json) | nothing; a record | Observations behind the external-content note |
 
@@ -61,6 +62,7 @@ the November 10 spellings.
 | --- | --- | --- |
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
 | [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 to B6 are the backlog's open candidates |
+| [probe_pdf_font_readers.py](probe_pdf_font_readers.py) | No | 65 spellings of a PDF font resource: `--verify` checks what the gate reports for each, and `--readers` reruns whichever of six PDF readers are installed against `pdf-font-readers.json` |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |

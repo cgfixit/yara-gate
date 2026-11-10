@@ -182,6 +182,20 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts),
         None,
     )
+    # Font resource dictionaries that never close, one inside the next: the regex that read
+    # them before 2026-11-10-pdf-font-dictionaries.md rescanned 8 KiB from every key (40 s).
+    # The text reader finishes; the annotation reader, which runs after it, then stops.
+    yield (
+        "pdf-font-keys.pdf",
+        _filled(b"%PDF-1.7\n", b"/Font<<"),
+        "pdf annotation dictionary exceeds 100000 tokens",
+    )
+    # As many objects as fit, each named by its own `/Font N 0 R`: every lookup returns a
+    # 4 KiB window, and each was once kept and searched whole (13 s).
+    token = b"%07d 0 obj<</F1 %07d 0 R>>endobj /Font %07d 0 R\n"
+    count = (SIZE - len(b"%PDF-1.7\n")) // len(token % (0, 0, 0))
+    tokens = b"".join(token % (number, number + 1, number) for number in range(1, count + 1))
+    yield "pdf-font-objects.pdf", _filled(b"%PDF-1.7\n" + tokens, b" "), None
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:

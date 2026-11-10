@@ -19,6 +19,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from yara_gate.samples import (
+    cid_font,
+    font_resources_pdf,
     hex_glyph_line_pdf,
     hex_outline_title_pdf,
     merged_pdf,
@@ -500,6 +502,60 @@ def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
     ]
 
 
+def font_dictionary_cases() -> list[tuple[str, bytes, str | None]]:
+    """How a font resource dictionary names the font, in spellings PDF readers follow.
+
+    The page shows glyph ids only object 6's map reads as the phrase, and /F1 means another
+    font elsewhere in the file. Before
+    docs/verification/2026-11-10-pdf-font-dictionaries.md every ``hit`` here scanned clean.
+    A reference only some readers follow is read as they read it and also reported; a value
+    that is no reference to any reader tested is reported. The near misses are the same
+    shapes around ordinary text: only the spellings readers disagree on raise the note.
+    """
+    hit = "agent_override_imperative"
+    unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Please review the attached guidelines before the kickoff call."
+
+    def entry(value: bytes, text: str = _PDF_PHRASE) -> bytes:
+        return font_resources_pdf(b"/Font << /F1 7 0 R /F1 " + value + b" >>", text)
+
+    def page(
+        resources: bytes, text: str = _PDF_PHRASE, extra: dict[int, bytes] | None = None
+    ) -> bytes:
+        return font_resources_pdf(resources, text, extra)
+
+    spellings = {
+        "fraction": b"6.0 0 R",
+        "point": b"6. 0 R",
+        "generation-fraction": b"6 0.0 R",
+        "plus": b"+6 0 R",
+        "generation-plus": b"6 +0 R",
+        "minus-after": b"6- 0 R",
+        "joined-r": b"6 0R",
+        "tab-between": b"6\x0b0 R",
+        "tab-before-r": b"6 0\x0bR",
+    }
+    escaped = b"/Font << /F1 7 0 R >> /F#6Fnt << /F1 6 0 R >>"
+    alias = {10: b"6 0 R"}
+    padded = b"/Font << " + b" " * 9000 + b"/F1 6 0 R >>"
+    return [
+        *((f"fontdict-{name}.pdf", entry(value), hit) for name, value in spellings.items()),
+        ("fontdict-escaped-key.pdf", page(escaped), hit),
+        ("fontdict-alias.pdf", page(b"/Font << /F1 10 0 R >>", extra=alias), hit),
+        ("fontdict-inline.pdf", page(b"/Font << /F1 " + cid_font(5) + b" >>"), hit),
+        ("fontdict-padded.pdf", page(padded), hit),
+        ("fontdict-repeated.pdf", entry(b"6 0 R"), hit),
+        ("fontdict-negative.pdf", entry(b"-6 0 R"), unmapped),
+        ("fontdict-null.pdf", entry(b"null"), unmapped),
+        ("fontdict-fraction-plain.pdf", entry(b"6.0 0 R", benign), unmapped),
+        ("fontdict-repeated-plain.pdf", entry(b"6 0 R", benign), None),
+        ("fontdict-escaped-key-plain.pdf", page(escaped, benign), None),
+        ("fontdict-alias-plain.pdf", page(b"/Font << /F1 10 0 R >>", benign, alias), None),
+        ("fontdict-inline-plain.pdf", page(b"/Font << /F1 " + cid_font(5) + b" >>", benign), None),
+        ("fontdict-padded-plain.pdf", page(padded, benign), None),
+    ]
+
+
 def pdf_text_cases() -> list[tuple[str, bytes, str | None]]:
     """The pdf-text view: kerned, hex, wrapped, and glyph-id text, and its near misses."""
     unmapped = "heuristic_pdf_text_unmapped"
@@ -699,6 +755,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         *pdf_text_cases(),
         *_overflow_cmap_cases(),
         *font_reading_cases(),
+        *font_dictionary_cases(),
         *_encoded_text_cases(),
         *hex_string_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.

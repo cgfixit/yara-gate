@@ -357,6 +357,86 @@ def merged_pdf(text: str, fonts: int, reading: int) -> bytes:
     )
 
 
+_CID_FONT = (
+    b"<< /Type /Font /Subtype /Type0 /BaseFont /%s+Arial /Encoding /Identity-H "
+    b"/DescendantFonts [<< /Type /Font /Subtype /CIDFontType2 /BaseFont /%s+Arial "
+    b"/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+    b"/FontDescriptor << /Type /FontDescriptor /FontName /%s+Arial /Flags 4 "
+    b"/FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 "
+    b"/StemV 80 >> /DW 500 >>] /ToUnicode %d 0 R >>"
+)
+
+
+def cid_font(to_unicode: int, tag: bytes = b"AAAAAA") -> bytes:
+    """A Type0 font dictionary, complete enough for PDF readers, with its map in an object."""
+    return _CID_FONT % (tag, tag, tag, to_unicode)
+
+
+def font_resources_pdf(
+    resources: bytes, text: str, extra: dict[int, bytes] | None = None, *, decoy: bool = True
+) -> bytes:
+    """One page whose ``/Resources`` holds ``resources``, showing ``text`` in /F1 as glyph ids.
+
+    The ids count from 3 in the order ``text`` first uses each character, so the content
+    stream holds no character of ``text`` and only a ToUnicode map reads it. Object 6 is the
+    font whose map (object 5) reads the ids back as ``text``. Object 7 is another font whose
+    map (object 8) reads each id seven printable characters along. With ``decoy``, object 9
+    is a resources dictionary nothing uses whose /F1 is that other font, so /F1 always has a
+    readable wrong meaning somewhere in the file. ``extra`` adds or replaces objects. The
+    file has a classic cross-reference table, so readers open it as written.
+    """
+    order = list(dict.fromkeys(text))
+    ids = b"".join(b"%04X" % (order.index(char) + 3) for char in text)
+    content = b"BT /F1 12 Tf 72 700 Td <" + ids + b"> Tj ET"
+
+    def to_unicode(shift: int) -> bytes:
+        pairs = b"".join(
+            b"<%04X> <%04X>\n" % (index + 3, (ord(char) - 32 + shift) % 95 + 32)
+            for index, char in enumerate(order)
+        )
+        cmap = (
+            b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+            b"/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
+            b"/CMapName /Adobe-Identity-UCS def /CMapType 2 def\n"
+            b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+            + b"%d beginbfchar\n" % len(order)
+            + pairs
+            + b"endbfchar\nendcmap\nCMapName currentdict /CMap defineresource pop end end\n"
+        )
+        return b"<< /Length %d >>\nstream\n" % len(cmap) + cmap + b"\nendstream"
+
+    objects = {
+        1: b"<< /Type /Catalog /Pages 2 0 R >>",
+        2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << "
+        + resources
+        + b" >> /Contents 4 0 R >>",
+        4: b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        5: to_unicode(0),
+        6: cid_font(5),
+        7: cid_font(8, b"BBBBBB"),
+        8: to_unicode(7),
+    }
+    if decoy:
+        objects[9] = b"<< /Font << /F1 7 0 R >> >>"
+    objects.update(extra or {})
+    out = bytearray(b"%PDF-1.7\n")
+    offsets: dict[int, int] = {}
+    for number in sorted(objects):
+        offsets[number] = len(out)
+        out += b"%d 0 obj\n" % number + objects[number] + b"\nendobj\n"
+    start = len(out)
+    size = max(objects) + 1
+    out += b"xref\n0 %d\n" % size
+    for number in range(size):
+        if number in offsets:
+            out += b"%010d 00000 n \n" % offsets[number]
+        else:
+            out += b"0000000000 65535 f \n"
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, start)
+    return bytes(out)
+
+
 def hex_glyph_line_pdf(payload: bytes = b"") -> bytes:
     """A line of text as one 588-digit hex string of glyph ids; ``payload`` shown after it."""
     return _hex_pdf(_HEX_LINE, b"(" + payload + b") Tj " if payload else b"")

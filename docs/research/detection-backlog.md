@@ -43,6 +43,7 @@ Nothing here is a production false-positive rate or a recall figure.
 | Installed files unchanged | `docs/verification/sweep_rule_changes.py` | Zero files change findings between the base rules and yours |
 | Worst case stays bounded | `docs/verification/check_worst_case_timing.py` | 4 MiB adversarial inputs finish under the ceiling |
 | Recorded outcomes unchanged | `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | The public replay still shows what the scanner does |
+| PDF readers still agree with the record | `docs/research/probe_pdf_font_readers.py --verify`, and `--readers` where they are installed | For a change to how PDF fonts are named: the gate's outcome on each spelling, and which readers follow it |
 
 The sweep and the precision corpus answer different questions. The corpus holds near-misses
 written for the rules; the sweep holds thousands of files nobody wrote with the rules in
@@ -156,6 +157,8 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 | Reverse shells through `telnet` with a FIFO, awk `/inet/tcp`, zsh `ztcp`, Node `net` with `child_process` | Verified clean | Rare beside the forms now matched; the Node form is a program, not a one-liner |
 | macOS stealer cluster: any two of `dscl . -authonly`, a hidden-answer dialog, `find-generic-password`, `ditto -c -k` with a POST, `killall Terminal`, `xattr -c` | Sourced, read: Unit 42, June 2026 | Each is matched alone as advisory. A two-of-six block needs MDM enrolment scripts as twins; vendor rules exclude MDM agents for these |
 | Override phrases in BOM-less UTF-16 with no ASCII | Verified clean for Korean; the same holds for Chinese, Japanese, and Russian | `decoded-utf16` needs a byte order mark or ASCII-heavy text. Decide once for all scripts |
+| A byte only some PDF readers take for whitespace, in a content stream: `/F1<80>12 Tf` selects `/F1` in PDFium, `/F1<VT>12 Tf` in pdfminer.six | Verified, direct runtime and readers ([2026-11-10-pdf-font-dictionaries.md](../verification/2026-11-10-pdf-font-dictionaries.md)): the gate's content lexer reads the longer name, which no font dictionary lists. Two-byte codes then raise `heuristic_pdf_text_unmapped`; one-byte codes would be decoded as WinAnsi and scan clean | The font dictionary reader now treats 0x0B, 0x80, and 0xFF as whitespace and reports them. The content lexer (`pdftext._tokens`) needs the same decision for names, numbers, and operators, a count of those bytes in real content streams, and a tripwire input |
+| A PDF font resource dictionary longer than 4 KB inside an object stream | Verified: reported as `heuristic_pdf_text_unmapped` on every shown string, not read. A raw object that long is found by its header and read whole | The object lookup returns a 4 KB window of a member. Reading the member whole needs the lookup to hand out its span |
 | Generate the phrase rules from a word list and one separator grammar | [#171](https://github.com/cgfixit/yara-gate/issues/171), deferred there | The line-break separator is written out 64 times in `agent_prompt_injection_phrases`, up from 32. Worth doing before the next phrase is added |
 
 ## Considered and not planned
@@ -180,6 +183,10 @@ overturn.
 | HTML `<img src="https://...{{...}}">` as an exfiltration template | Web and mail templates are written this way. The Markdown forms are matched |
 | A literal key appended to `authorized_keys` | An administrator's own key looks the same. A downloaded key is matched |
 | ClickOnce manifests, `node -e` in `postinstall`, joining CSV cells or JSON array elements | Recorded earlier; see the [October 30 roadmap](detection-roadmap-2026-10-30.md) and [#171](https://github.com/cgfixit/yara-gate/issues/171) |
+| Widen the three regular expressions that found PDF font names to the spellings readers accept | The spellings are open-ended (65 rows in [`probe_pdf_font_readers.py`](probe_pdf_font_readers.py)) and half the misses were structure, not spelling: a dictionary past 8 KB, a comment or string holding `>>`, a font written in place of a reference. All six readers follow each of those. The lazy match also took 40 s on 4 MiB of `/Font<<`. A tokenizer reads them instead ([2026-11-10-pdf-font-dictionaries.md](../verification/2026-11-10-pdf-font-dictionaries.md)) |
+| Only report a PDF font whose reference is not written `N G R`, without reading it | A note passes `agent-document` and is filed clean by default. Readers show the text, so the reference is read as they read it and the note is added, since an untested reader may take the bytes for another object |
+| An incomplete result when a PDF font resource dictionary does not close or holds a byte readers disagree on | A reader may still open the file, and incomplete exits 2 under every policy. Every string the file shows is reported as unmapped instead, which `agent-ingest` holds |
+| Read `-6 0 R`, `6e0 0 R`, `6 0 r`, `60R`, or an array as a PDF font reference | None of pypdf, pdfminer.six, PDFium, MuPDF, poppler, and pdf.js followed them. The name is reported, not read; reading them would add fonts no reader shows |
 | A semantic classifier, OCR, URL reputation, or detonation inside the gate | Outside the scan contract. A classifier belongs after the gate, as advisory evidence with its own provenance |
 
 ## Keeping the detector current
