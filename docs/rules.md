@@ -330,10 +330,16 @@ same header pattern was absent from 348 fonts under `/usr/share/fonts` and
 454 PNG or JPEG files under `/usr/share/pixmaps` and `/usr/share/icons`.
 
 A file with `startxref` also resolves cross-reference offsets before the scan
-can be clean. A candidate is a `startxref` keyword at the start of a line,
-outside comments and literal or hex strings, with or without a following
-`%%EOF`. A comment or string that contains the word is not a candidate. A
-candidate that is present and does not parse still makes the scan incomplete.
+can be clean. A candidate is every occurrence of the bytes `startxref` that a
+number follows, with or without a following `%%EOF`, wherever it is written.
+Readers search the end of the file for the bytes or for the line and do not
+lex around them, so one inside a comment, a literal string, or a stream body
+is a candidate too
+([linearized files and the keyword search](verification/2026-11-10-pdf-xref-linearized.md)).
+An occurrence with no number after it gives no reader a section and is skipped.
+So is offset 0, which a linearized file's first-page trailer carries by design.
+A sign or a dot in front of the number is malformed. A candidate that is
+present and does not parse still makes the scan incomplete.
 Each candidate includes its `/Prev` chain. Classic 20-byte tables,
 Flate `/Type /XRef` streams (`/W`, `/Index`, and a PNG or TIFF predictor), and
 hybrid `/XRefStm` are read. A newer section overrides an older one inside one
@@ -347,7 +353,9 @@ match the packed fields and a stream whose decoded length is not an exact
 multiple of the row width. A type-2 entry is an object-stream index, not a
 file offset, so object streams stay readable. An object that only a later
 candidate lists is kept when its offset begins an object header outside every
-span. No `startxref` leaves the sequential reader in place. A malformed table
+span. A file with no candidate leaves the sequential reader in place. A
+classic table may have blank lines between its sections and before `trailer`,
+and its trailer is read as far as the `startxref` after it. A malformed table
 or stream (`pdf xref malformed`), a filter or predictor this reader does not
 decode (`pdf xref unsupported`), more than 100000 entries
 (`pdf xref entries exceed 100000`), more than 32 `startxref` candidates, or a

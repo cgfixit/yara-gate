@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from yara_gate import pdfxref
 from yara_gate.content import Budget, ContentLimit, PdfObjects, pdf_streams
 from yara_gate.pdfannotations import pdf_annotation_texts
 from yara_gate.pdfxref import xref_file_offsets
@@ -402,11 +403,145 @@ def test_generation_mismatch_inside_a_stream_is_incomplete(rules_copy: Path) -> 
     assert result.incomplete_reason == "pdf object header inside stream"
 
 
-def test_startxref_inside_a_comment_is_not_a_candidate(rules_copy: Path) -> None:
-    data = _benign("classic") + b"\n% startxref 99999\n(startxref 99999)\n"
+def _moved_startxref(kind: str) -> bytes:
+    """The classic hiding file with its ``startxref`` written where a lexer would not look."""
+    base = _hiding("classic")
+    at = base.rindex(b"startxref\n")
+    number = base[at + len(b"startxref\n") :].split(b"\n")[0]
+    head = base[:at]
+    if kind == "comment":
+        return head + b"% startxref " + number + b"\n%%EOF\n"
+    if kind == "string":
+        return head[: head.rindex(b">>")] + b"/X (\nstartxref\n" + number + b"\n%%EOF\n) >>\n"
+    if kind == "mid-line":
+        return head + b"null startxref\n" + number + b"\n%%EOF\n"
+    if kind == "vertical tab":
+        return head + b"startxref\n\x0b" + number + b"\n%%EOF\n"
+    # One more stream, holding an unclosed parenthesis, before the table.
+    table_at = base.index(b"xref\n0 6")
+    buf = base[:table_at] + b"6 0 obj\n<< /Length 1 >>\nstream\n(\nendstream\nendobj\n"
+    table = (
+        base[table_at:at].replace(b"xref\n0 6\n", b"xref\n0 7\n").replace(b"/Size 6", b"/Size 7")
+    )
+    table = table.replace(b"trailer", b"%010d 00000 n \ntrailer" % table_at)
+    return buf + table + b"startxref\n%d\n%%%%EOF\n" % len(buf)
+
+
+@pytest.mark.parametrize("kind", ["comment", "string", "mid-line", "vertical tab", "stream"])
+def test_startxref_is_a_candidate_wherever_it_is_written(rules_copy: Path, kind: str) -> None:
+    # Readers search the end of the file for the keyword's bytes or its line and do not lex
+    # around it. PDFium 153 and pdf.js 6.5 take one inside a comment or in the middle of a
+    # line; pypdf 5.1 and pdfminer.six take one inside a literal string. With "stream", the
+    # keyword is where it always is and only a stream body before it holds a "(": all four
+    # return the hidden annotation.
+    result = _scan(_moved_startxref(kind), rules_copy)
+    assert result.verdict.value == "incomplete", kind
+    assert result.incomplete_reason == "pdf annotation xref offset inside stream", kind
+
+
+def test_startxref_that_gives_no_section_is_skipped(rules_copy: Path) -> None:
+    # The word in prose, with no number after it, and the ``startxref 0`` a linearized file's
+    # first-page trailer ends with: no reader gets a section from either.
+    mentions = b"\n% the startxref keyword\n(startxref)\n% startxref 0\nstartxref\n%12\n"
+    result = _scan(_benign("classic") + mentions, rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
+
+
+def test_startxref_with_a_number_is_followed_even_in_a_comment(rules_copy: Path) -> None:
+    result = _scan(_benign("classic") + b"\n% startxref 99999\n", rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf xref malformed"
+
+
+@pytest.mark.parametrize("number", [b"+%d", b"-%d", b".%d"])
+def test_startxref_with_a_signed_number_is_malformed(rules_copy: Path, number: bytes) -> None:
+    # pypdf, PDFium and pdf.js read "+12" as 12.
+    base = _hiding("classic")
+    at = base.rindex(b"startxref\n") + len(b"startxref\n")
+    offset = int(base[at:].split(b"\n")[0])
+    result = _scan(base[:at] + number % offset + b"\n%%EOF\n", rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf xref malformed"
+
+
+def _linearized(hide: bool = False) -> bytes:
+    """Two sections, as a linearized file has them. The first-page section, near the top,
+    lists objects 4 and 5; its trailer ends with ``startxref 0`` and is followed by object
+    4, whose stream holds an open parenthesis that closes 70,000 bytes later. The main
+    section lists the rest, and the last ``startxref`` names the first-page section. With
+    ``hide`` the first-page section points object 5 into object 4's stream."""
+    buf = bytearray(b"%PDF-1.5\n")
+    first = len(buf)
+    buf += b"xref\n4 2\n0000000000 00000 n \n0000000000 00000 n \n"
+    buf += b"trailer\n<< /Size 6 /Root 1 0 R /Prev 0000000000 >>\nstartxref\n0\n%%EOF\n"
+    offsets = {4: len(buf)}
+    # No delimiter before the header, so only the table leads a reader to it.
+    hidden = b"QQ5 0 obj\n" + _link(PHRASE) + b"\nendobj\n"
+    body = b"(" + (hidden if hide else b"") + b"x" * 70_000 + b")"
+    buf += b"4 0 obj\n<< /Length %d >>\nstream\n" % len(body) + body + b"\nendstream\nendobj\n"
+    inside = buf.index(b"5 0 obj", offsets[4]) if hide else -1
+    offsets[5] = len(buf)
+    buf += b"5 0 obj\n" + _link("Hello." if hide else PHRASE) + b"\nendobj\n"
+    for number, body in enumerate(_objects(), 1):
+        offsets[number] = len(buf)
+        buf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    main = len(buf)
+    entries = {0: (0, 65535, b"f")}
+    entries.update({number: (offsets[number], 0, b"n") for number in (1, 2, 3)})
+    buf += _classic(entries, 4)
+    rows = b"%010d 00000 n \n%010d 00000 n \n" % (offsets[4], inside if hide else offsets[5])
+    buf[first : first + len(b"xref\n4 2\n") + len(rows)] = b"xref\n4 2\n" + rows
+    return bytes(buf).replace(b"/Prev 0000000000", b"/Prev %010d" % main) + (
+        b"startxref\n%d\n%%%%EOF\n" % first
+    )
+
+
+def test_a_linearized_file_is_read_through_both_sections(rules_copy: Path) -> None:
+    data = _linearized()
+    assert data.count(b"startxref\n0\n") == 1
+    offsets = xref_file_offsets(data, Budget(time.monotonic() + 30))
+    assert offsets is not None and len(offsets) == 5
     result = _scan(data, rules_copy)
     assert result.incomplete_reason is None
     assert result.verdict.value == "advisory"
+
+
+def test_a_linearized_first_page_section_that_hides_an_object_is_incomplete(
+    rules_copy: Path,
+) -> None:
+    result = _scan(_linearized(hide=True), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf annotation xref offset inside stream"
+
+
+def test_a_blank_line_before_the_trailer_is_read(rules_copy: Path) -> None:
+    # MuPDF 1.28 writes one between the last entry and ``trailer``.
+    data = _benign("classic").replace(b" \ntrailer", b" \n\ntrailer")
+    assert data != _benign("classic")
+    result = _scan(data, rules_copy)
+    assert result.incomplete_reason is None
+    assert result.verdict.value == "advisory"
+
+
+def test_a_section_many_startxref_reach_is_parsed_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Thirty pointers to one 100,000-entry table took 6.6 s when each one parsed it again.
+    data = _benign("classic")
+    at = data.rindex(b"startxref\n")
+    pointer = data[at:]
+    chained = b"xref\n0 0\ntrailer\n<< /Size 6 /Root 1 0 R /Prev %s >>\n" % pointer.split()[1]
+    data = data[:at] + chained + pointer * 30 + b"startxref\n%d\n%%%%EOF\n" % at
+    calls: list[int] = []
+    original = pdfxref._classic
+
+    def counted(data: bytes, at: int, budget: Budget) -> object:
+        calls.append(at)
+        return original(data, at, budget)
+
+    monkeypatch.setattr(pdfxref, "_classic", counted)
+    offsets = xref_file_offsets(data, Budget(time.monotonic() + 30))
+    assert offsets is not None and len(offsets) == 5
+    assert sorted(calls) == sorted(set(calls)) and len(calls) == 2
 
 
 def test_flate_xref_is_not_inflated_twice() -> None:
