@@ -42,7 +42,7 @@ file-wide union, which is the behavior before this change.
 - **Stream numbers.** Every stream the text reader decoded must be one the pass stepped
   over, with the same object number.
 - **Cross-reference check.** Every occurrence of the bytes `startxref` is followed
-  (`pdfxref.xref_tables(..., anywhere=True)`), except the `startxref 0` of a linearized
+  (`pdfxref.xref_tables`), except the `startxref 0` of a linearized
   file's first-page trailer. Each type-1 entry must point at the first digit of a header
   with its object number and generation. Each type-2 entry must name a position in an object
   stream where that stream's own table lists the same number.
@@ -202,6 +202,9 @@ built with no page stream left to the union. The files come from ten
 writers: Chromium (Skia), LibreOffice, pypdf, qpdf (plain, object streams, QDF, linearized),
 reportlab, fpdf2, matplotlib, MuPDF, cairo, and PDFium. reportlab and cairo write a comment
 inside a dictionary, and MuPDF a blank line before `trailer`; both are accepted.
+
+After #208 merged into main, the linearized and MuPDF files in this table are no longer
+incomplete on either side, and with both changes the six linearized merges scan clean.
 
 ## Commands and results (this container)
 

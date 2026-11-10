@@ -439,7 +439,7 @@ def _listed(
         if container is None or members.setdefault(container, table.numbers) != table.numbers:
             return False, None
     try:
-        tables = xref_tables(data, budget, objects.decoded, anywhere=True)
+        tables = xref_tables(data, budget, objects.decoded)
     except ContentLimit:
         return False, None
     if tables is None:
