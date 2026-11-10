@@ -49,6 +49,7 @@ under [`docs/verification/`](../verification/), not here.
 | [windows-format-signatures.json](windows-format-signatures.json) | `probe_rule_coverage.py` | Windows script-host, shortcut-family, and document formats |
 | [rule-coverage-baseline.json](rule-coverage-baseline.json) | nothing; a record | The first probe run, October 8 |
 | [external-content-boundaries-2026-10-23.json](external-content-boundaries-2026-10-23.json) | nothing; a record | Observations behind the external-content note |
+| [html-hidden-probes.json](html-hidden-probes.json) | `probe_html_hidden_browser.py` | The style and markup vocabulary its random documents draw on, and 347 documents that each exercise one parser or CSS rule |
 
 A row may set `"encoding"` (for example `utf-16le`) or `"container"` (`zip` or `gzip`), so
 one text is checked raw, as UTF-16, and inside an archive. `expected` is the exact set of
@@ -60,7 +61,8 @@ the November 10 spellings.
 | Script | Run by CI | What it does |
 | --- | --- | --- |
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
-| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 to B6 are the backlog's open candidates |
+| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 and B3 to B6 are the backlog's open candidates |
+| [probe_html_hidden_browser.py](probe_html_hidden_browser.py), [html_hidden_oracle.js](html_hidden_oracle.js) | No; needs Node, Playwright, and Chromium | Compares the HTML hidden-text reader with what a browser draws, text by text. Run it after any change to `htmlhidden.py`, and when a browser changes its parser. See the [record](../verification/2026-11-10-hidden-html-text.md) |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |

@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 30 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 34 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.

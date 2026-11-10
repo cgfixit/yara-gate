@@ -187,8 +187,9 @@ directory the gate owns, and reads only what the gate allowed:
    Use `agent-document` and its notes-only rule
    ([below](#documents-that-quote-attacks)) only for a folder whose authors you trust
    to write about attacks. Under `agent-document`, an override phrase in hidden Office
-   or PDF text (a vanished, white, or 1 pt run, a hidden shape, invisible PDF text)
-   adds the advisory `heuristic_hidden_text` and is held, like hidden HTML.
+   or PDF text (a vanished, white, or 1 pt run, a hidden shape, invisible PDF text) or
+   in HTML text a browser does not show (`display:none`, a comment, a `data-*` value)
+   adds the advisory `heuristic_hidden_text` and is held.
 4. Move the staged copy into `allowed/<sha256>/` or `held/<sha256>/` with the
    record beside it. The consumer reads `allowed/` only. The sync folder is never
    written, so a later change there cannot reach bytes already allowed, and a

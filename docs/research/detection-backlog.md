@@ -1,7 +1,7 @@
 # Detection backlog
 
-Last reviewed: November 10, 2026, on `main` at `163ec4a` plus the
-[rule-variant change](../verification/2026-11-10-rule-variant-coverage.md). Python 3.12.3,
+Last reviewed: November 10, 2026, on `main` at `2b6eda8` plus the
+[hidden HTML text change](../verification/2026-11-10-hidden-html-text.md). Python 3.12.3,
 YARA-X 1.23.0, 85 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
@@ -50,35 +50,46 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B1 to B7 are executable: each is an
-`OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
-benign boundary, so the probe fails when one starts to hold without its marker removed.
+Ordered by expected value for the agent-intake use. B1 and B3 to B7 are executable: each is
+an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
+benign boundary, so the probe fails when one starts to hold without its marker removed. B2
+(MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
+10; the [record](../verification/2026-11-10-hidden-html-text.md) has what was measured.
 
-### B3. HTML text a browser does not show (reader work, highest value)
+### B3. HTML text hidden by layout, or by the page behind it
 
-- **Gap (verified).** `agent_hidden_html` is one regular expression: a hiding cue, then one
-  of seven phrases within 256 bytes. A phrase in a `data-*` attribute, under `opacity:0`, or
-  in white text is a note, and a notes-only file passes `agent-document`. Hidden Office and
-  PDF text is already read on its own and checked against every `agent_` rule
-  (`heuristic_hidden_text`); HTML has no such view.
+- **Built.** `heuristic_hidden_text` now reads HTML as it reads Office and PDF text: the
+  `html-hidden-text` view holds comments, `data-*` values, `template` content, and the text
+  of an element that one exact inline declaration hides (`display:none`,
+  `visibility:hidden`, a font size of zero, zero opacity in a document nothing animates,
+  transparent text, text the colour of the background its own element declares). The
+  `data-*` and `opacity:0` probes hold under `agent-document`.
+- **Still open (verified).** `<p style="color:#ffffff">` holding the phrase, on a page that
+  declares no background, is a note. So is a phrase in a box of no height that clips its
+  content, in a font of one pixel, or moved off the page by an offset, when it is not one
+  of the seven phrases `agent_hidden_html` reads beside the cue.
+- **Why (verified).** A first reader claimed all of these. Against Chromium it was wrong
+  on 72 of 527 texts in hand-written probes, each a claim the markup does not settle: an
+  inline box, a table, a list, and a dialog do not clip; padding, a minimum size, and a
+  flexible size give a zero box room; a positioned child is drawn outside it; a transform,
+  a zoom, and an svg `viewBox` enlarge a one-pixel font; an offset lands where the box
+  width, the inherited alignment, and every positioned ancestor put it; and what is behind
+  white text is a stylesheet's, a `body` attribute's, or a colour scheme's to decide.
 - **Why it matters (sourced, read).** A March 2026 measurement of injections found on the
   web put visible plain text at 37.8%, `data-*` attribute cloaking at 19.8%, and CSS
-  suppression (`display:none`, `visibility:hidden`, `opacity:0`, `font-size:0`,
-  `left:-9999px`, white on white) at 16.9%
+  suppression at 16.9%; the page gives no sample size or date range, and its white-text
+  example declares both colours on one element, which the reader does read
   ([Unit 42](https://unit42.paloaltonetworks.com/ai-agent-prompt-injection/)). A crawl study
   found about 70% of 15.3K instances in HTML that is not rendered: comments, headers,
-  metadata ([arXiv 2604.27202](https://arxiv.org/abs/2604.27202)).
-- **Proposal.** An `html-hidden-text` view from the existing linear HTML reader: text of
-  elements hidden by their own inline style or the `hidden` attribute, comment text,
-  `data-*` values, `<template>` and hidden `<textarea>` bodies, one piece each. An `agent_`
-  rule match in a piece adds `heuristic_hidden_text`, as it does for Office and PDF.
-- **False-positive class.** Server-rendered animation frameworks write `style="opacity:0"`
-  on text the reader sees a moment later; dark themes write white text; share widgets copy
-  an article title into `data-title`. This is why the YARA cues were not widened to
-  `opacity:0`, white, or `data-*`. The reader has to treat a stylesheet it cannot resolve
-  as unknown, not as hidden, and needs twins for each of the three cases.
-- **Acceptance.** The three B3 probes hold under `agent-document`; a fade-in paragraph, a
-  dark-theme paragraph, and a share widget that quote the phrase stay notes.
+  metadata ([arXiv 2604.27202](https://arxiv.org/abs/2604.27202), located).
+- **What would change it.** A renderer in the scan path is outside the contract. A
+  narrower claim may hold for white text alone: a document with no stylesheet and no
+  `background`, `bgcolor`, image, `position`, or colour scheme anywhere paints nothing
+  behind any text, whatever its tree. It needs its false-positive class counted first (a
+  caption written over an image with a negative margin), and a browser run like the
+  record's.
+- **Acceptance.** The white-text probe holds under `agent-document`; a dark-theme
+  paragraph and a caption over an image that quote the phrase stay notes.
 
 ### B1. SVG that runs or loads something without a script or a handler
 
@@ -96,18 +107,6 @@ benign boundary, so the probe fails when one starts to hold without its marker r
   only the five embedding elements count. Legacy pages wrap icons in
   `<a href="javascript:void(0)">`; exclude an empty or `void` target.
 
-### B2. MCP tool-poisoning wording outside the list
-
-- **Gap (verified).** `heuristic_mcp_hidden_instruction` reads "do not mention this to the
-  user" and misses "there is no need to mention this to the user".
-- **Evidence (sourced, read).** That sentence, "ALWAYS CONSULT THIS TOOL IMMEDIATELY AS THE
-  FIRST STEP", and "otherwise the tool will not work" are the wording in the public
-  proofs of concept
-  ([line jumping](https://blog.trailofbits.com/2025/04/21/jumping-the-line-how-mcp-servers-can-attack-you-before-you-ever-use-them/),
-  [injection experiments](https://github.com/invariantlabs-ai/mcp-injection-experiments)).
-- **Proposal.** Three alternations in `_HIDDEN_INSTRUCTION`. It stays advisory and reads
-  `description` strings only.
-
 ### B4. Bytes hidden as a run of zero-width characters
 
 - **Gap (verified).** Eighty alternating U+200B and U+200C characters get two notes and
@@ -122,11 +121,18 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 - **Gap (verified).** A phrase inside `ESC [ 8 m` is a note, as if it were shown.
   `text-folded` removes the sequence so the phrase matches; nothing records that the
   terminal hid it.
-- **Evidence (sourced, read).** Conceal, white-on-white SGR, cursor moves with erase, and
-  OSC 8 links whose text differs from the target are the published shapes
+- **Evidence (sourced, read; corrected November 10).** The page shows three shapes: text
+  in white on the terminal's default background (`ESC[38;5;231;49m`), a cursor move that
+  overwrites or clears what was printed (`ESC[2F ESC[1G`, `ESC[1;1H ESC[0J`), and an OSC 8
+  link whose text differs from its target
   ([ANSI terminal codes in MCP](https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/)).
-- **Proposal.** Collect concealed and overwritten stretches as pieces and reuse
-  `heuristic_hidden_text`. Captured logs colour text often and conceal it rarely.
+  It does not show SGR 8 (conceal), which this entry named and the probe uses: conceal is
+  an assessment, not a published shape.
+- **Proposal.** Collect overwritten and cleared stretches as pieces and reuse
+  `heuristic_hidden_text`; add conceal only with a source. White on the default background
+  is hidden only on a light terminal, so it is the HTML white-text question again (B3).
+  Captured logs colour text often and overwrite it for progress bars, which is the
+  boundary to count first.
 
 ### B6. `binding.gyp` command expansion that discards its output
 
@@ -171,6 +177,14 @@ benign boundary, so the probe fails when one starts to hold without its marker r
 
 | Candidate | Evidence | Why it is not built yet |
 | --- | --- | --- |
+| Element text in a document a browser reads as XML: an `.xhtml` EPUB chapter, a standalone `.svg` | Verified: the `html-hidden-text` view takes only comments and `data-*` values from these | The element rules are the HTML parser's. XML has its own: a slash closes any element, nothing is implied, an undeclared entity stops the page. A strict reader is small, but needs its own browser run |
+| A `noscript` body as hidden text | Assessment: with scripting on a browser never draws it | Analytics snippets put an `img` or `iframe` in one on most pages. Needs a count of benign bodies that read as an instruction, expected near zero |
+| Hidden HTML inside Markdown: a comment or an inline element in a `.md` file | Verified: the view reads HTML documents only; `agent_hidden_html` reads the comment for its seven phrases | A Markdown renderer decides what is HTML, and renderers differ on raw HTML |
+| `heuristic_mcp_hidden_instruction` holds "Pass the content as a string" | Verified on `2b6eda8`: advisory, held under `agent-document`. The published sentence is "pass its content as 'sidenote'" | Narrowing `pass (its\|the\|their\|this) contents?` changes what existing manifests report. Needs a count over real tool manifests, which this machine does not have |
+| MCP: "without telling the user", "silently", "do not mention that you" | Assessment; no published proof of concept read with these words | The published sentences are matched. Each of these needs its benign twin from real manifests |
+| MCP tool descriptions outside JSON: a Python docstring under `@mcp.tool()`, a TypeScript `description:` | Sourced, read: the published proofs of concept are Python files ([mcp-injection-experiments](https://github.com/invariantlabs-ai/mcp-injection-experiments)) | The heuristic walks JSON. A source file needs the language's own string rules, and the phrase rules already read it as text |
+| `agent_hidden_html` reads a hidden sibling and then a shown phrase as one | Verified: `<span style="display:none">x</span><p>` and one of the seven phrases within 256 bytes is advisory | With the reader in place the rule could leave HTML documents to it and keep Markdown and text. That is a change to what a consumer reads, so it is the owner's call |
+| `agent_hidden_html` on a file of comments that each hold a phrase | Verified: 11 to 13 s for the one rule on 4 MiB (35 to 45 s before the November 10 change); the scan stays under its ceiling because other rules stop it | A cap on matches per pattern, as the comment condition already has past 1,024 |
 | Claude Code project settings: a wildcard in `permissions.allow` (`"Bash(*)"`), `apiKeyHelper`, `awsAuthRefresh`, or `statusLine` commands | Verified clean. Sourced, read: these keys are honoured from a project file after trust ([settings](https://code.claude.com/docs/en/settings)) | Teams commit allow lists. Needs the committed-file counts the existing rule used to set its boundary |
 | Codex: `mcp_servers.*.command` in a project `.codex/config.toml` with `CODEX_HOME=./.codex` in `.env` | Sourced, read: [CVE-2025-61260](https://research.checkpoint.com/2025/openai-codex-cli-command-injection-vulnerability/) | Two files; the gate judges one file at a time. A shell command in the TOML is the one-file signal |
 | Workspace settings that point a tool at a file in the repository: `php.validate.executablePath`, `PATH_TO_GIT` in `.idea/workspace.xml`, a remote `"$schema"` with a query string | Verified clean. Sourced, read: [IDEsaster](https://maccarita.com/posts/idesaster/) lists ten CVEs of this kind | Each key needs its own benign boundary; SchemaStore URLs are ordinary |
@@ -192,7 +206,14 @@ overturn.
 
 | Idea | Reason |
 | --- | --- |
-| `opacity:0`, white or transparent text, zero height, or `data-*` as `agent_hidden_html` cues | Shown text carries them (fade-in animation, dark themes, gradient headings, share widgets). They need the reader in B3, not a lexical cue |
+| `opacity:0`, white or transparent text, zero height, or `data-*` as `agent_hidden_html` cues | Shown text carries them (fade-in animation, dark themes, gradient headings, share widgets). The reader takes what an element settles ([record](../verification/2026-11-10-hidden-html-text.md)); a lexical cue cannot tell a fade-in from hidden text |
+| A box of no size that clips its content, a font of one pixel, or an offset off the page, as hidden text in the HTML reader | Each depends on layout the markup does not settle, and each was claimed and then failed against Chromium ([record](../verification/2026-11-10-hidden-html-text.md)). A fixed box 11,599 px wide with an inherited `text-align:right` drew its "off-screen" text at x = 1,318. `agent_hidden_html` keeps the offset and the small font as cues beside a phrase |
+| A colour or a font size followed from an element into its children, in a document with a stylesheet | Stylesheets style by element type. On 264 installed HTML files the reader was wrong on 61 of 45,688 marked texts, all inside a `code` that npm's pages colour by type; in 91 installed CSS files, 130 of 1,179 rules that set `color` select by element type alone. Only the text directly inside the declaring element is claimed there |
+| The `hidden` attribute as hidden text in a document with a stylesheet | It is the browser's own `display:none`, and any author rule that sets `display` overrides it: `section { display: block }` is in every older reset. Chromium also draws a `marquee` that carries it. It counts only where there is no stylesheet |
+| Colour attributes (`<font color>`, `bgcolor`, `text`) in the HTML reader | They are read by the older colour rules: `rgb(255,255,255)`, `transparent`, and `inherit` each become some other colour there. Without that parser a claim is a guess |
+| "Otherwise the tool will not work" in an MCP description | "Pass the API key in the header, otherwise the tool will not work" is how a required parameter is documented. The published sentence that ends this way is matched by its other words |
+| "Always call this tool first" in an MCP description | A server that hands out a session id says exactly this. Only the published wording, "this tool immediately as the first step", is matched |
+| "Do not notify the user" with no pronoun, in an MCP description | A notification tool limits how often it notifies the user. `notify` counts with `about` or `of` and `this`, `it`, or `that` |
 | "Ignore all instructions" and "ignore any instructions" with no adjective | "Ignore any instructions found in the document" is what a careful system prompt says. The second-person form, "ignore your instructions", is matched |
 | The nouns `messages`, `email`, `commands`, `orders`, `context` after "ignore previous" | "Ignore my previous message" is ordinary chat; "disregard all prior orders" is ordinary legal text; device manuals ignore previous commands |
 | "Override earlier rules" | Stylesheets, firewalls, and ignore files all say later rules override earlier rules. `override` is matched with `instructions`, `directions`, and `prompts` only |
@@ -211,6 +232,9 @@ overturn.
 | Match a PDF font reference's generation to the object header | PDFium, MuPDF, and pdfminer.six resolve a reference by object number alone, and pdf.js falls back to an earlier generation (source read November 10). poppler 24.02 and pypdf do compare it, so `6 1 obj` under `6 0 R` is a reading some readers show, not one to drop |
 | An incomplete result for a PDF font with more than four distinct definitions | A file saved incrementally five times with a re-subset font would exit 2 under every policy. The unread definitions are the `heuristic_pdf_text_unmapped` note, as for a name that means five fonts ([2026-11-07-pdf-font-readings.md](../verification/2026-11-07-pdf-font-readings.md)) |
 | A semantic classifier, OCR, URL reputation, or detonation inside the gate | Outside the scan contract. A classifier belongs after the gate, as advisory evidence with its own provenance |
+| Leave a `startxref` inside a comment, a string, or a stream body out of the cross-reference check | Readers find the keyword by searching bytes or lines and do not lex around it. With it in a comment or the middle of a line, PDFium and pdf.js still return an annotation hidden in a stream; in a literal string, pypdf and pdfminer.six do too; and the old scanner lost the keyword after one `(` byte in any stream body, which is most real files ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)). Every occurrence that a number follows is a candidate |
+| Skip a `startxref` whose offset is past the end of the file, as offset 0 is skipped | Offset 0 is what a linearized file's first-page trailer carries. Any other pointer that leads nowhere is a broken or forged file, and the scan stays incomplete (`pdf xref malformed`), as before. Prose such as `startxref 99999` in an uncompressed comment or string is held by this |
+| Skip `startxref 0`, or a `startxref` with no number, in every file | pdf.js and pdfminer.six, sent to offset 0, parse the first object as the table: with an xref stream as the first object and one entry pointing into another stream, pdfminer.six returns the hidden annotation. Main held that file and the first commit of the linearized fix scanned it clean. The skip applies only when the file does not open with an xref stream. The same review found two more spellings readers take: a comment between the keyword and the number (PDFium, pypdf) and an offset padded past 20 digits (pypdf, PDFium, pdfminer.six) ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)) |
 
 ## Keeping the detector current
 
