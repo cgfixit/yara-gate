@@ -1,5 +1,11 @@
 # Detection improvements: primary-source research
 
+> Status, November 10, 2026: a dated record. PR #182 merged, and the RTF and PDF annotation
+> readers it asked for shipped in #186 and #187. Hidden-text calibration and evaluation
+> corpora are carried in the [detection backlog](detection-backlog.md); the reader handoff,
+> visual input, action authorization, and execution boundaries remain consumer and
+> deployment work described here.
+
 Research date: 2026-11-07. Repository context: `main` at
 `05f94caaf596413a2011612821f3d7d2916e3e16`; open PR #182 was supplied for
 context at `8f6b29f6b1e311d94bef4a7480090999dfd5b7b5`; the accompanying runtime

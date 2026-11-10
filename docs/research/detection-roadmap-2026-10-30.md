@@ -1,5 +1,9 @@
 # Detection roadmap for agent intake (2026-10-30)
 
+> Status, November 10, 2026: a dated record. Hidden Office and PDF text, the note tier, the
+> `.pth` rule, and the MSBuild and INF rules below have shipped. Open and declined items are
+> kept current in the [detection backlog](detection-backlog.md).
+
 Scope: what yara-gate can detect, or be extended to detect, for agent apps
 (CyClaw, cg-researcher, cg-agent-harness) that ingest synced folders, cloned
 repositories, mail, and short text such as chat or SMS bodies, without breaking
