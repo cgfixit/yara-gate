@@ -2,8 +2,42 @@
 
 This directory preserves Computer Use captures, the user-supplied demo image, and
 the November 10 headless-browser captures without editing or re-encoding. The
-README features the 31-pair workbench run below. Earlier captures retain their
+README features the 34-pair workbench run below. Earlier captures retain their
 original implementation provenance.
+
+## Workbench and public page with 34 pairs — November 10, 2026
+
+| Workbench: every pair, scanned live, by how each attack was caught | Workbench: zero-width run beside its twin |
+| --- | --- |
+| ![Workbench run of all 34 pairs under agent-ingest, with the table by technique](yara-gate-catalog34-workbench-run.png) | ![Chat intake workflow: a message carrying zero-width characters held beside a clean Persian message](yara-gate-catalog34-workbench-pair.png) |
+
+| Public page: every pair at a glance | Public page: how each attack was caught |
+| --- | --- |
+| ![Scoreboard and per-policy strip of 34 pairs on the public page](yara-gate-catalog34-pages-strip.png) | ![One card for each way an attack was caught, with attacks held and twins clean](yara-gate-catalog34-pages-caught-by.png) |
+
+Four original PNG captures, 2560 × 1800 (a 1280 × 900 viewport at device scale 2),
+taken November 10, 2026, at about 23:09 UTC, by headless Chromium 153.0.8010.12
+through Playwright 1.63.0 in a Linux container. They show no browser chrome and
+are not Computer Use captures. Source: clean `claude/kind-dijkstra-6q6vkt` at
+`bf94c7b`. The workbench was `yara-gate demo` on `127.0.0.1` with a disposable
+copy of the 87 bundled rules, no vendor packs, and a disposable `HOME`; the public
+page was the four-file artifact built by `scripts/build_pages.py` from the committed
+recordings (recorded at `41f065f`) and served from a loopback directory, not the
+hosted site. The browser made no request outside those two loopback origins. The
+run reports 34 of 34 attacks held under `agent-ingest`, 34 of 34 twins clean, 0
+findings on twins, and 69 of 69 results as expected. The pair capture is the
+**Chat intake** workflow scanned side by side. All fixtures are inert and
+synthetic, and this is evidence for the curated pairs only, not a production
+false-positive rate. The run capture replaces the 31-pair capture below in the
+README; those files are kept unchanged. See the
+[verification record](../docs/verification/2026-11-10-demo-34-pairs.md).
+
+| File | SHA-256 |
+| --- | --- |
+| `yara-gate-catalog34-workbench-run.png` | `639ecdd95ac647a34db2473603152894512ec6156c0c0c2a126c4dfc09d234b7` |
+| `yara-gate-catalog34-workbench-pair.png` | `5d67413dc83e19ac6baba8788366fe1bf0f87be5458524a9a97c239bb1cb0867` |
+| `yara-gate-catalog34-pages-strip.png` | `decbdb703b038043a66d6d8c1b004e312d4689dc05ee368f099673d6267f7969` |
+| `yara-gate-catalog34-pages-caught-by.png` | `f0db0022a455eea66f21b6f3b9c1bf52ff4d3c4e0b7b2d6d56202311ca23df32` |
 
 ## Workbench with 31 pairs — November 10, 2026
 
@@ -21,8 +55,8 @@ reports 31 of 31 attacks held under `agent-ingest`, 31 of 31 twins clean, 0
 findings on twins, and 63 of 63 results as expected. The pair capture is the
 **Contract bundle** workflow scanned side by side. All fixtures are inert and
 synthetic, and this is evidence for the curated pairs only, not a production
-false-positive rate. They replace the 28-pair captures below in the README; those
-files are kept unchanged. See the
+false-positive rate. They replaced the 28-pair captures below in the README and
+were replaced there by the 34-pair capture above; all files are kept unchanged. See the
 [verification record](../docs/verification/2026-11-10-demo-html-merged-pdf.md).
 
 | File | SHA-256 |

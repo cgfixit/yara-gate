@@ -804,6 +804,80 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "svg_link_script",
+        "detection",
+        "Attachment",
+        "svg_link_benign",
+        "An SVG button whose link is a script",
+        "An SVG with no script element and no event handler. Its link target is a "
+        "javascript: URL, which a browser runs when the button is activated.",
+        "button.svg",
+        samples.svg_script_link(),
+        HELD,
+    ),
+    _case(
+        "svg_link_benign",
+        "control",
+        "Attachment",
+        "svg_link_script",
+        "The same button with a no-op link",
+        "The same button whose target is javascript:void(0), the do-nothing link older icon "
+        "sets write. Only a target that would run something is reported.",
+        "button.svg",
+        samples.svg_noop_link_benign(),
+        CLEAN,
+    ),
+    _case(
+        "svg_diagram_frame",
+        "detection",
+        "Attachment",
+        "svg_diagram_benign",
+        "A diagram that frames another page",
+        "A two-box diagram whose first label is not text: its foreignObject holds an iframe "
+        "that would load another site inside the image. The address is never contacted.",
+        "diagram.svg",
+        samples.svg_diagram_frame(),
+        HELD,
+    ),
+    _case(
+        "svg_diagram_benign",
+        "control",
+        "Attachment",
+        "svg_diagram_frame",
+        "The same diagram with text labels",
+        "The same diagram as draw.io and Mermaid export it: each label is a div inside a "
+        "foreignObject. A foreignObject alone is ordinary; a frame, form, or redirect inside "
+        "one is not.",
+        "diagram.svg",
+        samples.svg_diagram_benign(),
+        CLEAN,
+    ),
+    _case(
+        "zero_width_run",
+        "detection",
+        "Message",
+        "zero_width_benign",
+        "A message carrying hidden zero-width characters",
+        "An ordinary-looking sentence with 40 zero-width characters after one word, spelling "
+        "the word inert one bit per character. A reader sees nothing there.",
+        "message.txt",
+        samples.zero_width_run_message(),
+        HELD,
+    ),
+    _case(
+        "zero_width_benign",
+        "control",
+        "Message",
+        "zero_width_run",
+        "A Persian message with a family emoji",
+        "Zero-width characters used the ordinary way: a non-joiner inside two Persian words "
+        "and joiners holding a family emoji together. A run of 16 or more is held; these "
+        "are not.",
+        "message.txt",
+        samples.zero_width_joiners_benign(),
+        CLEAN,
+    ),
+    _case(
         "incomplete",
         "failure",
         "Rules",

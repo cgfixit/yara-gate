@@ -55,12 +55,25 @@ const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channe
 // text block is glyph ids decoded through a font map (encoded); a paragraph is blocks rejoined.
 const methodNames = {
   hidden: 'Hidden from the reader',
+  invisible: 'Invisible characters',
   folded: 'Disguised spelling',
   rebuilt: 'Split across formatting',
   decoded: 'Encoded',
   container: 'Inside an archive',
   structure: 'File structure',
   pattern: 'Plain pattern'
+};
+// What each technique is and what the gate reads to see through it. The counts beside these
+// lines on the page are computed from the recordings; only the wording is fixed here.
+const methodDetail = {
+  hidden: 'Text a viewer does not paint (invisible PDF text, hidden Word runs, white text on its own white background, a data attribute), and an order to conceal deep in a tool list. Hidden text is read on its own and reported only when an instruction is inside it.',
+  invisible: 'Characters that draw nothing: a run of zero-width characters or variation selectors that carries bytes. The joiners in Persian words and in a family emoji are ordinary and stay clean.',
+  folded: 'Look-alike letters, small capitals, digits for letters, spaced-out words, terminal escapes. The text is folded to its plain spelling before the rules read it.',
+  rebuilt: 'One sentence broken across formatting runs, spreadsheet cells, comments, spans, or PDF text blocks. The pieces are rejoined the way a reader shows them.',
+  decoded: 'Base64, HTML character references, PDF glyph ids, and string escapes. Each is decoded in a bounded view and read by itself.',
+  container: 'Content inside an archive member, including a second archive glued after the first.',
+  structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
+  pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
 const rebuiltViews = new Set(['ooxml-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
@@ -71,6 +84,7 @@ function methodsOf(item) {
   for (const finding of findings) {
     const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
     if (finding.view.includes('hidden') || finding.rule_id.includes('hidden')) tags.add('hidden');
+    else if (/invisible|variation_selector|unicode_tag/.test(finding.rule_id)) tags.add('invisible');
     else if (finding.source !== 'yara') tags.add('structure');
     else if (!plain.has(finding.rule_id)) {
       if (finding.view !== base || base === 'text-folded') tags.add('folded');
@@ -111,7 +125,13 @@ const stories = [
     sender: 'contracts@example.invalid', task: 'Legal · contract review', file: 'bundle.pdf' },
   { id: 'html_white_override', label: 'Web research', title: 'Summarize a vendor web page',
     brief: 'A browsing agent loads a vendor update. One paragraph is white on its own white background and tells the agent to approve invoices; the twin hides an ordinary footer line the same way.',
-    sender: 'Example vendor portal · simulated page load', task: 'Research · page summary', file: 'update.html' }
+    sender: 'Example vendor portal · simulated page load', task: 'Research · page summary', file: 'update.html' },
+  { id: 'svg_diagram_frame', label: 'Diagram review', title: 'Describe an architecture diagram',
+    brief: 'An assistant is asked to describe a diagram attached to a ticket. One label is not text but a frame that would load another site inside the image; the twin is the same diagram with text labels, as diagram tools export it.',
+    sender: 'architect@example.invalid', task: 'Engineering · diagram review', file: 'diagram.svg' },
+  { id: 'zero_width_run', label: 'Chat intake', title: 'Read a message from a shared channel',
+    brief: 'A support assistant reads a one-line message. Forty zero-width characters sit after one word and carry a hidden payload; the twin is a Persian message with a family emoji, where the same characters are ordinary.',
+    sender: 'Example chat · simulated message', task: 'Support · message intake', file: 'message.txt' }
 ];
 
 function storyButtons() {
@@ -230,6 +250,52 @@ function renderStrip() {
     + (rest ? ' The other ' + rest + ' attack' + (rest === 1 ? ' is' : 's are') + ' reported with findings and exit 0' + (policy === 'agent-document' ? ', because a retrieved document may quote an override phrase.' : ', because this policy is for manual inspection.') : '');
 }
 
+// One card per technique, counted from the recordings: the attacks it caught, whether
+// agent-ingest held them, and whether their twins were clean with no findings under every policy.
+function depth() {
+  const attacks = recording.cases.filter((item) => item.kind === 'detection');
+  let used = 0;
+  for (const key of Object.keys(methodNames)) {
+    const caught = attacks.filter((item) => methodsOf(item).includes(key));
+    if (!caught.length) continue;
+    used += 1;
+    const twins = caught.map((item) => byId.get(item.pair));
+    const held = caught.filter((item) => item.results['agent-ingest'].verdict === 'block').length;
+    const clean = twins.filter((item) => policies.every((policy) => item.results[policy].verdict === 'clean' && !item.results[policy].findings.length)).length;
+    // The views that found what the bytes as sent did not: a rule that already matched the
+    // original bytes is not counted again for its folded copy.
+    const views = new Set();
+    for (const item of caught) {
+      const findings = item.results['agent-ingest'].findings;
+      const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+      for (const finding of findings) if (finding.view !== 'raw' && !plain.has(finding.rule_id)) views.add(finding.view);
+    }
+    const card = text($('depth'), 'button', '', 'depth-card');
+    card.type = 'button';
+    card.dataset.method = key;
+    text(card, 'span', methodNames[key], 'depth-name');
+    text(card, 'span', held + ' of ' + caught.length + ' attack' + (caught.length === 1 ? '' : 's') + ' held · ' + clean + ' of ' + twins.length + ' twin' + (twins.length === 1 ? '' : 's') + ' clean', 'depth-count');
+    const marks = text(card, 'span', '', 'mini');
+    marks.setAttribute('aria-hidden', 'true');
+    for (const row of [caught, twins]) {
+      const line = text(marks, 'span', '', 'mini-row');
+      for (const item of row) text(line, 'span', '', 'mark ' + item.results['agent-ingest'].verdict);
+    }
+    text(card, 'span', methodDetail[key], 'depth-text');
+    text(card, 'span', views.size ? 'Read through: ' + Array.from(views).sort().join(', ') : key === 'container' ? 'Read in the bytes of each archive member' : 'Read in the original bytes', 'depth-views');
+    card.addEventListener('click', () => {
+      state.channel = 'All';
+      state.method = key;
+      applyFilter();
+      $('catalog').open = true;
+      $('catalog').scrollIntoView();
+      $('gallery-count').focus();
+    });
+  }
+  const twinFindings = attacks.reduce((sum, item) => sum + policies.reduce((count, policy) => count + byId.get(item.pair).results[policy].findings.length, 0), 0);
+  $('depth-summary').textContent = attacks.length + ' attacks, caught ' + used + ' ways. Their ' + attacks.length + ' benign twins were recorded under ' + policies.length + ' policies each: ' + twinFindings + ' findings in ' + attacks.length * policies.length + ' recordings.';
+}
+
 function caseButton(parent, item) {
   const card = text(parent, 'button', '', 'card ' + item.kind);
   card.type = 'button';
@@ -319,7 +385,7 @@ function twinColumn(parent, item, policy, isSelected) {
   chip(line, result.verdict, policy);
   text(line, 'span', ' exit ' + result.exit_code);
   text(column, 'p', result.findings.length
-    ? result.findings.map((finding) => finding.rule_id).join(', ')
+    ? Array.from(new Set(result.findings.map((finding) => finding.rule_id))).join(', ')
     : 'No findings', 'help');
 }
 
@@ -415,6 +481,7 @@ function render() {
 
 scoreboard();
 strip();
+depth();
 storyButtons();
 gallery();
 galleryFilters();

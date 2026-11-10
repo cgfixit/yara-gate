@@ -115,6 +115,8 @@
     .matrix thead th { border-top: 0; font-size: .75rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
     .matrix code { display: block; font-size: .76rem; color: var(--muted); }
     .matrix .result { min-width: 10.5rem; }
+    .matrix .how { display: block; font-size: .76rem; font-weight: 400; color: var(--muted); }
+    #run-methods-title, .run-pairs-title { margin-top: 1.25rem; }
     .table-scroll { overflow-x: auto; }
     .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .6rem; margin: 1rem 0; }
     .tile { background: #f5f7f4; border-radius: 10px; padding: .8rem; }
@@ -234,6 +236,15 @@
       <progress id="run-progress" value="0" max="1" aria-label="Catalog scan progress"></progress>
       <div id="run-tiles" class="tiles"></div>
       <p id="run-summary" class="help"></p>
+      <h3 id="run-methods-title">How each attack was caught</h3>
+      <p class="help">Read from the findings of this run: the view or check that found what the bytes as sent did not show. An attack caught two ways is counted in both rows.</p>
+      <div class="table-scroll">
+        <table class="matrix"><caption class="sr-only">Attacks and benign twins by how the attack was caught</caption>
+          <thead><tr><th scope="col">Caught by</th><th scope="col">Attacks</th><th scope="col">With a finding</th><th scope="col">Held</th><th scope="col">Twins clean</th><th scope="col">Findings on twins</th></tr></thead>
+          <tbody id="run-methods"></tbody>
+        </table>
+      </div>
+      <h3 class="run-pairs-title">Every pair</h3>
       <div class="table-scroll">
         <table class="matrix"><caption class="sr-only">Each attack and its benign twin under the selected policy</caption>
           <thead><tr><th scope="col">Channel</th><th scope="col">Attack</th><th scope="col">Result</th><th scope="col">Benign twin</th><th scope="col">Result</th></tr></thead>
@@ -319,8 +330,37 @@
       ["mcp_tool_poisoned", "Tool onboarding", "Platform: review tools.json, the tool list of a simulated MCP server. Compare one poisoned description, 58th of 60, with sixty ordinary ones. No server is contacted."],
       ["pdf_invisible_override", "Invoice intake", "Finance: read invoice.pdf from billing@example.invalid. Compare an instruction drawn as invisible text with an ordinary invisible text layer."],
       ["merged_pdf_override", "Contract bundle", "Legal: review bundle.pdf from contracts@example.invalid, eight documents merged into one. Compare an override on the last page, spelled through that page's own font, with an ordinary signature page."],
-      ["html_white_override", "Web research", "Research: summarize update.html from a simulated vendor page load. Compare an instruction in white text on a white background with an ordinary footer hidden the same way."]
+      ["html_white_override", "Web research", "Research: summarize update.html from a simulated vendor page load. Compare an instruction in white text on a white background with an ordinary footer hidden the same way."],
+      ["svg_diagram_frame", "Diagram review", "Engineering: describe diagram.svg from architect@example.invalid. Compare a label that frames another page with the same diagram's ordinary text labels. The address is never contacted."],
+      ["zero_width_run", "Chat intake", "Support: read message.txt from a simulated shared channel. Compare forty zero-width characters hidden after one word with a Persian message and a family emoji, where the same characters are ordinary."]
     ];
+    // How an attack was caught, read from its findings: which view or check produced a finding
+    // that the bytes as sent did not. The public replay labels its recordings the same way.
+    const methodNames = {
+      hidden: "Hidden from the reader", invisible: "Invisible characters", folded: "Disguised spelling",
+      rebuilt: "Split across formatting", decoded: "Encoded", container: "Inside an archive",
+      structure: "File structure", pattern: "Plain pattern"
+    };
+    const rebuiltViews = new Set(["ooxml-text", "ooxml-cell", "ooxml-comment", "html-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
+    function methodsOf(findings) {
+      const tags = new Set();
+      // A rule that already matched the bytes as sent needed no derived view.
+      const plain = new Set(findings.filter((finding) => finding.view === "raw").map((finding) => finding.rule_id));
+      for (const finding of findings) {
+        const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
+        if (finding.view.includes("hidden") || finding.rule_id.includes("hidden")) tags.add("hidden");
+        else if (/invisible|variation_selector|unicode_tag/.test(finding.rule_id)) tags.add("invisible");
+        else if (finding.source !== "yara") tags.add("structure");
+        else if (!plain.has(finding.rule_id)) {
+          if (finding.view !== base || base === "text-folded") tags.add("folded");
+          if (rebuiltViews.has(base)) tags.add("rebuilt");
+          else if (base !== "text-folded") tags.add("decoded");
+        }
+      }
+      if (!tags.size && findings.some((finding) => finding.member_path.length)) tags.add("container");
+      if (!tags.size && findings.length) tags.add("pattern");
+      return Object.keys(methodNames).filter((key) => tags.has(key));
+    }
     let generation = 0;
     let controller = null;
     let busy = false;
@@ -597,6 +637,7 @@
       const total = attacks.length * 2 + failures.length;
       scanning("Scanning every pair locally…", async (current) => {
         $("run-rows").replaceChildren();
+        $("run-methods").replaceChildren();
         $("run-tiles").replaceChildren();
         $("run-summary").textContent = "";
         $("run-policy").textContent = policy;
@@ -605,6 +646,7 @@
         $("run-panel").hidden = false;
         $("stop-all").hidden = false;
         const count = { held: 0, flagged: 0, clean: 0, twinFindings: 0, failed: 0, matched: 0, done: 0, seconds: 0 };
+        const byMethod = new Map(Object.keys(methodNames).map((key) => [key, { attacks: 0, flagged: 0, held: 0, clean: 0, twinFindings: 0 }]));
         const note = (data, expected) => {
           count.done += 1;
           count.seconds += data.scan_seconds || 0;
@@ -624,9 +666,20 @@
           if (held.findings.length && held.verdict !== "incomplete") count.flagged += 1;
           if (passed.verdict === "clean" && passed.findings.length === 0) count.clean += 1;
           count.twinFindings += passed.findings.length;
+          const how = held.verdict === "incomplete" ? [] : methodsOf(held.findings);
+          for (const key of how) {
+            const tally = byMethod.get(key);
+            tally.attacks += 1;
+            tally.flagged += 1;
+            if (held.verdict === "block") tally.held += 1;
+            if (passed.verdict === "clean" && passed.findings.length === 0) tally.clean += 1;
+            tally.twinFindings += passed.findings.length;
+          }
           const row = addText($("run-rows"), "tr", "");
           addText(row, "td", attack.channel);
-          addText(row, "th", attack.title).scope = "row";
+          const name = addText(row, "th", attack.title);
+          name.scope = "row";
+          if (how.length) addText(name, "span", "Caught: " + how.map((key) => methodNames[key].toLowerCase()).join(" + "), "how");
           resultCell(row, attack, held, attack.expected[index]);
           addText(row, "td", twin.title);
           resultCell(row, twin, passed, twin.expected[index]);
@@ -644,6 +697,12 @@
           addText(row, "td", "");
         }
         const pairs = attacks.length;
+        for (const [key, tally] of byMethod) {
+          if (!tally.attacks) continue;
+          const line = addText($("run-methods"), "tr", "");
+          addText(line, "th", methodNames[key]).scope = "row";
+          for (const value of [tally.attacks, tally.flagged + " / " + tally.attacks, tally.held + " / " + tally.attacks, tally.clean + " / " + tally.attacks, tally.twinFindings]) addText(line, "td", String(value));
+        }
         tile(count.flagged + " / " + pairs, "attacks with a finding", count.flagged === pairs ? "good" : "bad");
         tile(count.held + " / " + pairs, "attacks held (exit 1) under " + policy, count.held === pairs ? "good" : "");
         tile(count.clean + " / " + pairs, "benign twins clean", count.clean === pairs ? "good" : "bad");

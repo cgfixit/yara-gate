@@ -1,13 +1,15 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 64
-inert examples under `agent-ingest`, `agent-document`, and `default`: 31
+YARA-X backend. This site therefore replays **real recorded results** for 70
+inert examples under `agent-ingest`, `agent-document`, and `default`: 34
 attacks, each with a benign near-twin, and two scans that could not finish. Selecting
 an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The newest pairs cover white text on its own white
-background, an instruction in an HTML `data-*` attribute, and an override on the last
-page of an eight-source merged PDF, beside invisible PDF text, hidden Word text, a
+revision, not current bypasses. The newest pairs cover an SVG button whose link is a
+`javascript:` URL, a diagram whose `foreignObject` label frames another page, and a
+message carrying zero-width characters, beside white text on its own white
+background, an instruction in an HTML `data-*` attribute, an override on the last
+page of an eight-source merged PDF, invisible PDF text, hidden Word text, a
 poisoned MCP tool description deep in a list, a script inside an inline SVG logo, the
 earlier encoded PDF annotation strings, RTF formatting,
 uppercase Russian, and glyph-encoded PDF spelling. The UI labels
@@ -21,12 +23,18 @@ were clean under every policy, the findings on twins across every policy recordi
 A strip under the scoreboard shows every pair at once, the attack above its twin,
 marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without
-holding. The gallery shows each attack and its twin in one row, and can be filtered
-by the channel the content arrives through and by how the attack was caught:
-encoded, split across formatting, disguised spelling, hidden from the reader, inside
-an archive, file structure, or a plain pattern. The page derives that label from the
-attack's recorded `agent-ingest` findings (the view and source of each finding that
-the original bytes did not already produce); nothing is labelled by hand. Selecting
+holding. Under the strip, **How each attack was caught** has one card for each
+technique: hidden from the reader, invisible characters, disguised spelling, split
+across formatting, encoded, inside an archive, file structure, or a plain pattern.
+A card counts the attacks caught that way and held under `agent-ingest`, counts
+their twins that were clean under every policy, draws both as two rows of marks,
+and names the derived views that found what the original bytes did not show. An
+attack caught two ways is on both cards. Selecting a card opens the gallery
+filtered to its pairs. The gallery shows each attack and its twin in one row, and
+can also be filtered by the channel the content arrives through. The page derives
+the technique from the attack's recorded `agent-ingest` findings (the view, the
+source, and the rule id of each finding that the original bytes did not already
+produce); only the one-line description of each technique is fixed text. Selecting
 either member sets the two side by side under the chosen policy. Each finding says which check or rule caught it, in which archive
 member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
@@ -48,19 +56,20 @@ checks.
 
 ## Guided workflows
 
-Nine fictional tasks open directly beside their recorded outcome: supplier review
+Eleven fictional tasks open directly beside their recorded outcome: supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
 onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
-(a merged PDF read through each page's own fonts), and web research (white text on a
-white background).
+(a merged PDF read through each page's own fonts), web research (white text on a
+white background), diagram review (a diagram label that frames another page), and
+chat intake (zero-width characters in a message).
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 31-pair catalog and the two unfinished scans remain under an expandable section.
+The full 34-pair catalog and the two unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same nine shortcuts and the same catalog: both read
+The local workbench offers the same eleven shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Selecting a shortcut clears the previous result and prepares a
 sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
@@ -79,7 +88,7 @@ measured production false-positive claim.
 | --- | --- |
 | `index.html` | `web-demo/index.html`: accessible static shell and local-use guidance |
 | `style.css` | Local stylesheet, with no external fonts or assets |
-| `app.mjs` | Local rendering, the computed scoreboard, the per-policy strip of every pair, the pair rows with their channel and caught-by filters, scenario/policy selection, and the twin comparison |
+| `app.mjs` | Local rendering, the computed scoreboard, the per-policy strip of every pair, the card for each way an attack was caught, the pair rows with their channel and caught-by filters, scenario/policy selection, and the twin comparison |
 | `recordings.mjs` | Module generated from the curated `web-demo/recordings.json` |
 
 `scripts/record_pages_demo.py` produces `recordings.json` from real scans, and
@@ -188,9 +197,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 64 inert
-examples, recorded with 85 bundled rules and YARA-X 1.23.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 70 inert
+examples, recorded with 87 bundled rules and YARA-X 1.23.0, without vendor packs.
+Each deployment refreshes the revision and time. See the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -226,6 +235,9 @@ its benign twin.
 | Web page | A vendor update whose last paragraph is white on its own white background and holds the override | The same white-on-white paragraph holding an ordinary reply line |
 | Web page | Release notes whose `data-summary` attribute holds the override and a request for API keys | The same attribute holding an ordinary release summary, as a share widget does |
 | Document | An eight-source merged PDF, each page keeping its own font named `F1`, whose last page spells an override through that page's font | The same bundle ending with an ordinary signature page |
+| Attachment | An SVG button whose link target is a `javascript:` URL (an inert `void` of the page title), with no script element or handler | The same button with the do-nothing `javascript:void(0)` link |
+| Attachment | A two-box diagram whose first `foreignObject` label is an `iframe` to an invalid example address | The same diagram with `div` text labels, as draw.io and Mermaid export it |
+| Message | A sentence with 40 zero-width characters after one word, spelling `inert` one bit each | A Persian message with a non-joiner inside two words, and a family emoji |
 
 The two unfinished scans are an ordinary note scanned with a deliberately broken
 rule in a disposable tree, and a 7z header, a container the scanner does not open
@@ -247,6 +259,11 @@ were both held under `agent-ingest` as `heuristic_pdf_text_unmapped`: the overri
 never read, and the ordinary bundle was held because its font name meant eight fonts.
 The [pairs verification](verification/2026-11-10-demo-html-merged-pdf.md) records
 those runs.
+
+The three pairs added last on November 10 show #211. Scanned with the rules as they
+were at `838b11d`, before it, both SVG attacks were clean under every policy, and the
+zero-width message was a note only, so `agent-document` read it. The
+[34-pair verification](verification/2026-11-10-demo-34-pairs.md) records those runs.
 
 The look-alike, hidden-page, Word, and PDF cases show the two intake channels the
 README leads with: an open SMS number, and a synced corpus where `agent-document`
@@ -271,7 +288,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 64 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 70 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

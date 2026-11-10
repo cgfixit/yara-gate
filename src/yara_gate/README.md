@@ -17,7 +17,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`report.py`](report.py) writes compact JSON and SARIF without matched bytes.
 - [`rules.py`](rules.py) discovers, compiles, caches, installs, updates, and promotes rules under the applicable controls.
 - [`hunt.py`](hunt.py) creates candidate rules from confirmed blocked files and checks them against benign examples.
-- [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page.
+- [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page, which scans a pair side by side or the whole catalog and tabulates a run by how each attack was caught.
 - [`launchd.py`](launchd.py) writes a macOS watcher plist; it does not load the agent.
 - [`release.py`](release.py) contains review and audit building blocks for a future release flow; no CLI release action or file move is implemented here.
 - [`samples.py`](samples.py) creates inert synthetic examples, including EICAR; [`selftest.py`](selftest.py) exercises a fixture matrix.

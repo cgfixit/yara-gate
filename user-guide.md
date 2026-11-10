@@ -191,7 +191,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 64 inert examples, each of 31 attacks beside a benign
+replays saved results for 70 inert examples, each of 34 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -209,17 +209,21 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
    The list holds the catalog the public demo records, grouped by intake channel:
-   31 attacks, each directly above its benign twin, and a 7z archive the scanner
-   cannot open (incomplete under every policy). The newest pairs are white text on
-   its own white background in a web page, an instruction in an HTML `data-*`
-   attribute, and an override on the last page of an eight-source merged PDF whose
-   pages each keep their own font named `F1`. **Scan pair side by side** scans the selected example
+   34 attacks, each directly above its benign twin, and a 7z archive the scanner
+   cannot open (incomplete under every policy). The newest pairs are an SVG button
+   whose link is a `javascript:` URL, a diagram whose label frames another page, and
+   a message carrying zero-width characters; their twins are the same button with a
+   do-nothing link, the same diagram with text labels, and a Persian message with a
+   family emoji. **Scan pair side by side** scans the selected example
    and its twin under the same policy. **Run every pair** scans the whole catalog
    and counts the attacks held, the twins that stayed clean, and the findings on
    twins; a result that differs from the reviewed expectation is marked, which is
-   what you would see after adding rules that hit a twin. Under `agent-ingest` every
-   attack is held and every twin is clean; `agent-document` holds 13 of the 31 and
-   records the rest as notes, and the default policy holds 4.
+   what you would see after adding rules that hit a twin. A table under the totals
+   breaks the same run down by how each attack was caught, read from its findings:
+   hidden from the reader, invisible characters, disguised spelling, split across
+   formatting, encoded, inside an archive, file structure, or a plain pattern. Under
+   `agent-ingest` every attack is held and every twin is clean; `agent-document`
+   holds 16 of the 34 and records the rest as notes, and the default policy holds 4.
 3. Read the decision and original finding severities. Each finding says which
    check found it and in which view, in plain words. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and fingerprints; a
