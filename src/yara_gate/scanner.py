@@ -7,6 +7,7 @@ import math
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from itertools import chain
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -77,6 +78,7 @@ from yara_gate.models import (
     Verdict,
     result_from_findings,
 )
+from yara_gate.odftext import odf_text_views
 from yara_gate.pdfannotations import pdf_annotation_texts
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
@@ -427,9 +429,13 @@ def _scan_file(
                     base,
                 )
             )
-            for view, derived in ooxml_text_views(unit.name, unit.data, budget):
+            for view, derived in chain(
+                ooxml_text_views(unit.name, unit.data, budget),
+                odf_text_views(unit.data, budget),
+            ):
                 budget.check()
-                # A sentence split across Word runs is one sentence to the reader.
+                # A sentence split across Word runs or an OpenDocument span is one sentence
+                # to the reader.
                 found = yara(rules, derived, ext, view, name=base)
                 if _raw_only(view):
                     found = [f for f in found if f.rule_id not in _RAW_ONLY_RULES]
