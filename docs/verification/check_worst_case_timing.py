@@ -107,6 +107,65 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         None,
     )
+    # What plain_xml rewrites before the Office readers run. A comment inside one run, over
+    # and over: every removal leaves a join mark and the run is rebuilt once.
+    yield (
+        "ooxml-xml-comments.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document><w:body><w:p><w:r><w:t>",
+            b"a<!--b-->",
+            b"</w:t></w:r></w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # A tag whose quoted value never closes, at every tag: the quote-aware tag pattern and
+    # the hint that looks for ">" inside a value each fail once per "<".
+    yield (
+        "ooxml-xml-open-quotes.zip",
+        _stored(
+            "word/document.xml",
+            b"<!-- --><w:document><w:body>",
+            b'<w:t a="b ',
+            b"</w:body></w:document>",
+        ),
+        None,
+    )
+    # An internal entity referenced until the growth cap: the scan stops instead of expanding.
+    yield (
+        "ooxml-xml-entities.zip",
+        _stored(
+            "word/document.xml",
+            b'<!DOCTYPE d [<!ENTITY w "previous">]><w:document><w:body><w:p><w:r><w:t>',
+            b"&w;",
+            b"</w:t></w:r></w:p></w:body></w:document>",
+        ),
+        "xml entity expansion exceeds 1MB",
+    )
+    odf = (
+        b'<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office'
+        b':1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body>'
+        b"<office:text>"
+    )
+    odf_end = b"</office:text></office:body></office:document-content>"
+    # The most OpenDocument paragraphs a part can hold, each joined across a span.
+    yield (
+        "odf-spans.zip",
+        _stored("content.xml", odf, b"<text:p>a<text:span>b</text:span></text:p>", odf_end),
+        None,
+    )
+    # One paragraph of elements readers treat differently: all three readings grow together.
+    yield (
+        "odf-unknown-elements.zip",
+        _stored("content.xml", odf + b"<text:p>", b"a<text:q>b</text:q>", b"</text:p>" + odf_end),
+        None,
+    )
+    # Paragraphs that never close: the nesting cap ends the scan.
+    yield (
+        "odf-nesting.zip",
+        _stored("content.xml", odf, b"<text:p>a", odf_end),
+        "odf paragraph nesting exceeds 64",
+    )
     # One invisible stretch: every string goes to both the shown and the hidden grouping.
     # /Length lands on endstream so the annotation reader skips the body and the
     # page-text path is what the tripwire measures.
@@ -381,6 +440,9 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "markdown-lines.md": "markdown-text",
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
+        "ooxml-xml-comments.zip": "ooxml-text",
+        "odf-spans.zip": "odf-text",
+        "odf-unknown-elements.zip": "odf-text",
         "pdf-font-definitions.pdf": "pdf-text",
         "pdf-font-readings.pdf": "pdf-text",
         "pdf-page-fonts.pdf": "pdf-text",

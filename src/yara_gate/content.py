@@ -162,12 +162,24 @@ _OOXML_TEXT_PART = re.compile(
     r"(?i)^(word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml"
     r"|xl/sharedStrings\.xml|ppt/(slides|notesSlides)/[^/]+\.xml)$"
 )
+# Parts whose runs are joined but whose hidden runs are not read: text a renderer draws on a
+# slide from its layout and master, a SmartArt diagram's and a chart's text, a text box on a
+# worksheet, and Word's building blocks. The hidden-text reader resolves a run's own
+# properties in the body parts above; these inherit theirs from places it does not follow.
+_OOXML_DRAWN_PART = re.compile(
+    r"(?i)^(ppt/(slideLayouts|slideMasters)/[^/]+\.xml"
+    r"|(word|xl|ppt)/(charts/chart|diagrams/(data|drawing))[^/]*\.xml"
+    r"|xl/drawings/drawing[^/]*\.xml|word/glossary/document\.xml)$"
+)
 # A text run, a paragraph or shared-string end, or a Word break or tab, in document order.
+# Attributes are bounded and possessive and never cross a "<": a run tag that does not close
+# costs one short attempt, where an open-ended ``[^>]*`` rescanned the rest of the part from
+# every such tag. ``plain_xml`` has already taken ">" out of attribute values.
 _OOXML_TOKEN = re.compile(
-    rb"<(?:w:t|t|a:t)(?:\s[^>]*)?>([^<]*)</(?:w:t|t|a:t)>"
+    rb"<(?:w:t|t|a:t)(?:\s[^<>]{0,4096}+)?>([^<]*+)</(?:w:t|t|a:t)>"
     rb"|</(?:w:p|a:p|si)>"
-    rb"|<w:(?:br|cr)\b[^>]*/?>"
-    rb"|<w:tab\b[^>]*/?>"
+    rb"|<w:(?:br|cr)\b[^<>]{0,4096}+>"
+    rb"|<w:tab\b[^<>]{0,4096}+>"
 )
 
 _PDF_STREAM = re.compile(rb"stream\r?\n")
@@ -987,17 +999,175 @@ def _json_escape(match: re.Match[str]) -> str:
     return _JSON_SIMPLE[token[1]]
 
 
+# What an XML parser removes or rewrites before any text reaches a reader: a comment, a
+# processing instruction, a DOCTYPE, a CDATA section, and (last) one whole tag, whose quoted
+# attribute values may hold ">". Quantifiers are possessive or run to a literal, so each byte
+# is read once; a comment or section that never closes runs to the end of the part.
+_XML_NOISE = re.compile(
+    rb"<!--.*?(?:-->|\Z)"
+    rb"|<\?.*?(?:\?>|\Z)"
+    rb"|<!DOCTYPE[^<>\[]*+(?:\[.*?(?:\]|\Z))?[^<>]*+>?"
+    rb"|<!\[CDATA\[(.*?)(?:\]\]>|\Z)"
+    rb"""|(<[/A-Za-z_](?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+>)""",
+    re.DOTALL,
+)
+# A quoted attribute value that holds ">": the one tag spelling the readers' own patterns
+# cannot step over.
+_XML_QUOTED_GT = re.compile(rb"""=\s*+(?:"[^"<>]*+>|'[^'<>]*+>)""")
+_XML_DOCTYPE = re.compile(rb"<!DOCTYPE[^<>\[]*+\[(.*?)(?:\]|\Z)", re.DOTALL)
+# An internal general entity with a literal value. Parameter entities (``%``) and external
+# ones (SYSTEM, PUBLIC) have no literal here and are never read or fetched.
+_XML_ENTITY = re.compile(
+    rb"""<!ENTITY\s++([A-Za-z_:][\w.:-]{0,63}+)\s++(?:"([^"]{0,4096}+)"|'([^']{0,4096}+)')\s*+>"""
+)
+_XML_ENTITY_REF = re.compile(rb"&([A-Za-z_:][\w.:-]{0,63}+);")
+_XML_CHAR_REF = re.compile(rb"&#(?:x([0-9A-Fa-f]{1,6})|([0-9]{1,7}));")
+_XML_PREDEFINED = frozenset({b"amp", b"lt", b"gt", b"quot", b"apos"})
+_XML_PROLOG_WINDOW = 64 * 1024
+# Left where ``plain_xml`` took markup out of character data. U+0001 cannot occur in an XML
+# 1.0 document, so a reader that finds it between two stretches of one text element knows the
+# element was not contiguous in the part's raw bytes.
+_XML_JOIN = b"\x01"
+_MAX_XML_ENTITIES = 64
+# Entity references may nest; a parser expands them all. Eight rounds is deeper than any text
+# needs, and the growth cap ends a document written to expand without end.
+_MAX_XML_ENTITY_ROUNDS = 8
+_MAX_XML_ENTITY_GROWTH = 1024 * 1024
+
+
+def _xml_char(match: re.Match[bytes]) -> bytes:
+    code = int(match.group(1), 16) if match.group(1) else int(match.group(2))
+    if code > 0x10FFFF or 0xD800 <= code <= 0xDFFF:
+        return match.group()
+    return chr(code).encode("utf-8")
+
+
+def _xml_entities(data: bytes) -> dict[bytes, bytes]:
+    """The internal general entities a part declares, each as its replacement text.
+
+    A character reference in a declared value is resolved when the entity is declared, so
+    ``&#60;`` there is markup where the entity is used (XML 1.0, 4.4.5). The first declaration
+    of a name is the binding one (4.2).
+    """
+    doctype = _XML_DOCTYPE.search(data, 0, _XML_PROLOG_WINDOW)
+    if doctype is None:
+        return {}
+    entities: dict[bytes, bytes] = {}
+    for match in _XML_ENTITY.finditer(doctype.group(1)):
+        name = match.group(1)
+        if name in _XML_PREDEFINED or name in entities:
+            continue
+        if len(entities) >= _MAX_XML_ENTITIES:
+            raise ContentLimit("xml entities exceed 64")
+        value = match.group(2) if match.group(2) is not None else match.group(3)
+        entities[name] = _XML_CHAR_REF.sub(_xml_char, value)
+    return entities
+
+
+def utf8_xml(data: bytes) -> bytes:
+    """A UTF-16 part as UTF-8; any other part as it is.
+
+    An Office part may be UTF-8 or UTF-16 (ECMA-376 part 2), and a parser reads both alike,
+    while the readers here match UTF-8 bytes. UTF-16 is known by its byte order mark or by
+    the two-byte ``<?`` that opens an XML declaration without one.
+    """
+    if data[:2] == b"\xff\xfe" or data[:4] == b"<\x00?\x00":
+        encoding = "utf-16-le"
+    elif data[:2] == b"\xfe\xff" or data[:4] == b"\x00<\x00?":
+        encoding = "utf-16-be"
+    else:
+        return data
+    return data.decode(encoding, errors="replace").lstrip("\ufeff").encode("utf-8")
+
+
+def xml_text(text: bytes) -> tuple[bytes, bool]:
+    """Character data from ``plain_xml`` without its join marks, and whether one stood between
+    two stretches of it: text that was split by markup and is contiguous only now."""
+    if _XML_JOIN not in text:
+        return text, False
+    return text.replace(_XML_JOIN, b""), _XML_JOIN in text.strip(_XML_JOIN)
+
+
+def plain_xml(data: bytes, budget: Budget) -> bytes:
+    """``data`` as an XML parser hands its text on, for the readers that match tags by pattern.
+
+    Comments, processing instructions, and the DOCTYPE are removed; a CDATA section becomes
+    the escaped text it holds; ``>`` inside a quoted attribute value becomes ``&gt;``; and a
+    reference to an entity the part's own DOCTYPE declares becomes that entity's text. So
+    ``Ignore all <!-- -->previous``, ``<![CDATA[previous]]>``, and ``&w;`` are the words a
+    parser gives pandoc, LibreOffice, or any library built on one. Each removal leaves
+    ``_XML_JOIN``, which ``xml_text`` takes out again.
+
+    A part that uses none of these is returned as it is, which is every part an office suite
+    writes. Nothing external is read: an entity with a system or public identifier has no
+    literal value and stays a reference.
+    """
+    if b"<!" not in data and data.find(b"<?", 1) < 0 and not _XML_QUOTED_GT.search(data):
+        return data
+    budget.check()
+    entities = _xml_entities(data) if b"<!ENTITY" in data[:_XML_PROLOG_WINDOW] else {}
+    for _ in range(_MAX_XML_ENTITY_ROUNDS if entities else 0):
+        growth = sum(
+            len(entities[match.group(1)]) + 2 - len(match.group())
+            for match in _XML_ENTITY_REF.finditer(data)
+            if match.group(1) in entities
+        )
+        if growth > _MAX_XML_ENTITY_GROWTH:
+            raise ContentLimit("xml entity expansion exceeds 1MB")
+        budget.check()
+        expanded = _XML_ENTITY_REF.sub(
+            lambda match: (
+                _XML_JOIN + entities[match.group(1)] + _XML_JOIN
+                if match.group(1) in entities
+                else match.group()
+            ),
+            data,
+        )
+        if expanded == data:
+            break
+        if len(expanded) > len(data) + _MAX_XML_ENTITY_GROWTH:
+            raise ContentLimit("xml entity expansion exceeds 1MB")
+        data = expanded
+    output = bytearray()
+    position = 0
+    for count, match in enumerate(_XML_NOISE.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        tag = match.group(2)
+        if tag is not None and b">" not in tag[:-1]:
+            continue
+        output += data[position : match.start()]
+        position = match.end()
+        if tag is not None:
+            output += tag[:-1].replace(b">", b"&gt;") + b">"
+            continue
+        output += _XML_JOIN
+        if match.group(1) is not None:
+            output += (
+                match.group(1).replace(b"&", b"&amp;").replace(b"<", b"&lt;").replace(b">", b"&gt;")
+            )
+            output += _XML_JOIN
+    output += data[position:]
+    return bytes(output)
+
+
 def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     """Join the text runs of a Word, Excel, or PowerPoint XML part into one ``ooxml-text`` view.
 
     Only the parts a reader sees are joined (document body, headers, footers, notes, comments,
-    shared strings, slides). Runs inside one paragraph are joined without a separator, paragraphs
+    shared strings, slides, and the layout, master, diagram, chart, and drawing parts a
+    renderer draws from). Runs inside one paragraph are joined without a separator, paragraphs
     end with a newline, breaks and tabs become whitespace, and XML entities are decoded. No XML
-    parser runs and no entity is expanded beyond the predefined and numeric ones. A part with
-    fewer than two runs is left to the raw and HTML-unescaped views of the member itself.
+    parser runs; ``plain_xml`` first removes what one would (comments, CDATA wrappers, the
+    part's own internal entities), and nothing external is read. A part with fewer than two
+    runs is left to the raw and HTML-unescaped views of the member itself.
     """
-    if not _OOXML_TEXT_PART.match(name) or b"<" not in data[:1024]:
+    if not (_OOXML_TEXT_PART.match(name) or _OOXML_DRAWN_PART.match(name)):
         return
+    data = utf8_xml(data)
+    if b"<" not in data[:1024]:
+        return
+    data = plain_xml(data, budget)
     parts: list[str] = []
     runs = 0
     for count, match in enumerate(_OOXML_TOKEN.finditer(data)):
@@ -1006,7 +1176,9 @@ def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[s
         token = match.group()
         text = match.group(1)
         if text is not None:
-            runs += 1
+            # A run that markup had split is two runs' worth: not contiguous in the raw bytes.
+            text, joined = xml_text(text)
+            runs += 2 if joined else 1
             parts.append(html.unescape(text.decode("utf-8", errors="replace")))
         elif token.startswith(b"</"):
             parts.append("\n")
@@ -1039,16 +1211,20 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     the tags; no XML parser runs and no entity is expanded beyond the predefined and numeric
     ones.
     """
-    if not _SHEET_PART.match(name) or b"inlineStr" not in data:
+    if not _SHEET_PART.match(name):
         return []
-    return _ooxml_pieces(data, budget, b"is")
+    data = utf8_xml(data)
+    if b"inlineStr" not in data:
+        return []
+    return _ooxml_pieces(plain_xml(data, budget), budget, b"is")
 
 
 def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     """Join rich-text runs within each Excel or modern PowerPoint comment, never across comments."""
     if not _COMMENT_PART.fullmatch(name):
         return []
-    return _ooxml_pieces(data, budget, b"comment" if name.lower().startswith("xl/") else b"cm")
+    tag = b"comment" if name.lower().startswith("xl/") else b"cm"
+    return _ooxml_pieces(plain_xml(utf8_xml(data), budget), budget, tag)
 
 
 # A whole text element (``<w:t>``, ``<a:t>``, ``<t>``: its prefix and text), or one other tag
@@ -1131,11 +1307,13 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     lowered = name.lower()
     if not (_OOXML_TEXT_PART.match(name) or _SHEET_PART.match(name) or _COMMENT_PART.match(name)):
         return []
+    data = utf8_xml(data)
     if b"<" not in data[:1024]:
         return []
     # Every signal below needs one of these names in the part; without any, nothing is hidden.
     if not any(name in data for name in _HIDING_NAMES):
         return []
+    data = plain_xml(data, budget)
     family = b"w" if lowered.startswith("word/") else b"a" if lowered.startswith("ppt/") else b"x"
     pieces: list[str] = []
     current: list[str] = []
@@ -1198,7 +1376,7 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
         if text is not None:
             if phonetic or change or (match.group(1) or b"") not in text_prefixes:
                 continue
-            piece = html.unescape(text.decode("utf-8", errors="replace"))
+            piece = html.unescape(xml_text(text)[0].decode("utf-8", errors="replace"))
             run = runs[-1] if runs else _Run()
             hidden = (
                 part_hidden
@@ -1351,8 +1529,9 @@ def _ooxml_pieces(data: bytes, budget: Budget, boundary: bytes) -> list[str]:
         elif inside and (tag == b"p" and closing or tag == b"br"):
             runs.append(b"\n")
         elif inside and not phonetic and text is not None:
+            text, joined = xml_text(text)
             runs.append(text)
-            count_runs += 1
+            count_runs += 2 if joined else 1
     return cells
 
 
