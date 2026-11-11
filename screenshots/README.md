@@ -2,8 +2,34 @@
 
 This directory preserves Computer Use captures, the user-supplied demo image, and
 the November 10 headless-browser captures without editing or re-encoding. The
-README features the 34-pair workbench run below. Earlier captures retain their
+README features the 37-pair workbench run below. Earlier captures retain their
 original implementation provenance.
+
+## Workbench and public page with 37 pairs — November 11, 2026
+
+| Workbench: every pair, scanned live, by how each attack was caught | Workbench: an OpenDocument bold word beside its twin |
+| --- | --- |
+| ![Workbench run of all 37 pairs under agent-ingest, with the table by technique](yara-gate-catalog37-workbench-run.png) | ![Proposal review workflow: an OpenDocument file with one bold word held beside the same file with an ordinary sentence](yara-gate-catalog37-workbench-pair.png) |
+
+| Public page: what the file holds beside what a reader shows | Public page: how each attack was caught |
+| --- | --- |
+| ![Scoreboard of 37 pairs and three cards that set the bytes of a file beside the sentence a reader shows](yara-gate-catalog37-pages-reader.png) | ![One card for each way an attack was caught, with attacks held and twins clean](yara-gate-catalog37-pages-caught-by.png) |
+
+Four original PNG captures, 2560 × 1800 (a 1280 × 900 viewport at device scale 2),
+taken November 11, 2026, at about 02:29 UTC, by headless Chromium 153.0.8010.12
+through Playwright 1.63.0 in a Linux container. They show no browser chrome and
+are not Computer Use captures. Source: clean `claude/busy-mccarthy-8uxhk3` at
+`d60f82f`. The workbench was `yara-gate demo` on `127.0.0.1` with a disposable
+copy of the 87 bundled rules and no vendor packs; the public page was the four-file
+artifact built by `scripts/build_pages.py` from the committed recordings (recorded at
+`ea2323f`) and served from a loopback directory, not the hosted site. The browser
+made no request outside those two loopback origins. The run reports 37 of 37 attacks
+held under `agent-ingest`, 37 of 37 twins clean, 0 findings on twins, and 75 of 75
+results as expected. The pair capture is the **Proposal review** workflow scanned
+side by side. All fixtures are inert and synthetic, and this is evidence for the
+curated pairs only, not a production false-positive rate. The run capture replaces
+the 34-pair capture below in the README; those files are kept unchanged. See the
+[verification record](../docs/verification/2026-11-11-demo-37-pairs.md).
 
 ## Workbench and public page with 34 pairs — November 10, 2026
 

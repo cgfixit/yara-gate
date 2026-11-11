@@ -1,11 +1,13 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 70
-inert examples under `agent-ingest`, `agent-document`, and `default`: 34
+YARA-X backend. This site therefore replays **real recorded results** for 76
+inert examples under `agent-ingest`, `agent-document`, and `default`: 37
 attacks, each with a benign near-twin, and two scans that could not finish. Selecting
 an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The newest pairs cover an SVG button whose link is a
+revision, not current bypasses. The newest pairs cover an OpenDocument file with one
+bold word, a Word sentence with an XML comment inside it, and a slide deck whose only
+text is on its master, beside an SVG button whose link is a
 `javascript:` URL, a diagram whose `foreignObject` label frames another page, and a
 message carrying zero-width characters, beside white text on its own white
 background, an instruction in an HTML `data-*` attribute, an override on the last
@@ -15,6 +17,12 @@ earlier encoded PDF annotation strings, RTF formatting,
 uppercase Russian, and glyph-encoded PDF spelling. The UI labels
 every result as recorded and shows the scanner revision, capture time, rule coverage,
 and engine version.
+
+The page opens on the idea the catalog rests on. Under the scoreboard, a panel sets
+what three files hold beside what a reader shows: the span around a bold word, the
+XML comment between two words, and a sentence kept on the slide master. Its text is
+fixed in `index.html`; each card opens the recording of that pair. The panel says
+which readers each was checked against and that Microsoft Office was not run.
 
 The page is built to show precision as well as detection. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
@@ -56,20 +64,21 @@ checks.
 
 ## Guided workflows
 
-Eleven fictional tasks open directly beside their recorded outcome: supplier review
+Twelve fictional tasks open directly beside their recorded outcome: supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
 onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
 (a merged PDF read through each page's own fonts), web research (white text on a
-white background), diagram review (a diagram label that frames another page), and
-chat intake (zero-width characters in a message).
+white background), diagram review (a diagram label that frames another page),
+chat intake (zero-width characters in a message), and proposal review (a bold word
+in an OpenDocument file).
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 34-pair catalog and the two unfinished scans remain under an expandable section.
+The full 37-pair catalog and the two unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same eleven shortcuts and the same catalog: both read
+The local workbench offers the same twelve shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Selecting a shortcut clears the previous result and prepares a
 sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
@@ -197,9 +206,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 70 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 76 inert
 examples, recorded with 87 bundled rules and YARA-X 1.23.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+Each deployment refreshes the revision and time. See the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -260,7 +269,11 @@ never read, and the ordinary bundle was held because its font name meant eight f
 The [pairs verification](verification/2026-11-10-demo-html-merged-pdf.md) records
 those runs.
 
-The three pairs added last on November 10 show #211. Scanned with the rules as they
+The three pairs added on November 11 show #213. Scanned with the scanner as it was at
+`5d7ca81`, before it, all three attacks were clean under every policy; the
+[37-pair verification](verification/2026-11-11-demo-37-pairs.md) records those runs.
+
+The three pairs added on November 10 show #211. Scanned with the rules as they
 were at `838b11d`, before it, both SVG attacks were clean under every policy, and the
 zero-width message was a note only, so `agent-document` read it. The
 [34-pair verification](verification/2026-11-10-demo-34-pairs.md) records those runs.
@@ -288,7 +301,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 70 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 76 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
