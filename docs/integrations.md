@@ -459,8 +459,12 @@ quotes an attack in plain sight. An OCR text layer is render mode 3, so a scanne
 page that reads as an override phrase is held too
 ([boundaries](rules.md#hidden-office-and-pdf-text)). A Word, Excel, or PowerPoint verdict covers each XML member
 and an `ooxml-text` view that joins the text runs of the body, headers, footers,
-notes, comments, shared strings, and slides, so a sentence Word split across
-formatting runs is seen whole; an Excel inline-string cell split across rich-text
+notes, comments, shared strings, and slides, and of the slide masters and layouts,
+SmartArt, charts, and worksheet text boxes a renderer draws from, so a sentence Word
+split across formatting runs is seen whole. An OpenDocument file (`.odt`, `.ods`,
+`.odp`) gets an `odf-text` view, one line per paragraph. Both are read as an XML
+parser hands the text on, through a comment, a CDATA section, an internal entity, or
+a UTF-16 part ([boundaries](rules.md#office-xml-and-opendocument-reader-boundaries)); an Excel inline-string cell split across rich-text
 runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
 `html-text` piece per paragraph or cell, with bold, links, and comments dropped.
 A Markdown paragraph or list item split by emphasis, a code span, or a link is read
