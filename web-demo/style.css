@@ -30,9 +30,9 @@ p { margin: .5rem 0 1rem; }
 .scoreboard div:nth-child(4) strong { color: var(--inc); }
 .evidence { margin-bottom: 1.25rem; }
 .evidence-summary { font-size: .95rem; font-weight: 600; margin: 0 0 .75rem; }
-.strip { display: flex; flex-wrap: wrap; gap: .5rem .25rem; }
+.strip { display: flex; flex-wrap: wrap; gap: .5rem 3px; }
 .strip-col { display: flex; flex-direction: column; gap: .3rem; }
-.cell { width: 25px; height: 25px; padding: 0; font: 700 .76rem/1 system-ui, sans-serif; border: 1px solid currentColor; border-radius: 6px; cursor: pointer; }
+.cell { width: 24px; height: 24px; padding: 0; font: 700 .76rem/1 system-ui, sans-serif; border: 1px solid currentColor; border-radius: 6px; cursor: pointer; }
 .cell.block { color: var(--block); background: var(--block-bg); }
 .cell.clean { color: var(--clean); background: var(--clean-bg); }
 .cell.advisory { color: var(--adv); background: var(--adv-bg); }
@@ -171,3 +171,12 @@ footer { color: var(--muted); font-size: .8rem; padding-bottom: 2rem !important;
 .mark.incomplete { color: var(--inc); background: var(--inc-bg); }
 @media (max-width: 1040px) { .depth-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .depth-grid { grid-template-columns: minmax(0, 1fr); } }
+.seen { margin-bottom: 1.25rem; }
+.seen-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: .5rem; }
+.seen-grid article { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; padding: 1rem; background: #fbfcfa; }
+.seen-grid h3 { min-height: 3em; }
+.seen-label { margin: .35rem 0 .25rem; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.seen-code { margin: 0; padding: .6rem .7rem; max-height: none; font-size: .78rem; background: var(--block-bg); border: 1px solid #e7c4bb; color: var(--ink); }
+.seen-shown { margin: 0 0 .6rem; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: .95rem; }
+.seen-grid .help { flex: 1; margin-bottom: 0; }
+@media (max-width: 960px) { .seen-grid { grid-template-columns: minmax(0, 1fr); } .seen-grid h3 { min-height: 0; } }

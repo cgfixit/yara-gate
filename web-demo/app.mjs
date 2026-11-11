@@ -25,7 +25,8 @@ const viewNames = {
   'percent-decoded': 'the text with percent-encoding decoded',
   'mime-headers-decoded': 'the decoded email headers',
   'decoded-utf16': 'the text decoded from UTF-16',
-  'ooxml-text': 'the joined text of an Office document',
+  'ooxml-text': 'the joined text of an Office document, read as an XML parser hands it on',
+  'odf-text': 'the joined paragraphs of an OpenDocument file',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
   'ooxml-comment': 'one Office comment with its text runs rejoined',
   'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
@@ -69,13 +70,13 @@ const methodDetail = {
   hidden: 'Text a viewer does not paint (invisible PDF text, hidden Word runs, white text on its own white background, a data attribute), and an order to conceal deep in a tool list. Hidden text is read on its own and reported only when an instruction is inside it.',
   invisible: 'Characters that draw nothing: a run of zero-width characters or variation selectors that carries bytes. The joiners in Persian words and in a family emoji are ordinary and stay clean.',
   folded: 'Look-alike letters, small capitals, digits for letters, spaced-out words, terminal escapes. The text is folded to its plain spelling before the rules read it.',
-  rebuilt: 'One sentence broken across formatting runs, spreadsheet cells, comments, spans, or PDF text blocks. The pieces are rejoined the way a reader shows them.',
+  rebuilt: 'One sentence broken across formatting runs, spreadsheet cells, comments, spans, or PDF text blocks, by markup an XML parser drops, or kept on a slide master instead of a slide. The pieces are rejoined the way a reader shows them.',
   decoded: 'Base64, HTML character references, PDF glyph ids, and string escapes. Each is decoded in a bounded view and read by itself.',
   container: 'Content inside an archive member, including a second archive glued after the first.',
   structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
   pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
-const rebuiltViews = new Set(['ooxml-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
+const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
   const findings = item.results['agent-ingest'].findings;
   const tags = new Set();
@@ -131,7 +132,10 @@ const stories = [
     sender: 'architect@example.invalid', task: 'Engineering · diagram review', file: 'diagram.svg' },
   { id: 'zero_width_run', label: 'Chat intake', title: 'Read a message from a shared channel',
     brief: 'A support assistant reads a one-line message. Forty zero-width characters sit after one word and carry a hidden payload; the twin is a Persian message with a family emoji, where the same characters are ordinary.',
-    sender: 'Example chat · simulated message', task: 'Support · message intake', file: 'message.txt' }
+    sender: 'Example chat · simulated message', task: 'Support · message intake', file: 'message.txt' },
+  { id: 'odt_span_override', label: 'Proposal review', title: 'Summarize a vendor proposal',
+    brief: 'A procurement assistant summarizes a proposal saved from LibreOffice. One word of an override sentence is bold, which stores it in a span and splits the sentence in the file; the twin has the same bold word in an ordinary revision note.',
+    sender: 'vendor@example.invalid', task: 'Procurement · proposal summary', file: 'review.odt' }
 ];
 
 function storyButtons() {
@@ -483,6 +487,12 @@ scoreboard();
 strip();
 depth();
 storyButtons();
+for (const button of document.querySelectorAll('.seen-open')) {
+  button.addEventListener('click', () => {
+    state.policy = 'agent-ingest';
+    select(button.dataset.example, true);
+  });
+}
 gallery();
 galleryFilters();
 policyButtons();

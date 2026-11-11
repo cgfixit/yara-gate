@@ -358,6 +358,17 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
         ),
         "html_svg_script": ("html_svg_icon_benign", "doc_svg_active", {"raw", "text-folded"}),
         "mcp_tool_poisoned": ("mcp_tool_benign", "heuristic_mcp_hidden_instruction", {"raw"}),
+        "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
+        "word_xml_comment_override": (
+            "word_xml_comment_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text"},
+        ),
+        "pptx_master_override": (
+            "pptx_master_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text"},
+        ),
     }
     try:
         for attack, (benign, rule_id, views) in expected.items():

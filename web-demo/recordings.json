@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "41f065fd9879d4473651e03d83f47a78c1e49c5e",
-  "captured_at": "2026-11-10T23:08:44+00:00",
+  "source_revision": "ea2323ff08125318acac8a18031a46d4ffd239a0",
+  "captured_at": "2026-11-11T02:25:32+00:00",
   "cases": [
     {
       "id": "note",
@@ -4113,6 +4113,558 @@
             "text-folded": 1
           },
           "bytes_scanned": 213,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "odt_span_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "odt_span_benign",
+      "title": "An OpenDocument file with one bold word",
+      "description": "An override sentence in a LibreOffice text document. Making one word bold stores it in a span, which splits the sentence in the file. The paragraph is rejoined the way LibreOffice and pandoc show it.",
+      "results": {
+        "default": {
+          "sha256": "90dba12a44d8caabf0e4f3d28f04e808082c9e69b1704d876061dbc416fa7a85",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "odf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1874,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "90dba12a44d8caabf0e4f3d28f04e808082c9e69b1704d876061dbc416fa7a85",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "odf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1874,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "90dba12a44d8caabf0e4f3d28f04e808082c9e69b1704d876061dbc416fa7a85",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "odf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1874,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "odt_span_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "odt_span_override",
+      "title": "Same OpenDocument file, ordinary revision note",
+      "description": "The same span around the same bold word, in an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "8d088b76cd8e0ef20ca0ece019977b3ed701ff7c115bde374af5206c635a93ad",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1870,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "8d088b76cd8e0ef20ca0ece019977b3ed701ff7c115bde374af5206c635a93ad",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1870,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "8d088b76cd8e0ef20ca0ece019977b3ed701ff7c115bde374af5206c635a93ad",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "odf-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 1870,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "word_xml_comment_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "word_xml_comment_benign",
+      "title": "A Word sentence with an XML comment inside it",
+      "description": "An override sentence in one Word run, with an XML comment between two of its words. Every XML parser drops the comment, so a converter shows the sentence whole. The part is read as a parser hands it on.",
+      "results": {
+        "default": {
+          "sha256": "aaa692b86f343db565559e59e02bcb5056d8251e07f619ac8fc162a77c12fc57",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1124,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "aaa692b86f343db565559e59e02bcb5056d8251e07f619ac8fc162a77c12fc57",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1124,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "aaa692b86f343db565559e59e02bcb5056d8251e07f619ac8fc162a77c12fc57",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 25,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1124,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "word_xml_comment_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "word_xml_comment_override",
+      "title": "Same Word file and comment, ordinary revision note",
+      "description": "The same XML comment between the same two words, in an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "0fdf40bb3b33e19f0c127c91ab15c15791e330471c2146b6962085d33c2ad757",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1121,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "0fdf40bb3b33e19f0c127c91ab15c15791e330471c2146b6962085d33c2ad757",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1121,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "0fdf40bb3b33e19f0c127c91ab15c15791e330471c2146b6962085d33c2ad757",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1121,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pptx_master_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "pptx_master_benign",
+      "title": "A slide deck with text on its master",
+      "description": "An override sentence in a text box on the slide master, across two formatting runs. No slide holds it, yet a renderer draws it on every slide. The master's runs are joined like a slide's.",
+      "results": {
+        "default": {
+          "sha256": "4e1f4422d9d7a138d77719ec606afcf8f5548f1c5407d264a99eb93fc422daa3",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1919,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "4e1f4422d9d7a138d77719ec606afcf8f5548f1c5407d264a99eb93fc422daa3",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1919,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "4e1f4422d9d7a138d77719ec606afcf8f5548f1c5407d264a99eb93fc422daa3",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "ooxml-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1919,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pptx_master_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "pptx_master_override",
+      "title": "Same deck, an ordinary confidentiality footer",
+      "description": "The same two-run text box on the slide master, holding a confidentiality notice.",
+      "results": {
+        "default": {
+          "sha256": "c5be3e4bcbd0319b6bb1e9997b26ae56b55d44311f70e9614c87656ea540887d",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1886,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "c5be3e4bcbd0319b6bb1e9997b26ae56b55d44311f70e9614c87656ea540887d",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1886,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "c5be3e4bcbd0319b6bb1e9997b26ae56b55d44311f70e9614c87656ea540887d",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1886,
           "exit_code": 0
         }
       }
