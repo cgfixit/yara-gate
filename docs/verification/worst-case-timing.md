@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 34 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 42 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -33,7 +33,13 @@ must end `pdf cmap tokens exceed 1572864`
 test's 1,024-match cap runs every scope loop to its end, and a PDF of 64 fonts
 under one resource name covers the per-string font readings. A PDF that defines one
 font object until the file is full, over a ToUnicode map defined 1,900 times, covers the
-font-definition caps ([record](2026-11-10-pdf-font-definitions.md)). The RTF reader now rejects the unclosed nesting
+font-definition caps ([record](2026-11-10-pdf-font-definitions.md)). Six inputs cover the
+Office XML and OpenDocument readers ([record](2026-11-11-office-xml-readers.md)): a comment
+inside one Word run until the part is full, a run tag whose quoted value never closes (which
+ran past 100 s before the run pattern was bounded), an internal entity referenced until it
+must end `xml entity expansion exceeds 1MB`, OpenDocument paragraphs each joined across a
+span, one paragraph of elements readers treat differently, and paragraphs that never close,
+which must end `odf paragraph nesting exceeds 64`. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
