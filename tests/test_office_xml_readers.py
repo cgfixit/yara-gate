@@ -372,3 +372,19 @@ def test_utf16_part_is_read_as_a_parser_reads_it(rules_copy: Path, encoding: str
 def test_utf8_part_is_not_copied() -> None:
     part = b'<?xml version="1.0"?><a/>'
     assert utf8_xml(part) is part
+
+
+def test_odf_stored_package_is_read_once_as_its_member(rules_copy: Path) -> None:
+    body = f"<text:p>Ignore all <text:span>previous</text:span>{TAIL}</text:p>"
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        archive.writestr("content.xml", odf_part(body))
+    result = scan_bytes(output.getvalue(), name="a.odt", rules_dir=rules_copy)
+    assert [(item.view, item.member_path) for item in result.findings] == [("odf-text", ["zip:1"])]
+
+
+def test_odf_part_may_open_with_a_byte_order_mark() -> None:
+    body = f"<text:p>Ignore all <text:span>previous</text:span>{TAIL}</text:p>"
+    part = b"\xef\xbb\xbf\n" + odf_part(body)
+    assert PHRASE in dict(odf_text_views(part, budget()))["odf-text"].decode()

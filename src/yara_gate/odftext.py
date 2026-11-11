@@ -39,6 +39,8 @@ _NOT_IN_THE_LINE = frozenset({b"ruby-text", b"annotation", b"frame"})
 _NEVER_TEXT = b"binary-data"
 # Spaces one ``text:s`` may add. Its tag is longer than that, so the view never outgrows the part.
 _MAX_SPACES = 16
+# A UTF-8 byte order mark and white space, which may stand before a part's first tag.
+_BEFORE_XML = b"\xef\xbb\xbf \t\r\n"
 _MAX_NESTING = 64
 
 # One stretch of a paragraph: its text, and whether it is written out (``text:s``, a tab, a
@@ -126,7 +128,9 @@ def odf_text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     than two stretches of text is left to the raw and HTML-unescaped views of the member.
     """
     data = utf8_xml(data)
-    if _TEXT_NAMESPACE not in data or b"<" not in data[:1024]:
+    # A part is XML from its first byte. An uncompressed package holds the same namespace
+    # in its own bytes; its content.xml is read as a member, not a second time from outside.
+    if _TEXT_NAMESPACE not in data or data[:64].lstrip(_BEFORE_XML)[:1] != b"<":
         return
     prefixes = frozenset(match.group(1) or b"" for match in _BINDING.finditer(data))
     if not prefixes:
