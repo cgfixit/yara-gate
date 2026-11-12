@@ -296,6 +296,8 @@ def _scan_file(
     vendor_dirs = vendor_namespace_dirs(ruleset)
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
+    read_paths: set[tuple[str, ...]] = set()
+    reread: list[list[str]] = []
     try:
         for unit in content_units(ContentUnit(file_path.name, data), budget):
             budget.check()
@@ -490,6 +492,30 @@ def _scan_file(
             if conjunction is not None:
                 conjunction.member_path = list(unit.member_path)
                 findings.append(conjunction)
+            # A mail part with a padded transfer encoding is read twice, decoded and as
+            # written, under its one member path. A match both readings share is one finding.
+            member_path = list(unit.member_path)
+            if unit.member_path in read_paths:
+                same_path = [f for f in findings[:unit_start] if f.member_path == member_path]
+                findings[unit_start:] = [f for f in findings[unit_start:] if f not in same_path]
+            read_paths.add(unit.member_path)
+            # The one body of a message opened for that body is this unit's text read again,
+            # and it was scanned first. What it found is kept under its member path only when
+            # this unit did not find the same rule at the same severity, in whichever view.
+            if unit.reread:
+                reread.append(member_path)
+            elif any(path[:-1] == member_path for path in reread):
+                own = {(f.rule_id, f.severity) for f in findings[unit_start:]}
+                findings[:] = [
+                    f
+                    for f in findings
+                    if not (
+                        f.member_path in reread
+                        and f.member_path[:-1] == member_path
+                        and (f.rule_id, f.severity) in own
+                    )
+                ]
+                reread = [path for path in reread if path[:-1] != member_path]
             budget.check()
     except ContentLimit as exc:
         return finish(str(exc))

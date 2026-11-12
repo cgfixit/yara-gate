@@ -3,11 +3,13 @@
 import base64
 import binascii
 import bz2
+import codecs
 import email
 import email.errors
 import email.header
 import email.message
 import email.policy
+import functools
 import gzip
 import html
 import io
@@ -222,9 +224,10 @@ _PDF_CHUNK = 64 * 1024
 # A parsed PDF object: a token, an array, a dictionary keyed by decoded name, or a reference.
 type PdfValue = bytes | list[PdfValue] | dict[bytes, PdfValue] | tuple[int, int]
 
-# A mail message with a MIME body: header lines, a Content-Type, one more message header, and
-# either a multipart body or an encoded single part. A reader's mail client shows the decoded
-# parts, so they are scanned as members; the raw message is scanned as well.
+# A mail message: header lines, a Content-Type, and one more message header. It is opened when
+# a mail reader shows something other than its bytes: a multipart body, a body in a transfer
+# encoding, an HTML body, or a text body in a charset other than UTF-8. A reader's mail client
+# shows the decoded parts, so they are scanned as members; the raw message is scanned as well.
 _MIME_FIRST_LINE = re.compile(rb"\A(?:[A-Za-z][A-Za-z0-9-]*:[ \t]|From )")
 _MIME_HEADER_NAME = re.compile(rb"(?m)^([A-Za-z][A-Za-z0-9-]*):")
 _MIME_BLANK = re.compile(rb"\r?\n\r?\n")
@@ -233,6 +236,54 @@ _MIME_MESSAGE_HEADERS = frozenset(
     {b"mime-version", b"from", b"subject", b"message-id", b"received"}
 )
 _MIME_PART_SUFFIX = {"text/plain": ".txt", "text/html": ".html", "text/csv": ".csv"}
+# The header block is read this far. Relay, ARC, and DKIM headers put the Content-Type of
+# ordinary mail past 8 KiB, and a mail reader has no such limit.
+_MIME_HEADER_BYTES = 64 * 1024
+# The header block as Python's mail parser reads it: lines that start with a field name and a
+# colon, a ``From `` envelope line, or folding white space. It ends at the first other line,
+# which is the blank line (CRLF, LF, or CR alone) or, in a message with none, the body's first
+# line. Possessive, and a line that fails ends the match, so the window is read once.
+_MIME_HEADER_BLOCK = re.compile(rb"(?:(?:From |[!-9;-~]*:|[ \t])[^\r\n]*(?:\r\n?|\n|\Z))*+")
+# A field name at the start of a line, where a line may end with CR alone.
+_MIME_BLOCK_NAME = re.compile(rb"(?:\A|[\r\n])([a-z][a-z0-9-]*):")
+# A message whose first 8 KiB names a multipart body or an encoded part holds its base64 as
+# parts, which are decoded as members; ``text_views`` leaves the raw base64 runs to them.
+_MIME_PARTS_BYTES = 8192
+# The transfer encodings Python's email package decodes; a body under any other name is read
+# as written.
+_MIME_DECODED = frozenset({"base64", "quoted-printable", "x-uuencode", "uuencode", "uue", "x-uue"})
+# A Content-Transfer-Encoding token ends at white space or an RFC 2045 special character.
+_MIME_TOKEN = re.compile(r"[^ \t()<>@,;:\\\"/\[\]?=]*")
+# A media type past any comment, in quotes or not: ``text/html (x)`` and ``"text/html"``.
+_MIME_MEDIA_TYPE = re.compile(r"\"?([^ \t()<>@,;:\\\"/\[\]?=]+/[^ \t()<>@,;:\\\"/\[\]?=]+)")
+# Inside an RFC 5322 comment only these characters change where it ends.
+_MIME_COMMENT_MARK = re.compile(r"[()\\]")
+# The charsets a part is kept in: what the lexical rules read, and UTF-16, which a unit that
+# starts with a byte order mark is decoded from.
+_MIME_KEPT_CHARSETS = frozenset(
+    {"", "utf-8", "utf8", "us-ascii", "ascii", "utf-16", "utf-16le", "utf-16be"}
+)
+# Codecs whose text is already what the lexical rules read, and none.
+_MIME_UTF8_CODECS = frozenset({"", "utf-8", "ascii"})
+# Text codecs Python has that are not charsets. No mail client reads a body through one, so
+# none is a reason to open a message.
+_MIME_NOT_CHARSETS = frozenset(
+    {"punycode", "idna", "unicode-escape", "raw-unicode-escape", "undefined"}
+)
+# Python decodes punycode in quadratic time (256 KiB: 3 s). A part declared in it is read
+# through it up to this size; a larger one is unread, which is incomplete.
+_MIME_PUNYCODE_BYTES = 16 * 1024
+# The single-byte charsets that hold a directional mark (and windows-1256 the zero-width
+# joiners) as one byte. Ordinary Hebrew, Arabic, and Persian mail carries those marks. In
+# the message as written they are not the invisible characters the rules note; in a part
+# transcoded whole they would be, on mail whose text is ordinary. So ``_mime_newly_read``
+# transcodes without them: they have no width, and the words either side of one stay apart.
+_MIME_MARK_CODECS = frozenset({"cp1255", "cp1256", "iso8859-8"})
+_MIME_MARKS = dict.fromkeys((0x200C, 0x200D, 0x200E, 0x200F))
+# A unit that starts with a byte order mark and then does not decode makes the scan
+# incomplete, and Python's own mail generator writes such bodies (it joins the encoded lines
+# with ASCII line ends). ``_mime_members`` says what a part in one of these is read as.
+_MIME_WIDE_CODECS = ("utf-16", "utf-32")
 
 
 class ContentLimit(Exception):
@@ -277,6 +328,9 @@ class ContentUnit:
     data: bytes
     # Ordinals identify members without exposing their potentially sensitive names.
     member_path: tuple[str, ...] = ()
+    # True for the body of a mail message opened only for that body: the bytes the parent unit
+    # holds, read a second time, so a finding both readings share is reported once.
+    reread: bool = False
 
 
 # A bzip2 stream: the header, then the first block's magic or the empty-stream end marker.
@@ -302,10 +356,16 @@ def archive_kind(data: bytes) -> str | None:
         return "cpio"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
-    if _mime_message(data):
+    # A unit has one kind. A message that names its parts in its first 8 KiB is mail even with
+    # a zip archive appended. A message opened for longer headers or for its one body is the
+    # archive when one ends it: an unzip tool opens that archive whatever precedes it, and its
+    # members must not go unread because the bytes in front of them are also mail.
+    if _mime_parts_are_members(data):
         return "mime"
     if _trailing_zip(data):
         return "zip"
+    if _mime_message(data):
+        return "mime"
     return None
 
 
@@ -400,16 +460,195 @@ def _zip_spans(data: bytes, archive: zipfile.ZipFile) -> list[tuple[int, int]]:
     return spans
 
 
-def _mime_message(data: bytes) -> bool:
-    head = data[:8192]
+def _mime_headers(data: bytes) -> bytes | None:
+    """The header block in the first 8 KiB of a mail message, in lower case, or None.
+
+    None when ``data`` does not start like a message. A block with no blank line inside the
+    8 KiB is read to their end.
+    """
+    head = data[:_MIME_PARTS_BYTES]
     if not _MIME_FIRST_LINE.match(head):
-        return False
+        return None
     blank = _MIME_BLANK.search(head)
     headers = (head[: blank.start()] if blank else head).lower()
     names = {match.group(1) for match in _MIME_HEADER_NAME.finditer(headers)}
     if b"content-type" not in names or not names & _MIME_MESSAGE_HEADERS:
+        return None
+    return headers
+
+
+def _mime_names_parts(lowered: bytes) -> bool:
+    return b"multipart/" in lowered or _MIME_ENCODED.search(lowered) is not None
+
+
+def _mime_parts_are_members(data: bytes) -> bool:
+    """True when the first 8 KiB of a message names a multipart body or an encoded part."""
+    headers = _mime_headers(data)
+    return headers is not None and _mime_names_parts(headers)
+
+
+def _mime_header_block(data: bytes) -> bytes | None:
+    """A mail message's whole header block, when it ends inside 64 KiB, or None.
+
+    The block ends where the mail parser ends it, which needs no blank line: a line that is
+    CR alone ends it, and so does a first body line that follows the last header directly.
+    A block that runs past the window is not read: the mail library reads a long folded
+    Content-Type in quadratic time, and a block that long is not ordinary mail.
+    """
+    head = data[:_MIME_HEADER_BYTES]
+    if not _MIME_FIRST_LINE.match(head):
+        return None
+    block = _MIME_HEADER_BLOCK.match(head)
+    if block is None or (block.end() == len(head) and len(data) > len(head)):
+        return None
+    written = head[: block.end()]
+    names = {match.group(1) for match in _MIME_BLOCK_NAME.finditer(written.lower())}
+    if b"content-type" not in names or not names & _MIME_MESSAGE_HEADERS:
+        return None
+    return written
+
+
+def _mime_message(data: bytes) -> bool:
+    """True for a mail message a mail reader shows as something other than its bytes.
+
+    The first 8 KiB decides for a message that names its parts there. Past that the header
+    block has to end inside 64 KiB, and the message either names its parts further down or
+    has one body that is decoded. A single ``text/plain`` part in UTF-8 or ASCII with no
+    transfer encoding reads the same in a mail reader and in a text editor, so that message
+    stays one unit and is not a container.
+    """
+    if _mime_parts_are_members(data):
+        return True
+    block = _mime_header_block(data)
+    return block is not None and (_mime_names_parts(block.lower()) or _mime_body_decoded(block))
+
+
+def _mime_one_body(data: bytes) -> bool:
+    """True for a message opened only because its one body is decoded before it is shown.
+
+    Unopened, such a message is one unit of text. Its body is a second reading of that unit
+    and not another file, which is what the callers act on: the body is not counted as an
+    archive member, and the message is not opened where that would cost a level of depth.
+    """
+    if _mime_parts_are_members(data):
         return False
-    return b"multipart/" in headers or _MIME_ENCODED.search(headers) is not None
+    block = _mime_header_block(data)
+    return block is not None and not _mime_names_parts(block.lower()) and _mime_body_decoded(block)
+
+
+# A unit is asked more than once (to open it, to count it, to choose its text views); the
+# answer for the last few header blocks is kept so the headers are parsed once.
+@functools.lru_cache(maxsize=8)
+def _mime_body_decoded(headers: bytes) -> bool:
+    """True when the one body under ``headers`` is decoded before a mail reader shows it.
+
+    The block goes through the parser that reads the parts, so a folded line, a quoted
+    parameter, or an RFC 2231 charset means here what it means there. The body is decoded when
+    its transfer encoding is one the parser decodes, when it is HTML (a mail reader renders
+    it, so a sentence split by inline tags is one sentence), and when it is text in a legacy
+    charset.
+    """
+    part = email.message_from_bytes(headers, policy=email.policy.compat32)
+    # The two answers that need no parameter come first: the mail library reads a parameter
+    # in time quadratic in the header's length.
+    if _mime_transfer_encoding(part) in _MIME_DECODED or _mime_media_type(part) == "text/html":
+        return True
+    try:
+        codec = _mime_codec(_mime_charset(part))
+    except (TypeError, ValueError):
+        # Python 3.12.3 raises on some parameters other mail readers read past: a TypeError
+        # on mixed RFC 2231 continuations, a ValueError on a NUL in the charset. The charset
+        # is then unknown, so the message is opened. The part reader raises on the same
+        # header, and the scan is incomplete as it is for that part in a multipart message,
+        # where staying one unit would leave it clean with the body unread.
+        return True
+    return codec not in _MIME_UTF8_CODECS | _MIME_NOT_CHARSETS
+
+
+def _mime_past_comments(value: str) -> int:
+    """Where ``value`` starts after leading white space and RFC 5322 comments.
+
+    A comment nests, and a backslash quotes the character after it. A comment that never
+    closes runs to the end of the value, as it does in the mail library. Every step moves
+    forward, so a value of any length is read once and needs no cap.
+    """
+    position = depth = 0
+    while position < len(value):
+        if depth:
+            mark = _MIME_COMMENT_MARK.search(value, position)
+            if mark is None:
+                return len(value)
+            position = mark.end()
+            if mark.group() == "\\":
+                position += 1
+            else:
+                depth += 1 if mark.group() == "(" else -1
+        elif value[position] == "(":
+            depth, position = 1, position + 1
+        elif value[position] in " \t":
+            position += 1
+        else:
+            break
+    return min(position, len(value))
+
+
+def _mime_transfer_encoding(part: email.message.Message) -> str:
+    """The transfer encoding a current mail library decodes ``part`` with, in lower case.
+
+    Python 3.13 under its default policy takes the first token of the value: past white space
+    and comments, up to white space or a special character. So ``base64`` with a trailing
+    space, a value folded onto the next line, ``quoted-printable (x)``, and ``base64; x=y``
+    are each decoded. Its compat32 policy strips the value instead, and Python 3.12.3 compares
+    it as written and decodes none of the four. Reading the value here keeps the result from
+    depending on the interpreter that runs the scan.
+    """
+    written = str(part.get("content-transfer-encoding", ""))
+    stripped = written.strip().lower()
+    if stripped in _MIME_DECODED:
+        return stripped
+    value = written.replace("\r", "").replace("\n", "")
+    token = _MIME_TOKEN.match(value, _mime_past_comments(value))
+    return token.group().strip().lower() if token else ""
+
+
+def _mime_media_type(part: email.message.Message) -> str:
+    """The part's media type in lower case, read past comments and quotes.
+
+    The mail library gives ``text/html (x)`` back whole and reads ``(x) text/html`` and
+    ``"text/html"`` as text/plain, while other mail readers render all three as HTML. The
+    library's own reading is kept when it is a type this module already names.
+    """
+    declared = part.get_content_type()
+    if declared in _MIME_PART_SUFFIX:
+        return declared
+    value = str(part.get("content-type", "")).replace("\r", "").replace("\n", "")
+    media = _MIME_MEDIA_TYPE.match(value, _mime_past_comments(value))
+    return media.group(1).lower() if media else declared
+
+
+def _mime_charset(part: email.message.Message) -> str | None:
+    """A text part's declared charset in lower case, "" for none, and None for a part that is
+    not text.
+
+    The mail library reads a parameter in time quadratic in the header's length, so a part's
+    charset is asked for once and handed on.
+    """
+    if part.get_content_maintype() != "text":
+        return None
+    return (part.get_content_charset() or "").lower()
+
+
+def _mime_codec(charset: str | None) -> str:
+    """The codec ``charset`` names, or "" for no charset and for one with no decoder.
+
+    The codec's own name, so ANSI_X3.4-1968 (ASCII by its registered name, which cron writes
+    on ordinary mail) and utf_8 are the codecs they mean.
+    """
+    try:
+        return codecs.lookup(charset).name if charset else ""
+    except LookupError:
+        # The part's bytes are kept as written, so nothing would differ.
+        return ""
 
 
 # Containers recognized from their header that the scanner cannot open. Their members are
@@ -440,11 +679,20 @@ def unsupported_container(data: bytes) -> bool:
     return data.startswith(_UNSUPPORTED_PREFIXES) or _UNSUPPORTED_PATTERN.match(data) is not None
 
 
-def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator[ContentUnit]:
+def content_units(
+    unit: ContentUnit, budget: Budget, depth: int = 0, *, inside_body: bool = False
+) -> Iterator[ContentUnit]:
     budget.check()
     if unsupported_container(unit.data):
         raise ContentLimit("unsupported archive")
     kind = archive_kind(unit.data)
+    one_body = kind == "mime" and _mime_one_body(unit.data)
+    # A message opened for its one body is text, read as one unit when it is not opened. It
+    # stays that unit where opening it would cost more than a second reading: at the depth
+    # limit, where an archive of ordinary HTML mail would turn incomplete, and as the body of
+    # another such message, where each level would decode the same bytes again.
+    if one_body and (inside_body or depth >= MAX_ARCHIVE_DEPTH):
+        kind = None
     if kind is None:
         yield unit
         return
@@ -452,8 +700,8 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
         raise ContentLimit("archive depth exceeds 3")
     try:
         for index, name, data in _members(unit, kind, budget):
-            member = ContentUnit(name, data, (*unit.member_path, f"{kind}:{index}"))
-            yield from content_units(member, budget, depth + 1)
+            member = ContentUnit(name, data, (*unit.member_path, f"{kind}:{index}"), one_body)
+            yield from content_units(member, budget, depth + 1, inside_body=one_body)
     except (
         OSError,
         EOFError,
@@ -655,38 +903,116 @@ def _mime_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str,
     """
     budget.check()
     message = email.message_from_bytes(unit.data, policy=email.policy.compat32)
+    # The body of a message opened for that body is the unit read again, not another file. It
+    # is not counted as a member, so an archive of 600 HTML messages is 600 members and not
+    # 1,200; its bytes count against the size limits like any part's.
+    one_body = _mime_one_body(unit.data)
+    newly_opened = not _mime_parts_are_members(unit.data)
     for index, part in enumerate(message.walk()):
         if part.is_multipart():
             continue
-        budget.member()
-        payload = part.get_payload(decode=True)
-        if not isinstance(payload, bytes) or not payload:
+        if one_body:
+            budget.check()
+        else:
+            budget.member()
+        payloads = _mime_part_payloads(part)
+        if not payloads:
             continue
-        if len(payload) > MAX_FILE_BYTES:
-            raise ContentLimit("archive member exceeds 100MB")
-        budget.expanded += len(payload)
-        if budget.expanded > MAX_EXTRACT_BYTES:
-            raise ContentLimit("extracted size exceeds 500MB")
-        yield index, _mime_part_name(part, index), _mime_part_text(part, payload)
+        # The body of a message opened for it takes its suffix from the media type read past
+        # comments and quotes, which is why it was opened. Any other part keeps the name the
+        # mail library's reading of its type gives it.
+        name = _mime_part_name(part, index, _mime_media_type(part) if one_body else None)
+        charset = _mime_charset(part)
+        for payload in payloads:
+            if len(payload) > MAX_FILE_BYTES:
+                raise ContentLimit("archive member exceeds 100MB")
+            budget.expanded += len(payload)
+            if budget.expanded > MAX_EXTRACT_BYTES:
+                raise ContentLimit("extracted size exceeds 500MB")
+            if newly_opened:
+                text = _mime_newly_read(charset, payload, one_body)
+                if text is not None:
+                    yield index, name, text
+            else:
+                yield index, name, _mime_part_text(charset, payload)
 
 
-def _mime_part_name(part: email.message.Message, index: int) -> str:
+def _mime_newly_read(charset: str | None, payload: bytes, one_body: bool) -> bytes | None:
+    """The text of a part of a message opened for its long header block or for its one body,
+    or None to leave the part to the raw message.
+
+    A message whose first 8 KiB names its parts keeps the reading ``_mime_part_text`` gives.
+    Ordinary mail of the kinds read here is clean as one unit of text, and each case below
+    keeps it clean.
+    """
+    codec = _mime_codec(charset)
+    if codec.startswith(_MIME_WIDE_CODECS):
+        # Kept in its encoding, a UTF-16 or UTF-32 part is an incomplete scan when it does
+        # not decode (Python's mail generator writes such bodies) and a file type mismatch
+        # when it has no byte order mark. Here the part is the text it decodes to, and one
+        # that does not decode is not a unit.
+        try:
+            return payload.decode(codec).encode("utf-8")
+        except UnicodeError:
+            return None
+    if one_body and codec in _MIME_NOT_CHARSETS:
+        return payload
+    if codec in _MIME_MARK_CODECS:
+        try:
+            return payload.decode(codec).translate(_MIME_MARKS).encode("utf-8")
+        except UnicodeError:
+            return payload
+    return _mime_part_text(charset, payload)
+
+
+def _mime_part_payloads(part: email.message.Message) -> list[bytes]:
+    """A part's body in each reading a mail library gives it, the decoded one first.
+
+    One reading when the transfer encoding is written as its bare name, or is not one the
+    library decodes. A value that names an encoding with anything around it (a trailing space,
+    a fold, a comment, a parameter) is decoded by Python 3.13 and left as written by 3.12.3,
+    and other mail readers side with either, so both bodies are members under the part's one
+    ordinal. The header is rewritten before the library is asked, so the interpreter that
+    runs the scan does not choose between them.
+    """
+    header = part.get("content-transfer-encoding")
+    encoding = _mime_transfer_encoding(part)
+    if header is None or encoding not in _MIME_DECODED or str(header).lower() == encoding:
+        readings = [part.get_payload(decode=True)]
+    else:
+        del part["content-transfer-encoding"]
+        written = part.get_payload(decode=True)
+        part["Content-Transfer-Encoding"] = encoding
+        readings = [part.get_payload(decode=True), written]
+    payloads: list[bytes] = []
+    for payload in readings:
+        if isinstance(payload, bytes) and payload and payload not in payloads:
+            payloads.append(payload)
+    return payloads
+
+
+def _mime_part_name(part: email.message.Message, index: int, media: str | None = None) -> str:
     filename = part.get_filename()
     if filename:
         name = Path(filename.replace("\\", "/")).name
         if name:
             return name
-    return f"part-{index}{_MIME_PART_SUFFIX.get(part.get_content_type(), '')}"
+    return f"part-{index}{_MIME_PART_SUFFIX.get(media or part.get_content_type(), '')}"
 
 
-def _mime_part_text(part: email.message.Message, payload: bytes) -> bytes:
-    """Transcode a text part declared in a legacy charset to UTF-8 so the lexical rules read it."""
-    if part.get_content_maintype() != "text":
-        return payload
-    charset = (part.get_content_charset() or "").lower()
-    if charset in ("", "utf-8", "utf8", "us-ascii", "ascii", "utf-16", "utf-16le", "utf-16be"):
+def _mime_part_text(charset: str | None, payload: bytes) -> bytes:
+    """Transcode a text part declared in a legacy charset to UTF-8 so the lexical rules read it.
+
+    ``charset`` is what ``_mime_charset`` gives for the part.
+    """
+    if charset is None or charset in _MIME_KEPT_CHARSETS:
         return payload
     try:
+        # A part is read through whichever codec its charset names, so one too large to
+        # decode in bounded time is unread, and not text as written. Punycode is the only
+        # codec measured that is slower than linear.
+        if codecs.lookup(charset).name == "punycode" and len(payload) > _MIME_PUNYCODE_BYTES:
+            raise ContentLimit("archive unreadable or encrypted")
         return payload.decode(charset).encode("utf-8")
     except (LookupError, UnicodeError):
         return payload
@@ -704,7 +1030,6 @@ _B64_TOKEN = re.compile(
 _B64_WRAP = re.compile(r"\r?\n")
 # Readable decoded runs, each scanned on its own; more is incomplete, never dropped.
 MAX_B64_TEXTS = 1024
-_MIME_HEADER_BYTES = 64 * 1024
 _ENCODED_WORD = re.compile(r"=\?[^?\s]{1,40}\?[BbQq]\?[^?\s]*\?=")
 _B64_PROBE = 256
 _PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
@@ -872,13 +1197,15 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
             yield from _with_folded("json-unescaped", decoded, budget)
     # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
     # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
-    # A MIME message's base64 parts are already decoded as its members; its headers' RFC 2047
-    # encoded words are not parts, so they get their own view.
+    # A mail message's headers hold RFC 2047 encoded words, which are not parts, so they get
+    # their own view. Its base64 parts are decoded as its members, so the runs are left to
+    # them where the top of the message names those parts; in any other message (headers past
+    # 8 KiB, or one body that is not encoded) a run is read here as in any text file.
     if _mime_message(data):
         headers = mime_header_text(data)
         if headers is not None:
             yield from _with_folded("mime-headers-decoded", headers, budget)
-    else:
+    if not _mime_parts_are_members(data):
         for encoded in base64_texts(text, budget):
             yield from _with_folded("base64-decoded", encoded, budget)
     unquoted = percent_text(text)

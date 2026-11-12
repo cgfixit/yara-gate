@@ -396,6 +396,92 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         prefix + b" " * (SIZE - len(prefix) - len(suffix)) + suffix,
         None,
     )
+    # Mail. A header block is read for 64 KiB and has to end there before the mail library
+    # parses it, so a block that never ends costs two bounded passes whatever the file's size:
+    # 55,000 header lines, then one Content-Type folded over 600,000 lines.
+    mail = b"From: a@example.com\r\nSubject: Report\r\nMIME-Version: 1.0\r\n"
+    yield (
+        "mail-header-block.eml",
+        _filled(mail + b"Content-Type: text/html\r\n", b"X-Trace: " + b"a" * 66 + b"\r\n"),
+        None,
+    )
+    yield (
+        "mail-folded-lines.eml",
+        _filled(mail + b"Content-Type: text/html;\r\n", b" a=b;\r\n"),
+        None,
+    )
+    # The most header a newly opened message can have: one Content-Type folded to the end of
+    # the window, read once to open the message and once to read its part, then an HTML body.
+    opening = mail + b"Content-Type: text/html;\r\n"
+    folds = b" a=b;\r\n" * ((64 * 1024 - len(opening) - 16) // 7)
+    yield (
+        "mail-folded-window.eml",
+        _filled(opening + folds + b" x=y\r\n\r\n<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # A part whose transfer-encoding value opens comments to the end of a 4 MiB line: every
+    # parenthesis is one step forward, and the value is read once to its end.
+    opening = (
+        mail + b"Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n"
+        b"Content-Type: text/plain\r\nContent-Transfer-Encoding: "
+    )
+    closing = b"\r\n\r\nnotes\r\n--B--\r\n"
+    yield (
+        "mail-encoding-comment.eml",
+        opening + b"(" * (SIZE - len(opening) - len(closing)) + closing,
+        None,
+    )
+    # One HTML body with no transfer encoding, which is opened as a part and read as HTML: a
+    # single paragraph of 500,000 inline elements, beside the raw message.
+    yield (
+        "mail-html-tags.eml",
+        _filled(mail + b"Content-Type: text/html\r\n\r\n<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # The same body inside three such messages: a one-body message is opened once, and its
+    # body is not opened as another, so the page is decoded and read as HTML one time.
+    page = mail + b"Content-Type: text/html\r\n\r\n"
+    yield ("mail-nested-bodies.eml", _filled(page * 3 + b"<html><body><p>", b"<b>a</b>"), None)
+    # And in a legacy charset, where every level opened would transcode the text again.
+    cyrillic = mail + b"Content-Type: text/plain; charset=windows-1251\r\n\r\n"
+    words = "квартальные итоги пересмотрены\r\n".encode("cp1251")
+    yield ("mail-nested-charset.eml", _filled(cyrillic * 3, words), None)
+    # A header block of the shortest lines there are, filling the window, with no blank line
+    # before the HTML body: the block's end is found in one pass and the message is opened.
+    opening = mail + b"Content-Type: text/html\r\n"
+    lines = b"a:\r\n" * ((64 * 1024 - len(opening) - 64) // 4)
+    yield (
+        "mail-header-lines.eml",
+        _filled(opening + lines + b"<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # The mail library reads a parameter in time quadratic in its header's length, and 60,000
+    # semicolons inside one quoted value are the worst of it. For a message opened for its
+    # one body the header block ends inside 64 KiB, and the parameters are read twice, for
+    # the body's name and for its charset.
+    yield (
+        "mail-quoted-parameter.eml",
+        _filled(mail + b'Content-Type: text/html; x="' + b";" * 60000 + b'"\r\n\r\n<p>', b"a"),
+        None,
+    )
+    # Python decodes punycode in quadratic time: 2 MiB is past the scan deadline. One 8bit
+    # body declared punycode is not opened, since punycode is not a charset. A quoted-printable
+    # body is a part, read through its declared codec, and for this codec only up to 16 KiB:
+    # a larger part is unread, which is incomplete.
+    words = b"quarterly totals revised "
+    opening = mail + b"Content-Type: text/plain; charset=punycode\r\n"
+    for name, encoding, token, reason in (
+        ("mail-punycode-body.eml", b"8bit", words, None),
+        (
+            "mail-punycode-part.eml",
+            b"quoted-printable",
+            words + b"=\r\n",
+            "archive unreadable or encrypted",
+        ),
+    ):
+        head = opening + b"Content-Transfer-Encoding: " + encoding + b"\r\n\r\n"
+        count, rest = divmod(SIZE - len(head) - 160001, len(token))
+        yield name, head + token * count + b"-" + b"a" * (160000 + rest), reason
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
@@ -532,6 +618,10 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "pdf-page-references.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
         "pdf-white-areas.pdf": "pdf-hidden-text",
+        "mail-folded-window.eml": "html-text",
+        "mail-html-tags.eml": "html-text",
+        "mail-nested-bodies.eml": "html-text",
+        "mail-header-lines.eml": "html-text",
     }.get(name)
     if view is not None and not result.views_scanned.get(view):
         raise RuntimeError(f"{name}: required reader {view} did not run")
