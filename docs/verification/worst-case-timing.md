@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 42 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 72 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -88,3 +88,21 @@ respective reader-view counters, so bypassing a reader cannot produce a passing
 fast scan. All 16 completed under the same ceilings locally. Three focused
 regressions cover the scan ceiling, actual worker termination, and rejection of
 a missing required reader. The 13-row table above preserves the original run.
+
+## Reader boundaries, 2026-11-12
+
+Thirty inputs were added with the [reader boundaries](2026-11-12-reader-boundaries.md)
+change, each a shape a reviewer used to reach the 30 s deadline or the nearest one to it:
+six for a PDF font's own dictionary (thousands of fonts with repeated `/ToUnicode` keys, a
+font defined 64 times with keys of its own, `/Subtype` and `/Encoding` 24,000 times each,
+dictionaries that fill the 4 KB window, ones only the lenient lexer reads, and a name that
+means 64 fonts), thirteen for the Office readers (an unusual part name whose root tag never
+closes, a long name run in a root tag, every element under another prefix, a namespace
+declared on every run, DOCTYPE namespace defaults, two vocabularies in one part, nothing but
+`<a:br/>`, padded end tags, megabytes of attribute), and eleven for mail (a header block
+with no blank line, folded lines, a comment that never closes, nested one-body messages, a
+quoted parameter, and a body or part declared `charset=punycode`). All 72 passed on Linux
+x86_64, Python 3.12.3; the slowest new input took 5.9 s (`mail-nested-charset.eml`,
+`pdf-font-readings-winansi.pdf`) and the slowest overall 6.3 s (`pdf-page-fonts.pdf`).
+`mail-punycode-part.eml` must end `archive unreadable or encrypted`; on the base revision
+the same bytes ran 136 s.

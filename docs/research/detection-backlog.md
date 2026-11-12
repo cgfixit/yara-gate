@@ -1,7 +1,7 @@
 # Detection backlog
 
-Last reviewed: November 11, 2026, on `main` at `5d7ca81` plus the
-[Office XML readers](../verification/2026-11-11-office-xml-readers.md).
+Last reviewed: November 12, 2026, on `main` at `2cff88f` plus the
+[reader boundaries](../verification/2026-11-12-reader-boundaries.md) change.
 Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
@@ -42,6 +42,13 @@ Nothing here is a production false-positive rate or a recall figure.
    [`probe_odf_reader_agreement.py`](probe_odf_reader_agreement.py) ran LibreOffice and pandoc
    on its fixtures. Compare two source trees over the same installed files, since
    `sweep_rule_changes.py` compares rules only.
+9. **Have someone try to break it.** The three readers changed on November 12 each passed
+   their own author's checks and then lost to a reviewer: four files `main` held went clean,
+   five inputs reached the deadline, and two benign classes gained a finding
+   ([record](../verification/2026-11-12-reader-boundaries.md), section 4). Keep every reading
+   the base revision gives unless every reader agrees it is wrong, time a 4 MiB input aimed
+   at each new loop and pattern, and build the benign corpus from generators the change was
+   not written against.
 
 ## What a rule change has to show
 
@@ -62,7 +69,7 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B3 and B5 to B7 are executable: each is
+Ordered by expected value for the agent-intake use. B3, B5, B6, and B8 are executable: each is
 an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
 benign boundary, so the probe fails when one starts to hold without its marker removed. B2
 (MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
@@ -139,34 +146,60 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 
 ### B7. A PDF font dictionary read to its own end
 
-- **Gap (verified).** The text reader takes the first `/ToUnicode` reference in the 4 KB
-  after a font's object header. Two cases follow. A font dictionary that writes the key
-  twice, `/ToUnicode 10 0 R /ToUnicode 11 0 R`, is read through object 10 only; with a decoy
-  map first and the phrase map last the scan is clean. And a composite font with no map,
-  followed within 4 KB by another font that has one, is read through its neighbour's map, so
-  the `heuristic_pdf_text_unmapped` note it gets when it stands alone is not raised.
-- **Evidence.** Verified, direct runtime: `pdftotext` 24.02.0 (poppler) on the first case
-  shows the phrase, because it keeps the last key. Sourced, read on November 10: PDFium
-  assigns `map_[key]` for each key in order and pdf.js calls `Map.set`, so both keep the
-  last too. The second case was run against the gate only.
-- **Proposal.** Parse each font dictionary to its own closing `>>` with the tokenizer
-  `content.py` already has, and read the last `/ToUnicode` beside the first. A font whose
-  own dictionary has none gets no map from the next object.
-- **False-positive class.** Reading every `/ToUnicode` in the window instead would give
-  ordinary neighbouring fonts each other's maps and pass the four-reading cap on most
-  files. A Type0 font that has no map today and borrows one would start to raise the
-  note, which is the correct outcome and still needs a count on generator output first.
-- **Cost.** Tokenizing 4 KB per definition is far slower than the three searches done now.
-  It needs a per-file cap on parsed definitions, the unresolved reading past it, and a
-  timing input.
-- **Related, done.** A font object or `ToUnicode` map *defined* more than once is read
-  through every definition
-  ([2026-11-10-pdf-font-definitions.md](../verification/2026-11-10-pdf-font-definitions.md)).
+- **Built** on November 12 ([record](../verification/2026-11-12-reader-boundaries.md),
+  section 1). The gap was wider than this entry said: a simple font with no map, beside any
+  object that has one, was decoded through that map, so a sentence in plain Helvetica next to
+  an embedded font scanned clean. Each definition is now read in every way a reader could
+  take its own dictionary, and the neighbour's map is dropped only where every reader agrees
+  it is not the font's.
+- **Check a change with** [`probe_pdf_font_reader_agreement.py`](probe_pdf_font_reader_agreement.py)
+  and its fuzz pass. Its `gap` rows are the shapes below.
+
+### B8. Text in a composite font that has no map of its own
+
+- **Gap (verified).** A composite font with a predefined CMap and no `/ToUnicode` (reportlab's
+  Adobe CJK fonts: `/UniGB-UCS2-H` and its kin) is reported as `heuristic_pdf_text_unmapped`
+  when it stands alone. Beside an object that has a map it is read through that map, decodes
+  nothing, and is not reported. With the phrase in two-byte codes, PDFium, pdfminer.six, and
+  pypdf show it; the scan is clean. The same holds for a `/Type0` font with no descendant
+  fonts, a simple font with `/Encoding /Identity-H`, and a composite font whose `/ToUnicode`
+  value is not a reference.
+- **Why it is open.** Reporting the shape was built and withdrawn: of 4,216 generator-written
+  PDFs, 56 benign files went from clean to advisory, each a pypdf or pdfseparate rewrite of a
+  reportlab CJK document. Their unmerged originals are advisory on `main` already.
+- **Proposal.** Decode the predefined `Uni*-UCS2-H` and `-UTF16-H` CMaps, whose codes are
+  UTF-16BE: the text is then read instead of reported, the originals stop being advisory, and
+  the neighbour no longer matters. Count the fonts generators write with the other
+  predefined CMaps (`GBK-EUC-H`, `90ms-RKSJ-H`) first.
+- **Acceptance.** The probe's open case holds the phrase; its benign twin stays clean. The
+  case's `want` changes from the note to the phrase rule with the fix.
 
 ### Further candidates, not yet in the probe
 
 | Candidate | Evidence | Why it is not built yet |
 | --- | --- | --- |
+| A sentence split over the streams of one PDF page `/Contents` array | Verified on `2cff88f`: clean under all three policies, split inside one `BT`, mid-word, or one word per stream; poppler, pdfminer.six, pypdf, PDFium, pdfplumber, markitdown, and PyMuPDF show it. ISO 32000-1 7.8.2 makes the array one stream | `_blocks` ends its paragraphs at the end of every stream. `_contents_predecessors` already finds the chain. A prototype changed 0 of 340 generator PDFs while joining 126 chains in 19 stamped files; an unbounded first try was slow, so it needs its bounds and a timing input |
+| A PDF page stream that fails the 4 KB text sniff is not read: a 256-byte inline image (`BI ... ID ... EI`) or raw binary string literals before the text | Verified: clean, with no `heuristic_pdf_text_unmapped`; the same seven readers show the page text | The inflated bytes are already charged to the budget and then dropped. Read them through the tokenizer when the stream is a page's content. Needs the count of image streams that then produce text blocks |
+| JSON that opens with a UTF-8 byte order mark or a `//` or `/* */` comment | Verified: the `json-unescaped` view and the whole MCP walk are skipped, so one comment line turns off the escape decoding and the devcontainer, auto-approve, and MCP heuristics. `json.loads`, jsonc-parser 3.3.1 (the parser VS Code uses for these files), Node, and json5 read them | `_json_shaped` tests the first character. Skip a mark, white space, and comments within 8,192 characters, as `_opens_as_html` skips comments. The MCP half (comments and trailing commas inside the walk) was specified and not prototyped |
+| Word text boxes anchored between two words; tracked changes (a word in `w:del`, junk in `w:moveFrom` or `w:ins`) | Verified: clean. LibreOffice, pandoc, python-docx, and mammoth each show a sentence the view does not hold; they differ on which | One further reading per paragraph, as `odf-text` keeps. 25 of 495 benign Word files hold a text box; a prototype changed none |
+| Inline Word content readers treat differently: junk in `w:fldSimple`, `w:bdo`, `w:smartTag`, an inline `w:sdt`; `mc:AlternateContent` branches; `w:sym`; math runs (`m:t`) | Verified with the same readers | A reading per reader family is the large version of the row above. Build that one first |
+| Form field values (`/V`), Info strings, and outline titles in a PDF written as hex, octal, or UTF-16BE strings | Verified: clean; `pdftotext` and PyMuPDF show a field's value in page text, `pdfinfo` and pypdf show the Info strings. LibreOffice writes every title as `<FEFF...>` | `pdfannotations.py` decodes these spellings for `/Contents` only. Widen the keys it collects; count benign titles first |
+| `/ActualText` on PDF marked content, in any spelling but a plain literal | Verified: clean; poppler and PDFium substitute it for the glyphs, the other five readers do not | The property list is dropped by `_blocks`. Needs the text-string decoder above and the `/Properties` lookup |
+| PDF word gaps written as position with no space glyph: a `TJ` adjustment between -120 and -200, or one `Tj` per word placed by `Td` | Verified: the words read as one glued word; six of seven readers show spaces | A second, spaced reading of the block. Readers start a space near -120 and differ around it |
+| A 1 pt run or a `hidden="1"` shape in an Office drawn part; a 1 pt size set by a shape's own `a:lstStyle` | Verified: reported as shown text, so `agent-document` passes it; LibreOffice's PDF does not draw it and its extractors return it. Supersedes the first row below with reader evidence: the claims that hold are an explicit size on the run and `hidden` on the shape | A prototype of those two claims changed 0 of 124 generator Office files. SmartArt data parts and inherited sizes must not be claimed |
+| OpenDocument text hidden by `text:display="none"` on a span, paragraph, or section, and hidden rows, sheets, and slides | Verified with LibreOffice as viewer and as extractor; LibreOffice writes this attribute when it converts a `w:vanish` run. Supersedes the second row below | An `odf-hidden-text` view under `heuristic_hidden_text`. The reader run narrowed the claim six times (a child span with `text:display="true"`, a link's character style, a cell merged out of a hidden row); white text and 1 pt text must not be claimed |
+| LibreOffice's `PrinterSetup` item makes its own `.odt` or `.ods` advisory | Verified false hold: `agent_base64_blob` on `settings.xml`; block under `agent-ingest` | A fix that tests the bytes before the run is a rule-side exemption. Count how many LibreOffice files carry the item first: none of its bundled templates do |
+| HTML markup the tokenizer discards (`<!-->`, `--!>`, `</>`, `<!a<b>`, a 100-letter tag name) inside a word | Verified: `html-text` splits the phrase; Chromium and pandoc do not | Follow the WHATWG tokenizer in `html_text_blocks`. A prototype left the blocks of 8,149 installed markup files unchanged |
+| HTML or XML in a declared legacy charset (`<meta charset=windows-1251>`, an XML encoding declaration) | Verified: read as UTF-8 only, so the multilingual rule does not fire; Chromium, `xml.etree`, and pandoc decode it | Decode when the bytes are not UTF-8 and a declaration names a charset. A prototype gave no new finding on 249 real legacy-charset pages. UTF-7 must not be honoured: Chromium does not |
+| Escaped or CDATA HTML inside an RSS or Atom feed, and text split by a comment or entity in generic XML | Verified: scanned raw only; feedparser, `xml.etree`, and pandoc show the sentence | `plain_xml` and `xml_text` already do this for Office parts; wire them for XML that is not HTML or SVG |
+| `text-folded` keeps the remaining default-ignorable characters (U+034F, U+115F, U+3164, variation selectors) and OSC strings in place, and deletes VT, FF, and NEL so words fuse | Verified with Chromium and xterm.js | Each is a table entry in `folded_text`. The Hangul fillers and the run rule's boundary are in the row on `agent_invisible_run` below |
+| Escapes in YAML double-quoted scalars and TOML basic strings (`c\x75rl` in a workflow) | Verified: clean; PyYAML and `tomllib` decode them | A view for units named `.yaml`, `.yml`, `.toml`, as `json-unescaped` is for JSON |
+| Zip entries with a local header and no directory record; tar with no `ustar` magic | Verified: never opened. `java.util.zip.ZipInputStream`, stream-unzip, GNU tar, and `tarfile` extract them; Info-ZIP and `zipfile` do not see the zip entries | Search the bytes outside `_zip_spans` for local headers, under the member budget |
+| Mail left closed: a zip appended to a newly opened message (read as the archive only); a one-part `message/rfc822` wrapper; a transfer encoding with no `Content-Type`; the second message of an mbox; a header block past 64 KiB; `format=flowed` with `DelSp`; one undecodable byte, which turns the charset decode off | Verified with fixtures in the [record](../verification/2026-11-12-reader-boundaries.md)'s review | Each needs its own benign count on real mail, which this machine does not have |
+| A worksheet `<v>` split by a comment or CDATA; header and footer strings whose format codes glue or split words (`&CIgnore`) | Verified: openpyxl, pandas, and LibreOffice show the sentence | Pieces under `ooxml-cell`; only parts `plain_xml` rewrote would pay for it |
+| A PresentationML part under no usual name whose root is not `sld` or `notes` | Assessment: no reader was run | A slide and a notes master hold the same `p:cSld`, so content cannot tell them apart. Word and SpreadsheetML roots are decided by what they hold |
+| A simple PDF font with a `/Differences` encoding and no map; a map with no codespace range and two-byte codes on a simple font; `/ToUnicode 11.0 0 R` | Verified: `gap` rows of [`probe_pdf_font_reader_agreement.py`](probe_pdf_font_reader_agreement.py); two to four readers show the phrase | The first needs the Adobe glyph list; the others are reader-spelling cases like the font-reference row below |
+| An object stream with `/N 0` | Verified on `2cff88f`: `ValueError` in `PdfObjects._index`, so a benign file with one scans incomplete (`content scan failed`) | One guard; needs a file from a real producer to show it occurs |
 | Hidden runs in the Office parts a renderer draws from: a 1 pt run or a `hidden="1"` shape on a slide master or layout, in SmartArt, a chart, or a worksheet text box | Verified on `5d7ca81` plus the [Office XML readers](../verification/2026-11-11-office-xml-readers.md): the phrase is reported as shown text, so `agent-document` passes it | `ooxml_hidden_texts` reads a run's own properties in the body parts. These parts inherit size and colour from master text styles, and their DrawingML sits under `word/` and `xl/`, where the reader picks another vocabulary. Needs a viewer run per part |
 | Hidden OpenDocument text: `text:hidden-text`, `text:hidden-paragraph`, a section or style with `text:display="none"`, white or 1 pt text set by an automatic style | Verified: `odf-text` reads all of it as shown text | The properties live in `office:automatic-styles`, in the same part or in `styles.xml`, behind a style name and its parents. Needs the style lookup and a LibreOffice run, as the HTML reader had a browser run |
 | A DOCTYPE in an Office or OpenDocument part as a finding of its own | Verified: Office suites write none; LibreOffice refuses a Word part that has one; pandoc and Python's parser expand its entities. The readers now expand them too | A new id, which is the owner's call. Expected benign count is zero; count it on real files first |
@@ -261,6 +294,18 @@ overturn.
 | Leave a `startxref` inside a comment, a string, or a stream body out of the cross-reference check | Readers find the keyword by searching bytes or lines and do not lex around it. With it in a comment or the middle of a line, PDFium and pdf.js still return an annotation hidden in a stream; in a literal string, pypdf and pdfminer.six do too; and the old scanner lost the keyword after one `(` byte in any stream body, which is most real files ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)). Every occurrence that a number follows is a candidate |
 | Skip a `startxref` whose offset is past the end of the file, as offset 0 is skipped | Offset 0 is what a linearized file's first-page trailer carries. Any other pointer that leads nowhere is a broken or forged file, and the scan stays incomplete (`pdf xref malformed`), as before. Prose such as `startxref 99999` in an uncompressed comment or string is held by this |
 | Skip `startxref 0`, or a `startxref` with no number, in every file | pdf.js and pdfminer.six, sent to offset 0, parse the first object as the table: with an xref stream as the first object and one entry pointing into another stream, pdfminer.six returns the hidden annotation. Main held that file and the first commit of the linearized fix scanned it clean. The skip applies only when the file does not open with an xref stream. The same review found two more spellings readers take: a comment between the keyword and the number (PDFium, pypdf) and an offset padded past 20 digits (pypdf, PDFium, pdfminer.six) ([2026-11-10-pdf-xref-linearized.md](../verification/2026-11-10-pdf-xref-linearized.md)) |
+| Report a composite PDF font with no map as unmapped when the next object has a map | Built and withdrawn: 56 of 4,216 generator PDFs went from clean to advisory, each a rewrite of a reportlab CJK document ([record](../verification/2026-11-12-reader-boundaries.md)). Decoding the predefined CMaps (B8) reads the text instead |
+| Drop the map a PDF font window finds whenever the font's own dictionary names none | Readers disagree unless the dictionary and the file are plainly written: poppler reads past a missing `>>`, PDFium reads a string's bytes as tokens, and a cross-reference entry can point at the next header. The window's reading is kept and the font's own are added (same record) |
+| Read only the first and last of a repeated `/ToUnicode` key | poppler 24.02 showed the middle of three keys in a 43-entry dictionary: it sorts a dictionary of 32 or more entries. Every value is a reading, likeliest first, within the cap |
+| Count a PDF font's own no-map reading against the cap of four | A merged file that is not plain then passes the cap and three benign merges became advisory. That reading is one pass shared by every such font and does not count |
+| Lay the readings of one Office part end to end in one view, as `odf-text` does | A rule that looks 96 characters ahead reached from a slide's last line into the next reading: 4 of 1,049 benign files became advisory. Each reading is its own `ooxml-text` view and a rule is reported once per unit and view |
+| Give an Office part a role by its name alone, or by its root alone | A package names its parts, so a body can be `word/doc.xml`; and a slide can be stored under a layout's name. Both are read where they differ |
+| A bounded optional prefix in the run patterns instead of resolving namespaces | It reads `ns0:t` but also a `w:t` that an inner declaration binds to another namespace, which is how one junk run hides between two words. Prefixes are resolved through the declarations in scope |
+| Join the words on either side of a DrawingML `<a:br/>`, or only break there | python-pptx, markitdown, and LibreOffice show two lines; `main` joined them and holds `previ<a:br/>ous`. Both readings are kept |
+| Open every one-part mail message as a container | One `text/plain` part in UTF-8 or ASCII with no encoding reads the same in a mail reader and a text editor. Opening it adds a member and changes every report for plain mail. It stays one unit |
+| Open a one-part message for a body declared UTF-16, punycode, `idna`, or `unicode_escape` | Python's own generator writes UTF-16 bodies that do not decode, and a unit with a byte order mark that does not decode is incomplete. punycode decodes in quadratic time (2 MiB in 36 s) and the escape codecs are not charsets |
+| Report the direction marks of Hebrew and Arabic mail in a legacy charset | 22 of 785 benign mails in windows-1255, windows-1256, and iso-8859-8 gained `agent_invisible_unicode`. A newly opened part in those three charsets is transcoded without U+200C to U+200F |
+| Treat a header the mail library raises on as "not mail" | It left the body unread and the scan clean, while the same headers on a multipart message are incomplete. The one-body message is incomplete too |
 
 ## Keeping the detector current
 
