@@ -39,7 +39,7 @@ const viewNames = {
   'notebook-text': 'one notebook cell with its lines rejoined',
   'comment-text': 'consecutive source comment lines rejoined',
   'pdf-flate': 'an inflated PDF stream',
-  'pdf-text': 'one PDF text block, read through its font maps',
+  'pdf-text': 'one PDF text block, read through the encoding or map of its own font',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'
 };
 const sources = {
@@ -82,13 +82,15 @@ function methodsOf(item) {
   const tags = new Set();
   // A rule that already matched the bytes as sent needed no derived view.
   const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+  // A folded view that matched only what its unfolded view already matched needed no folding.
+  const unfolded = new Set(findings.filter((finding) => !finding.view.endsWith(folded)).map((finding) => finding.rule_id + ' ' + finding.view));
   for (const finding of findings) {
     const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
     if (finding.view.includes('hidden') || finding.rule_id.includes('hidden')) tags.add('hidden');
     else if (/invisible|variation_selector|unicode_tag/.test(finding.rule_id)) tags.add('invisible');
     else if (finding.source !== 'yara') tags.add('structure');
     else if (!plain.has(finding.rule_id)) {
-      if (finding.view !== base || base === 'text-folded') tags.add('folded');
+      if (base === 'text-folded' || (finding.view !== base && !unfolded.has(finding.rule_id + ' ' + base))) tags.add('folded');
       if (rebuiltViews.has(base)) tags.add('rebuilt');
       else if (base !== 'text-folded') tags.add('decoded');
     }
