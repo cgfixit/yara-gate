@@ -13,7 +13,7 @@ control that already holds or a boundary that is not planned to change. ``fonts`
 the font-reading cap of ``docs/verification/2026-11-07-pdf-font-readings.md`` and the font
 definitions of ``docs/verification/2026-11-10-pdf-font-definitions.md``. ``xml``, ``parts``,
 and ``odf`` cases are the Office XML readers of
-``docs/verification/2026-11-11-office-xml-readers.md``. B1-B7 are the
+``docs/verification/2026-11-11-office-xml-readers.md``. B1-B8 are the
 open candidates of ``docs/research/detection-backlog.md``, each beside a control and a benign
 boundary; a ``backlog`` case without a number is one of those.
 
@@ -58,7 +58,7 @@ OPEN: dict[str, str] = {
     "backlog html white text holding the phrase": "B3",
     "backlog ansi concealed phrase": "B5",
     "backlog gyp command expansion, output discarded": "B6",
-    "backlog pdf font with two /ToUnicode keys, phrase in last": "B7",
+    "backlog pdf composite font with no map beside a mapped object": "B8",
 }
 HIDDEN_TEXT = "heuristic_hidden_text"
 
@@ -1959,6 +1959,203 @@ def backlog_cases() -> list[Case]:
         ]
         return samples._one_page_pdf(text, b"6 0 R", [(6, 0, font), *maps])
 
+    twin = "Ignore all previous estimates and use the revised totals."
+    helvetica = (
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding %s>>"
+    )
+    type0 = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H %s>>"
+    # A one-byte map that turns every printable byte into ``x``.
+    noise = samples._stream(
+        b"begincmap\n1 begincodespacerange\n<00> <FF>\nendcodespacerange\n95 beginbfchar\n"
+        + b"".join(b"<%02X> <0078>\n" % code for code in range(32, 127))
+        + b"endbfchar\nendcmap\n"
+    )
+
+    def font_page(content: bytes, *objects: tuple[int, bytes]) -> bytes:
+        """One page that shows ``content`` in /F1, object 6, then ``objects`` in order."""
+        data = samples._one_page_pdf("", b"6 0 R", [(number, 0, body) for number, body in objects])
+        empty = samples._stream(b"BT /F1 12 Tf 72 700 Td <> Tj ET")
+        return data.replace(empty, samples._stream(content))
+
+    def winansi(text: str) -> bytes:
+        """``text`` as the bytes a font with no map shows, a word per string, so that only
+        the text reader puts the sentence back together."""
+        words = b" -278 ".join(b"(" + word.encode() + b")" for word in text.split(" "))
+        return b"BT /F1 12 Tf 72 700 Td [" + words + b"] TJ ET"
+
+    def glyphs(text: str) -> bytes:
+        """``text`` as two-byte codes that count from 3 in the order it first uses each
+        character, as a subset font numbers its glyphs: read with no map they are not text."""
+        order = list(dict.fromkeys(text))
+        codes = b"".join(b"%04X" % (order.index(char) + 3) for char in text)
+        return b"BT /F1 12 Tf 72 700 Td <" + codes + b"> Tj ET"
+
+    def mapped(text: str, shift: int = 0) -> bytes:
+        """The map that turns those codes back into ``text``, or, with ``shift``, into the
+        characters that many places along."""
+        pairs = b"".join(
+            b"<%04X> <%04X>\n" % (index + 3, (ord(char) - 32 + shift) % 95 + 32)
+            for index, char in enumerate(dict.fromkeys(text))
+        )
+        return samples._stream(
+            b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+            + b"%d beginbfchar\n" % len(set(text))
+            + pairs
+            + b"endbfchar\nendcmap\n"
+        )
+
+    def beside(text: str) -> bytes:
+        """A font with no map, then a composite font that has one: the 4 KB after the first
+        font's header hold the second font's /ToUnicode."""
+        return font_page(
+            winansi(text), (6, helvetica % b""), (7, type0 % b"/ToUnicode 8 0 R "), (8, noise)
+        )
+
+    def in_string(text: str) -> bytes:
+        return font_page(winansi(text), (6, helvetica % b"/Note (/ToUnicode 8 0 R) "), (8, noise))
+
+    long = b"/Widths [" + b"500 " * 1100 + b"] "
+    unmapped = "heuristic_pdf_text_unmapped"
+    other = "Quarterly notes for the spring review."
+    # A composite font as generators write one, with the descendant font and descriptor that
+    # pdfminer.six and pypdf require before they read a page: objects 30 and 31.
+    whole = (
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /AAAAAA+Arial /Encoding /Identity-H "
+        b"/DescendantFonts [30 0 R] %s>>"
+    )
+    descendant = [
+        (
+            30,
+            b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /AAAAAA+Arial /CIDSystemInfo "
+            b"<< /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+            b"/FontDescriptor 31 0 R /DW 600 >>",
+        ),
+        (
+            31,
+            b"<< /Type /FontDescriptor /FontName /AAAAAA+Arial /Flags 4 "
+            b"/FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 900 /Descent -200 "
+            b"/CapHeight 700 /StemV 80 >>",
+        ),
+    ]
+    courier = b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier /ToUnicode %d 0 R >>"
+    # A composite font as reportlab writes one of its Adobe CJK set: a predefined CMap of
+    # two-byte Unicode codes and no /ToUnicode, with its descendant font and descriptor,
+    # objects 32 and 33. PDFium, pdfminer.six, and pypdf show its text through the CMap.
+    cjk = (
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H "
+        b"/DescendantFonts [32 0 R] >>"
+    )
+    cjk_descendant = [
+        (
+            32,
+            b"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo "
+            b"<< /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> "
+            b"/FontDescriptor 33 0 R /DW 1000 >>",
+        ),
+        (
+            33,
+            b"<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 "
+            b"/FontBBox [-25 -254 1000 880] /ItalicAngle 0 /Ascent 880 /Descent -120 "
+            b"/CapHeight 880 /StemV 93 >>",
+        ),
+    ]
+
+    def ucs2(text: str) -> bytes:
+        """``text`` as the two-byte Unicode codes such a font shows."""
+        codes = text.encode("utf-16-be").hex().encode()
+        return b"BT /F1 12 Tf 72 700 Td <" + codes + b"> Tj ET"
+
+    def before_a_map(text: str) -> bytes:
+        """That font, then a composite font that has a map: the 4 KB after the first font's
+        header hold the second font's /ToUnicode, and the map has none of these codes."""
+        return font_page(
+            ucs2(text),
+            (6, cjk),
+            (7, type0 % b"/ToUnicode 8 0 R "),
+            (8, mapped(twin, 3)),
+            *cjk_descendant,
+        )
+
+    def merged(text: str, pad: bytes = b"") -> bytes:
+        """Five sources merged into one file: /F1 is another font on each page. The first
+        page shows ``text`` in a Helvetica with no map, written before the second page's
+        font, which has one; the other pages show ordinary text, each through a font with
+        a map of its own. ``pad`` after ``%%EOF`` makes the file one that is not written
+        plainly, so every stream is read through all five fonts."""
+        page = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents %d 0 R "
+            b"/Resources << /Font << /F1 %d 0 R >> >> >>"
+        )
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R] /Count 5 >>",
+            *[page % (8 + index, 13 + index) for index in range(5)],
+            samples._stream(winansi(text)),
+            *[samples._stream(glyphs(other))] * 4,
+            helvetica % b"",
+            *[courier % (18 + index) for index in range(4)],
+            *[mapped(other, shift) for shift in range(4)],
+        ]
+        out = b"%PDF-1.7\n"
+        for number, body in enumerate(objects, 1):
+            out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+        return out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n" + pad
+
+    def shared(keys: bytes) -> bytes:
+        """One stream that two pages draw, /F1 being font 6 on one and font 7 on the other.
+        Font 6 has ``keys``; font 7 has one map, defined three times, the phrase in the
+        definition a reader is least likely to use."""
+        page = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R "
+            b"/Resources << /Font << /F1 %d 0 R >> >> >>"
+        )
+        objects = [
+            (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+            (2, b"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>"),
+            (3, page % 6),
+            (4, page % 7),
+            (5, samples._stream(glyphs(PHRASE))),
+            (6, helvetica % keys),
+            (7, whole % b"/ToUnicode 20 0 R "),
+            *[(8 + index, mapped(PHRASE, 4 + index)) for index in range(3)],
+            *[(20, mapped(PHRASE, shift)) for shift in (7, 0, 8)],
+            *descendant,
+        ]
+        out = b"%PDF-1.7\n"
+        for number, body in objects:
+            out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+        return out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+    def referred(text: str, reference: bytes) -> bytes:
+        """A font whose own /ToUnicode is ``reference`` to the noise map, object 8."""
+        font = helvetica % (b"/ToUnicode " + reference + b" ")
+        return font_page(winansi(text), (6, font), (8, noise))
+
+    def fullwidth(text: str) -> bytes:
+        """``text`` as the two-byte GBK codes of its fullwidth forms, and the map that
+        turns those codes back into it."""
+        codes = {
+            char: ("\u3000" if char == " " else chr(ord(char) + 0xFEE0)).encode("gbk")
+            for char in dict.fromkeys(text)
+        }
+        pairs = b"".join(
+            b"<%s> <%04X>\n" % (code.hex().encode(), ord(char)) for char, code in codes.items()
+        )
+        cmap = samples._stream(
+            b"begincmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n"
+            + b"%d beginbfchar\n" % len(codes)
+            + pairs
+            + b"endbfchar\nendcmap\n"
+        )
+        shown = b"".join(codes[char] for char in text).hex().encode()
+        gbk = helvetica.replace(b"/Type1", b"/TrueType").replace(b"/Helvetica", b"/#CB#CE#CC#E5")
+        return font_page(
+            b"BT /F1 12 Tf 72 700 Td <" + shown + b"> Tj ET",
+            (6, gbk % b""),
+            (7, type0 % b"/ToUnicode 8 0 R "),
+            (8, cmap),
+        )
+
     return [
         # B1: an SVG that runs or loads something without a script element or a handler.
         Case("B1", "backlog svg script (control)", "a.svg", svg("<script>void 0</script>"), "any"),
@@ -2128,8 +2325,8 @@ def backlog_cases() -> list[Case]:
             b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
             "clean",
         ),
-        # B7: a font dictionary that writes /ToUnicode twice. poppler, PDFium, and pdf.js keep
-        # the last key; this reader takes the first.
+        # B7: a font dictionary read to its own end. One that writes /ToUnicode twice is read
+        # through each key: pypdf keeps the first, poppler, PDFium, and pdfminer.six the last.
         Case(
             "B7",
             "backlog pdf font with two /ToUnicode keys, phrase in first (control)",
@@ -2149,6 +2346,251 @@ def backlog_cases() -> list[Case]:
             "backlog pdf font with two /ToUnicode keys (benign)",
             "a.pdf",
             two_maps("Quarterly notes for the spring review.", first=3, last=0),
+            "clean",
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with three /ToUnicode keys, phrase in the middle",
+            "a.pdf",
+            font_page(
+                glyphs(PHRASE),
+                (6, helvetica % b"/ToUnicode 8 0 R /ToUnicode 9 0 R /ToUnicode 8 0 R "),
+                (8, mapped(PHRASE, 3)),
+                (9, mapped(PHRASE)),
+            ),
+            PHRASE_RULE,
+        ),
+        # A font with no map of its own is not read through the next object's.
+        Case(
+            "B7",
+            "backlog pdf font with no map, alone (control)",
+            "a.pdf",
+            font_page(winansi(PHRASE), (6, helvetica % b"")),
+            PHRASE_RULE,
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with no map before a font that has one",
+            "a.pdf",
+            beside(PHRASE),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font with no map before a font that has one (benign)",
+            "a.pdf",
+            beside(twin),
+            "clean",
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font with no map before a composite font with none (benign)",
+            "a.pdf",
+            font_page(winansi(twin), (6, helvetica % b""), (7, type0 % b"")),
+            "clean",
+        ),
+        # A /ToUnicode that is not a key of the font dictionary is not its map.
+        Case(
+            "B7",
+            "backlog pdf font with a /ToUnicode in a string",
+            "a.pdf",
+            in_string(PHRASE),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font with a /ToUnicode in a string (benign)",
+            "a.pdf",
+            in_string(twin),
+            "clean",
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with a /ToUnicode in a string, then its key",
+            "a.pdf",
+            font_page(
+                glyphs(PHRASE),
+                (6, helvetica % b"/Note (/ToUnicode 8 0 R) /ToUnicode 9 0 R "),
+                (8, mapped(PHRASE, 3)),
+                (9, mapped(PHRASE)),
+            ),
+            PHRASE_RULE,
+        ),
+        Case(
+            "B7",
+            "backlog pdf font with an escaped /ToUnicode key",
+            "a.pdf",
+            font_page(glyphs(PHRASE), (6, helvetica % b"/To#55nicode 8 0 R "), (8, mapped(PHRASE))),
+            PHRASE_RULE,
+        ),
+        Case(
+            "B7",
+            "backlog pdf long font with endobj in a string before its key",
+            "a.pdf",
+            font_page(
+                glyphs(PHRASE),
+                (6, helvetica % (b"/Note (endobj) " + long + b"/ToUnicode 8 0 R ")),
+                (8, mapped(PHRASE)),
+            ),
+            PHRASE_RULE,
+        ),
+        # A reading only the bytes after the header give stays where a reader can give it:
+        # poppler reads on into the next object when a dictionary's closing bracket is missing.
+        Case(
+            "backlog",
+            "backlog pdf font with no closing bracket, next font has the map",
+            "a.pdf",
+            font_page(
+                glyphs(PHRASE),
+                (6, (helvetica % b"")[:-2]),
+                (7, helvetica % b"/ToUnicode 8 0 R "),
+                (8, mapped(PHRASE)),
+            ),
+            PHRASE_RULE,
+        ),
+        # A map that is the font's own key, in a spelling of a reference that lexers do not
+        # all take: poppler and pdfminer.six follow ``8 0R`` and PDFium and pypdf do not;
+        # PDFium and pdfminer.six follow a generation of six digits and poppler and pypdf do
+        # not. The font is read through the map and with none.
+        Case(
+            "backlog",
+            "backlog pdf font whose own map turns the text into noise (control)",
+            "a.pdf",
+            referred(PHRASE, b"8 0 R"),
+            "clean",
+        ),
+        Case(
+            "B7",
+            "backlog pdf font whose map reference has no space before R",
+            "a.pdf",
+            referred(PHRASE, b"8 0R"),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font whose map reference has no space before R (benign)",
+            "a.pdf",
+            referred(twin, b"8 0R"),
+            "clean",
+        ),
+        Case(
+            "B7",
+            "backlog pdf font whose map reference has a generation of six digits",
+            "a.pdf",
+            referred(PHRASE, b"8 123456 R"),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font whose map reference has a generation of six digits (benign)",
+            "a.pdf",
+            referred(twin, b"8 123456 R"),
+            "clean",
+        ),
+        # A number of 5,000 digits is read without converting it: the scan completes.
+        Case(
+            "B7",
+            "backlog pdf font whose map reference has 5,000 digits",
+            "a.pdf",
+            referred(PHRASE, b"9" * 5000 + b" 0 R"),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf font whose map reference has 5,000 digits (benign)",
+            "a.pdf",
+            referred(twin, b"0" * 5000 + b"8 0 R"),
+            "clean",
+        ),
+        # A merged file that is not written plainly reads every stream through every font a
+        # name means. The reading with no map does not take one of the four places.
+        Case(
+            "B7",
+            "backlog pdf merged file, a font with no map before one that has",
+            "a.pdf",
+            merged(PHRASE),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "backlog",
+            "backlog pdf merged file, a font with no map before one that has (benign)",
+            "a.pdf",
+            merged(twin),
+            "clean",
+        ),
+        Case(
+            "B7",
+            "backlog pdf merged file not written plainly, a font with no map before one that has",
+            "a.pdf",
+            merged(PHRASE, b"\x00" * 16),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "backlog",
+            "backlog pdf merged file not written plainly, a font with no map (benign)",
+            "a.pdf",
+            merged(twin, b"\x00" * 16),
+            "clean",
+        ),
+        # The readings of a font's further keys come after every reading of the other fonts
+        # a name means, so they never take the place of one that was decoded before.
+        Case(
+            "backlog",
+            "backlog pdf two fonts under one name, the phrase in the second font's map (control)",
+            "a.pdf",
+            shared(b"/ToUnicode 8 0 R "),
+            f"{PHRASE_RULE} without {unmapped}",
+        ),
+        Case(
+            "backlog",
+            "backlog pdf two fonts under one name, the first font with three keys",
+            "a.pdf",
+            shared(b"/ToUnicode 8 0 R /ToUnicode 9 0 R /ToUnicode 10 0 R "),
+            PHRASE_RULE,
+        ),
+        # PDFium reads a TrueType font named for a GBK font, with no font file, as a composite
+        # font and shows these codes as fullwidth letters. The dictionary does not settle how
+        # such a font is read, so the reading the bytes after it give stays.
+        Case(
+            "backlog",
+            "backlog pdf GBK TrueType font with no map, next font has the map",
+            "a.pdf",
+            fullwidth(PHRASE),
+            PHRASE_RULE,
+        ),
+        Case(
+            "backlog",
+            "backlog pdf GBK TrueType font with no map, next font has the map (benign)",
+            "a.pdf",
+            fullwidth(twin),
+            "clean",
+        ),
+        # B8: a composite font that names no map, written before an object that has one.
+        # Alone, its text is reported as unmapped. With a map in the 4 KB after its header
+        # it is read through that map, which has none of its codes, and nothing is
+        # reported, though readers show the text. The font is not read with no map beside
+        # that one: pypdf and pdfseparate write a font of reportlab's Adobe CJK set before
+        # a font that has a map, and those ordinary documents would gain the note. Open
+        # until the text of such a font is read; ordinary text in one stays clean.
+        Case(
+            "B8",
+            "backlog pdf composite font with no map, alone (control)",
+            "a.pdf",
+            font_page(ucs2(PHRASE), (6, cjk), *cjk_descendant),
+            unmapped,
+        ),
+        Case(
+            "B8",
+            "backlog pdf composite font with no map beside a mapped object",
+            "a.pdf",
+            before_a_map(PHRASE),
+            unmapped,
+        ),
+        Case(
+            "B8",
+            "backlog pdf composite font with no map beside a mapped object (benign)",
+            "a.pdf",
+            before_a_map(twin),
             "clean",
         ),
     ]

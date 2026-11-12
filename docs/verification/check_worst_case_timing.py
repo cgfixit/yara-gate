@@ -294,6 +294,16 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts),
         None,
     )
+    # The same name with a font that has no map in place of the last of the 64: the reading
+    # with no map is decoded beside the four the cap allows, so every string is decoded
+    # five times.
+    plain = b"289 0 obj<</Font<</F1 290 0 R>>>>endobj\n"
+    plain += b"290 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    yield (
+        "pdf-font-readings-winansi.pdf",
+        _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts[: fonts.rindex(b"289 0 obj")] + plain),
+        None,
+    )
     # One font object defined until the file is full, over a ToUnicode map defined 1,900
     # times: 64 definitions of the font are read, each map definition is parsed once, and the
     # definitions past the cap make the text unmapped (2026-11-10-pdf-font-definitions.md).
@@ -306,6 +316,73 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     maps = b"7 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body)
     font = b"6 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode 7 0 R>>endobj\n"
     yield "pdf-font-definitions.pdf", _filled(page + maps * 1900, font), None
+    # Inputs for the reading of a font's own dictionary. Each font is named by a resource
+    # dictionary of its own, so every one is read, and the page shows text in the first.
+    shown = (
+        b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources 1000007 0 R"
+        b"/Contents 4 0 R>>endobj\n4 0 obj<</Length 34>>stream\n"
+        b"BT /F7 12 Tf 72 700 Td (Hi) Tj ET\nendstream endobj\n"
+    )
+
+    def fonts(entries: Callable[[int], bytes]) -> bytes:
+        def named(n: int) -> bytes:
+            return (
+                b"%d 0 obj<</Font<</F%d %d 0 R>>>>endobj\n" % (1000000 + n, n, n)
+                + b"%d 0 obj<</Type/Font" % n
+                + entries(n)
+                + b">>endobj\n"
+            )
+
+        return _numbered(shown, named)
+
+    # First, fonts that each write /ToUnicode fifty times: more ways than are kept, so the
+    # text is unmapped. Second, fonts that fill the 4 KB after their header with widths, so
+    # the allowance for reading dictionaries token by token is spent; the first has no map
+    # and stands before one that has, so the file's layout is read too. Third, the same
+    # fonts with a form feed, which only the slower lenient lexer reads, until its own
+    # allowance is spent.
+    keys = b"".join(b"/ToUnicode %d 0 R" % (5000 + index) for index in range(50))
+    widths = b"/W[" + b"10 " * 1320 + b"]"
+    yield "pdf-font-keys.pdf", fonts(lambda n: b"/Subtype/Type1" + keys), None
+    yield (
+        "pdf-font-windows.pdf",
+        fonts(lambda n: b"/Subtype/Type1" + (b"" if n == 7 else b"/ToUnicode 5 0 R" + widths)),
+        None,
+    )
+    yield "pdf-font-lenient.pdf", fonts(lambda n: b"\x0c/Subtype/Type1" + widths + keys), None
+
+    # Fonts defined 64 times each. Every definition has the same first key and four more
+    # of its own, over 255 maps of 2,040 entries that differ in their last entry only, so
+    # comparing two of them walks both. A way that definitions share is read once and a
+    # font's further ways are bounded: collected and compared pair by pair, twelve such
+    # fonts spent the 30 s scan deadline.
+    def ranged(last: int) -> bytes:
+        body = (
+            b"begincmap 1 begincodespacerange <0000> <FFFF> endcodespacerange "
+            b"1 beginbfrange <0000> <07F6> <0041> endbfrange "
+            b"1 beginbfchar <FFFE> <%04X> endbfchar endcmap" % last
+        )
+        return b"<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body)
+
+    mapped = shown.replace(b"/Length 34", b"/Length 40").replace(b"(Hi)", b"<00010002>")
+    mapped += b"500000 0 obj" + ranged(0x41)
+    mapped += b"".join(b"%d 0 obj" % (500001 + m) + ranged(0x1000 + m) for m in range(255))
+
+    def redefined(n: int) -> bytes:
+        return b"%d 0 obj<</Font<</F%d %d 0 R>>>>endobj\n" % (1000000 + n, n, n) + b"".join(
+            b"%d 0 obj<</Type/Font/Subtype/Type1/ToUnicode 500000 0 R" % n
+            + b"".join(b"/ToUnicode %d 0 R" % (500001 + (4 * d + k) % 255) for k in range(4))
+            + b">>endobj\n"
+            for d in range(64)
+        )
+
+    yield "pdf-font-shared-ways.pdf", _numbered(mapped, redefined), None
+    # Font dictionaries that write /Subtype and /Encoding 24,000 times each, under the
+    # annotation reader's limit of tokens in one object. The repeats of the two keys were
+    # combined pair by pair in one expression, which no deadline check interrupts: 20 s for
+    # one such font.
+    repeats = b"/Subtype /A\n" * 24_000 + b"/Encoding /B\n" * 24_000
+    yield "pdf-font-repeated-keys.pdf", fonts(lambda n: b"/BaseFont/Helvetica" + repeats), None
     # One style attribute of 4 MiB whose every declaration opens a parenthesis: the style is
     # split once, without rescanning from each opener.
     prefix, suffix = b'<!doctype html><html><body><p style="', b'">x</p></body></html>'
@@ -444,7 +521,13 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "odf-spans.zip": "odf-text",
         "odf-unknown-elements.zip": "odf-text",
         "pdf-font-definitions.pdf": "pdf-text",
+        "pdf-font-keys.pdf": "pdf-text",
+        "pdf-font-lenient.pdf": "pdf-text",
         "pdf-font-readings.pdf": "pdf-text",
+        "pdf-font-readings-winansi.pdf": "pdf-text",
+        "pdf-font-repeated-keys.pdf": "pdf-text",
+        "pdf-font-shared-ways.pdf": "pdf-text",
+        "pdf-font-windows.pdf": "pdf-text",
         "pdf-page-fonts.pdf": "pdf-text",
         "pdf-page-references.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
