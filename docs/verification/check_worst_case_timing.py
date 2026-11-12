@@ -142,6 +142,158 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         "xml entity expansion exceeds 1MB",
     )
+    # The Office readers by content. A part under no usual name whose root tag never closes:
+    # the root is looked for in the first 64 KiB and then once in the whole part.
+    word = b'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    drawing = b'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    slide = b'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+    yield (
+        "ooxml-root-unclosed.zip",
+        _stored("word/body2.xml", b"<w:document " + word + b" ", b'a="b" ', b""),
+        None,
+    )
+    # A file that is one long prolog: every comment is stepped over once, and no root follows.
+    yield "xml-prolog-comments.xml", _filled(b'<?xml version="1.0"?>', b"<!-- a -->"), None
+    # Every element under a prefix a writer chose, bound on the root: each tag is moved onto
+    # the usual prefix.
+    yield (
+        "ooxml-other-prefix.zip",
+        _stored(
+            "word/document.xml",
+            b"<x:document " + word.replace(b"xmlns:w", b"xmlns:x") + b"><x:body><x:p>",
+            b"<x:r><x:t>a</x:t></x:r>",
+            b"</x:p></x:body></x:document>",
+        ),
+        None,
+    )
+    # A namespace declared on every run: each one opens and closes a scope.
+    yield (
+        "ooxml-xmlns-every-run.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body><w:p>",
+            b"<x:r " + word.replace(b"xmlns:w", b"xmlns:x") + b"><x:t>a</x:t></x:r>",
+            b"</w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # The same declaration on elements that never close: the scope cap ends the scan.
+    yield (
+        "ooxml-namespace-scopes.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body>",
+            b'<w:p xmlns:w="urn:example:other">',
+            b"</w:body></w:document>",
+        ),
+        "ooxml namespace scopes exceed 256",
+    )
+    # Nothing but DrawingML line breaks, in a hidden shape: each is a new line in the joined
+    # text and in the hidden piece, and both keep their earlier reading without it.
+    yield (
+        "ooxml-drawing-breaks.zip",
+        _stored(
+            "ppt/slides/slide1.xml",
+            b"<p:sld " + drawing + b" " + slide + b'><p:sp><p:cNvPr hidden="1"/><p:txBody>'
+            b"<a:p><a:r><a:t>a</a:t></a:r>",
+            b"<a:br/>",
+            b"<a:r><a:t>b</a:t></a:r></a:p></p:txBody></p:sp></p:sld>",
+        ),
+        None,
+    )
+    # End tags padded with white space that never reach their ">".
+    yield (
+        "ooxml-padded-end-tags.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body><w:p>",
+            b"<w:t>a</w:t \n",
+            b"</w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # One text tag with megabytes of attribute, then a second run.
+    yield (
+        "ooxml-long-attribute.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b'><w:body><w:p><w:r><w:t a="',
+            b"b ",
+            b'">c</w:t></w:r><w:r><w:t>d</w:t></w:r></w:p></w:body></w:document>',
+        ),
+        None,
+    )
+    # A first tag that holds "xmlns" and then one run of name characters, in a file that is no
+    # Office part: every scanned unit's root tag is read for its namespace, one name at a time.
+    yield "xml-root-name-run.xml", _filled(b"<a xmlns ", b"b")[:-1] + b">", None
+    # The same run in a tag inside a body whose prefixes take the exact pass.
+    yield (
+        "ooxml-tag-name-run.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document "
+            + word
+            + b"><w:body><x:p "
+            + word.replace(b"xmlns:w", b"xmlns:x")
+            + b" xmlns ",
+            b"b",
+            b"><x:r><x:t>a</x:t></x:r><x:r><x:t>b</x:t></x:r></x:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # A DOCTYPE that gives one element as many namespace declarations by default as a part
+    # may have, and that element opened and closed to the end: each pair binds and restores
+    # them all.
+    defaults = b"".join(b'xmlns:p%d CDATA "u" ' % number for number in range(8))
+    yield (
+        "ooxml-doctype-namespaces.zip",
+        _stored(
+            "word/document.xml",
+            b"<!DOCTYPE w:document [<!ATTLIST e "
+            + defaults
+            + b">]><w:document "
+            + word
+            + b"><w:body>",
+            b"<e></e>",
+            b"</w:body></w:document>",
+        ),
+        None,
+    )
+    # A worksheet as the Open XML SDK writes it, every SpreadsheetML element under x:. The
+    # prefix is moved once for the part and the hidden-text reader reads it once.
+    sheet = b'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    yield (
+        "ooxml-sdk-prefix.zip",
+        _stored(
+            "xl/worksheets/sheet1.xml",
+            b"<x:worksheet " + sheet + b'><x:sheetViews><x:sheetView showGridLines="1"/>'
+            b"</x:sheetViews><x:sheetData>",
+            b'<x:row r="1"><x:c r="A1" s="1" t="s"><x:v>1</x:v></x:c>'
+            b'<x:c r="B1" s="2"><x:v>2.5</x:v></x:c></x:row>',
+            b"</x:sheetData></x:worksheet>",
+        ),
+        None,
+    )
+    # Hidden runs in a part that is a document by its name and a slide by its root, half of
+    # them under a second prefix: two vocabularies, each read resolved and as written.
+    yield (
+        "ooxml-two-vocabularies.zip",
+        _stored(
+            "word/document.xml",
+            b"<p:sld "
+            + drawing
+            + b" "
+            + slide
+            + b" "
+            + word
+            + b" "
+            + word.replace(b"xmlns:w", b"xmlns:x")
+            + b">",
+            b"<w:r><w:rPr><w:vanish/></w:rPr><w:t>a</w:t></w:r><x:r><x:t>b</x:t></x:r>",
+            b"</p:sld>",
+        ),
+        None,
+    )
     odf = (
         b'<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office'
         b':1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body>'
@@ -604,6 +756,12 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
         "ooxml-xml-comments.zip": "ooxml-text",
+        "ooxml-other-prefix.zip": "ooxml-text",
+        "ooxml-xmlns-every-run.zip": "ooxml-text",
+        "ooxml-drawing-breaks.zip": "ooxml-hidden-text",
+        "ooxml-long-attribute.zip": "ooxml-text",
+        "ooxml-tag-name-run.zip": "ooxml-text",
+        "ooxml-two-vocabularies.zip": "ooxml-hidden-text",
         "odf-spans.zip": "odf-text",
         "odf-unknown-elements.zip": "odf-text",
         "pdf-font-definitions.pdf": "pdf-text",

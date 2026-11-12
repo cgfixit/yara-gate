@@ -431,6 +431,9 @@ def _scan_file(
                     base,
                 )
             )
+            # An Office part that readers take differently gives one view for each reading;
+            # a rule is reported once for the unit and view, whichever readings held it.
+            joined: set[tuple[str, str | None, str]] = set()
             for view, derived in chain(
                 ooxml_text_views(unit.name, unit.data, budget),
                 odf_text_views(unit.data, budget),
@@ -442,6 +445,9 @@ def _scan_file(
                 if _raw_only(view):
                     found = [f for f in found if f.rule_id not in _RAW_ONLY_RULES]
                 for finding in found:
+                    if (finding.rule_id, finding.namespace, view) in joined:
+                        continue
+                    joined.add((finding.rule_id, finding.namespace, view))
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
