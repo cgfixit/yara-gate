@@ -548,6 +548,29 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         prefix + b" " * (SIZE - len(prefix) - len(suffix)) + suffix,
         None,
     )
+    # JSON with comments: an unclosed comment opener is found once. A file over 1 MiB is not
+    # read as JSON with comments at all.
+    yield "jsonc-comment-openers.json", _filled(b"/*", b"/*"), None
+    # A page whose /Contents array names 400 streams, joined into one before it is read.
+    count = 400
+    refs = b" ".join(b"%d 0 R" % (100 + index) for index in range(count))
+    page = b"%PDF-1.7\n2 0 obj<</Type/Page/MediaBox[0 0 612 792]/Contents[" + refs + b"]>>endobj\n"
+    words = b"(ab ) Tj " * ((SIZE - len(page)) // count // 9 - 12)
+    streams = b"".join(
+        b"%d 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (100 + index, len(words), words)
+        for index in range(count)
+    )
+    yield "pdf-contents-array.pdf", _filled(page + streams + b"%", b" ")[:-1] + b"\n", None
+    # A page content stream that fails the text sniff, read through the tokenizer.
+    yield (
+        "pdf-binary-content.pdf",
+        _content_pdf(
+            b"BT /F1 12 Tf ",
+            bytes(range(256)),
+            b"2 0 obj<</Type/Page/MediaBox[0 0 612 792]/Contents 1 0 R>>endobj\n",
+        ),
+        None,
+    )
     # Mail. A header block is read for 64 KiB and has to end there before the mail library
     # parses it, so a block that never ends costs two bounded passes whatever the file's size:
     # 55,000 header lines, then one Content-Type folded over 600,000 lines.

@@ -370,7 +370,8 @@ exits 0, 1, or 2 as for a file. It does not use the inbox. Stdin is read up to
 `sha256` is unknown (64 zeroes), not a hash of a truncated prefix. To scan a file literally named `-`, pass
 `./-`.
 
-A JSON body is also read as a `json-unescaped` view, any text body gets a
+A JSON body is also read as a `json-unescaped` view, including one that opens with a
+byte order mark or with comments, any text body gets a
 `text-folded` view when look-alike, leet, or spaced-out spellings would hide a
 phrase, a base64 run that decodes to readable text (UTF-8, or UTF-16LE as
 PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
