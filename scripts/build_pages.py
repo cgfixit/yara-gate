@@ -34,7 +34,7 @@ RESULT_KEYS = {
 }
 FINDING_KEYS = {"rule_id", "offset", "length", "severity", "source", "view", "member_path"}
 CASE_KEYS = {"id", "kind", "channel", "pair", "title", "description", "results"}
-SCENARIOS = 76
+SCENARIOS = 82
 KINDS = {"detection", "control", "failure"}
 PAIRED = {"detection", "control"}
 CHANNELS = {

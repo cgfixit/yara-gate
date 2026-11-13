@@ -39,7 +39,7 @@ const viewNames = {
   'notebook-text': 'one notebook cell with its lines rejoined',
   'comment-text': 'consecutive source comment lines rejoined',
   'pdf-flate': 'an inflated PDF stream',
-  'pdf-text': 'one PDF text block, read through its font maps',
+  'pdf-text': 'one PDF text block, read through the encoding or map of its own font',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'
 };
 const sources = {
@@ -60,7 +60,7 @@ const methodNames = {
   folded: 'Disguised spelling',
   rebuilt: 'Split across formatting',
   decoded: 'Encoded',
-  container: 'Inside an archive',
+  container: 'Inside an archive or message',
   structure: 'File structure',
   pattern: 'Plain pattern'
 };
@@ -71,8 +71,8 @@ const methodDetail = {
   invisible: 'Characters that draw nothing: a run of zero-width characters or variation selectors that carries bytes. The joiners in Persian words and in a family emoji are ordinary and stay clean.',
   folded: 'Look-alike letters, small capitals, digits for letters, spaced-out words, terminal escapes. The text is folded to its plain spelling before the rules read it.',
   rebuilt: 'One sentence broken across formatting runs, spreadsheet cells, comments, spans, or PDF text blocks, by markup an XML parser drops, or kept on a slide master instead of a slide. The pieces are rejoined the way a reader shows them.',
-  decoded: 'Base64, HTML character references, PDF glyph ids, and string escapes. Each is decoded in a bounded view and read by itself.',
-  container: 'Content inside an archive member, including a second archive glued after the first.',
+  decoded: 'Base64, HTML character references, PDF text in a font\'s own encoding or through its glyph map, and string escapes. Each is decoded in a bounded view and read by itself.',
+  container: 'Content inside an archive member or one part of an email, read once the part is decoded from its transfer encoding, including a second archive glued after the first.',
   structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
   pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
@@ -82,13 +82,15 @@ function methodsOf(item) {
   const tags = new Set();
   // A rule that already matched the bytes as sent needed no derived view.
   const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+  // A folded view that matched only what its unfolded view already matched needed no folding.
+  const unfolded = new Set(findings.filter((finding) => !finding.view.endsWith(folded)).map((finding) => finding.rule_id + ' ' + finding.view));
   for (const finding of findings) {
     const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
     if (finding.view.includes('hidden') || finding.rule_id.includes('hidden')) tags.add('hidden');
     else if (/invisible|variation_selector|unicode_tag/.test(finding.rule_id)) tags.add('invisible');
     else if (finding.source !== 'yara') tags.add('structure');
     else if (!plain.has(finding.rule_id)) {
-      if (finding.view !== base || base === 'text-folded') tags.add('folded');
+      if (base === 'text-folded' || (finding.view !== base && !unfolded.has(finding.rule_id + ' ' + base))) tags.add('folded');
       if (rebuiltViews.has(base)) tags.add('rebuilt');
       else if (base !== 'text-folded') tags.add('decoded');
     }
@@ -135,7 +137,13 @@ const stories = [
     sender: 'Example chat · simulated message', task: 'Support · message intake', file: 'message.txt' },
   { id: 'odt_span_override', label: 'Proposal review', title: 'Summarize a vendor proposal',
     brief: 'A procurement assistant summarizes a proposal saved from LibreOffice. One word of an override sentence is bold, which stores it in a span and splits the sentence in the file; the twin has the same bold word in an ordinary revision note.',
-    sender: 'vendor@example.invalid', task: 'Procurement · proposal summary', file: 'review.odt' }
+    sender: 'vendor@example.invalid', task: 'Procurement · proposal summary', file: 'review.odt' },
+  { id: 'mail_relayed_override', label: 'Inbox triage', title: 'Summarize a forwarded email',
+    brief: 'An email assistant reads a supplier message that crossed twelve relays. Its headers run past the first 8 KiB, and the body is quoted-printable, with a soft line break inside one word of an override; the twin carries an ordinary revision note the same way.',
+    sender: 'supplier@example.com', task: 'Finance · inbox triage', file: 'totals.eml' },
+  { id: 'xlsx_sdk_prefix_override', label: 'Data export', title: 'Summarize an exported workbook',
+    brief: 'An analytics assistant summarizes a workbook that a reporting service wrote with the Open XML SDK, so every element carries the prefix x:. One cell is an override in two rich-text runs; the twin cell is an ordinary revision note.',
+    sender: 'reports@example.invalid', task: 'Analytics · export summary', file: 'totals.xlsx' }
 ];
 
 function storyButtons() {
@@ -181,12 +189,20 @@ function viewName(view) {
   if (view.endsWith(folded)) return viewName(view.slice(0, -folded.length)) + ', then folded for look-alikes and digits';
   return viewNames[view] || 'the ' + view + ' view';
 }
+const memberKinds = {
+  zip: ['archive member', "the member's own bytes"],
+  mime: ['message part', 'the part as a mail reader decodes it'],
+  other: ['member', "the member's own bytes"]
+};
 function where(finding) {
-  const member = finding.member_path.length
-    ? 'inside archive member ' + finding.member_path.map((step) => Number(step.split(':')[1]) + 1).join(' → ')
+  // Each step is the kind of container and the member's ordinal in it, such as zip:1 or mime:0.
+  const steps = finding.member_path.map((step) => step.split(':'));
+  const last = steps.length ? memberKinds[steps[steps.length - 1][0]] || memberKinds.other : null;
+  const member = steps.length
+    ? 'inside ' + last[0] + ' ' + steps.map(([, index]) => Number(index) + 1).join(' → ')
     : 'in the outer input';
   const offset = finding.offset === null ? '' : ' at offset ' + finding.offset + ' (length ' + finding.length + ')';
-  const view = finding.member_path.length && finding.view === 'raw' ? "the member's own bytes" : viewName(finding.view);
+  const view = steps.length && finding.view === 'raw' ? last[1] : viewName(finding.view);
   return member + ', ' + view + offset;
 }
 function chip(parent, verdict, label) {
@@ -286,7 +302,7 @@ function depth() {
       for (const item of row) text(line, 'span', '', 'mark ' + item.results['agent-ingest'].verdict);
     }
     text(card, 'span', methodDetail[key], 'depth-text');
-    text(card, 'span', views.size ? 'Read through: ' + Array.from(views).sort().join(', ') : key === 'container' ? 'Read in the bytes of each archive member' : 'Read in the original bytes', 'depth-views');
+    text(card, 'span', views.size ? 'Read through: ' + Array.from(views).sort().join(', ') : key === 'container' ? 'Read in each archive member or decoded message part' : 'Read in the original bytes', 'depth-views');
     card.addEventListener('click', () => {
       state.channel = 'All';
       state.method = key;

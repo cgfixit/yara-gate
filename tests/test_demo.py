@@ -369,6 +369,17 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             "agent_prompt_injection_phrases",
             {"ooxml-text"},
         ),
+        "pdf_neighbour_font_override": (
+            "pdf_neighbour_font_benign",
+            "agent_prompt_injection_phrases",
+            {"pdf-text"},
+        ),
+        "xlsx_sdk_prefix_override": (
+            "xlsx_sdk_prefix_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text", "ooxml-text+text-folded"},
+        ),
+        "mail_relayed_override": ("mail_relayed_benign", "agent_prompt_injection_phrases", {"raw"}),
     }
     try:
         for attack, (benign, rule_id, views) in expected.items():

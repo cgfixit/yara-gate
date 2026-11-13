@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "ea2323ff08125318acac8a18031a46d4ffd239a0",
-  "captured_at": "2026-11-11T02:25:32+00:00",
+  "source_revision": "e4b2daa5c6636ced8dc9ba6ba97123fabfe55fa6",
+  "captured_at": "2026-11-12T23:04:35+00:00",
   "cases": [
     {
       "id": "note",
@@ -4665,6 +4665,591 @@
             "ooxml-text": 1
           },
           "bytes_scanned": 1886,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_neighbour_font_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "pdf_neighbour_font_benign",
+      "title": "A PDF in a plain font beside another font's map",
+      "description": "An override in plain Helvetica, its words spaced by kerning, on an invoice page whose other line uses a subset font. That font's character map is the next object. Helvetica is read from its own dictionary, as every reader does, not through its neighbour's map.",
+      "results": {
+        "default": {
+          "sha256": "64985b132d8f730ac1354ca00dc4873cf6d6ed3d0ddec442fcf3891aee956f37",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1660,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "64985b132d8f730ac1354ca00dc4873cf6d6ed3d0ddec442fcf3891aee956f37",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1660,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "64985b132d8f730ac1354ca00dc4873cf6d6ed3d0ddec442fcf3891aee956f37",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 0,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-text"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1660,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_neighbour_font_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "pdf_neighbour_font_override",
+      "title": "Same invoice layout, ordinary revision note",
+      "description": "The same two fonts and kerning, in an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "f30b6c29612ce8723dc81b61419c471040c4d14abb0d2a26f3f8e0e39a633db6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1658,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "f30b6c29612ce8723dc81b61419c471040c4d14abb0d2a26f3f8e0e39a633db6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1658,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "f30b6c29612ce8723dc81b61419c471040c4d14abb0d2a26f3f8e0e39a633db6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-text": 2
+          },
+          "bytes_scanned": 1658,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "xlsx_sdk_prefix_override",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "xlsx_sdk_prefix_benign",
+      "title": "A workbook written with the prefix x:",
+      "description": "An override cell in two rich-text runs, in a workbook whose every element is written x:t, x:r, x:si, as the Open XML SDK writes them. A run is read by the namespace its prefix names, not by the letters of the prefix.",
+      "results": {
+        "default": {
+          "sha256": "7f4d6d8794befaf2cf32819c9d327bb903f5dd22eb03fe5eec3c1e012e8dc624",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7646,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "7f4d6d8794befaf2cf32819c9d327bb903f5dd22eb03fe5eec3c1e012e8dc624",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7646,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "7f4d6d8794befaf2cf32819c9d327bb903f5dd22eb03fe5eec3c1e012e8dc624",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text"
+            },
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 17,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "zip:5"
+              ],
+              "view": "ooxml-text+text-folded"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7646,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "xlsx_sdk_prefix_benign",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "xlsx_sdk_prefix_override",
+      "title": "Same x: workbook, ordinary revision note",
+      "description": "The same prefix and the same two runs, in an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "e7afe41d26948e9389966d8286c980b545a752047789af64407ab107ecf6b359",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7641,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "e7afe41d26948e9389966d8286c980b545a752047789af64407ab107ecf6b359",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7641,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "e7afe41d26948e9389966d8286c980b545a752047789af64407ab107ecf6b359",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 7,
+          "views_scanned": {
+            "ooxml-text": 1,
+            "ooxml-text+text-folded": 1,
+            "text-folded": 6
+          },
+          "bytes_scanned": 7641,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "mail_relayed_override",
+      "kind": "detection",
+      "channel": "Message",
+      "pair": "mail_relayed_benign",
+      "title": "An email whose relay headers run past 8 KiB",
+      "description": "An override in a quoted-printable message, a soft line break inside one word. Twelve relay hops and fourteen ARC seals put the body past the first 8 KiB. The message is opened where a mail reader ends its headers, and its body decoded.",
+      "results": {
+        "default": {
+          "sha256": "15084af5eada11431408cfa1d39f968d9ae5bc98f43e00cfc074bcccfbd7f02c",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 10,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "mime:0"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20260,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "15084af5eada11431408cfa1d39f968d9ae5bc98f43e00cfc074bcccfbd7f02c",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 10,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "mime:0"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20260,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "15084af5eada11431408cfa1d39f968d9ae5bc98f43e00cfc074bcccfbd7f02c",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 10,
+              "length": 32,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [
+                "mime:0"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20260,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "mail_relayed_benign",
+      "kind": "control",
+      "channel": "Message",
+      "pair": "mail_relayed_override",
+      "title": "Same relayed email, ordinary revision note",
+      "description": "The same headers and soft line break, in an instruction to use revised estimates.",
+      "results": {
+        "default": {
+          "sha256": "e806596646b6d84131d65afce81d379eb945021584e42d3b74793995f1c4365e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20257,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "e806596646b6d84131d65afce81d379eb945021584e42d3b74793995f1c4365e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20257,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "e806596646b6d84131d65afce81d379eb945021584e42d3b74793995f1c4365e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "e96faeaf3d4b7719f1c0ae5a12593a45e6b0a3fe4500a4197900ca16f38e7487",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 87,
+          "tool_version": "0.2.0",
+          "units_scanned": 2,
+          "views_scanned": {
+            "text-folded": 1
+          },
+          "bytes_scanned": 20257,
           "exit_code": 0
         }
       }

@@ -1,13 +1,16 @@
 # Public recorded demo
 
 GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 76
-inert examples under `agent-ingest`, `agent-document`, and `default`: 37
+YARA-X backend. This site therefore replays **real recorded results** for 82
+inert examples under `agent-ingest`, `agent-document`, and `default`: 40
 attacks, each with a benign near-twin, and two scans that could not finish. Selecting
 an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The newest pairs cover an OpenDocument file with one
-bold word, a Word sentence with an XML comment inside it, and a slide deck whose only
-text is on its master, beside an SVG button whose link is a
+revision, not current bypasses. The newest pairs cover a PDF line in plain Helvetica,
+spaced by kerning, whose neighbour object is another font's map; a workbook written the
+Open XML SDK way, every element under `x:`; and a quoted-printable email behind 26 relay
+and ARC headers. Before them come an OpenDocument file with one bold word, a Word sentence
+with an XML comment inside it, and a slide deck whose only text is on its master, beside
+an SVG button whose link is a
 `javascript:` URL, a diagram whose `foreignObject` label frames another page, and a
 message carrying zero-width characters, beside white text on its own white
 background, an instruction in an HTML `data-*` attribute, an override on the last
@@ -19,10 +22,13 @@ every result as recorded and shows the scanner revision, capture time, rule cove
 and engine version.
 
 The page opens on the idea the catalog rests on. Under the scoreboard, a panel sets
-what three files hold beside what a reader shows: the span around a bold word, the
-XML comment between two words, and a sentence kept on the slide master. Its text is
-fixed in `index.html`; each card opens the recording of that pair. The panel says
-which readers each was checked against and that Microsoft Office was not run.
+what six files hold beside what a reader shows: the span around a bold word, the XML
+comment between two words, a sentence kept on the slide master, a PDF `TJ` array whose
+words are spaced by kerning, a run of `x:` elements, and a quoted-printable body with a
+soft line break inside a word. Its text is fixed in `index.html`; each card opens the
+recording of that pair. The panel says which readers each was checked against (LibreOffice,
+pandoc, poppler, pypdf, pdfminer.six, openpyxl, and Python's `email`) and that Microsoft
+Office was not run.
 
 The page is built to show precision as well as detection. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
@@ -33,7 +39,7 @@ marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without
 holding. Under the strip, **How each attack was caught** has one card for each
 technique: hidden from the reader, invisible characters, disguised spelling, split
-across formatting, encoded, inside an archive, file structure, or a plain pattern.
+across formatting, encoded, inside an archive or message, file structure, or a plain pattern.
 A card counts the attacks caught that way and held under `agent-ingest`, counts
 their twins that were clean under every policy, draws both as two rows of marks,
 and names the derived views that found what the original bytes did not show. An
@@ -64,21 +70,22 @@ checks.
 
 ## Guided workflows
 
-Twelve fictional tasks open directly beside their recorded outcome: supplier review
+Fourteen fictional tasks open directly beside their recorded outcome: supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
 onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
 (a merged PDF read through each page's own fonts), web research (white text on a
 white background), diagram review (a diagram label that frames another page),
-chat intake (zero-width characters in a message), and proposal review (a bold word
-in an OpenDocument file).
+chat intake (zero-width characters in a message), proposal review (a bold word
+in an OpenDocument file), inbox triage (an email behind long relay headers), and data
+export (a workbook written with the `x:` prefix).
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 37-pair catalog and the two unfinished scans remain under an expandable section.
+The full 40-pair catalog and the two unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same twelve shortcuts and the same catalog: both read
+The local workbench offers the same fourteen shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Selecting a shortcut clears the previous result and prepares a
 sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
@@ -206,9 +213,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 76 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 82 inert
 examples, recorded with 87 bundled rules and YARA-X 1.23.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+Each deployment refreshes the revision and time. See the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -247,6 +254,9 @@ its benign twin.
 | Attachment | An SVG button whose link target is a `javascript:` URL (an inert `void` of the page title), with no script element or handler | The same button with the do-nothing `javascript:void(0)` link |
 | Attachment | A two-box diagram whose first `foreignObject` label is an `iframe` to an invalid example address | The same diagram with `div` text labels, as draw.io and Mermaid export it |
 | Message | A sentence with 40 zero-width characters after one word, spelling `inert` one bit each | A Persian message with a non-joiner inside two words, and a family emoji |
+| Document | A PDF line in plain Helvetica with no map, words spaced by kerning, whose next font object is a subset font with its own map | The same fonts and kerning around an ordinary revision note |
+| Document | A workbook written with the Open XML SDK's `x:` prefix, an override cell in two rich-text runs | The same prefix and runs around an ordinary revision note |
+| Message | A quoted-printable email with a soft line break inside one word, behind 12 relay and 14 ARC headers that run past 8 KiB | The same headers and soft break around an ordinary revision note |
 
 The two unfinished scans are an ordinary note scanned with a deliberately broken
 rule in a disposable tree, and a 7z header, a container the scanner does not open
@@ -268,6 +278,13 @@ were both held under `agent-ingest` as `heuristic_pdf_text_unmapped`: the overri
 never read, and the ordinary bundle was held because its font name meant eight fonts.
 The [pairs verification](verification/2026-11-10-demo-html-merged-pdf.md) records
 those runs.
+
+The three pairs added on November 12 show #216. Scanned with the scanner as it was at
+`2cff88f`, before it, all three attacks were clean under every policy: the PDF line was
+read through its neighbour's map, the `x:` runs were not read as spreadsheet text, and the
+message was read only in its first 8 KiB, where its headers were. The
+[40-pair verification](verification/2026-11-12-demo-40-pairs.md) records those runs and
+the readers each fixture was put to.
 
 The three pairs added on November 11 show #213. Scanned with the scanner as it was at
 `5d7ca81`, before it, all three attacks were clean under every policy; the
@@ -301,7 +318,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 76 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 82 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

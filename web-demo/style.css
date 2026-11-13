@@ -33,6 +33,8 @@ p { margin: .5rem 0 1rem; }
 .strip { display: flex; flex-wrap: wrap; gap: .5rem 3px; }
 .strip-col { display: flex; flex-direction: column; gap: .3rem; }
 .cell { width: 24px; height: 24px; padding: 0; font: 700 .76rem/1 system-ui, sans-serif; border: 1px solid currentColor; border-radius: 6px; cursor: pointer; }
+/* 42 columns on one row at full width; narrow screens keep 24 px targets on wrapped rows. */
+@media (min-width: 1100px) { .cell { width: 22px; height: 22px; } }
 .cell.block { color: var(--block); background: var(--block-bg); }
 .cell.clean { color: var(--clean); background: var(--clean-bg); }
 .cell.advisory { color: var(--adv); background: var(--adv-bg); }
@@ -139,7 +141,7 @@ footer { color: var(--muted); font-size: .8rem; padding-bottom: 2rem !important;
 @media (max-width: 440px) { .shell { padding: 0 .8rem; } .panel { padding: .85rem; } .intro { padding-top: 1.5rem; } th, td { font-size: .78rem; } .scoreboard strong { font-size: 1.3rem; } }
 
 .stories { margin: 1.5rem 0 1rem; }
-.story-buttons { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.story-buttons { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .5rem; }
 .story-button { min-height: 52px; padding: .7rem; font: inherit; font-size: .9rem; font-weight: 650; border: 1px solid #80988d; border-radius: 9px; background: white; color: var(--ink); cursor: pointer; }
 .story-button:hover { background: #e6f0ea; }
 .story-button[aria-pressed="true"] { background: var(--ink); color: white; border-color: var(--ink); }

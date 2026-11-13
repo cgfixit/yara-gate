@@ -2,8 +2,34 @@
 
 This directory preserves Computer Use captures, the user-supplied demo image, and
 the November 10 headless-browser captures without editing or re-encoding. The
-README features the 37-pair workbench run below. Earlier captures retain their
+README features the 40-pair workbench run below. Earlier captures retain their
 original implementation provenance.
+
+## Workbench and public page with 40 pairs — November 12, 2026
+
+| Workbench: every pair, scanned live, by how each attack was caught | Workbench: the relayed email beside its twin |
+| --- | --- |
+| ![Workbench run of all 40 pairs under agent-ingest, with the table by technique](yara-gate-catalog40-workbench-run.png) | ![Inbox triage workflow: an email whose relay headers run past 8 KiB held beside the same email with an ordinary sentence](yara-gate-catalog40-workbench-pair.png) |
+
+| Public page: what the file holds beside what a reader shows | Public page: how each attack was caught |
+| --- | --- |
+| ![The panel's three new cards: a PDF TJ array, a run of x: elements, and a quoted-printable body, each beside the sentence a reader shows](yara-gate-catalog40-pages-reader.png) | ![One card for each way an attack was caught, with 40 attacks held and 40 twins clean](yara-gate-catalog40-pages-caught-by.png) |
+
+Four original PNG captures, 2560 × 1800 (a 1280 × 900 viewport at device scale 2),
+taken November 12, 2026, between about 23:08 and 23:20 UTC, by headless Chromium
+153.0.8010.12 through Playwright 1.63.0 in a Linux container. They show no browser chrome
+and are not Computer Use captures. The workbench captures are of `yara-gate demo` on
+`127.0.0.1` at `0a5113a`, with a disposable copy of the 87 bundled rules and no vendor
+packs. The public page captures are of the four-file artifact built by
+`scripts/build_pages.py` at `1acd78c` from the committed recordings (recorded at
+`e4b2daa`) and served from a loopback directory, not the hosted site. The browser made no
+request outside those two loopback origins. The run reports 40 of 40 attacks held under
+`agent-ingest`, 40 of 40 twins clean, 0 findings on twins, and 81 of 81 results as
+expected. The pair capture is the **Inbox triage** workflow scanned side by side. All
+fixtures are inert and synthetic, and this is evidence for the curated pairs only, not a
+production false-positive rate. The run capture replaces the 37-pair capture below in the
+README; those files are kept unchanged. See the
+[verification record](../docs/verification/2026-11-12-demo-40-pairs.md).
 
 ## Workbench and public page with 37 pairs — November 11, 2026
 
