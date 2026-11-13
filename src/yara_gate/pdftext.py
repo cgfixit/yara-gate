@@ -7,7 +7,11 @@ decodes each string through its font: a simple font as WinAnsi bytes, a font wit
 CMap through that map. A composite (two-byte) font with no readable ToUnicode map cannot be
 decoded; the caller reports that as a coverage note instead of a silent clean. A font object
 or ToUnicode map that the file defines more than once is read through every definition, since
-readers differ in which one they use.
+readers differ in which one they use. A font's map is the one its own dictionary names, each
+of them when the key is written more than once; what follows the dictionary is read with it
+only where some reader could take it for the font's (``_Definitions.ways``). A composite font
+that names no map is still read through a map the 4 KB after its header hold, and through
+that alone (detection backlog B8).
 
 Nothing is rendered and no font program is read. Positions are not tracked, so text placed out
 of reading order is joined in stream order, and a sentence split across two text blocks is not
@@ -47,8 +51,10 @@ from yara_gate.heuristics import (
     _PDF_VALUE_WINDOW,
     MAX_PDF_DEFINITIONS,
     _pdf_header_key,
+    _pdf_reference,
+    _pdf_value_end,
 )
-from yara_gate.pdfpages import page_font_refs
+from yara_gate.pdfpages import PlainFile, page_font_refs, plain_dictionary
 
 MAX_TEXT_BLOCKS = 20_000
 MAX_BLOCK_CHARS = 64 * 1024
@@ -69,7 +75,9 @@ MAX_CMAP_TOTAL = 4 * MAX_CMAP_ENTRIES
 MAX_CMAP_TOKENS = 3 * MAX_CMAP_TOTAL
 # Each text string is decoded once per font its resource name means, up to this many. Past
 # it, or past MAX_FONT_REFERENCES fonts behind one name, some readings go undecoded, which is
-# reported as unmapped text (docs/verification/2026-11-07-pdf-font-readings.md).
+# reported as unmapped text (docs/verification/2026-11-07-pdf-font-readings.md). The reading
+# of a font with no map, WinAnsi bytes, is one more pass and is not counted
+# (``_Paragraphs.show``).
 MAX_FONT_VARIANTS = 4
 MAX_FONT_REFERENCES = 64
 # Raw definitions of one object number read as a font or a font resource dictionary. A font
@@ -81,6 +89,25 @@ MAX_FONT_DEFINITIONS = MAX_PDF_DEFINITIONS
 # that do not overlap stay under it in any file this size or smaller; past it a long font is
 # given an unresolved reading instead of being read to its end.
 MAX_FONT_OBJECT_BYTES = 256 * 1024 * 1024
+# Bytes of font dictionaries read token by token in one file, to find each one's own keys:
+# half the file's size, and never less than this. A font dictionary is a few hundred bytes,
+# or a few kilobytes with its widths written in it, and an object stream's members are
+# decoded bytes, which the file's size does not bound. Past the allowance a font is read as
+# it was before its own dictionary was, and given an unresolved reading.
+MIN_FONT_DICTIONARY_BYTES = 1024 * 1024
+# Bytes of font dictionaries read with the lenient lexer in one file. It is needed only for
+# a dictionary that is not written plainly, which generators do not write, and it is slower
+# than the strict one. Past it such a font is read as it was before and given an unresolved
+# reading.
+MAX_LOOSE_FONT_BYTES = 512 * 1024
+# Ways one definition of a font is read (``_Definitions.ways``): a /ToUnicode key written
+# five times is five. A definition with more is also given an unresolved reading, and so is
+# a font whose definitions have more than this many ways between them besides each one's
+# first.
+MAX_FONT_WAYS = MAX_FONT_VARIANTS + 1
+# Readings of further ways kept for one font, and looked at for one resource name. A string
+# is decoded through fewer, so past this the name is given an unresolved reading instead.
+MAX_FURTHER_READINGS = 2 * MAX_FONT_VARIANTS
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
 
@@ -113,10 +140,33 @@ _TO_UNICODE = re.compile(
 )
 _TYPE0 = re.compile(rb"/Subtype[\x00\t\n\f\r ]*/Type0\b")
 _IDENTITY = re.compile(rb"/Encoding[\x00\t\n\f\r ]*/Identity-[HV]\b")
+_IDENTITY_NAMES = (b"/Identity-H", b"/Identity-V")
+# The encodings whose printable ASCII a font with no map shows as this reader decodes it.
+_LATIN_ENCODINGS = (b"/WinAnsiEncoding", b"/MacRomanEncoding")
+# What the reading of a font dictionary can turn on, as bytes: a /ToUnicode key, a composite
+# /Subtype or /Encoding, a ``#`` that can spell any of them, and a string or a comment, which
+# can hold the bytes ``endobj``.
+_FONT_CUES = re.compile(rb"[#(%]|ToUnicode|/Type0|/Identity-")
+# ``endobj`` as a token of its own: after whitespace or a closing bracket, and ending there.
+_ENDOBJ = re.compile(rb"(?<![^\x00\t\n\f\r \]>])endobj(?![^\x00\t\n\f\r /<>\[\]()%{}])")
+_ESCAPE = re.compile(rb"#([0-9A-Fa-f]{2})")
+_LOOSE_ESCAPE = re.compile(rb"#([0-9A-Fa-f]{0,2})")
+# A ``#`` that keeps a font dictionary from settling how the font is read: one readers do
+# not all take alike (it does not start two hex digits, or it spells NUL), and one that
+# spells a byte outside printable ASCII. PDFium reads a TrueType font whose /BaseFont starts
+# with one of five two-character names in GBK, and has no font file, as a composite font.
+_ODD_ESCAPE = re.compile(rb"#(?![2-6][0-9A-Fa-f]|7[0-9A-Ea-e])")
 _CMAP_BEGIN = re.compile(rb"begin(codespacerange|bfchar|bfrange)")
 _CMAP_TOKEN = re.compile(rb"<([0-9A-Fa-f\x00\t\n\f\r ]*)>|\[|\]")
 
 Lookup = Callable[[int, int], list[bytes]]
+# One way a font definition is read: its ToUnicode map's object number, or None for no map,
+# and whether the font is composite.
+_Way = tuple[int | None, bool]
+# A dictionary entry as readers may take it: the names its key can be; the names its value
+# can be, the object number it refers to, or None for any other value; and whether the
+# value is written as every reader takes it (``pdfpages._EXACT_REFERENCE``).
+_Entry = tuple[tuple[bytes, ...], tuple[bytes, ...] | int | None, bool]
 
 
 @dataclass
@@ -148,7 +198,8 @@ class PdfText:
     ``unmapped`` is set when a composite font has no readable map, a font the file never
     resolves shows two-byte codes, or a string is shown in a resource name that means more
     fonts than ``MAX_FONT_VARIANTS`` (or ``MAX_FONT_REFERENCES``), so a reading went undecoded.
-    A font object or ToUnicode map defined more than once counts once per distinct definition.
+    A font object or ToUnicode map defined more than once counts once per distinct definition,
+    and so does each way a font dictionary can be read; the reading with no map is not counted.
 
     ``blocks`` holds the joined strings of each text object (BT ... ET), cut where the text
     moves to a new paragraph, so each is scanned on its own. ``paragraphs`` holds the text of
@@ -201,7 +252,8 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     # nothing to tell apart, so the page tree is not read at all.
     pages = None
     if any(len(found) > 1 for found in fonts.values()):
-        pages = page_font_refs(data, objects, streams, budget, MAX_FONT_REFERENCES)
+        plain = reader.definitions.plain
+        pages = page_font_refs(data, objects, streams, budget, MAX_FONT_REFERENCES, plain)
     if pages:
         reader.prime(
             {ref for names in pages.values() if names for refs in names.values() for ref in refs},
@@ -437,7 +489,7 @@ class _FontReader:
         self._cmaps = cmaps
         self._check = budget.check
         # By object number: a reference's generation does not choose among the definitions.
-        self._cache: dict[int, list[Font]] = {}
+        self._cache: dict[int, _Readings] = {}
         self._undefined: dict[tuple[int, int], bool] = {}
         # Names that list the same references mean the same fonts, and a file can have
         # thousands of them.
@@ -451,7 +503,10 @@ class _FontReader:
 
         A further reading of one font (another definition of it, or a carried map) comes
         after every font's first, so it never displaces a font the name also means within
-        MAX_FONT_VARIANTS.
+        MAX_FONT_VARIANTS. The readings of a font's further ways (``_font``) come after all
+        of those, whichever font they belong to, so they never displace a reading the fonts
+        had before a definition was read more than one way. Past ``MAX_FURTHER_READINGS``
+        of them the name is given an unresolved reading.
         """
         refs = frozenset(refs)
         known = self._named.get(refs)
@@ -460,6 +515,8 @@ class _FontReader:
         keys = sorted(refs)
         found: list[Font] = []
         alternates: list[Font] = []
+        further: list[Font] = []
+        held: set[int] = set()
         if keys and all(self._is_undefined(key) for key in keys):
             # No reference has a font under its own generation. A reader that compares
             # generations (pdf.js) then has no font and shows the string in a fallback one.
@@ -474,7 +531,19 @@ class _FontReader:
             if readings and readings[0] not in found:
                 found.append(readings[0])
             alternates.extend(each for each in readings[1:] if each not in alternates)
+            # Fonts that share a way share its reading, the very object: it is listed once.
+            for each in readings.further:
+                if id(each) not in held:
+                    held.add(id(each))
+                    further.append(each)
         found.extend(each for each in alternates if each not in found)
+        # A reading that decodes nothing takes no place before one that decodes.
+        further.sort(key=lambda each: each.unreadable)
+        if len(further) > MAX_FURTHER_READINGS:
+            further[MAX_FURTHER_READINGS:] = [Font(True, None, (2,))]
+        for each in further:
+            if not any(_same_text(each, have) for have in found):
+                found.append(each)
         self._named[refs] = tuple(found)
         return found
 
@@ -502,7 +571,8 @@ class _Definitions:
     them replaced by the file's last when there are more. The lookup adds the bodies only it
     has: its own definitions under each generation a reference names, and object-stream
     members, which it returns for generation 0. A body is the lookup's window; ``to_unicode``
-    reads a raw definition to its ``endobj``.
+    reads a raw definition to its ``endobj``, and ``ways`` reads a definition's own dictionary
+    to its closing bracket.
 
     With ``looks``, only the bodies it accepts are returned, ordered for a caller that decodes
     a few of them. First comes the one a generation-exact lookup reads under each generation a
@@ -516,6 +586,7 @@ class _Definitions:
     def __init__(self, data: bytes, objects: Lookup, budget: Budget) -> None:
         self._data = data
         self._objects = objects
+        self._budget = budget
         self._check = budget.check
         self._starts: dict[int, list[tuple[int, int]]] = {}
         self._complete: dict[int, bool] = {}
@@ -523,6 +594,13 @@ class _Definitions:
         self._named: dict[int, set[int]] = {}
         self._long: dict[int, re.Match[bytes] | None] = {}
         self._read = 0
+        # Bytes of font dictionaries read token by token (MIN_FONT_DICTIONARY_BYTES).
+        self._lexed = 0
+        # Bytes of them read with the lenient lexer (MAX_LOOSE_FONT_BYTES).
+        self._loose = 0
+        # Whether every reader finds this file's objects in the same places. It is asked only
+        # when a font's own dictionary and the window after its header read differently.
+        self.plain = PlainFile(data, objects, budget)
         # Set by ``_fonts`` when a /Font resource dictionary has definitions that were not read.
         self.resources_unread = False
 
@@ -621,6 +699,288 @@ class _Definitions:
             self._long[start] = _TO_UNICODE.search(self._data, start, end)
         return self._long[start], True
 
+    def ways(self, body: bytes, start: int | None) -> tuple[list[_Way], bool]:
+        """How one definition can be read, and whether all of it was read: False when an
+        allowance ran out or the definition has more ways than ``MAX_FONT_WAYS``.
+
+        The window after a header runs into the objects that follow, so its first
+        ``/ToUnicode`` or ``/Type0`` can belong to the next font, or sit in a string, a
+        comment, or a nested dictionary of this one. That reading comes first wherever a
+        reader could give it: poppler reads on into the next object when a dictionary's
+        ``>>`` is missing, PDFium reads a string's bytes as tokens where a key belongs, and
+        a cross-reference entry can send a reader to the next object's header. After it come
+        the readings of the definition's own dictionary, one for each value a repeated key
+        has (``_ways``), so a font with no map of its own is also read with none.
+
+        The window's map is dropped only when the dictionary is one plainly written value
+        whose reading is settled (``_own``) and the file is written plainly throughout
+        (``PlainFile``). Every reader then finds the same dictionary at the same place, and
+        nothing outside it is part of the font. The window's word that the font is composite
+        is kept for each map the font itself names: a map with no codespace range is read by
+        the font's kind, and PDFium and poppler look a simple font's codes up in one written
+        for two-byte codes, which the composite reading decodes when the string is two-byte.
+
+        What is dropped is a map from outside the dictionary, never the reading with no
+        map. Where the search found no map and the dictionary names one, the key is written
+        as the search does not read it (a comment before its value, or bytes that end the
+        search early), and a reader may not read it either, so the font is read both ways.
+
+        One font is not read with none beside the window's map: a composite font whose
+        dictionary names no map. It keeps the window's reading alone, as it was read before
+        its dictionary was. The reading with no map decodes nothing, so the text would be
+        reported as unmapped, and that report would be new on ordinary documents a tool
+        rewrote: pypdf and pdfseparate write a font of reportlab's Adobe CJK set, which has
+        a predefined CMap and no map, before a font that has one. Such a font standing
+        alone is reported; beside a map it is open in the detection backlog as B8.
+        """
+        composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
+        mapping = _TO_UNICODE.search(body)
+        read = True
+        if mapping is None and start is not None and len(body) >= _LOOKUP_WINDOW:
+            # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
+            # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
+            mapping, read = self.to_unicode(start)
+        wide: _Way = (None if mapping is None else int(mapping.group(1)), composite)
+        if wide == (None, False):
+            # The usual font with no map, and every object that is not a font: when nothing
+            # before its ``endobj`` could spell a map or a composite font, its own dictionary
+            # reads the same and is not parsed. A member's body is its own place already.
+            end = _ENDOBJ.search(body) if start is not None else None
+            stop = len(body) if start is None else -1 if end is None else end.start()
+            if stop >= 0 and _FONT_CUES.search(body, 0, stop) is None:
+                return [wide], read
+        if self._lexed > max(MIN_FONT_DICTIONARY_BYTES, len(self._data) // 2):
+            return [wide], False
+        self._check()
+        own, sure, more = self._own(body, start)
+        if own is None:
+            return [wide], read and not more
+        if wide in own:
+            return [wide, *(way for way in own if way != wide)], not more
+        if wide[0] is not None and own == [(None, True)]:
+            # A composite font that names no map, with a map in the bytes after its header:
+            # it keeps that one reading. With the reading that has no map beside it, its
+            # text would be reported as unmapped, which is new on merged benign documents
+            # (backlog B8, open).
+            return [wide], read and not more
+        both = [wide, *own]
+        if sure and (wide[0] is not None or all(each is None for each, _ in own)):
+            kept = [(each, True) for each, _ in own if each is not None] if wide[1] else []
+            alone = list(dict.fromkeys([*(way for way in kept if way == wide), *own, *kept]))
+            # The file is read for its layout only when that decides something.
+            if alone == both or self.plain.get() is not None:
+                return alone, not more
+        return both, read and not more
+
+    def _own(self, body: bytes, start: int | None) -> tuple[list[_Way] | None, bool, bool]:
+        """The ways readers take the definition's own dictionary (``_ways``), whether that
+        settles how the font is read, and whether there are more ways than were read. The
+        ways are None when the definition does not open with a dictionary, its end was not
+        reached, or the allowance for lenient reading is spent.
+
+        It is settled when the dictionary is written plainly (``plain_dictionary``), no
+        ``#`` escape is in a key or in a /Subtype or /Encoding value, is one readers do not
+        all decode alike, or spells a byte outside printable ASCII (``_ODD_ESCAPE``), and
+        ``_ways`` finds a simple font this reader decodes as readers do. Anything else that
+        is plain is some readers' reading and not every reader's, and a dictionary that is
+        not plain is read with the lenient lexer.
+        """
+        if start is None:
+            source, begin, stop = body, 0, len(body)
+        else:
+            # A dictionary longer than the window is read to its end while the allowance for
+            # long font objects lasts, and inside the window after that.
+            room = _MAX_OBJECT_BYTES if self._read <= MAX_FONT_OBJECT_BYTES else len(body)
+            source, begin, stop = self._data, start, min(len(self._data), start + room)
+        entries, end = plain_dictionary(source, begin, stop, self._budget)
+        self._spend(end - begin)
+        if entries is not None:
+            sure = source.find(b"#", begin, end) < 0 or not (
+                _ODD_ESCAPE.search(source, begin, end)
+                or any(b"#" in key for key, _, _ in entries)
+                or any(
+                    isinstance(value, bytes) and b"#" in value
+                    for key, value, _ in entries
+                    if key in (b"/Subtype", b"/Encoding")
+                )
+            )
+            ways, more, settled = _ways(
+                (_spellings(key), _spellings(value) if isinstance(value, bytes) else value, exact)
+                for key, value, exact in entries
+            )
+            return ways, sure and settled, more
+        if self._loose > MAX_LOOSE_FONT_BYTES:
+            return None, False, True
+        view = body if start is None else memoryview(self._data)[start:stop]
+        tokens, used, short = _loose_dictionary(view, self._budget)
+        self._spend(used)
+        self._loose += used
+        if tokens is None or short:
+            # Not a dictionary, or one whose end was not reached: its keys are not known.
+            return None, False, False
+        # The lenient lexer drops comments, and a comment inside a reference (``9 %c`` and
+        # then ``0 R`` on the next line) leaves a number to pypdf and a reference to the
+        # others. With a ``%`` anywhere in the dictionary no reference is one every reader
+        # takes, so a font that names a map there is read with none as well.
+        first = start or 0
+        noted = (body if start is None else self._data).find(b"%", first, first + used) >= 0
+        ways, more, _ = _ways(
+            (_cut(key), _cut(value) if isinstance(value, bytes) else value, exact and not noted)
+            for key, value, exact in _loose_entries(tokens)
+        )
+        return ways, False, more
+
+    def _spend(self, count: int) -> None:
+        self._lexed += count
+        if count > _PDF_VALUE_WINDOW:
+            # A long font object, counted as ``to_unicode`` counts one.
+            self._read += count
+
+
+def _spellings(name: bytes) -> tuple[bytes, ...]:
+    """The names readers make of one written with ``#`` escapes.
+
+    Every reader decodes ``#`` and two hex digits. poppler then ends the name at a decoded
+    NUL, so ``/ToUnicode#00x`` is its /ToUnicode. pdfminer.six drops a ``#`` that no hex
+    digit follows and reads one digit as that digit's byte, so ``/ToUnicode#`` is its
+    /ToUnicode.
+    """
+    if b"#" not in name:
+        return (name,)
+    decoded = _ESCAPE.sub(_escaped, name)
+    return tuple(dict.fromkeys((decoded, *_cut(decoded), _LOOSE_ESCAPE.sub(_escaped, name))))
+
+
+def _escaped(match: re.Match[bytes]) -> bytes:
+    return bytes((int(match.group(1), 16),)) if match.group(1) else b""
+
+
+def _cut(name: bytes) -> tuple[bytes, ...]:
+    """A name the lenient lexer already unescaped, and as poppler cuts it at a NUL."""
+    return tuple(dict.fromkeys((name, name.split(b"\x00", 1)[0])))
+
+
+def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
+    """Every way readers take one font dictionary, the likeliest first; whether there are
+    more than ``MAX_FONT_WAYS``; and whether the dictionary alone settles how readers show
+    the font's text.
+
+    A reader keeps one value of a key that is written more than once: pypdf the first,
+    PDFium and pdfminer.six the last, poppler the last in a dictionary of fewer than 32
+    entries and, where it sorts a longer one, whichever the sort leaves first. So every
+    /ToUnicode value is a map the font may be read through, in the order of ``_likeliest``,
+    and a value that is not a reference (``null``) is the font with no map. The font is
+    composite when its /Subtype is /Type0 or its /Encoding an Identity CMap, as each
+    repeat of those keys has it. A key or value only some readers take for one of these
+    names (``_spellings``) counts both ways, and so does a /ToUnicode value that is not
+    written as every reader takes a reference (``10 0R``, which PDFium and pypdf read as a
+    number, or more digits than the search of the window reads): the font is read through
+    that map and with none, as it was read before its dictionary was.
+
+    The dictionary settles the reading of a simple font: each /Subtype it has is a name
+    other than /Type0, and it has one. pdf.js looks for a composite font's map in its
+    descendant font's dictionary before the font's own, so a composite font's reading is
+    not settled here. A simple font with no map is settled only when this reader decodes
+    its bytes as readers do: its /Encoding is /WinAnsiEncoding or /MacRomanEncoding, or it
+    has neither an /Encoding nor a /FontDescriptor, which is a standard font. A
+    /Differences array or a font program's own encoding can show other text.
+    """
+    maps: list[int | None] = []
+    type0: list[bool] = []
+    identity: list[bool] = []
+    unsure = False
+    named = latin = True
+    encoded = described = False
+    for keys, value, exact in entries:
+        names = value if isinstance(value, tuple) else ()
+        if b"/ToUnicode" in keys:
+            maps.append(value if isinstance(value, int) else None)
+            unsure = unsure or len(keys) > 1 or not exact
+        if b"/Subtype" in keys:
+            named = named and bool(names)
+            type0.extend(dict.fromkeys(name == b"/Type0" for name in names) or [False])
+            if len(keys) > 1:
+                type0.append(False)
+        if b"/Encoding" in keys:
+            encoded = True
+            latin = latin and bool(names) and all(name in _LATIN_ENCODINGS for name in names)
+            identity.extend(dict.fromkeys(name in _IDENTITY_NAMES for name in names) or [False])
+            if len(keys) > 1:
+                identity.append(False)
+        if b"/FontDescriptor" in keys:
+            described = True
+    if unsure or not maps:
+        # No /ToUnicode key, or one that only some readers take for it.
+        maps.append(None)
+    # A key can be written any number of times: each list is cut to its distinct values, in
+    # the order of ``_likeliest``, before any two are combined.
+    kinds = list(dict.fromkeys(_likeliest(type0 or [False])))
+    codes = list(dict.fromkeys(_likeliest(identity or [False])))
+    composites = list(dict.fromkeys(a or b for a in kinds for b in codes))
+    ways = list(
+        dict.fromkeys(
+            (each, composite)
+            for each in dict.fromkeys(_likeliest(maps))
+            for composite in composites
+        )
+    )
+    simple = bool(type0) and named and composites == [False]
+    decoded = None not in maps or (latin if encoded else not described)
+    return ways[:MAX_FONT_WAYS], len(ways) > MAX_FONT_WAYS, simple and decoded
+
+
+def _loose_dictionary(
+    source: bytes | memoryview, budget: Budget
+) -> tuple[list[bytes] | None, int, bool]:
+    """The tokens of the dictionary ``source`` opens with, through the bracket that closes
+    it, as the lenient lexer reads them; how many bytes that took; and whether the bytes
+    ended first. The tokens are None when ``source`` does not open with a dictionary. A
+    dictionary that ``endobj``, ``stream``, or the next header's ``obj`` cuts off ends there.
+    A string is listed as ``()``: no key is read from one.
+    """
+    # The annotation reader imports this module.
+    from yara_gate.pdfannotations import _tokens
+
+    tokens: list[bytes] = []
+    depth = position = 0
+    # The lexer only indexes, slices, and matches its data, so a view of the file serves.
+    for token, position in _tokens(source, budget):  # type: ignore[arg-type]
+        if token in (b"endobj", b"stream", b"obj") or (not tokens and token != b"<<"):
+            return tokens or None, position, False
+        tokens.append(token if isinstance(token, bytes) else b"()")
+        if token in (b"<<", b"["):
+            depth += 1
+        elif token in (b">>", b"]"):
+            depth -= 1
+            if depth <= 0:
+                return tokens, position, False
+    return tokens or None, position, True
+
+
+def _loose_entries(tokens: list[bytes]) -> Iterator[tuple[bytes, bytes | int | None, bool]]:
+    """Each key of the dictionary ``tokens`` opens with; the name its value is, the object
+    number its value refers to, or None; and whether the value is written as every reader
+    takes it. A token that is not a name where a key belongs is skipped, as the lenient
+    readers skip it.
+
+    A reference with more digits than the search of the window reads (``_TO_UNICODE``) is
+    not, and its number is bounded before it is converted: a run of digits can be any
+    length, and Python refuses to convert one of more than 4,300.
+    """
+    index = 1
+    while index + 1 < len(tokens) and tokens[index] != b">>":
+        key, value = tokens[index], tokens[index + 1]
+        if not key.startswith(b"/"):
+            index += 1
+            continue
+        if _pdf_reference(tokens[index + 1 : index + 4]):
+            target = _pdf_header_key(value, tokens[index + 2])
+            exact = len(value) <= 10 and len(tokens[index + 2]) <= 5
+            yield key, None if target is None else target[0], exact
+        else:
+            yield key, value if value.startswith(b"/") else None, True
+        index = _pdf_value_end(tokens, index + 1)
+
 
 def _looks_like_a_font(body: bytes) -> bool:
     return b"/Font" in body or b"/Subtype" in body
@@ -640,7 +1000,15 @@ def _likeliest[T](definitions: Sequence[T]) -> list[T]:
     return [definitions[-1], definitions[0], *reversed(definitions[1:-1])]
 
 
-def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> list[Font]:
+class _Readings(list[Font]):
+    """One font's readings (``_font``), with the readings of its further ways kept apart."""
+
+    def __init__(self, readings: Iterable[Font], further: Iterable[Font] = ()) -> None:
+        super().__init__(readings)
+        self.further = list(further)
+
+
+def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> _Readings:
     """The font's readings: one for each definition of the object and of its ToUnicode map,
     then the second reading of each map that has an overflowing range. The readings of the
     definition under each generation a reference names, through the last definition of its
@@ -650,24 +1018,44 @@ def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> list[Font]:
     know which (see ``_Definitions``). Equal readings count once. A font with more readings
     than a string is decoded with, or more definitions than are read, also gets an unresolved
     reading, so text shown in it is reported as unmapped instead of passing unread.
+
+    A definition can itself be read more than one way (``_Definitions.ways``): a /ToUnicode
+    key written twice, or a map the window after the header holds and the font's own
+    dictionary does not. The readings above are those of each definition's first way. The
+    readings of the other ways are returned apart (``further``), for the caller to put after
+    every reading of every font a name means, so a further way never takes the place of a
+    reading a first way gives. Each further way's reading through the last definition of
+    its map comes first, then its others. One that decodes every string as an earlier
+    reading does (``_same_text``) is not a reading of its own. A way that definitions share
+    is read once, and a font with more than ``MAX_FONT_WAYS`` further ways, or more than
+    ``MAX_FURTHER_READINGS`` readings of them, also gets the unresolved reading: no string
+    is decoded through that many, and a font can be defined 64 times with keys of its own
+    in each. The unresolved reading decodes nothing, so it stands after the further
+    readings where there are any and takes no place among those decoded.
     """
     bodies, complete, exact = definitions(number, _looks_like_a_font)
     kept: list[Font] = []
     kept_carried: list[Font] = []
     first: list[Font] = []
     second: list[Font] = []
+    seen: set[_Way] = set()
+    lead: list[Font] = []
+    rest: list[Font] = []
     for index, (body, start) in enumerate(bodies):
         cmaps.check()
-        composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
-        mapping = _TO_UNICODE.search(body)
-        if mapping is None and start is not None and len(body) >= _LOOKUP_WINDOW:
-            # The object lookup returns a 4 KB window; a Type0 font that embeds its descendant
-            # font and a long /W widths array puts /ToUnicode past it. Read the whole object.
-            mapping, read = definitions.to_unicode(start)
-            complete = complete and read
-        mapped, carried, likeliest = cmaps.fonts(
-            None if mapping is None else int(mapping.group(1)), composite
-        )
+        ways, read = definitions.ways(body, start)
+        complete = complete and read
+        for way in ways[1:]:
+            if way in seen:
+                continue
+            if len(seen) >= MAX_FONT_WAYS:
+                complete = False
+                break
+            seen.add(way)
+            mapped, carried, likeliest = cmaps.fonts(*way)
+            lead.extend(likeliest[:1])
+            rest.extend((*mapped, *likeliest[1:], *carried))
+        mapped, carried, likeliest = cmaps.fonts(*ways[0])
         if index < exact:
             # A definition under a generation a reference names, read through the last
             # definition of its map: the reading a lookup that takes one of each gives. Its
@@ -681,12 +1069,41 @@ def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> list[Font]:
     found = kept + [each for each in kept_carried if each not in kept]
     found += [each for each in first if each not in found]
     found += [each for each in second if each not in found]
+    further: list[Font] = []
+    held: set[int] = set()
+    for each in (*lead, *rest):
+        if id(each) in held:
+            continue
+        if len(held) >= MAX_FURTHER_READINGS:
+            complete = False
+            break
+        held.add(id(each))
+        if not any(_same_text(each, have) for have in (*found, *further)):
+            further.append(each)
     if len(found) > MAX_FONT_VARIANTS or not complete:
         found = found[:MAX_FONT_VARIANTS]
         unresolved = Font(True, None, (2,))
-        if unresolved not in found:
-            found.append(unresolved)
-    return found
+        if unresolved not in found and unresolved not in further:
+            (further if further else found).append(unresolved)
+    return _Readings(found, further)
+
+
+# A simple font with no map, read as WinAnsi bytes.
+_WINANSI = Font(False)
+
+
+def _same_text(one: Font, other: Font) -> bool:
+    """True when two readings are known to decode every string alike: both have no map and
+    are the same kind of font, or they share one map, the very object, and its code
+    lengths, where being composite changes nothing.
+
+    Two maps are never compared entry by entry here. A file can name thousands of fonts and
+    a font several further ways in a few bytes each, so a walk of two maps for each pair
+    would be most of a scan; two maps that happen to be equal are two readings.
+    """
+    if one.cmap is not other.cmap or one.lengths != other.lengths or one.missing != other.missing:
+        return False
+    return bool(one.cmap) or one.composite == other.composite
 
 
 _ParsedCmap = tuple[dict[bytes, str], tuple[int, ...], dict[bytes, str]]
@@ -966,6 +1383,7 @@ class _Paragraphs:
         self.unreadable = False
         self.missing = False
         self.limit = MAX_FONT_VARIANTS
+        self.winansi = False
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -984,6 +1402,7 @@ class _Paragraphs:
             self.missing = not fonts or any(font.missing for font in variants)
             # The no-font reading is one WinAnsi pass and does not take a font's place.
             self.limit = MAX_FONT_VARIANTS + (self.missing and bool(fonts))
+            self.winansi = _WINANSI in variants[self.limit :]
         limit = self.limit
         if self.unreadable:
             self.result.unmapped = True
@@ -995,8 +1414,14 @@ class _Paragraphs:
             limit = MAX_FONT_VARIANTS
             if not variants:
                 return None
+        shown = variants[:limit]
+        if self.winansi and _WINANSI not in shown:
+            # Nor does the reading of a font with no map: every such font a name means
+            # shares it, and it is what a font read through its own dictionary adds beside
+            # a map the bytes after it lent it, so it is decoded wherever it stands.
+            shown.append(_WINANSI)
         if (
-            len(variants) > limit
+            len(variants) > len(shown)
             and not self.result.unmapped
             and any(isinstance(item, bytes) and item for item in strings)
         ):
@@ -1006,7 +1431,7 @@ class _Paragraphs:
         printed = False
         check = self.budget.check
         used = self.result.decoded_chars
-        for font in variants[:limit]:
+        for font in shown:
             parts: list[str] = []
             for item in strings:
                 if isinstance(item, bytes):

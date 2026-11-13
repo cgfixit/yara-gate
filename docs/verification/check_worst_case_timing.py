@@ -142,6 +142,158 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         "xml entity expansion exceeds 1MB",
     )
+    # The Office readers by content. A part under no usual name whose root tag never closes:
+    # the root is looked for in the first 64 KiB and then once in the whole part.
+    word = b'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    drawing = b'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    slide = b'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+    yield (
+        "ooxml-root-unclosed.zip",
+        _stored("word/body2.xml", b"<w:document " + word + b" ", b'a="b" ', b""),
+        None,
+    )
+    # A file that is one long prolog: every comment is stepped over once, and no root follows.
+    yield "xml-prolog-comments.xml", _filled(b'<?xml version="1.0"?>', b"<!-- a -->"), None
+    # Every element under a prefix a writer chose, bound on the root: each tag is moved onto
+    # the usual prefix.
+    yield (
+        "ooxml-other-prefix.zip",
+        _stored(
+            "word/document.xml",
+            b"<x:document " + word.replace(b"xmlns:w", b"xmlns:x") + b"><x:body><x:p>",
+            b"<x:r><x:t>a</x:t></x:r>",
+            b"</x:p></x:body></x:document>",
+        ),
+        None,
+    )
+    # A namespace declared on every run: each one opens and closes a scope.
+    yield (
+        "ooxml-xmlns-every-run.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body><w:p>",
+            b"<x:r " + word.replace(b"xmlns:w", b"xmlns:x") + b"><x:t>a</x:t></x:r>",
+            b"</w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # The same declaration on elements that never close: the scope cap ends the scan.
+    yield (
+        "ooxml-namespace-scopes.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body>",
+            b'<w:p xmlns:w="urn:example:other">',
+            b"</w:body></w:document>",
+        ),
+        "ooxml namespace scopes exceed 256",
+    )
+    # Nothing but DrawingML line breaks, in a hidden shape: each is a new line in the joined
+    # text and in the hidden piece, and both keep their earlier reading without it.
+    yield (
+        "ooxml-drawing-breaks.zip",
+        _stored(
+            "ppt/slides/slide1.xml",
+            b"<p:sld " + drawing + b" " + slide + b'><p:sp><p:cNvPr hidden="1"/><p:txBody>'
+            b"<a:p><a:r><a:t>a</a:t></a:r>",
+            b"<a:br/>",
+            b"<a:r><a:t>b</a:t></a:r></a:p></p:txBody></p:sp></p:sld>",
+        ),
+        None,
+    )
+    # End tags padded with white space that never reach their ">".
+    yield (
+        "ooxml-padded-end-tags.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b"><w:body><w:p>",
+            b"<w:t>a</w:t \n",
+            b"</w:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # One text tag with megabytes of attribute, then a second run.
+    yield (
+        "ooxml-long-attribute.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document " + word + b'><w:body><w:p><w:r><w:t a="',
+            b"b ",
+            b'">c</w:t></w:r><w:r><w:t>d</w:t></w:r></w:p></w:body></w:document>',
+        ),
+        None,
+    )
+    # A first tag that holds "xmlns" and then one run of name characters, in a file that is no
+    # Office part: every scanned unit's root tag is read for its namespace, one name at a time.
+    yield "xml-root-name-run.xml", _filled(b"<a xmlns ", b"b")[:-1] + b">", None
+    # The same run in a tag inside a body whose prefixes take the exact pass.
+    yield (
+        "ooxml-tag-name-run.zip",
+        _stored(
+            "word/document.xml",
+            b"<w:document "
+            + word
+            + b"><w:body><x:p "
+            + word.replace(b"xmlns:w", b"xmlns:x")
+            + b" xmlns ",
+            b"b",
+            b"><x:r><x:t>a</x:t></x:r><x:r><x:t>b</x:t></x:r></x:p></w:body></w:document>",
+        ),
+        None,
+    )
+    # A DOCTYPE that gives one element as many namespace declarations by default as a part
+    # may have, and that element opened and closed to the end: each pair binds and restores
+    # them all.
+    defaults = b"".join(b'xmlns:p%d CDATA "u" ' % number for number in range(8))
+    yield (
+        "ooxml-doctype-namespaces.zip",
+        _stored(
+            "word/document.xml",
+            b"<!DOCTYPE w:document [<!ATTLIST e "
+            + defaults
+            + b">]><w:document "
+            + word
+            + b"><w:body>",
+            b"<e></e>",
+            b"</w:body></w:document>",
+        ),
+        None,
+    )
+    # A worksheet as the Open XML SDK writes it, every SpreadsheetML element under x:. The
+    # prefix is moved once for the part and the hidden-text reader reads it once.
+    sheet = b'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    yield (
+        "ooxml-sdk-prefix.zip",
+        _stored(
+            "xl/worksheets/sheet1.xml",
+            b"<x:worksheet " + sheet + b'><x:sheetViews><x:sheetView showGridLines="1"/>'
+            b"</x:sheetViews><x:sheetData>",
+            b'<x:row r="1"><x:c r="A1" s="1" t="s"><x:v>1</x:v></x:c>'
+            b'<x:c r="B1" s="2"><x:v>2.5</x:v></x:c></x:row>',
+            b"</x:sheetData></x:worksheet>",
+        ),
+        None,
+    )
+    # Hidden runs in a part that is a document by its name and a slide by its root, half of
+    # them under a second prefix: two vocabularies, each read resolved and as written.
+    yield (
+        "ooxml-two-vocabularies.zip",
+        _stored(
+            "word/document.xml",
+            b"<p:sld "
+            + drawing
+            + b" "
+            + slide
+            + b" "
+            + word
+            + b" "
+            + word.replace(b"xmlns:w", b"xmlns:x")
+            + b">",
+            b"<w:r><w:rPr><w:vanish/></w:rPr><w:t>a</w:t></w:r><x:r><x:t>b</x:t></x:r>",
+            b"</p:sld>",
+        ),
+        None,
+    )
     odf = (
         b'<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office'
         b':1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body>'
@@ -294,6 +446,16 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts),
         None,
     )
+    # The same name with a font that has no map in place of the last of the 64: the reading
+    # with no map is decoded beside the four the cap allows, so every string is decoded
+    # five times.
+    plain = b"289 0 obj<</Font<</F1 290 0 R>>>>endobj\n"
+    plain += b"290 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    yield (
+        "pdf-font-readings-winansi.pdf",
+        _content_pdf(b"BT /F1 12 Tf ", b"<0001> Tj ", fonts[: fonts.rindex(b"289 0 obj")] + plain),
+        None,
+    )
     # One font object defined until the file is full, over a ToUnicode map defined 1,900
     # times: 64 definitions of the font are read, each map definition is parsed once, and the
     # definitions past the cap make the text unmapped (2026-11-10-pdf-font-definitions.md).
@@ -306,6 +468,73 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     maps = b"7 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body)
     font = b"6 0 obj<</Type/Font/Subtype/Type0/Encoding/Identity-H/ToUnicode 7 0 R>>endobj\n"
     yield "pdf-font-definitions.pdf", _filled(page + maps * 1900, font), None
+    # Inputs for the reading of a font's own dictionary. Each font is named by a resource
+    # dictionary of its own, so every one is read, and the page shows text in the first.
+    shown = (
+        b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources 1000007 0 R"
+        b"/Contents 4 0 R>>endobj\n4 0 obj<</Length 34>>stream\n"
+        b"BT /F7 12 Tf 72 700 Td (Hi) Tj ET\nendstream endobj\n"
+    )
+
+    def fonts(entries: Callable[[int], bytes]) -> bytes:
+        def named(n: int) -> bytes:
+            return (
+                b"%d 0 obj<</Font<</F%d %d 0 R>>>>endobj\n" % (1000000 + n, n, n)
+                + b"%d 0 obj<</Type/Font" % n
+                + entries(n)
+                + b">>endobj\n"
+            )
+
+        return _numbered(shown, named)
+
+    # First, fonts that each write /ToUnicode fifty times: more ways than are kept, so the
+    # text is unmapped. Second, fonts that fill the 4 KB after their header with widths, so
+    # the allowance for reading dictionaries token by token is spent; the first has no map
+    # and stands before one that has, so the file's layout is read too. Third, the same
+    # fonts with a form feed, which only the slower lenient lexer reads, until its own
+    # allowance is spent.
+    keys = b"".join(b"/ToUnicode %d 0 R" % (5000 + index) for index in range(50))
+    widths = b"/W[" + b"10 " * 1320 + b"]"
+    yield "pdf-font-keys.pdf", fonts(lambda n: b"/Subtype/Type1" + keys), None
+    yield (
+        "pdf-font-windows.pdf",
+        fonts(lambda n: b"/Subtype/Type1" + (b"" if n == 7 else b"/ToUnicode 5 0 R" + widths)),
+        None,
+    )
+    yield "pdf-font-lenient.pdf", fonts(lambda n: b"\x0c/Subtype/Type1" + widths + keys), None
+
+    # Fonts defined 64 times each. Every definition has the same first key and four more
+    # of its own, over 255 maps of 2,040 entries that differ in their last entry only, so
+    # comparing two of them walks both. A way that definitions share is read once and a
+    # font's further ways are bounded: collected and compared pair by pair, twelve such
+    # fonts spent the 30 s scan deadline.
+    def ranged(last: int) -> bytes:
+        body = (
+            b"begincmap 1 begincodespacerange <0000> <FFFF> endcodespacerange "
+            b"1 beginbfrange <0000> <07F6> <0041> endbfrange "
+            b"1 beginbfchar <FFFE> <%04X> endbfchar endcmap" % last
+        )
+        return b"<</Length %d>>stream\n%s\nendstream endobj\n" % (len(body), body)
+
+    mapped = shown.replace(b"/Length 34", b"/Length 40").replace(b"(Hi)", b"<00010002>")
+    mapped += b"500000 0 obj" + ranged(0x41)
+    mapped += b"".join(b"%d 0 obj" % (500001 + m) + ranged(0x1000 + m) for m in range(255))
+
+    def redefined(n: int) -> bytes:
+        return b"%d 0 obj<</Font<</F%d %d 0 R>>>>endobj\n" % (1000000 + n, n, n) + b"".join(
+            b"%d 0 obj<</Type/Font/Subtype/Type1/ToUnicode 500000 0 R" % n
+            + b"".join(b"/ToUnicode %d 0 R" % (500001 + (4 * d + k) % 255) for k in range(4))
+            + b">>endobj\n"
+            for d in range(64)
+        )
+
+    yield "pdf-font-shared-ways.pdf", _numbered(mapped, redefined), None
+    # Font dictionaries that write /Subtype and /Encoding 24,000 times each, under the
+    # annotation reader's limit of tokens in one object. The repeats of the two keys were
+    # combined pair by pair in one expression, which no deadline check interrupts: 20 s for
+    # one such font.
+    repeats = b"/Subtype /A\n" * 24_000 + b"/Encoding /B\n" * 24_000
+    yield "pdf-font-repeated-keys.pdf", fonts(lambda n: b"/BaseFont/Helvetica" + repeats), None
     # One style attribute of 4 MiB whose every declaration opens a parenthesis: the style is
     # split once, without rescanning from each opener.
     prefix, suffix = b'<!doctype html><html><body><p style="', b'">x</p></body></html>'
@@ -319,6 +548,92 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         prefix + b" " * (SIZE - len(prefix) - len(suffix)) + suffix,
         None,
     )
+    # Mail. A header block is read for 64 KiB and has to end there before the mail library
+    # parses it, so a block that never ends costs two bounded passes whatever the file's size:
+    # 55,000 header lines, then one Content-Type folded over 600,000 lines.
+    mail = b"From: a@example.com\r\nSubject: Report\r\nMIME-Version: 1.0\r\n"
+    yield (
+        "mail-header-block.eml",
+        _filled(mail + b"Content-Type: text/html\r\n", b"X-Trace: " + b"a" * 66 + b"\r\n"),
+        None,
+    )
+    yield (
+        "mail-folded-lines.eml",
+        _filled(mail + b"Content-Type: text/html;\r\n", b" a=b;\r\n"),
+        None,
+    )
+    # The most header a newly opened message can have: one Content-Type folded to the end of
+    # the window, read once to open the message and once to read its part, then an HTML body.
+    opening = mail + b"Content-Type: text/html;\r\n"
+    folds = b" a=b;\r\n" * ((64 * 1024 - len(opening) - 16) // 7)
+    yield (
+        "mail-folded-window.eml",
+        _filled(opening + folds + b" x=y\r\n\r\n<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # A part whose transfer-encoding value opens comments to the end of a 4 MiB line: every
+    # parenthesis is one step forward, and the value is read once to its end.
+    opening = (
+        mail + b"Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n"
+        b"Content-Type: text/plain\r\nContent-Transfer-Encoding: "
+    )
+    closing = b"\r\n\r\nnotes\r\n--B--\r\n"
+    yield (
+        "mail-encoding-comment.eml",
+        opening + b"(" * (SIZE - len(opening) - len(closing)) + closing,
+        None,
+    )
+    # One HTML body with no transfer encoding, which is opened as a part and read as HTML: a
+    # single paragraph of 500,000 inline elements, beside the raw message.
+    yield (
+        "mail-html-tags.eml",
+        _filled(mail + b"Content-Type: text/html\r\n\r\n<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # The same body inside three such messages: a one-body message is opened once, and its
+    # body is not opened as another, so the page is decoded and read as HTML one time.
+    page = mail + b"Content-Type: text/html\r\n\r\n"
+    yield ("mail-nested-bodies.eml", _filled(page * 3 + b"<html><body><p>", b"<b>a</b>"), None)
+    # And in a legacy charset, where every level opened would transcode the text again.
+    cyrillic = mail + b"Content-Type: text/plain; charset=windows-1251\r\n\r\n"
+    words = "квартальные итоги пересмотрены\r\n".encode("cp1251")
+    yield ("mail-nested-charset.eml", _filled(cyrillic * 3, words), None)
+    # A header block of the shortest lines there are, filling the window, with no blank line
+    # before the HTML body: the block's end is found in one pass and the message is opened.
+    opening = mail + b"Content-Type: text/html\r\n"
+    lines = b"a:\r\n" * ((64 * 1024 - len(opening) - 64) // 4)
+    yield (
+        "mail-header-lines.eml",
+        _filled(opening + lines + b"<html><body><p>", b"<b>a</b>"),
+        None,
+    )
+    # The mail library reads a parameter in time quadratic in its header's length, and 60,000
+    # semicolons inside one quoted value are the worst of it. For a message opened for its
+    # one body the header block ends inside 64 KiB, and the parameters are read twice, for
+    # the body's name and for its charset.
+    yield (
+        "mail-quoted-parameter.eml",
+        _filled(mail + b'Content-Type: text/html; x="' + b";" * 60000 + b'"\r\n\r\n<p>', b"a"),
+        None,
+    )
+    # Python decodes punycode in quadratic time: 2 MiB is past the scan deadline. One 8bit
+    # body declared punycode is not opened, since punycode is not a charset. A quoted-printable
+    # body is a part, read through its declared codec, and for this codec only up to 16 KiB:
+    # a larger part is unread, which is incomplete.
+    words = b"quarterly totals revised "
+    opening = mail + b"Content-Type: text/plain; charset=punycode\r\n"
+    for name, encoding, token, reason in (
+        ("mail-punycode-body.eml", b"8bit", words, None),
+        (
+            "mail-punycode-part.eml",
+            b"quoted-printable",
+            words + b"=\r\n",
+            "archive unreadable or encrypted",
+        ),
+    ):
+        head = opening + b"Content-Transfer-Encoding: " + encoding + b"\r\n\r\n"
+        count, rest = divmod(SIZE - len(head) - 160001, len(token))
+        yield name, head + token * count + b"-" + b"a" * (160000 + rest), reason
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:
@@ -441,14 +756,30 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "notebook-lines.ipynb": "notebook-text",
         "ooxml-hidden-runs.zip": "ooxml-hidden-text",
         "ooxml-xml-comments.zip": "ooxml-text",
+        "ooxml-other-prefix.zip": "ooxml-text",
+        "ooxml-xmlns-every-run.zip": "ooxml-text",
+        "ooxml-drawing-breaks.zip": "ooxml-hidden-text",
+        "ooxml-long-attribute.zip": "ooxml-text",
+        "ooxml-tag-name-run.zip": "ooxml-text",
+        "ooxml-two-vocabularies.zip": "ooxml-hidden-text",
         "odf-spans.zip": "odf-text",
         "odf-unknown-elements.zip": "odf-text",
         "pdf-font-definitions.pdf": "pdf-text",
+        "pdf-font-keys.pdf": "pdf-text",
+        "pdf-font-lenient.pdf": "pdf-text",
         "pdf-font-readings.pdf": "pdf-text",
+        "pdf-font-readings-winansi.pdf": "pdf-text",
+        "pdf-font-repeated-keys.pdf": "pdf-text",
+        "pdf-font-shared-ways.pdf": "pdf-text",
+        "pdf-font-windows.pdf": "pdf-text",
         "pdf-page-fonts.pdf": "pdf-text",
         "pdf-page-references.pdf": "pdf-text",
         "pdf-hidden-stretch.pdf": "pdf-hidden-text",
         "pdf-white-areas.pdf": "pdf-hidden-text",
+        "mail-folded-window.eml": "html-text",
+        "mail-html-tags.eml": "html-text",
+        "mail-nested-bodies.eml": "html-text",
+        "mail-header-lines.eml": "html-text",
     }.get(name)
     if view is not None and not result.views_scanned.get(view):
         raise RuntimeError(f"{name}: required reader {view} did not run")

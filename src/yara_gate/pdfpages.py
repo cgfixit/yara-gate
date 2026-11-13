@@ -64,6 +64,11 @@ instead. With no table at all, readers rebuild one from the headers, and an obje
 member does not resolve. A name is given a stream's fonts only when every page that draws
 the stream lists it, as a reference to one font dictionary that resolves; any other name
 falls back to the union. A stream two pages draw gets both pages' fonts.
+
+``PlainFile`` is the first part of this, up to and including the object streams: whether
+the file is one whose objects every reader finds in the same places. The text reader asks it
+too, before it reads a font through the font's own dictionary alone
+(``pdftext._Definitions.ways``); ``plain_dictionary`` reads that dictionary by the rules above.
 """
 
 from __future__ import annotations
@@ -149,6 +154,14 @@ _HEADER_WINDOW = 64
 # The largest object number a file may use (ISO 32000-1 Annex C). A reader that keeps a
 # larger one in fewer bits would read another number.
 MAX_OBJECT_NUMBER = 8_388_607
+# A reference written as the text reader's own search reads one (``pdftext._TO_UNICODE``):
+# whitespace before the ``R``, and at most ten digits and five. ``_TOKEN`` reads more:
+# ``5 0R``, which poppler and pdfminer.six follow and PDFium and pypdf do not, and runs of
+# digits of any length, which readers convert or refuse each in its own way.
+_EXACT_REFERENCE = re.compile(rb"[0-9]{1,10}[\t\n\r ]++[0-9]{1,5}[\t\n\r ]++R")
+# One entry of a dictionary (``plain_dictionary``): its key, what its value is, and whether
+# the value is written as every reader takes it.
+Entry = tuple[bytes, bytes | int | None, bool]
 # A literal string longer than this is not stepped over. The annotation reader holds a file
 # with one as incomplete.
 MAX_STRING_BYTES = 1 << 20
@@ -217,36 +230,50 @@ class _Layout:
     found: _Found
 
 
-def _value(source: bytes, position: int, stop: int, item: _Object, found: _Found) -> int:
-    """The offset just past the one value at ``source[position:stop]``, or -1 when it is not
-    written plainly.
+def _value(
+    source: bytes,
+    position: int,
+    stop: int,
+    item: _Object,
+    found: _Found,
+    entries: list[tuple[bytes, re.Match[bytes]]] | None = None,
+) -> int:
+    """The offset just past the one value at ``source[position:stop]``, or a negative number
+    when it is not written plainly: ``~offset`` of where reading stopped.
 
     A dictionary's keys must be names and every container must close in order, so a literal
     string is only ever a value. A comment may follow anything but a number: after a number
     it could split a reference (``5 %c`` then ``0 R``), which some lexers join and the count
     of references would not see. Each reference is added to ``found``, and ``item`` is marked
-    when a name is /Contents or holds a ``#`` escape.
+    when a name is /Contents or holds a ``#`` escape. With ``entries``, each key of the
+    value's own dictionary is added to it with the first token of its value, in the order
+    written and repeats included.
     """
     # One entry per open container: 1 a dictionary before a key, 2 a dictionary before a
     # value, 3 an array.
     stack: list[int] = []
     match = _TOKEN.match
     number = False
+    # A key of the outermost dictionary whose value has not started.
+    key: bytes | None = None
     while True:
         token = match(source, position, stop)
         if token is None:
-            return -1
+            return ~position
         found.tokens += 1
         if not found.tokens & 4095:
             found.budget.check()
             if found.tokens > MAX_TOKENS:
-                return -1
+                return ~position
         position = token.end()
         kind = token.lastindex
         if kind == _NOTE:
             if number:
-                return -1
+                return ~position
             continue
+        if key is not None and entries is not None:
+            entries.append((key, token))
+            key = None
         number = kind == _ATOM
         top = stack[-1] if stack else 0
         if kind == _NAME:
@@ -257,31 +284,67 @@ def _value(source: bytes, position: int, stop: int, item: _Object, found: _Found
                 item.escaped = True
             if top == 1:
                 stack[-1] = 2
+                if entries is not None and len(stack) == 1:
+                    key = name
                 continue
         elif kind == _OPEN:
             if top == 1 or len(stack) >= MAX_DEPTH:
-                return -1
+                return ~position
             stack.append(1 if token.group(_OPEN) == b"<<" else 3)
             continue
         elif kind == _CLOSE:
             if top != (1 if token.group(_CLOSE) == b">>" else 3):
-                return -1
+                return ~position
             stack.pop()
         elif top == 1:
-            return -1
+            return ~position
         elif kind == _REFERENCE:
             target = _number(token.group(2))
             if target is None:
-                return -1
+                return ~position
             found.references.append(target)
         elif kind == _STRING:
-            position = _pdf_string_end(source, position, min(stop, position + MAX_STRING_BYTES))
+            limit = min(stop, position + MAX_STRING_BYTES)
+            position = _pdf_string_end(source, position, limit)
             if position < 0:
-                return -1
+                return ~limit
         if not stack:
             return position
         if stack[-1] == 2:
             stack[-1] = 1
+
+
+def plain_dictionary(
+    source: bytes, position: int, stop: int, budget: Budget
+) -> tuple[list[Entry] | None, int]:
+    """The entries of the dictionary written plainly at ``source[position:stop]``, and the
+    offset where reading stopped.
+
+    The entries are None when the bytes are not one plainly written value (see ``_value``) or
+    the value is not a dictionary. Each entry is a key as written; the name its value is, the
+    object number its value refers to, or None for any other value; and whether the value is
+    written as every reader takes it, which is False for a reference with no whitespace
+    before its ``R`` or with more digits than ``_EXACT_REFERENCE`` allows. Keys are in the
+    order written and a repeated key is listed each time: readers keep the first of them or
+    the last. Names are not unescaped; a caller for which a ``#`` matters looks for one.
+    """
+    entries: list[tuple[bytes, re.Match[bytes]]] = []
+    end = _value(source, position, stop, _Object(0, 0, position, source), _Found(budget), entries)
+    if end < 0 or _DICTIONARY.match(source, position, end) is None:
+        return None, end if end >= 0 else ~end
+    return [(key, *_entry(token)) for key, token in entries], end
+
+
+def _entry(token: re.Match[bytes]) -> tuple[bytes | int | None, bool]:
+    """What the first token of a dictionary value says, and whether it is written as every
+    reader takes it: a name, the object number of a reference, or None."""
+    if token.lastindex == _NAME:
+        return token.group(_NAME), True
+    if token.lastindex == _REFERENCE:
+        # The digits are bounded before they are converted: a run of zeros can be any length.
+        exact = _EXACT_REFERENCE.fullmatch(token.group(_REFERENCE)) is not None
+        return _number(token.group(2)), exact
+    return None, True
 
 
 def _number(digits: bytes) -> int | None:
@@ -574,28 +637,77 @@ class _Followed:
     walking: set[int] = field(default_factory=set)
 
 
+@dataclass
+class _Plain:
+    """A file every reader reads the same way: its layout, every definition of every object
+    number, and the object-stream members among them."""
+
+    layout: _Layout
+    index: _Index
+    members: list[_Object]
+
+
+class PlainFile:
+    """Whether a file is written plainly throughout, worked out on first use and once.
+
+    The page map and the font reader both narrow what is read, and both may do so only for
+    a file whose objects every reader finds in the same places: the cases the module
+    docstring lists, up to and including the object streams. ``objects`` is the file's
+    ``PdfObjects``; with anything else the object streams cannot be read, so the file never
+    counts as plain.
+    """
+
+    def __init__(self, data: bytes, objects: object, budget: Budget) -> None:
+        self._data = data
+        self._objects = objects
+        self._budget = budget
+        self._read = False
+        self._found: _Plain | None = None
+
+    def get(self) -> _Plain | None:
+        """The file's layout, or None when some reader may read the file another way."""
+        if not self._read:
+            self._found = self._plain()
+            self._read = True
+        return self._found
+
+    def _plain(self) -> _Plain | None:
+        data, objects, budget = self._data, self._objects, self._budget
+        if not isinstance(objects, PdfObjects) or not data.startswith(b"%PDF"):
+            return None
+        layout = _layout(data, objects, budget)
+        if layout is None or objects.opaque:
+            return None
+        agrees, usable = _listed(data, layout, objects, budget)
+        if not agrees:
+            return None
+        index = _Index(layout.objects, usable)
+        members = _members(objects, index, layout.found)
+        if members is None:
+            return None
+        return _Plain(layout, index, members)
+
+
 def page_font_refs(
     data: bytes,
     objects: object,
     decoded: list[PdfStream],
     budget: Budget,
     max_fonts: int,
+    plain: PlainFile | None = None,
 ) -> dict[int, StreamFonts | None] | None:
     """Content stream number -> the fonts its pages name, or None to use the union throughout.
 
     ``objects`` is the file's ``PdfObjects``; with anything else the object streams cannot be
     read, so the answer is None. ``decoded`` holds the streams the text reader decoded; the
     ones with text are the content it reads. A stream whose pages give one name more than
-    ``max_fonts`` fonts maps to None, so the union and its own cap apply.
+    ``max_fonts`` fonts maps to None, so the union and its own cap apply. ``plain`` is the
+    file's layout when the caller already holds it, so the file is read for it once.
     """
-    if not isinstance(objects, PdfObjects) or not data.startswith(b"%PDF"):
+    found = (plain or PlainFile(data, objects, budget)).get()
+    if found is None:
         return None
-    layout = _layout(data, objects, budget)
-    if layout is None or objects.opaque:
-        return None
-    agrees, usable = _listed(data, layout, objects, budget)
-    if not agrees:
-        return None
+    layout, index, members = found.layout, found.index, found.members
     streams: set[int] = set()
     for stream in decoded:
         if stream.text is None or stream.number is None:
@@ -603,10 +715,6 @@ def page_font_refs(
         if layout.streams.get(stream.offset) != stream.number:
             return None
         streams.add(stream.number)
-    index = _Index(layout.objects, usable)
-    members = _members(objects, index, layout.found)
-    if members is None:
-        return None
     followed = _Followed()
     # Merged in place: a stream many pages draw is updated per page, never copied.
     mapped: dict[int, dict[bytes, set[Ref]] | None] = {}

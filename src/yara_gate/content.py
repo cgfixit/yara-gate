@@ -3,11 +3,13 @@
 import base64
 import binascii
 import bz2
+import codecs
 import email
 import email.errors
 import email.header
 import email.message
 import email.policy
+import functools
 import gzip
 import html
 import io
@@ -22,8 +24,8 @@ import urllib.parse
 import zipfile
 import zlib
 from collections import deque
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
@@ -156,8 +158,11 @@ FOLD_DELETE = dict.fromkeys(
     code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)
 )
 
-# Office XML parts whose text a reader sees. Word splits a sentence across runs on any formatting or
-# proofing boundary, so the joined text is what the lexical rules need.
+# Office XML parts whose text a reader sees, by the name an office suite gives them. Word splits
+# a sentence across runs on any formatting or proofing boundary, so the joined text is what the
+# lexical rules need. A package may name a part anything ([Content_Types].xml and the
+# relationships say what it is), so a part these names do not know is read by its root element
+# (``_OOXML_ROOT_ROLE``).
 _OOXML_TEXT_PART = re.compile(
     r"(?i)^(word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml"
     r"|xl/sharedStrings\.xml|ppt/(slides|notesSlides)/[^/]+\.xml)$"
@@ -171,16 +176,25 @@ _OOXML_DRAWN_PART = re.compile(
     r"|(word|xl|ppt)/(charts/chart|diagrams/(data|drawing))[^/]*\.xml"
     r"|xl/drawings/drawing[^/]*\.xml|word/glossary/document\.xml)$"
 )
-# A text run, a paragraph or shared-string end, or a Word break or tab, in document order.
-# Attributes are bounded and possessive and never cross a "<": a run tag that does not close
-# costs one short attempt, where an open-ended ``[^>]*`` rescanned the rest of the part from
-# every such tag. ``plain_xml`` has already taken ">" out of attribute values.
+# A text run (its prefix and text), a paragraph or shared-string end, a Word or DrawingML
+# break, a Word tab, a phonetic run's start or end, or a paragraph or shared-string start, in
+# document order, after ``_office_prefixes`` has written every element of an Office namespace
+# under the prefix matched here. Attributes are possessive and
+# never cross a "<" or a ">": a run tag that does not close costs one attempt that ends at the
+# next tag, where an open-ended ``[^>]*`` rescanned the rest of the part from every such tag.
+# ``plain_xml`` has already taken ">" out of attribute values. An end tag may hold white space
+# before its ">" (XML 1.0, production 42), and every parser reads through it.
 _OOXML_TOKEN = re.compile(
-    rb"<(?:w:t|t|a:t)(?:\s[^<>]{0,4096}+)?>([^<]*+)</(?:w:t|t|a:t)>"
-    rb"|</(?:w:p|a:p|si)>"
-    rb"|<w:(?:br|cr)\b[^<>]{0,4096}+>"
-    rb"|<w:tab\b[^<>]{0,4096}+>"
+    rb"<((?:w:|a:)?)t(?:\s[^<>]*+)?>([^<]*+)</(?:w:|a:)?t\s*+>"
+    rb"|</(?:w:p|a:p|si)\s*+>"
+    rb"|<(?:w:(?:br|cr)|a:br)\b[^<>]*+>"
+    rb"|<w:tab\b[^<>]*+>"
+    rb"|<(/?)rPh\b[^<>]*+>"
+    rb"|<((?:w:|a:)p|si)(?=[\s/>])[^<>]*+>"
 )
+# Paragraphs open inside one another whose runs are told apart: a text box in a table cell in
+# a text box is four. Deeper ones are joined as they always were.
+_MAX_PARAGRAPH_NESTING = 64
 
 _PDF_STREAM = re.compile(rb"stream\r?\n")
 _PDF_END = re.compile(rb"\r?\n?endstream")
@@ -222,9 +236,10 @@ _PDF_CHUNK = 64 * 1024
 # A parsed PDF object: a token, an array, a dictionary keyed by decoded name, or a reference.
 type PdfValue = bytes | list[PdfValue] | dict[bytes, PdfValue] | tuple[int, int]
 
-# A mail message with a MIME body: header lines, a Content-Type, one more message header, and
-# either a multipart body or an encoded single part. A reader's mail client shows the decoded
-# parts, so they are scanned as members; the raw message is scanned as well.
+# A mail message: header lines, a Content-Type, and one more message header. It is opened when
+# a mail reader shows something other than its bytes: a multipart body, a body in a transfer
+# encoding, an HTML body, or a text body in a charset other than UTF-8. A reader's mail client
+# shows the decoded parts, so they are scanned as members; the raw message is scanned as well.
 _MIME_FIRST_LINE = re.compile(rb"\A(?:[A-Za-z][A-Za-z0-9-]*:[ \t]|From )")
 _MIME_HEADER_NAME = re.compile(rb"(?m)^([A-Za-z][A-Za-z0-9-]*):")
 _MIME_BLANK = re.compile(rb"\r?\n\r?\n")
@@ -233,10 +248,83 @@ _MIME_MESSAGE_HEADERS = frozenset(
     {b"mime-version", b"from", b"subject", b"message-id", b"received"}
 )
 _MIME_PART_SUFFIX = {"text/plain": ".txt", "text/html": ".html", "text/csv": ".csv"}
+# The header block is read this far. Relay, ARC, and DKIM headers put the Content-Type of
+# ordinary mail past 8 KiB, and a mail reader has no such limit.
+_MIME_HEADER_BYTES = 64 * 1024
+# The header block as Python's mail parser reads it: lines that start with a field name and a
+# colon, a ``From `` envelope line, or folding white space. It ends at the first other line,
+# which is the blank line (CRLF, LF, or CR alone) or, in a message with none, the body's first
+# line. Possessive, and a line that fails ends the match, so the window is read once.
+_MIME_HEADER_BLOCK = re.compile(rb"(?:(?:From |[!-9;-~]*:|[ \t])[^\r\n]*(?:\r\n?|\n|\Z))*+")
+# A field name at the start of a line, where a line may end with CR alone.
+_MIME_BLOCK_NAME = re.compile(rb"(?:\A|[\r\n])([a-z][a-z0-9-]*):")
+# A message whose first 8 KiB names a multipart body or an encoded part holds its base64 as
+# parts, which are decoded as members; ``text_views`` leaves the raw base64 runs to them.
+_MIME_PARTS_BYTES = 8192
+# The transfer encodings Python's email package decodes; a body under any other name is read
+# as written.
+_MIME_DECODED = frozenset({"base64", "quoted-printable", "x-uuencode", "uuencode", "uue", "x-uue"})
+# A Content-Transfer-Encoding token ends at white space or an RFC 2045 special character.
+_MIME_TOKEN = re.compile(r"[^ \t()<>@,;:\\\"/\[\]?=]*")
+# A media type past any comment, in quotes or not: ``text/html (x)`` and ``"text/html"``.
+_MIME_MEDIA_TYPE = re.compile(r"\"?([^ \t()<>@,;:\\\"/\[\]?=]+/[^ \t()<>@,;:\\\"/\[\]?=]+)")
+# Inside an RFC 5322 comment only these characters change where it ends.
+_MIME_COMMENT_MARK = re.compile(r"[()\\]")
+# The charsets a part is kept in: what the lexical rules read, and UTF-16, which a unit that
+# starts with a byte order mark is decoded from.
+_MIME_KEPT_CHARSETS = frozenset(
+    {"", "utf-8", "utf8", "us-ascii", "ascii", "utf-16", "utf-16le", "utf-16be"}
+)
+# Codecs whose text is already what the lexical rules read, and none.
+_MIME_UTF8_CODECS = frozenset({"", "utf-8", "ascii"})
+# Text codecs Python has that are not charsets. No mail client reads a body through one, so
+# none is a reason to open a message.
+_MIME_NOT_CHARSETS = frozenset(
+    {"punycode", "idna", "unicode-escape", "raw-unicode-escape", "undefined"}
+)
+# Python decodes punycode in quadratic time (256 KiB: 3 s). A part declared in it is read
+# through it up to this size; a larger one is unread, which is incomplete.
+_MIME_PUNYCODE_BYTES = 16 * 1024
+# The single-byte charsets that hold a directional mark (and windows-1256 the zero-width
+# joiners) as one byte. Ordinary Hebrew, Arabic, and Persian mail carries those marks. In
+# the message as written they are not the invisible characters the rules note; in a part
+# transcoded whole they would be, on mail whose text is ordinary. So ``_mime_newly_read``
+# transcodes without them: they have no width, and the words either side of one stay apart.
+_MIME_MARK_CODECS = frozenset({"cp1255", "cp1256", "iso8859-8"})
+_MIME_MARKS = dict.fromkeys((0x200C, 0x200D, 0x200E, 0x200F))
+# A unit that starts with a byte order mark and then does not decode makes the scan
+# incomplete, and Python's own mail generator writes such bodies (it joins the encoded lines
+# with ASCII line ends). ``_mime_members`` says what a part in one of these is read as.
+_MIME_WIDE_CODECS = ("utf-16", "utf-32")
 
 
 class ContentLimit(Exception):
     """Inspection did not cover all required content."""
+
+
+@dataclass(frozen=True)
+class _OfficeReadings:
+    """One part as the Office readers take it (``_office_readings``)."""
+
+    # Every element of an Office namespace under the prefix the readers' patterns match.
+    resolved: bytes
+    # The part as it is written, or None where that is the same bytes.
+    written: bytes | None
+    # True when the two differ only in SpreadsheetML elements moved from ``x:`` to no prefix.
+    moved_from_x_only: bool
+
+
+@dataclass
+class _OfficePart:
+    """What the Office readers worked out about one unit. Four readers ask about each unit in
+    turn; the part is resolved once and each of them reads the same bytes."""
+
+    name: str
+    # The unit's bytes are held, not their id, so the answer is never another part's.
+    data: bytes
+    roles: tuple[str, ...]
+    utf8: bytes | None = None
+    readings: _OfficeReadings | None = None
 
 
 @dataclass
@@ -244,6 +332,8 @@ class Budget:
     deadline: float
     expanded: int = 0
     members: int = 0
+    # The last part the Office readers looked at. It is kept until the next unit is asked about.
+    office_part: _OfficePart | None = field(default=None, repr=False, compare=False)
 
     def check(self) -> None:
         if time.monotonic() >= self.deadline:
@@ -277,6 +367,9 @@ class ContentUnit:
     data: bytes
     # Ordinals identify members without exposing their potentially sensitive names.
     member_path: tuple[str, ...] = ()
+    # True for the body of a mail message opened only for that body: the bytes the parent unit
+    # holds, read a second time, so a finding both readings share is reported once.
+    reread: bool = False
 
 
 # A bzip2 stream: the header, then the first block's magic or the empty-stream end marker.
@@ -302,10 +395,16 @@ def archive_kind(data: bytes) -> str | None:
         return "cpio"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
-    if _mime_message(data):
+    # A unit has one kind. A message that names its parts in its first 8 KiB is mail even with
+    # a zip archive appended. A message opened for longer headers or for its one body is the
+    # archive when one ends it: an unzip tool opens that archive whatever precedes it, and its
+    # members must not go unread because the bytes in front of them are also mail.
+    if _mime_parts_are_members(data):
         return "mime"
     if _trailing_zip(data):
         return "zip"
+    if _mime_message(data):
+        return "mime"
     return None
 
 
@@ -400,16 +499,195 @@ def _zip_spans(data: bytes, archive: zipfile.ZipFile) -> list[tuple[int, int]]:
     return spans
 
 
-def _mime_message(data: bytes) -> bool:
-    head = data[:8192]
+def _mime_headers(data: bytes) -> bytes | None:
+    """The header block in the first 8 KiB of a mail message, in lower case, or None.
+
+    None when ``data`` does not start like a message. A block with no blank line inside the
+    8 KiB is read to their end.
+    """
+    head = data[:_MIME_PARTS_BYTES]
     if not _MIME_FIRST_LINE.match(head):
-        return False
+        return None
     blank = _MIME_BLANK.search(head)
     headers = (head[: blank.start()] if blank else head).lower()
     names = {match.group(1) for match in _MIME_HEADER_NAME.finditer(headers)}
     if b"content-type" not in names or not names & _MIME_MESSAGE_HEADERS:
+        return None
+    return headers
+
+
+def _mime_names_parts(lowered: bytes) -> bool:
+    return b"multipart/" in lowered or _MIME_ENCODED.search(lowered) is not None
+
+
+def _mime_parts_are_members(data: bytes) -> bool:
+    """True when the first 8 KiB of a message names a multipart body or an encoded part."""
+    headers = _mime_headers(data)
+    return headers is not None and _mime_names_parts(headers)
+
+
+def _mime_header_block(data: bytes) -> bytes | None:
+    """A mail message's whole header block, when it ends inside 64 KiB, or None.
+
+    The block ends where the mail parser ends it, which needs no blank line: a line that is
+    CR alone ends it, and so does a first body line that follows the last header directly.
+    A block that runs past the window is not read: the mail library reads a long folded
+    Content-Type in quadratic time, and a block that long is not ordinary mail.
+    """
+    head = data[:_MIME_HEADER_BYTES]
+    if not _MIME_FIRST_LINE.match(head):
+        return None
+    block = _MIME_HEADER_BLOCK.match(head)
+    if block is None or (block.end() == len(head) and len(data) > len(head)):
+        return None
+    written = head[: block.end()]
+    names = {match.group(1) for match in _MIME_BLOCK_NAME.finditer(written.lower())}
+    if b"content-type" not in names or not names & _MIME_MESSAGE_HEADERS:
+        return None
+    return written
+
+
+def _mime_message(data: bytes) -> bool:
+    """True for a mail message a mail reader shows as something other than its bytes.
+
+    The first 8 KiB decides for a message that names its parts there. Past that the header
+    block has to end inside 64 KiB, and the message either names its parts further down or
+    has one body that is decoded. A single ``text/plain`` part in UTF-8 or ASCII with no
+    transfer encoding reads the same in a mail reader and in a text editor, so that message
+    stays one unit and is not a container.
+    """
+    if _mime_parts_are_members(data):
+        return True
+    block = _mime_header_block(data)
+    return block is not None and (_mime_names_parts(block.lower()) or _mime_body_decoded(block))
+
+
+def _mime_one_body(data: bytes) -> bool:
+    """True for a message opened only because its one body is decoded before it is shown.
+
+    Unopened, such a message is one unit of text. Its body is a second reading of that unit
+    and not another file, which is what the callers act on: the body is not counted as an
+    archive member, and the message is not opened where that would cost a level of depth.
+    """
+    if _mime_parts_are_members(data):
         return False
-    return b"multipart/" in headers or _MIME_ENCODED.search(headers) is not None
+    block = _mime_header_block(data)
+    return block is not None and not _mime_names_parts(block.lower()) and _mime_body_decoded(block)
+
+
+# A unit is asked more than once (to open it, to count it, to choose its text views); the
+# answer for the last few header blocks is kept so the headers are parsed once.
+@functools.lru_cache(maxsize=8)
+def _mime_body_decoded(headers: bytes) -> bool:
+    """True when the one body under ``headers`` is decoded before a mail reader shows it.
+
+    The block goes through the parser that reads the parts, so a folded line, a quoted
+    parameter, or an RFC 2231 charset means here what it means there. The body is decoded when
+    its transfer encoding is one the parser decodes, when it is HTML (a mail reader renders
+    it, so a sentence split by inline tags is one sentence), and when it is text in a legacy
+    charset.
+    """
+    part = email.message_from_bytes(headers, policy=email.policy.compat32)
+    # The two answers that need no parameter come first: the mail library reads a parameter
+    # in time quadratic in the header's length.
+    if _mime_transfer_encoding(part) in _MIME_DECODED or _mime_media_type(part) == "text/html":
+        return True
+    try:
+        codec = _mime_codec(_mime_charset(part))
+    except (TypeError, ValueError):
+        # Python 3.12.3 raises on some parameters other mail readers read past: a TypeError
+        # on mixed RFC 2231 continuations, a ValueError on a NUL in the charset. The charset
+        # is then unknown, so the message is opened. The part reader raises on the same
+        # header, and the scan is incomplete as it is for that part in a multipart message,
+        # where staying one unit would leave it clean with the body unread.
+        return True
+    return codec not in _MIME_UTF8_CODECS | _MIME_NOT_CHARSETS
+
+
+def _mime_past_comments(value: str) -> int:
+    """Where ``value`` starts after leading white space and RFC 5322 comments.
+
+    A comment nests, and a backslash quotes the character after it. A comment that never
+    closes runs to the end of the value, as it does in the mail library. Every step moves
+    forward, so a value of any length is read once and needs no cap.
+    """
+    position = depth = 0
+    while position < len(value):
+        if depth:
+            mark = _MIME_COMMENT_MARK.search(value, position)
+            if mark is None:
+                return len(value)
+            position = mark.end()
+            if mark.group() == "\\":
+                position += 1
+            else:
+                depth += 1 if mark.group() == "(" else -1
+        elif value[position] == "(":
+            depth, position = 1, position + 1
+        elif value[position] in " \t":
+            position += 1
+        else:
+            break
+    return min(position, len(value))
+
+
+def _mime_transfer_encoding(part: email.message.Message) -> str:
+    """The transfer encoding a current mail library decodes ``part`` with, in lower case.
+
+    Python 3.13 under its default policy takes the first token of the value: past white space
+    and comments, up to white space or a special character. So ``base64`` with a trailing
+    space, a value folded onto the next line, ``quoted-printable (x)``, and ``base64; x=y``
+    are each decoded. Its compat32 policy strips the value instead, and Python 3.12.3 compares
+    it as written and decodes none of the four. Reading the value here keeps the result from
+    depending on the interpreter that runs the scan.
+    """
+    written = str(part.get("content-transfer-encoding", ""))
+    stripped = written.strip().lower()
+    if stripped in _MIME_DECODED:
+        return stripped
+    value = written.replace("\r", "").replace("\n", "")
+    token = _MIME_TOKEN.match(value, _mime_past_comments(value))
+    return token.group().strip().lower() if token else ""
+
+
+def _mime_media_type(part: email.message.Message) -> str:
+    """The part's media type in lower case, read past comments and quotes.
+
+    The mail library gives ``text/html (x)`` back whole and reads ``(x) text/html`` and
+    ``"text/html"`` as text/plain, while other mail readers render all three as HTML. The
+    library's own reading is kept when it is a type this module already names.
+    """
+    declared = part.get_content_type()
+    if declared in _MIME_PART_SUFFIX:
+        return declared
+    value = str(part.get("content-type", "")).replace("\r", "").replace("\n", "")
+    media = _MIME_MEDIA_TYPE.match(value, _mime_past_comments(value))
+    return media.group(1).lower() if media else declared
+
+
+def _mime_charset(part: email.message.Message) -> str | None:
+    """A text part's declared charset in lower case, "" for none, and None for a part that is
+    not text.
+
+    The mail library reads a parameter in time quadratic in the header's length, so a part's
+    charset is asked for once and handed on.
+    """
+    if part.get_content_maintype() != "text":
+        return None
+    return (part.get_content_charset() or "").lower()
+
+
+def _mime_codec(charset: str | None) -> str:
+    """The codec ``charset`` names, or "" for no charset and for one with no decoder.
+
+    The codec's own name, so ANSI_X3.4-1968 (ASCII by its registered name, which cron writes
+    on ordinary mail) and utf_8 are the codecs they mean.
+    """
+    try:
+        return codecs.lookup(charset).name if charset else ""
+    except LookupError:
+        # The part's bytes are kept as written, so nothing would differ.
+        return ""
 
 
 # Containers recognized from their header that the scanner cannot open. Their members are
@@ -440,11 +718,20 @@ def unsupported_container(data: bytes) -> bool:
     return data.startswith(_UNSUPPORTED_PREFIXES) or _UNSUPPORTED_PATTERN.match(data) is not None
 
 
-def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator[ContentUnit]:
+def content_units(
+    unit: ContentUnit, budget: Budget, depth: int = 0, *, inside_body: bool = False
+) -> Iterator[ContentUnit]:
     budget.check()
     if unsupported_container(unit.data):
         raise ContentLimit("unsupported archive")
     kind = archive_kind(unit.data)
+    one_body = kind == "mime" and _mime_one_body(unit.data)
+    # A message opened for its one body is text, read as one unit when it is not opened. It
+    # stays that unit where opening it would cost more than a second reading: at the depth
+    # limit, where an archive of ordinary HTML mail would turn incomplete, and as the body of
+    # another such message, where each level would decode the same bytes again.
+    if one_body and (inside_body or depth >= MAX_ARCHIVE_DEPTH):
+        kind = None
     if kind is None:
         yield unit
         return
@@ -452,8 +739,8 @@ def content_units(unit: ContentUnit, budget: Budget, depth: int = 0) -> Iterator
         raise ContentLimit("archive depth exceeds 3")
     try:
         for index, name, data in _members(unit, kind, budget):
-            member = ContentUnit(name, data, (*unit.member_path, f"{kind}:{index}"))
-            yield from content_units(member, budget, depth + 1)
+            member = ContentUnit(name, data, (*unit.member_path, f"{kind}:{index}"), one_body)
+            yield from content_units(member, budget, depth + 1, inside_body=one_body)
     except (
         OSError,
         EOFError,
@@ -655,38 +942,116 @@ def _mime_members(unit: ContentUnit, budget: Budget) -> Iterator[tuple[int, str,
     """
     budget.check()
     message = email.message_from_bytes(unit.data, policy=email.policy.compat32)
+    # The body of a message opened for that body is the unit read again, not another file. It
+    # is not counted as a member, so an archive of 600 HTML messages is 600 members and not
+    # 1,200; its bytes count against the size limits like any part's.
+    one_body = _mime_one_body(unit.data)
+    newly_opened = not _mime_parts_are_members(unit.data)
     for index, part in enumerate(message.walk()):
         if part.is_multipart():
             continue
-        budget.member()
-        payload = part.get_payload(decode=True)
-        if not isinstance(payload, bytes) or not payload:
+        if one_body:
+            budget.check()
+        else:
+            budget.member()
+        payloads = _mime_part_payloads(part)
+        if not payloads:
             continue
-        if len(payload) > MAX_FILE_BYTES:
-            raise ContentLimit("archive member exceeds 100MB")
-        budget.expanded += len(payload)
-        if budget.expanded > MAX_EXTRACT_BYTES:
-            raise ContentLimit("extracted size exceeds 500MB")
-        yield index, _mime_part_name(part, index), _mime_part_text(part, payload)
+        # The body of a message opened for it takes its suffix from the media type read past
+        # comments and quotes, which is why it was opened. Any other part keeps the name the
+        # mail library's reading of its type gives it.
+        name = _mime_part_name(part, index, _mime_media_type(part) if one_body else None)
+        charset = _mime_charset(part)
+        for payload in payloads:
+            if len(payload) > MAX_FILE_BYTES:
+                raise ContentLimit("archive member exceeds 100MB")
+            budget.expanded += len(payload)
+            if budget.expanded > MAX_EXTRACT_BYTES:
+                raise ContentLimit("extracted size exceeds 500MB")
+            if newly_opened:
+                text = _mime_newly_read(charset, payload, one_body)
+                if text is not None:
+                    yield index, name, text
+            else:
+                yield index, name, _mime_part_text(charset, payload)
 
 
-def _mime_part_name(part: email.message.Message, index: int) -> str:
+def _mime_newly_read(charset: str | None, payload: bytes, one_body: bool) -> bytes | None:
+    """The text of a part of a message opened for its long header block or for its one body,
+    or None to leave the part to the raw message.
+
+    A message whose first 8 KiB names its parts keeps the reading ``_mime_part_text`` gives.
+    Ordinary mail of the kinds read here is clean as one unit of text, and each case below
+    keeps it clean.
+    """
+    codec = _mime_codec(charset)
+    if codec.startswith(_MIME_WIDE_CODECS):
+        # Kept in its encoding, a UTF-16 or UTF-32 part is an incomplete scan when it does
+        # not decode (Python's mail generator writes such bodies) and a file type mismatch
+        # when it has no byte order mark. Here the part is the text it decodes to, and one
+        # that does not decode is not a unit.
+        try:
+            return payload.decode(codec).encode("utf-8")
+        except UnicodeError:
+            return None
+    if one_body and codec in _MIME_NOT_CHARSETS:
+        return payload
+    if codec in _MIME_MARK_CODECS:
+        try:
+            return payload.decode(codec).translate(_MIME_MARKS).encode("utf-8")
+        except UnicodeError:
+            return payload
+    return _mime_part_text(charset, payload)
+
+
+def _mime_part_payloads(part: email.message.Message) -> list[bytes]:
+    """A part's body in each reading a mail library gives it, the decoded one first.
+
+    One reading when the transfer encoding is written as its bare name, or is not one the
+    library decodes. A value that names an encoding with anything around it (a trailing space,
+    a fold, a comment, a parameter) is decoded by Python 3.13 and left as written by 3.12.3,
+    and other mail readers side with either, so both bodies are members under the part's one
+    ordinal. The header is rewritten before the library is asked, so the interpreter that
+    runs the scan does not choose between them.
+    """
+    header = part.get("content-transfer-encoding")
+    encoding = _mime_transfer_encoding(part)
+    if header is None or encoding not in _MIME_DECODED or str(header).lower() == encoding:
+        readings = [part.get_payload(decode=True)]
+    else:
+        del part["content-transfer-encoding"]
+        written = part.get_payload(decode=True)
+        part["Content-Transfer-Encoding"] = encoding
+        readings = [part.get_payload(decode=True), written]
+    payloads: list[bytes] = []
+    for payload in readings:
+        if isinstance(payload, bytes) and payload and payload not in payloads:
+            payloads.append(payload)
+    return payloads
+
+
+def _mime_part_name(part: email.message.Message, index: int, media: str | None = None) -> str:
     filename = part.get_filename()
     if filename:
         name = Path(filename.replace("\\", "/")).name
         if name:
             return name
-    return f"part-{index}{_MIME_PART_SUFFIX.get(part.get_content_type(), '')}"
+    return f"part-{index}{_MIME_PART_SUFFIX.get(media or part.get_content_type(), '')}"
 
 
-def _mime_part_text(part: email.message.Message, payload: bytes) -> bytes:
-    """Transcode a text part declared in a legacy charset to UTF-8 so the lexical rules read it."""
-    if part.get_content_maintype() != "text":
-        return payload
-    charset = (part.get_content_charset() or "").lower()
-    if charset in ("", "utf-8", "utf8", "us-ascii", "ascii", "utf-16", "utf-16le", "utf-16be"):
+def _mime_part_text(charset: str | None, payload: bytes) -> bytes:
+    """Transcode a text part declared in a legacy charset to UTF-8 so the lexical rules read it.
+
+    ``charset`` is what ``_mime_charset`` gives for the part.
+    """
+    if charset is None or charset in _MIME_KEPT_CHARSETS:
         return payload
     try:
+        # A part is read through whichever codec its charset names, so one too large to
+        # decode in bounded time is unread, and not text as written. Punycode is the only
+        # codec measured that is slower than linear.
+        if codecs.lookup(charset).name == "punycode" and len(payload) > _MIME_PUNYCODE_BYTES:
+            raise ContentLimit("archive unreadable or encrypted")
         return payload.decode(charset).encode("utf-8")
     except (LookupError, UnicodeError):
         return payload
@@ -704,7 +1069,6 @@ _B64_TOKEN = re.compile(
 _B64_WRAP = re.compile(r"\r?\n")
 # Readable decoded runs, each scanned on its own; more is incomplete, never dropped.
 MAX_B64_TEXTS = 1024
-_MIME_HEADER_BYTES = 64 * 1024
 _ENCODED_WORD = re.compile(r"=\?[^?\s]{1,40}\?[BbQq]\?[^?\s]*\?=")
 _B64_PROBE = 256
 _PERCENT = re.compile(r"%[0-9A-Fa-f]{2}")
@@ -872,13 +1236,15 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
             yield from _with_folded("json-unescaped", decoded, budget)
     # An instruction a reader decodes first: base64 (UTF-8, or UTF-16LE as PowerShell writes
     # it) and percent-encoding. Each is one labeled view of the same bytes, not a recursion.
-    # A MIME message's base64 parts are already decoded as its members; its headers' RFC 2047
-    # encoded words are not parts, so they get their own view.
+    # A mail message's headers hold RFC 2047 encoded words, which are not parts, so they get
+    # their own view. Its base64 parts are decoded as its members, so the runs are left to
+    # them where the top of the message names those parts; in any other message (headers past
+    # 8 KiB, or one body that is not encoded) a run is read here as in any text file.
     if _mime_message(data):
         headers = mime_header_text(data)
         if headers is not None:
             yield from _with_folded("mime-headers-decoded", headers, budget)
-    else:
+    if not _mime_parts_are_members(data):
         for encoded in base64_texts(text, budget):
             yield from _with_folded("base64-decoded", encoded, budget)
     unquoted = percent_text(text)
@@ -1001,14 +1367,16 @@ def _json_escape(match: re.Match[str]) -> str:
 
 # What an XML parser removes or rewrites before any text reaches a reader: a comment, a
 # processing instruction, a DOCTYPE, a CDATA section, and (last) one whole tag, whose quoted
-# attribute values may hold ">". Quantifiers are possessive or run to a literal, so each byte
+# attribute values may hold ">". A tag is whatever opens with "<" and a name character: an
+# element name need not be ASCII, and a tag left out here keeps a ">" that every reader's
+# pattern takes for its end. Quantifiers are possessive or run to a literal, so each byte
 # is read once; a comment or section that never closes runs to the end of the part.
 _XML_NOISE = re.compile(
     rb"<!--.*?(?:-->|\Z)"
     rb"|<\?.*?(?:\?>|\Z)"
     rb"|<!DOCTYPE[^<>\[]*+(?:\[.*?(?:\]|\Z))?[^<>]*+>?"
     rb"|<!\[CDATA\[(.*?)(?:\]\]>|\Z)"
-    rb"""|(<[/A-Za-z_](?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+>)""",
+    rb"""|(<[^\s<>="'!?](?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+>)""",
     re.DOTALL,
 )
 # A quoted attribute value that holds ">": the one tag spelling the readers' own patterns
@@ -1151,55 +1519,769 @@ def plain_xml(data: bytes, budget: Budget) -> bytes:
     return bytes(output)
 
 
-def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
-    """Join the text runs of a Word, Excel, or PowerPoint XML part into one ``ooxml-text`` view.
+# A worksheet part, where Excel and streaming writers keep inline strings (t="inlineStr").
+_SHEET_PART = re.compile(r"(?i)^xl/worksheets/[^/]+\.xml$")
+_COMMENT_PART = re.compile(r"(?i)^(xl/comments\d*\.xml|ppt/comments/[^/]+\.xml)$")
 
-    Only the parts a reader sees are joined (document body, headers, footers, notes, comments,
-    shared strings, slides, and the layout, master, diagram, chart, and drawing parts a
-    renderer draws from). Runs inside one paragraph are joined without a separator, paragraphs
-    end with a newline, breaks and tabs become whitespace, and XML entities are decoded. No XML
-    parser runs; ``plain_xml`` first removes what one would (comments, CDATA wrappers, the
-    part's own internal entities), and nothing external is read. A part with fewer than two
-    runs is left to the raw and HTML-unescaped views of the member itself.
+# The namespaces the Office readers read, each in its transitional and its strict (ISO/IEC
+# 29500, purl.oclc.org) spelling; the three Microsoft extensions have one. All but the last
+# extension are the strings LibreOffice 24.2's own filter carries. The 2018 comment namespace
+# is the one PowerPoint's modern comments declare (``p188``), which that filter does not read.
+_WORD_NS = (
+    b"http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    b"http://purl.oclc.org/ooxml/wordprocessingml/main",
+)
+_DRAWING_NS = (
+    b"http://schemas.openxmlformats.org/drawingml/2006/main",
+    b"http://purl.oclc.org/ooxml/drawingml/main",
+)
+_SHEET_NS = (
+    b"http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    b"http://purl.oclc.org/ooxml/spreadsheetml/main",
+)
+_SLIDE_NS = (
+    b"http://schemas.openxmlformats.org/presentationml/2006/main",
+    b"http://purl.oclc.org/ooxml/presentationml/main",
+)
+_WORD_DRAWING_NS = (
+    b"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+    b"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
+)
+_SLIDE_2012_NS = (b"http://schemas.microsoft.com/office/powerpoint/2012/main",)
+_SLIDE_COMMENT_NS = (b"http://schemas.microsoft.com/office/powerpoint/2018/8/main",)
+_CHART_NS = (
+    b"http://schemas.openxmlformats.org/drawingml/2006/chart",
+    b"http://purl.oclc.org/ooxml/drawingml/chart",
+)
+_DIAGRAM_NS = (
+    b"http://schemas.openxmlformats.org/drawingml/2006/diagram",
+    b"http://purl.oclc.org/ooxml/drawingml/diagram",
+)
+_DIAGRAM_DRAWING_NS = (b"http://schemas.microsoft.com/office/drawing/2008/diagram",)
+_SHEET_DRAWING_NS = (
+    b"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+    b"http://purl.oclc.org/ooxml/drawingml/spreadsheetDrawing",
+)
+# The prefix the readers' patterns match for each namespace: what Word, Excel, and PowerPoint
+# write. SpreadsheetML is the default namespace there, so its elements carry no prefix. A
+# parser resolves the namespace and never looks at the prefix, which is the writer's choice:
+# ElementTree writes ``ns0:``, and the Open XML SDK writes SpreadsheetML under ``x:``.
+_OOXML_PREFIX = {
+    uri: prefix
+    for prefix, namespace in (
+        (b"w", _WORD_NS),
+        (b"a", _DRAWING_NS),
+        (b"", _SHEET_NS),
+        (b"p", _SLIDE_NS),
+        (b"wp", _WORD_DRAWING_NS),
+        (b"p15", _SLIDE_2012_NS),
+        (b"p188", _SLIDE_COMMENT_NS),
+    )
+    for uri in namespace
+}
+# Prefixes the readers take as an Office namespace by their spelling alone. ``x`` is one the
+# hidden-text reader has always read as SpreadsheetML.
+_OOXML_PREFIXES = frozenset(_OOXML_PREFIX.values()) | {b"x"}
+# What ``_office_prefixes`` writes for an element that is spelled with one of those prefixes
+# and is in some other namespace. No reader's pattern starts a prefix with "_".
+_NOT_OFFICE = b"_"
+
+# What a part is to the four readers. ``word``, ``strings``, and ``slide`` are the body text of
+# each application; ``drawn`` is text a renderer draws from another part, whose runs are joined
+# and whose hidden runs are not read; a ``sheet`` holds inline-string cells; and the two
+# comment roles are read one comment at a time.
+_TEXT_ROLES = frozenset({"word", "strings", "slide", "drawn"})
+# The vocabulary whose run properties the hidden-text reader resolves in each role.
+_HIDDEN_FAMILY = {
+    "word": b"w",
+    "slide": b"a",
+    "slide-comments": b"a",
+    "strings": b"x",
+    "sheet": b"x",
+    "sheet-comments": b"x",
+}
+# The element that holds one comment in each comment role.
+_COMMENT_ELEMENT = {"sheet-comments": b"comment", "slide-comments": b"cm"}
+# A part's role by its root element and that element's namespace, which is how LibreOffice,
+# pandoc, python-docx, openpyxl, and python-pptx know a part: they reach it through a
+# relationship and never look at its name. The notes master, the handout master, themes,
+# settings, and styles are absent on purpose: nothing draws their text on a page or a slide.
+# A Word or SpreadsheetML root that is not listed is asked what it holds (``_held_roles``).
+_OOXML_ROOT_ROLE = {
+    (uri, element): role
+    for namespace, roles in (
+        (
+            _WORD_NS,
+            {
+                b"document": "word",
+                b"hdr": "word",
+                b"ftr": "word",
+                b"footnotes": "word",
+                b"endnotes": "word",
+                b"comments": "word",
+                b"glossaryDocument": "drawn",
+            },
+        ),
+        (_SHEET_NS, {b"sst": "strings", b"worksheet": "sheet", b"comments": "sheet-comments"}),
+        (
+            _SLIDE_NS,
+            {
+                b"sld": "slide",
+                b"notes": "slide",
+                b"cmLst": "slide-comments",
+                b"sldLayout": "drawn",
+                b"sldMaster": "drawn",
+            },
+        ),
+        (_SLIDE_COMMENT_NS, {b"cmLst": "slide-comments"}),
+        (_CHART_NS, {b"chartSpace": "drawn"}),
+        (_DIAGRAM_NS, {b"dataModel": "drawn"}),
+        (_DIAGRAM_DRAWING_NS, {b"drawing": "drawn"}),
+        (_SHEET_DRAWING_NS, {b"wsDr": "drawn"}),
+    )
+    for uri in namespace
+    for element, role in roles.items()
+}
+# A UTF-8 byte order mark and white space, which may stand before a part's first tag.
+_BEFORE_XML = b"\xef\xbb\xbf \t\r\n"
+
+
+def _holds_markup(data: bytes) -> bool:
+    """True when a part can hold a tag: one stands in its first kilobyte, or the part opens
+    with one after white space of any length, which a parser reads past."""
+    return b"<" in data[:1024] or data.lstrip(_BEFORE_XML)[:1] == b"<"
+
+
+# Everything that may stand before the root element: the byte order mark, white space, the
+# marks ``plain_xml`` leaves, the XML declaration and other processing instructions, comments,
+# and a DOCTYPE, whose quoted literals may hold "]" and ">". Every alternative consumes what
+# it reads and one that never closes runs to the end, so the prolog is read once however
+# long it is: 16 MiB of comments took 0.2 s.
+_XML_PROLOG = re.compile(
+    rb"(?:[\s\x01]++|\xef\xbb\xbf|<\?.*?(?:\?>|\Z)|<!--.*?(?:-->|\Z)"
+    rb"""|<!DOCTYPE(?:[^<>\["']++|"[^"]*+"|'[^']*+')*+"""
+    rb"""(?:\[(?:[^\]"'<]++|"[^"]*+"|'[^']*+'|<!--.*?(?:-->|\Z)|<\?.*?(?:\?>|\Z)|<)*+\])?"""
+    rb"[^<>]*+>)*+",
+    re.DOTALL,
+)
+# An XML name is not only ASCII letters, so a prefix or an element name is whatever stands
+# between the delimiters; a pattern that listed letters would step over a prefix written in
+# any other script, which a parser resolves like any other.
+_XML_NAME = rb"""[^\s<>/:="'!?][^\s<>/:="']*+"""
+# The root element's start tag: prefix, local name, and attributes, whose quoted values may
+# hold ">" when ``plain_xml`` has not been over them.
+_XML_ROOT = re.compile(
+    rb"<(?:(" + _XML_NAME + rb"):)?(" + _XML_NAME + rb""")((?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+)>"""
+)
+# One tag of a part ``plain_xml`` has been over: closing slash, prefix, local name, attributes.
+_XML_TAG = re.compile(rb"<(/?)(?:(" + _XML_NAME + rb"):)?(" + _XML_NAME + rb")([^<>]*+)>")
+# One attribute name and the value it is given, if any. Matched one after another from the
+# start of a tag's attributes, so text inside a quoted value is never taken for a second
+# attribute. A name is consumed whether or not a value follows: were the value required, every
+# byte of a long run of name characters would be a new start that reads to the end of the run.
+_XML_ATTRIBUTE_PAIR = re.compile(rb"""([^\s=<>"'/]++)(?:\s*+=\s*+(?:"([^"<]*+)"|'([^'<]*+)'))?""")
+# A namespace declaration wherever it stands in a part. Every real one is matched; text that
+# only looks like one can do no more than send the part to the slower, exact pass.
+_XMLNS = re.compile(rb"""xmlns(?::([^\s=<>"'/:]++))?\s*+=\s*+(?:"([^"<>]*+)"|'([^'<>]*+)')""")
+# An attribute-list declaration in a DOCTYPE (element name, then its attribute definitions),
+# and a namespace declaration given a default value there. libxml2 and expat add a defaulted
+# attribute to every element of that name, so ``<!ATTLIST x:r xmlns:x CDATA "...">`` binds
+# ``x`` on each ``<x:r>`` with nothing written on the tag: LibreOffice, python-docx, and
+# mammoth read such a run.
+_XML_ATTLIST = re.compile(
+    rb"""<!ATTLIST\s++([^\s<>/="'!?][^\s<>/="']*+)((?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+)>"""
+)
+_XMLNS_DEFAULT = re.compile(
+    rb"""(?<!\S)xmlns(?::([^\s=<>"'/:]++))?\s++[^\s"'<>]++\s++(?:#FIXED\s++)?"""
+    rb"""(?:"([^"<]*+)"|'([^'<]*+)')"""
+)
+# Elements open at once that each rebind a prefix. Word redeclares ``a`` on every picture, one
+# level deep; a part nested past this was written to exhaust the pass, which keeps what each
+# open element replaced until it closes.
+_MAX_NAMESPACE_SCOPES = 256
+# Namespace declarations a DOCTYPE may give by default in a part the Office readers resolve.
+# Each is bound again on every tag of its element, so the pass costs this many steps a tag.
+# No office suite writes a DOCTYPE at all.
+_MAX_NAMESPACE_DEFAULTS = 8
+# The start of a tag whose element stands under no prefix, for the renaming that needs no
+# scopes (``_moved_everywhere``): the tag ``_XML_TAG`` reads with its prefix group empty.
+_XML_TAG_UNPREFIXED = re.compile(
+    rb"<(/?)(?!" + _XML_NAME + rb""":[^\s<>/:="'!?])(?=""" + _XML_NAME + rb"[^<>]*+>)"
+)
+# Prefixes moved by one replacement each over the whole part; a part that needs more is
+# walked once, tag by tag. The eight prefixes the readers know by their spelling all move
+# when a part binds none of them, which leaves as many again for the part's own.
+_MAX_PREFIX_MOVES = 16
+# The longest attributes a text, break, or boundary tag could have, in bytes, while the
+# readers bounded them. A tag past this, or a text or paragraph end tag that holds white
+# space, was not matched then.
+_EARLIER_TAG_ATTRIBUTES = 4096
+# The last letter of a text element's name, which stands before the ">" of its end tag unless
+# white space does.
+_END_OF_TEXT_NAME = ord("t")
+# An element by its local name under any prefix, for the parts known by what they hold
+# (``_held_roles``).
+_BODY_ELEMENT = re.compile(rb"<(?:" + _XML_NAME + rb":)?body(?=[\s/>])")
+_STRING_ELEMENT = re.compile(rb"<(?:" + _XML_NAME + rb":)?si(?=[\s/>])")
+_SHEET_DATA_ELEMENT = re.compile(rb"<(?:" + _XML_NAME + rb":)?sheetData(?=[\s/>])")
+
+
+def _namespace(value: bytes) -> bytes:
+    """A namespace name as a parser hands it on: character references resolved.
+
+    ``mai&#110;`` is ``main`` to every parser, so the comparison is made after the same step.
     """
-    if not (_OOXML_TEXT_PART.match(name) or _OOXML_DRAWN_PART.match(name)):
-        return
-    data = utf8_xml(data)
-    if b"<" not in data[:1024]:
-        return
-    data = plain_xml(data, budget)
-    parts: list[str] = []
+    if b"&" not in value and _XML_JOIN not in value:
+        return value
+    return html.unescape(value.replace(_XML_JOIN, b"").decode("utf-8", "replace")).encode("utf-8")
+
+
+def _xmlns_defaults(data: bytes) -> dict[bytes, dict[bytes, bytes]]:
+    """The namespace declarations a part's own DOCTYPE gives an element by default: element
+    name to prefix to namespace. Empty for every part an office suite writes.
+
+    The first declaration of an attribute is the binding one (XML 1.0, 3.3). Only the
+    internal subset is read, within the window the entity declarations are read in.
+    """
+    if b"<!ATTLIST" not in data[:_XML_PROLOG_WINDOW]:
+        return {}
+    doctype = _XML_DOCTYPE.search(data, 0, _XML_PROLOG_WINDOW)
+    if doctype is None:
+        return {}
+    defaults: dict[bytes, dict[bytes, bytes]] = {}
+    for declared in _XML_ATTLIST.finditer(doctype.group(1)):
+        for binding in _XMLNS_DEFAULT.finditer(declared.group(2)):
+            value = binding.group(2) if binding.group(2) is not None else binding.group(3)
+            bound = defaults.setdefault(declared.group(1), {})
+            bound.setdefault(binding.group(1) or b"", _namespace(value))
+    return defaults
+
+
+def _declared(attributes: bytes) -> dict[bytes, bytes]:
+    """The namespace declarations among a tag's attributes: prefix (empty for the default
+    namespace) to namespace name. The last of two for one prefix stands."""
+    declared: dict[bytes, bytes] = {}
+    for attribute in _XML_ATTRIBUTE_PAIR.finditer(attributes):
+        name = attribute.group(1)
+        value = attribute.group(2) if attribute.group(2) is not None else attribute.group(3)
+        if value is not None and (name == b"xmlns" or name.startswith(b"xmlns:")):
+            declared[name[6:]] = _namespace(value)
+    return declared
+
+
+def _named_role(name: str) -> str | None:
+    lowered = name.lower()
+    if _OOXML_TEXT_PART.match(name):
+        return (
+            "word"
+            if lowered.startswith("word/")
+            else "slide"
+            if lowered.startswith("ppt/")
+            else "strings"
+        )
+    if _OOXML_DRAWN_PART.match(name):
+        return "drawn"
+    if _SHEET_PART.match(name):
+        return "sheet"
+    if _COMMENT_PART.match(name):
+        return "sheet-comments" if lowered.startswith("xl/") else "slide-comments"
+    return None
+
+
+def _root_roles(data: bytes, budget: Budget) -> tuple[str, ...]:
+    """The roles of a part by its root element; none for anything that is not an Office part.
+
+    The first 64 KiB is read, and the whole part only when the prolog and the root tag do not
+    end inside that: white space or a comment of any length may stand before the root, and
+    every reader reads past it. The root's prefix is resolved through the declarations on the
+    root tag itself, or the one its DOCTYPE gives it by default, as a parser resolves it.
+    Anything whose first byte after white space is not "<" is turned away there.
+
+    Every scanned unit comes through here, most of them no Office part at all, so nothing in
+    it ends a scan: a limit met while the root is looked at leaves the unit without a role by
+    its root, which is how it was read before parts were known by their roots.
+    """
+    head = b""
+    root = None
+    for window in (_XML_PROLOG_WINDOW, len(data)):
+        whole = window >= len(data)
+        head = utf8_xml(data if whole else data[:window])
+        budget.check()
+        prolog = _XML_PROLOG.match(head)
+        start = prolog.end() if prolog else 0
+        root = _XML_ROOT.match(head, start)
+        # Read on only where the window ended inside the prolog or inside a tag.
+        if root is not None or whole or head[start : start + 1] not in (b"<", b""):
+            break
+    if root is None:
+        return ()
+    prefix, element, attributes = root.group(1) or b"", root.group(2), root.group(3)
+    given = _xmlns_defaults(head).get(prefix + b":" + element if prefix else element, {})
+    if b"xmlns" not in attributes and not given:
+        return ()
+    if b"&" in attributes:
+        # A namespace name may be written through the part's own entities; ``plain_xml``
+        # expands them as a parser does. Its tag is then the first one left.
+        try:
+            again = _XML_ROOT.search(plain_xml(head[: root.end()], budget))
+        except ContentLimit:
+            budget.check()
+            return ()
+        if again is None:
+            return ()
+        attributes = again.group(3)
+    namespace = _declared(attributes).get(prefix, given.get(prefix, b""))
+    role = _OOXML_ROOT_ROLE.get((namespace, element))
+    if role is not None:
+        return (role,)
+    return _held_roles(namespace, data, budget)
+
+
+def _held_roles(namespace: bytes, data: bytes, budget: Budget) -> tuple[str, ...]:
+    """The roles of a part whose root is a Word or SpreadsheetML element that
+    ``_OOXML_ROOT_ROLE`` does not list, by what the part holds.
+
+    pandoc and mammoth reach the document part through its relationship and look in it for
+    ``w:body``; openpyxl and pandas reach the shared strings and a worksheet the same way and
+    look for ``si`` and for the cells of ``sheetData``. None of them asks what the root is
+    called, so a body inside ``<w:doc>`` or ``<w:settings>`` is the document to them. A
+    settings, styles, or numbering part holds no body, and a workbook or a style sheet no
+    string and no sheet data, so those stay without a role. PresentationML is not read this
+    way: a slide and a notes master hold the same ``p:cSld``.
+
+    One search of the part for each element, by local name under any prefix.
+    """
+    word = namespace in _WORD_NS
+    if not word and namespace not in _SHEET_NS:
+        return ()
+    text = utf8_xml(data)
+    budget.check()
+    if b"<!ENTITY" in text[:_XML_PROLOG_WINDOW]:
+        # The element may be written through the part's own entity.
+        try:
+            text = plain_xml(text, budget)
+        except ContentLimit:
+            budget.check()
+            return ()
+    if word:
+        return ("word",) if _BODY_ELEMENT.search(text) else ()
+    roles = []
+    if _STRING_ELEMENT.search(text):
+        roles.append("strings")
+    if _SHEET_DATA_ELEMENT.search(text):
+        roles.append("sheet")
+    return tuple(roles)
+
+
+def _office_part(name: str, data: bytes, budget: Budget) -> _OfficePart:
+    """What the Office readers take a unit for: by its name, and by its root element.
+
+    The names are what Word, Excel, and PowerPoint write. A package may name a part anything,
+    so ``word/document2.xml``, ``xl/strings.xml``, ``xl/comments/comment1.xml`` (openpyxl's own
+    spelling), and ``ppt/pages/one.xml`` are known by their root. Where the two differ the part
+    is read both ways, so a slide stored under a worksheet's name is still a slide. A loose
+    XML file whose root is an Office element has a role too: an unzipped shared-strings part
+    in a directory scan is the text it was inside the workbook.
+    """
+    held = budget.office_part
+    if held is not None and held.name == name and held.data is data:
+        return held
+    roles = dict.fromkeys(
+        role for role in (_named_role(name), *_root_roles(data, budget)) if role is not None
+    )
+    budget.office_part = _OfficePart(name, data, tuple(roles))
+    return budget.office_part
+
+
+def _part_text(part: _OfficePart) -> bytes:
+    """The part's bytes as UTF-8, transcoded once."""
+    if part.utf8 is None:
+        part.utf8 = utf8_xml(part.data)
+    return part.utf8
+
+
+def _usual_prefix(prefix: bytes, namespace: bytes) -> bytes:
+    """The prefix the readers' patterns match for an element written under ``prefix`` in
+    ``namespace``: the usual one of an Office namespace, ``_NOT_OFFICE`` where a prefix the
+    readers know by its spelling is bound to anything else, and otherwise the one written."""
+    wanted = _OOXML_PREFIX.get(namespace)
+    if wanted is None:
+        return _NOT_OFFICE if prefix in _OOXML_PREFIXES else prefix
+    return wanted
+
+
+def _moved_everywhere(
+    data: bytes, bindings: dict[bytes, bytes], budget: Budget
+) -> tuple[bytes, set[tuple[bytes, bytes]]] | None:
+    """``data`` with its prefixes moved as ``bindings`` say, where those hold for every
+    element: all of them are declared on the root. None where that takes the exact pass.
+
+    One replacement over the part for each prefix that moves, with no step of Python for
+    each tag: a workbook the Open XML SDK wrote holds millions of ``x:`` tags. Once
+    ``plain_xml`` has been over a part, "<" stands only where a tag opens, so ``<x:`` and
+    ``</x:`` are every tag under ``x``. A prefix is moved only once nothing else is still to
+    be moved onto it, so two prefixes that trade places (which have no such order) are left
+    to the exact pass.
+    """
+    moves = {}
+    for prefix in _OOXML_PREFIXES | bindings.keys():
+        wanted = _usual_prefix(prefix, bindings.get(prefix, b""))
+        if wanted != prefix:
+            moves[prefix] = wanted
+    if len(moves) > _MAX_PREFIX_MOVES:
+        return None
+    moved: set[tuple[bytes, bytes]] = set()
+    while moves:
+        source = next((source for source, target in moves.items() if target not in moves), None)
+        if source is None:
+            return None
+        target = moves.pop(source)
+        budget.check()
+        given = target + b":" if target else b""
+        if source:
+            written = source + b":"
+            renamed = data.replace(b"<" + written, b"<" + given)
+            renamed = renamed.replace(b"</" + written, b"</" + given)
+        else:
+            renamed = _XML_TAG_UNPREFIXED.sub(rb"<\g<1>" + given, data)
+        if renamed != data:
+            moved.add((source, target))
+            data = renamed
+    return data, moved
+
+
+def _office_prefixes(
+    data: bytes, budget: Budget, defaults: dict[bytes, dict[bytes, bytes]] | None = None
+) -> tuple[bytes, set[tuple[bytes, bytes]]]:
+    """``data`` with every element of an Office namespace under the prefix the readers match,
+    and each move made (the prefix written, the prefix given).
+
+    An element's namespace is the one its prefix is bound to where the element stands: a
+    declaration holds for its element and what that element contains (Namespaces in XML,
+    section 6). So ``<ns0:t>`` and ``<x:t>`` bound to WordprocessingML become ``<w:t>``, and a
+    ``<w:t>`` inside ``<w:r xmlns:w="urn:example:other">`` becomes ``<_:t>``: it is not a Word
+    run to any reader, and read as one it would stand between two words of a sentence.
+
+    Returned unchanged, as the same object, when every prefix has one binding in the part and
+    the Office namespaces are bound to their usual prefixes, which is every part an office
+    suite writes. A part whose declarations all stand on its root is moved without a walk
+    (``_moved_everywhere``). Any other takes the exact pass: one walk over the tags, each read
+    once. ``defaults`` are the declarations the part's DOCTYPE gives an element with nothing
+    written on its tag (``_xmlns_defaults``).
+    """
+    seen: dict[bytes, bytes] = {}
+    usual = True
+    first = last = -1
+    for count, match in enumerate(_XMLNS.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        prefix = match.group(1) or b""
+        uri = _namespace(match.group(2) if match.group(2) is not None else match.group(3))
+        if seen.setdefault(prefix, uri) != uri or _usual_prefix(prefix, uri) != prefix:
+            usual = False
+        if first < 0:
+            first = match.start()
+        last = match.end()
+    if usual and not defaults:
+        return data, set()
+    if not defaults:
+        prolog = _XML_PROLOG.match(data)
+        root = _XML_ROOT.match(data, prolog.end() if prolog else 0)
+        if (
+            root is not None
+            and root.start() <= first
+            and last <= root.end()
+            and not root.group(3).endswith(b"/")
+        ):
+            everywhere = _moved_everywhere(data, _declared(root.group(3)), budget)
+            if everywhere is not None:
+                return everywhere
+    bindings: dict[bytes, bytes] = {}
+    # Each open element that declared a namespace: its depth, and what it replaced.
+    scopes: list[tuple[int, dict[bytes, bytes | None]]] = []
+    depth = 0
+    output = bytearray()
+    position = 0
+    moved: set[tuple[bytes, bytes]] = set()
+    for count, match in enumerate(_XML_TAG.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        closing = bool(match.group(1))
+        prefix = match.group(2) or b""
+        attributes = match.group(4)
+        # What this tag declares: written on it, or given to its element by the DOCTYPE.
+        declared: dict[bytes, bytes] = {}
+        if not closing:
+            if b"xmlns" in attributes:
+                declared = _declared(attributes)
+            if defaults:
+                given = defaults.get(prefix + b":" + match.group(3) if prefix else match.group(3))
+                if given:
+                    declared = {**given, **declared} if declared else given
+        wanted = _usual_prefix(
+            prefix, declared[prefix] if prefix in declared else bindings.get(prefix, b"")
+        )
+        if wanted != prefix:
+            output += data[position : match.end(1)]
+            if wanted:
+                output += wanted + b":"
+            position = match.start(3)
+            moved.add((prefix, wanted))
+        if closing:
+            depth = max(depth - 1, 0)
+            while scopes and scopes[-1][0] >= depth:
+                for bound, replaced in scopes.pop()[1].items():
+                    if replaced is None:
+                        bindings.pop(bound, None)
+                    else:
+                        bindings[bound] = replaced
+        elif not attributes.endswith(b"/"):
+            # An empty element holds nothing, so what it declares ends with its own tag.
+            if declared:
+                if len(scopes) >= _MAX_NAMESPACE_SCOPES:
+                    raise ContentLimit("ooxml namespace scopes exceed 256")
+                scopes.append((depth, {bound: bindings.get(bound) for bound in declared}))
+                bindings.update(declared)
+            depth += 1
+    if not position:
+        return data, set()
+    output += data[position:]
+    return bytes(output), moved
+
+
+def _office_readings(part: _OfficePart, budget: Budget) -> _OfficeReadings:
+    """A part as the readers should take it: under the usual prefixes, and as it is written.
+
+    The first is what a parser sees. The second is what these readers took before they
+    resolved a namespace, kept so that nothing they held is lost; it is absent when the two
+    are the same bytes, which is nearly always. Worked out once for a part, whichever reader
+    asks first.
+    """
+    if part.readings is None:
+        data = _part_text(part)
+        defaults = _xmlns_defaults(data)
+        if sum(len(bound) for bound in defaults.values()) > _MAX_NAMESPACE_DEFAULTS:
+            raise ContentLimit("xml namespace defaults exceed 8")
+        data = plain_xml(data, budget)
+        resolved, moved = _office_prefixes(data, budget, defaults)
+        part.readings = _OfficeReadings(
+            resolved, None if resolved is data else data, moved <= {(b"x", b"")}
+        )
+    return part.readings
+
+
+def _text_tag_as_before(match: re.Match[bytes], name_end: int, text_start: int) -> bool:
+    """True when a text element is spelled as the readers always matched it: its end tag
+    holds no white space and its start tag at most 4,096 bytes of attributes.
+
+    ``name_end`` is where the start tag's name ends and ``text_start`` where its text begins.
+    The readers stepped over any other spelling as if the element were not there, so a
+    reading that leaves such elements out is the reading they gave.
+    """
+    return (
+        text_start - 1 - name_end <= _EARLIER_TAG_ATTRIBUTES + 1
+        and not match.group()[-2:-1].isspace()
+    )
+
+
+def _joined_runs(data: bytes, budget: Budget) -> tuple[list[str], int]:
+    """A part's runs in order, in each reading it has, and how many text elements it held.
+
+    The first reading is the text as a reader lays it out. A DrawingML line break is a new
+    line, as python-pptx, LibreOffice, and markitdown show it. A phonetic run's text (``rPh``,
+    the furigana beside a cell's text) is no part of the string to openpyxl, pandas, or
+    LibreOffice. A run belongs to its paragraph when both are of one vocabulary: a DrawingML
+    or SpreadsheetML text element written between two Word runs, or one in no namespace, is
+    no run of that paragraph to python-docx, pandoc, or LibreOffice.
+
+    The readers here used to join the runs on both sides of a DrawingML break, to take
+    every text element in turn, and to step over a text, break, or paragraph-end tag spelled
+    with white space in an end tag or more than 4,096 bytes of attributes. A part where any
+    of that differs is given a second time in that earlier reading, whole and in its own
+    order, so a sentence it held is still held: a junk text element in a run's properties,
+    which no reader shows, parts two words in the first reading whenever it is spelled as a
+    tag these patterns now match. The two are scanned apart: laid end to end, the last line
+    of one and the first of the other would be a sentence no reader shows.
+    """
+    shown: list[str] = []
+    # The part as it was read before, from the first token that reads differently.
+    earlier: list[str] | None = None
+    # Where the text runs of the open paragraphs stand in ``shown``, each with its prefix, and
+    # for each open paragraph how many of them stood before it opened.
+    written: list[tuple[int, bytes]] = []
+    opened: list[int] = []
+    unmarked = 0
     runs = 0
+    phonetic = False
     for count, match in enumerate(_OOXML_TOKEN.finditer(data)):
         if count % 4096 == 0:
             budget.check()
         token = match.group()
-        text = match.group(1)
+        text = match.group(2)
         if text is not None:
             # A run that markup had split is two runs' worth: not contiguous in the raw bytes.
             text, joined = xml_text(text)
             runs += 2 if joined else 1
-            parts.append(html.unescape(text.decode("utf-8", errors="replace")))
-        elif token.startswith(b"</"):
-            parts.append("\n")
-        elif token.startswith(b"<w:tab"):
-            parts.append("\t")
-        else:
-            parts.append("\n")
-    if runs >= 2:
-        yield from _with_folded("ooxml-text", "".join(parts), budget)
+            piece = html.unescape(text.decode("utf-8", errors="replace"))
+            start = match.start()
+            before = (
+                data[match.end() - 2] == _END_OF_TEXT_NAME
+                and match.start(2) - start <= _EARLIER_TAG_ATTRIBUTES
+            ) or _text_tag_as_before(match, start + len(match.group(1)) + 2, match.start(2))
+            if (phonetic or not before) and earlier is None:
+                earlier = list(shown)
+            if not phonetic:
+                if opened:
+                    written.append((len(shown), match.group(1)))
+                shown.append(piece)
+            if earlier is not None and before:
+                earlier.append(piece)
+            continue
+        if match.group(3) is not None:
+            phonetic = not match.group(3) and not token.endswith(b"/>")
+            continue
+        if match.group(4) is not None:
+            if token.endswith(b"/>"):
+                continue
+            if len(opened) < _MAX_PARAGRAPH_NESTING:
+                opened.append(len(written))
+            else:
+                unmarked += 1
+            continue
+        if token.startswith(b"<a:"):
+            if earlier is None:
+                earlier = list(shown)
+            shown.append("\n")
+            continue
+        # A paragraph end that holds white space, or a break or tab with longer attributes
+        # than were read, is no token of the earlier reading.
+        before = (
+            not token[-2:-1].isspace()
+            if token.startswith(b"</")
+            else len(token) - len(b"<w:br>") - token.startswith(b"<w:tab")
+            <= _EARLIER_TAG_ATTRIBUTES
+        )
+        if not before and earlier is None:
+            earlier = list(shown)
+        if token.startswith(b"</"):
+            if unmarked:
+                unmarked -= 1
+            elif opened:
+                # ``</w:p>`` ends a Word paragraph, ``</a:p>`` a DrawingML one, ``</si>`` a
+                # string. A run of this paragraph under any other prefix is not one of its own.
+                own = token[2:4] if token[3:4] == b":" else b""
+                first = opened.pop()
+                other = [index for index, prefix in written[first:] if prefix != own]
+                if other:
+                    if earlier is None:
+                        earlier = list(shown)
+                    for index in other:
+                        shown[index] = ""
+                del written[first:]
+            phonetic = False
+        piece = "\t" if token.startswith(b"<w:tab") else "\n"
+        shown.append(piece)
+        if earlier is not None and before:
+            earlier.append(piece)
+    readings = ["".join(shown)]
+    if earlier is not None:
+        readings.append("".join(earlier))
+    return readings, runs
 
 
-# A worksheet part, where Excel and streaming writers keep inline strings (t="inlineStr").
-_SHEET_PART = re.compile(r"(?i)^xl/worksheets/[^/]+\.xml$")
-_COMMENT_PART = re.compile(r"(?i)^(xl/comments\d*\.xml|ppt/comments/[^/]+\.xml)$")
-# Cell/comment boundaries, phonetic runs, paragraph breaks, and text runs, in order.
+def ooxml_text_views(name: str, data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
+    """Join the text runs of a Word, Excel, or PowerPoint XML part into an ``ooxml-text`` view.
+
+    Only the parts a reader sees are joined (document body, headers, footers, notes, comments,
+    shared strings, slides, and the layout, master, diagram, chart, and drawing parts a
+    renderer draws from), each known by its name or by its root element (``_office_part``).
+    Runs are elements of the Office namespaces under any prefix (``_office_prefixes``). Runs
+    inside one paragraph are joined without a separator, paragraphs end with a newline, breaks
+    and tabs become whitespace, and XML entities are decoded. No XML parser runs; ``plain_xml``
+    first removes what one would (comments, CDATA wrappers, the part's own internal entities),
+    and nothing external is read. A part with fewer than two runs is left to the raw and
+    HTML-unescaped views of the member itself.
+
+    Nearly every part has one reading and so one view. A part that readers take differently
+    (``_joined_runs``), or whose prefixes had to be resolved (``_office_readings``), gives one
+    view for each distinct reading, all named ``ooxml-text``.
+    """
+    part = _office_part(name, data, budget)
+    if not _TEXT_ROLES.intersection(part.roles) or not _holds_markup(_part_text(part)):
+        return
+    readings = _office_readings(part, budget)
+    views: list[str] = []
+    for reading in (readings.resolved, readings.written):
+        if reading is not None:
+            texts, runs = _joined_runs(reading, budget)
+            if runs >= 2:
+                views += [lines for lines in texts if lines not in views]
+    for lines in views:
+        yield from _with_folded("ooxml-text", lines, budget)
+
+
+# Cell/comment boundaries, phonetic runs, paragraph breaks, and text runs (prefix and text), in
+# order. Attributes are possessive and stop at the next tag, however long they are.
 _CELL_TOKEN = re.compile(
-    rb"<(/?)(?:[A-Za-z][\w.-]{0,32}:)?(is|rPh|comment|cm|p|br)\b[^<>]{0,4096}>"
-    rb"|<(?:[A-Za-z][\w.-]{0,32}:)?t(?:\s[^<>]{0,4096})?>([^<]*)</(?:[A-Za-z][\w.-]{0,32}:)?t>"
+    rb"<(/?)(?:[A-Za-z][\w.-]{0,32}+:)?(is|rPh|comment|cm|p|br)\b[^<>]*+>"
+    rb"|<(?:([A-Za-z][\w.-]{0,32}+):)?t(?:\s[^<>]*+)?>([^<]*+)"
+    rb"</(?:[A-Za-z][\w.-]{0,32}+:)?t\s*+>"
 )
+# The prefixes of a text run in a cell or a comment once ``_office_prefixes`` has resolved
+# them: SpreadsheetML, DrawingML in a PowerPoint comment, and ``x`` as it is spelled.
+_CELL_TEXT_PREFIXES = frozenset({None, b"a", b"x"})
 # About 70 microseconds a piece, so the cap stays well inside the 30 s scan deadline.
 MAX_TEXT_PIECES = 100_000
+
+
+def _more_pieces(pieces: list[str], further: list[str]) -> list[str]:
+    """``pieces``, then each of ``further`` that is not among them: a second reading of a part
+    adds only what the first did not give."""
+    if not pieces or not further:
+        return pieces or further
+    seen = set(pieces)
+    pieces += [piece for piece in dict.fromkeys(further) if piece not in seen]
+    if len(pieces) > MAX_TEXT_PIECES:
+        raise ContentLimit("text pieces exceed 100000")
+    return pieces
+
+
+def _each_reading(
+    readings: _OfficeReadings, read: Callable[[bytes, bool], tuple[list[str], bool]]
+) -> list[str]:
+    """The pieces ``read`` finds in every reading of a part, in the order found.
+
+    ``read`` takes one reading and whether to read it as it was read before the tag spellings
+    were widened, and says whether it met a tag that is read differently now. The part as
+    written is read last, and once more that earlier way when it holds such a tag, so every
+    piece these readers gave before is still given. It is left out when it differs from the
+    resolved part only in ``x:`` for no prefix: these readers take both for SpreadsheetML, so
+    it would give the same pieces at the cost of a second pass over a large workbook.
+    """
+    texts = [readings.resolved]
+    if readings.written is not None and not readings.moved_from_x_only:
+        texts.append(readings.written)
+    pieces: list[str] = []
+    respelled = False
+    for text in texts:
+        found, respelled = read(text, False)
+        pieces = _more_pieces(pieces, found)
+    if respelled:
+        pieces = _more_pieces(pieces, read(texts[-1], True)[0])
+    return pieces
+
+
+def _pieces_each_way(part: _OfficePart, budget: Budget, elements: Iterable[bytes]) -> list[str]:
+    """The pieces of every reading of a part, for each boundary element in turn."""
+    readings = _office_readings(part, budget)
+    pieces: list[str] = []
+    for element in elements:
+
+        def read(text: bytes, earlier: bool, element: bytes = element) -> tuple[list[str], bool]:
+            return _ooxml_pieces(text, budget, element, earlier)
+
+        pieces = _more_pieces(pieces, _each_reading(readings, read))
+    return pieces
 
 
 def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
@@ -1211,33 +2293,46 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     the tags; no XML parser runs and no entity is expanded beyond the predefined and numeric
     ones.
     """
-    if not _SHEET_PART.match(name):
+    part = _office_part(name, data, budget)
+    if "sheet" not in part.roles:
         return []
-    data = utf8_xml(data)
-    if b"inlineStr" not in data:
+    data = _part_text(part)
+    # An inline string is an ``is`` element. The cell type that announces it (t="inlineStr")
+    # can be written with a character reference, so the element itself is looked for; and
+    # the element can come from the part's own entity, which only ``plain_xml`` writes out.
+    if (
+        b"<is" not in data
+        and b":is" not in data
+        and b"inlineStr" not in data
+        and b"<!ENTITY" not in data[:_XML_PROLOG_WINDOW]
+    ):
         return []
-    return _ooxml_pieces(plain_xml(data, budget), budget, b"is")
+    return _pieces_each_way(part, budget, (b"is",))
 
 
 def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     """Join rich-text runs within each Excel or modern PowerPoint comment, never across comments."""
-    if not _COMMENT_PART.fullmatch(name):
+    part = _office_part(name, data, budget)
+    elements = [_COMMENT_ELEMENT[role] for role in part.roles if role in _COMMENT_ELEMENT]
+    if not elements:
         return []
-    tag = b"comment" if name.lower().startswith("xl/") else b"cm"
-    return _ooxml_pieces(plain_xml(utf8_xml(data), budget), budget, tag)
+    return _pieces_each_way(part, budget, elements)
 
 
 # A whole text element (``<w:t>``, ``<a:t>``, ``<t>``: its prefix and text), or one other tag
 # (closing slash, prefix, local name, and bounded attributes). Every quantifier is possessive
-# and bounded, so a tag that never closes costs one bounded attempt at its ``<``; text outside
-# a text element is skipped by the regex engine.
+# and stops at the next "<" or ">", so a tag that never closes costs one attempt that ends
+# where the next begins; text outside a text element is skipped by the regex engine. A text
+# tag's attributes are not read and so not bounded, and its end tag may hold white space, as
+# in ``_OOXML_TOKEN``. Any other tag's attributes are parsed, and stay within 4,096 bytes.
 _XML_TOKEN = re.compile(
     rb"<!--.*?(?:-->|\Z)|"
-    rb"<(?:([A-Za-z][\w.-]{0,32}+):)?t(?:\s[^<>]{0,4096}+)?>([^<]*+)</(?:[A-Za-z][\w.-]{0,32}+:)?t>"
+    rb"<(?:([A-Za-z][\w.-]{0,32}+):)?t(?:\s[^<>]*+)?>([^<]*+)</(?:[A-Za-z][\w.-]{0,32}+:)?t\s*+>"
     rb"|<(/?)(?:([A-Za-z][\w.-]{0,32}+):)?([A-Za-z][\w.-]{0,64}+)([^<>]{0,4096}+)>",
     re.DOTALL,
 )
 # The text-element prefix each family reads: Word's own runs, DrawingML runs, SpreadsheetML.
+# ``_office_prefixes`` has put every element of those namespaces under these prefixes.
 _TEXT_PREFIXES = {b"w": (b"w",), b"a": (b"a",), b"x": (b"", b"x")}
 _XML_ATTRIBUTE = re.compile(
     rb"""([\w.-]{1,32}+:)?([\w.-]{1,64}+)\s*+=\s*+(?:"([^"]{0,256}+)"|'([^']{0,256}+)')"""
@@ -1300,23 +2395,48 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
 
     A piece ends at the next shown text that is not whitespace, at a table cell, text box,
     shape, string, or comment end, and at the end of the part; paragraph ends inside it are a
-    newline. So hidden text on both sides of a shown word is never joined. One linear pass over
-    bounded tags; no XML parser runs and no entity is expanded beyond the predefined and
-    numeric ones.
+    newline. So hidden text on both sides of a shown word is never joined. A DrawingML line
+    break inside a piece is a newline, and the piece is also given with its lines joined, as
+    this reader gave it before the break was read. One linear pass over bounded tags; no XML
+    parser runs and no entity is expanded beyond the predefined and numeric ones.
+
+    The vocabulary read (Word, DrawingML, or SpreadsheetML) follows from what the part is
+    (``_office_part``), not from the folder it is stored in, and elements are taken by their
+    namespace under any prefix (``_office_prefixes``).
     """
-    lowered = name.lower()
-    if not (_OOXML_TEXT_PART.match(name) or _SHEET_PART.match(name) or _COMMENT_PART.match(name)):
+    part = _office_part(name, data, budget)
+    families = dict.fromkeys(_HIDDEN_FAMILY[role] for role in part.roles if role in _HIDDEN_FAMILY)
+    if not families:
         return []
-    data = utf8_xml(data)
-    if b"<" not in data[:1024]:
+    data = _part_text(part)
+    if not _holds_markup(data):
         return []
     # Every signal below needs one of these names in the part; without any, nothing is hidden.
     if not any(name in data for name in _HIDING_NAMES):
         return []
-    data = plain_xml(data, budget)
-    family = b"w" if lowered.startswith("word/") else b"a" if lowered.startswith("ppt/") else b"x"
+    readings = _office_readings(part, budget)
     pieces: list[str] = []
+    for family in families:
+
+        def read(text: bytes, earlier: bool, family: bytes = family) -> tuple[list[str], bool]:
+            return _hidden_pieces(text, family, budget, earlier)
+
+        pieces = _more_pieces(pieces, _each_reading(readings, read))
+    return pieces
+
+
+def _hidden_pieces(
+    data: bytes, family: bytes, budget: Budget, earlier: bool = False
+) -> tuple[list[str], bool]:
+    """The hidden pieces of one reading of a part, in one vocabulary, and whether the part
+    holds a text element spelled as this reader did not match it before (white space in its
+    end tag, or long attributes). With ``earlier`` such an element is stepped over, as it
+    was: hidden words on both sides of one are then one piece again."""
+    pieces: list[str] = []
+    respelled = False
     current: list[str] = []
+    # Where ``current`` holds a DrawingML line break.
+    drawn_breaks: list[int] = []
     hidden_chars = False
     runs: list[_Run] = []
     paragraphs: list[bool] = []
@@ -1332,7 +2452,15 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
             if len(pieces) >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
             pieces.append("".join(current).strip())
+            if drawn_breaks:
+                # The same piece as it was read before a DrawingML break was a new line.
+                for index in drawn_breaks:
+                    current[index] = ""
+                joined = "".join(current).strip()
+                if joined != pieces[-1]:
+                    pieces.append(joined)
         current.clear()
+        drawn_breaks.clear()
         hidden_chars = False
 
     def attributes(raw: bytes) -> dict[bytes, bytes]:
@@ -1374,6 +2502,11 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
             budget.check()
         text = match.group(2)
         if text is not None:
+            name_end = match.end(1) + 2 if match.group(1) else match.start() + 2
+            if not _text_tag_as_before(match, name_end, match.start(2)):
+                respelled = True
+                if earlier:
+                    continue
             if phonetic or change or (match.group(1) or b"") not in text_prefixes:
                 continue
             piece = html.unescape(xml_text(text)[0].decode("utf-8", errors="replace"))
@@ -1481,6 +2614,11 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
         elif local in (b"br", b"cr") and runs and not rpr:
             if hidden_chars:
                 current.append("\n")
+        elif local == b"br" and prefix == b"a" and family == b"a" and paragraphs and not rpr:
+            # DrawingML writes a line break beside the runs of a paragraph, not inside one.
+            if hidden_chars:
+                drawn_breaks.append(len(current))
+                current.append("\n")
         elif local == b"tab" and runs and not rpr and not ppr:
             if hidden_chars:
                 current.append("\t")
@@ -1493,7 +2631,7 @@ def ooxml_hidden_texts(name: str, data: bytes, budget: Budget) -> list[str]:
             elif (tcpr or tblpr) and containers:
                 containers[-1] = containers[-1] or shaded
     flush()
-    return [piece for piece in pieces if piece]
+    return [piece for piece in pieces if piece], respelled
 
 
 def _shaded(values: dict[bytes, bytes]) -> bool:
@@ -1506,33 +2644,71 @@ def _shaded(values: dict[bytes, bytes]) -> bool:
     return pattern not in _NO_PATTERN and not _near_white(color)
 
 
-def _ooxml_pieces(data: bytes, budget: Budget, boundary: bytes) -> list[str]:
+def _ooxml_pieces(
+    data: bytes, budget: Budget, boundary: bytes, earlier: bool = False
+) -> tuple[list[str], bool]:
+    """The text of each ``boundary`` element (a cell's inline string, a comment) with two or
+    more runs, and whether the part holds a tag this reader did not match before.
+
+    A run under a prefix of some other vocabulary (``<q:t>`` in a worksheet) is no part of
+    the cell to LibreOffice, and written between two words it would part them. The piece is
+    given without such runs, and with them as well, which is how it was always read.
+
+    A text element with white space in its end tag, and any tag here with more than 4,096
+    bytes of attributes, used to be stepped over. With ``earlier`` they are again, and runs
+    of another vocabulary are kept, which is the reading this function gave then.
+    """
     cells: list[str] = []
+    respelled = False
     runs: list[bytes] = []
+    # Where ``runs`` holds a run of another vocabulary, and how many runs that accounts for.
+    foreign: list[int] = []
+    count_foreign = 0
     inside = phonetic = False
     count_runs = 0
+
+    def piece(kept: Iterable[bytes]) -> None:
+        if len(cells) >= MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
+        cells.append("".join(html.unescape(run.decode("utf-8", "replace")) for run in kept))
+
     for count, match in enumerate(_CELL_TOKEN.finditer(data)):
         if count % 4096 == 0:
             budget.check()
-        closing, tag, text = match.group(1), match.group(2), match.group(3)
+        closing, tag, text = match.group(1), match.group(2), match.group(4)
+        if text is None:
+            before = match.end() - 1 - match.end(2) <= _EARLIER_TAG_ATTRIBUTES
+        else:
+            name_end = match.end(3) + 2 if match.group(3) else match.start() + 2
+            before = _text_tag_as_before(match, name_end, match.start(4))
+        if not before:
+            respelled = True
+            if earlier:
+                continue
         if tag == b"rPh":
             phonetic = not closing and not match.group().endswith(b"/>")
         elif tag == boundary:
-            if closing and inside and count_runs >= 2:
-                if len(cells) >= MAX_TEXT_PIECES:
-                    raise ContentLimit("text pieces exceed 100000")
-                cells.append("".join(html.unescape(run.decode("utf-8", "replace")) for run in runs))
+            if closing and inside:
+                if foreign and not earlier and count_runs - count_foreign >= 2:
+                    skipped = set(foreign)
+                    piece(run for index, run in enumerate(runs) if index not in skipped)
+                if count_runs >= 2:
+                    piece(runs)
             inside = not closing and not match.group().endswith(b"/>")
             runs = []
-            count_runs = 0
+            foreign = []
+            count_runs = count_foreign = 0
             phonetic = False
         elif inside and (tag == b"p" and closing or tag == b"br"):
             runs.append(b"\n")
         elif inside and not phonetic and text is not None:
             text, joined = xml_text(text)
+            if match.group(3) not in _CELL_TEXT_PREFIXES:
+                foreign.append(len(runs))
+                count_foreign += 2 if joined else 1
             runs.append(text)
             count_runs += 2 if joined else 1
-    return cells
+    return cells, respelled
 
 
 _HTML_OPENER = re.compile(r"<(?:!doctype\s+(?:html|svg)\b|html\b|svg\b)", re.I)
