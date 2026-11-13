@@ -481,7 +481,9 @@ def _link(
 
 _CONTENTS_VALUE = re.compile(
     rb"/Contents[\x00\t\n\f\r ]*+(?:([0-9]{1,10})[\x00\t\n\f\r ]++0[\x00\t\n\f\r ]++R"
-    rb"|(\[[^\]]{0,65536}+\]))"
+    # An array of references holds only digits, R, and white space, so a "[" followed by
+    # anything else fails at once and repeated "/Contents[" costs one step each.
+    rb"|(\[[0-9R\x00\t\n\f\r ]{0,65536}+\]))"
 )
 _OBJECT_END = frozenset({b"endobj", b"stream"})
 # /Contents values read past the raw page dictionaries, so one hostile file cannot make many.

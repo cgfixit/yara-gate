@@ -355,6 +355,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, b"/Contents["),
         None,
     )
+    # The same flood after a binary content stream, so the /Contents references that let a
+    # stream failing the text sniff be read are collected over every match too.
+    binary = b"9 0 obj<</Length 12>>stream\nBT \x00\x01\x02 ET \n\nendstream endobj\n"
+    yield "pdf-contents-refs.pdf", _filled(streams + binary, b"/Contents["), None
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
     yield (
         "pdf-page-objects.pdf",

@@ -3292,7 +3292,7 @@ _CONTENTS_REF = re.compile(
     + _PDF_WS
     + rb"++[0-9]{1,5}"
     + _PDF_WS
-    + rb"++R|\[([^\]]{0,65536}+)\])"
+    + rb"++R|\[([0-9R\x00\t\n\f\r ]{0,65536}+)\])"
 )
 _ARRAY_REF = re.compile(rb"([0-9]{1,10})" + _PDF_WS + rb"++[0-9]{1,5}" + _PDF_WS + rb"++R")
 
