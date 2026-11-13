@@ -283,12 +283,17 @@ function depth() {
     const held = caught.filter((item) => item.results['agent-ingest'].verdict === 'block').length;
     const clean = twins.filter((item) => policies.every((policy) => item.results[policy].verdict === 'clean' && !item.results[policy].findings.length)).length;
     // The views that found what the bytes as sent did not: a rule that already matched the
-    // original bytes is not counted again for its folded copy.
+    // original bytes, or a view before folding, is not counted again for its folded copy.
     const views = new Set();
     for (const item of caught) {
       const findings = item.results['agent-ingest'].findings;
       const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
-      for (const finding of findings) if (finding.view !== 'raw' && !plain.has(finding.rule_id)) views.add(finding.view);
+      const unfolded = new Set(findings.filter((finding) => !finding.view.endsWith(folded)).map((finding) => finding.rule_id + ' ' + finding.view));
+      for (const finding of findings) {
+        if (finding.view === 'raw' || plain.has(finding.rule_id)) continue;
+        if (finding.view.endsWith(folded) && unfolded.has(finding.rule_id + ' ' + finding.view.slice(0, -folded.length))) continue;
+        views.add(finding.view);
+      }
     }
     const card = text($('depth'), 'button', '', 'depth-card');
     card.type = 'button';
