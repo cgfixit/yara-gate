@@ -5,8 +5,8 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`__init__.py`](__init__.py) exposes the version, result type, and lazy `scan_file` / `scan_bytes` library API.
 - [`cli.py`](cli.py) defines the Typer commands, selects policy and paths, and aggregates scan exits.
 - [`scanner.py`](scanner.py) coordinates rules, original bytes, derived views, heuristics, budgets, and results.
-- [`content.py`](content.py) constructs bounded in-memory archive and text views without extracting members to disk.
-- [`pdftext.py`](pdftext.py) reconstructs supported PDF text operators and fonts, without rendering the page.
+- [`content.py`](content.py) constructs bounded in-memory archive and text views without extracting members to disk. Its Office readers know a part by its name or its root element and a run by its namespace; its mail reader opens a message when a mail reader shows something other than its bytes.
+- [`pdftext.py`](pdftext.py) reconstructs supported PDF text operators and fonts, without rendering the page. A font is read in each way a reader could take its own dictionary (a repeated or escaped `/ToUnicode` key, no map at all), and the map found in the 4 KB after its header is dropped only where every reader agrees it is not the font's.
 - [`pdfannotations.py`](pdfannotations.py) decodes annotation `/Contents` strings, separately from page text.
 - [`pdfpages.py`](pdfpages.py) maps each page content stream to the fonts its page's own resources name, so a merged file's `/F1` is read per page; a file that is not plainly written throughout, or a stream readers could resolve differently, keeps the file-wide fonts.
 - [`pdfxref.py`](pdfxref.py) resolves cross-reference offsets so an object inside a length-proven stream cannot scan clean.

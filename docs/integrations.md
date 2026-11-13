@@ -389,8 +389,16 @@ scanned as a member `mime:N`, where `N` is the part's position and never its nam
 The attachment's own file name drives the name and type checks, so an
 `Invoice.pdf.exe` attachment blocks and a `report.pdf` that is really a program is a
 `filetype_mismatch_pe`; a message that carries an executable attachment blocks as
-`heuristic_document_executable`. Plain text with mail-like headers but no encoded
-or multipart body is not a container. The shared size, count, depth, and deadline
+`heuristic_document_executable`. The header block is read up to 64 KiB, so a long
+relay or ARC chain does not keep a message closed. A message with one body is a
+container when a mail reader shows something other than its bytes: a base64,
+quoted-printable, or uuencoded body, an HTML body, or text in a charset other than
+UTF-8 or ASCII; its body is member `mime:0`, and a finding is added there only for a
+rule the message itself does not already report. A transfer-encoding value with a
+trailing space, a fold, or a comment is decoded as current mail libraries decode it,
+and the body as written is read beside it. One `text/plain` body in UTF-8 or ASCII
+with no encoding is not a container. A one-body message whose headers the mail
+library cannot parse is incomplete. The shared size, count, depth, and deadline
 limits apply to the decoded parts.
 
 A message gate is a hold decision, not authorization. Treat every inbound
