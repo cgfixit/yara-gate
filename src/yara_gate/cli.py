@@ -70,7 +70,7 @@ def main(
 def scan(
     # Strings, not Paths: Path("./-") normalizes to "-" and would read stdin.
     paths: list[str] | None = typer.Argument(None, metavar="PATH..."),
-    home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
+    home: Path | None = typer.Option(None, "--home", help="Gate root (defaults to ~/YaraGate)."),
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
     policy: ScanPolicy = typer.Option(
@@ -106,13 +106,14 @@ def scan(
     Several paths are scanned in order, each exactly as a single path is. The exit code is
     the worst one seen (incomplete 2, then block 1); a missing path does not stop the rest.
     """
-    from yara_gate.quarantine import GatePaths
+    from yara_gate.quarantine import GatePaths, default_home
 
+    gate = GatePaths(home) if home is not None else default_home()
     _setup_hint(rules)
     try:
         targets = _targets(paths or [], paths_from, null)
         if targets == ["-"]:
-            code = _scan_stdin(GatePaths(home), name, timeout_s, rules, policy, json_output)
+            code = _scan_stdin(gate, name, timeout_s, rules, policy, json_output)
         else:
             if "-" in targets:
                 raise ValueError("'-' must be the only PATH")
@@ -122,12 +123,13 @@ def scan(
                     code,
                     _scan_path(
                         Path(target),
-                        GatePaths(home),
+                        gate,
                         timeout_s,
                         rules,
                         policy,
                         follow_symlinks,
                         json_output,
+                        use_releases=home is not None,
                     ),
                 )
     except typer.Exit:
@@ -165,6 +167,41 @@ def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
             seen.add(item)
             distinct.append(item)
     return distinct
+
+
+@app.command()
+def release(
+    sha256: str = typer.Argument(..., metavar="SHA256"),
+    home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),
+    reason: str = typer.Option(
+        ..., "--reason", help="Record why you accept the reviewed findings."
+    ),
+    path: Path | None = typer.Option(None, "--path", help="Approve an in-place scan of this file."),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory used for review."),
+    timeout_s: int = typer.Option(30, "--timeout", help="Seconds for the fresh scan."),
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Allow a reviewed release without a terminal."
+    ),
+) -> None:
+    """Release an exact agent-document policy hold after human review."""
+    from yara_gate.quarantine import GatePaths, IntakeRejected, release_file
+    from yara_gate.release import AuditLogError
+
+    try:
+        if not non_interactive and not sys.stdin.isatty():
+            raise ValueError("release requires a terminal or --non-interactive")
+        result, head = release_file(
+            GatePaths(home),
+            sha256.lower(),
+            path,
+            reason=reason,
+            timeout_s=timeout_s,
+            rules_dir=rules,
+        )
+    except (AuditLogError, IntakeRejected, OSError, ValueError) as exc:
+        typer.echo(f"release refused: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"released {result.sha256} under ruleset {result.ruleset_sha256}; audit head {head}")
 
 
 @app.command()
@@ -436,6 +473,8 @@ def _scan_path(
     policy: ScanPolicy = ScanPolicy.default,
     follow_symlinks: bool = False,
     json_output: bool = False,
+    *,
+    use_releases: bool = False,
 ) -> int:
     from yara_gate.quarantine import process_inbox_file, scan_in_place
 
@@ -453,12 +492,24 @@ def _scan_path(
             result = _refuse_path(home, item, "directory not readable", policy)
         elif _is_under(item, home.inbox):
             result = process_inbox_file(
-                home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
+                home,
+                item,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                policy=policy,
+                use_releases=use_releases,
             )
         elif (item.is_symlink() or item.is_junction()) and (not follow_symlinks or item.is_dir()):
             result = _refuse_path(home, item, "symlink not followed", policy)
         else:
-            result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
+            result = scan_in_place(
+                home,
+                item,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                policy=policy,
+                use_releases=use_releases,
+            )
         _emit(result, json_output)
         worst = max(worst, exit_code(result))
     return worst

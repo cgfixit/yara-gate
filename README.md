@@ -97,7 +97,9 @@ Inbox files with incomplete results stay in quarantine. In-memory inputs and fil
 
 A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) under every policy; the policy changes only the verdict, and `policy_reason` in the record says what it did. A `note` is a weak signal with nothing else behind it: a visible override phrase (`agent_prompt_injection_phrases`, `agent_prompt_injection_multilingual`, `agent_override_imperative`, or the same phrase inside a decoded base64 run, `agent_encoded_instruction`), a lone Unicode control in text, a PDF `/OpenAction` that only opens a page, or PDF text the scanner could not decode. Every other non-blocking rule is `advisory`.
 
-`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended: a message, a tool result, or a file the agent will act on. It holds notes too, so an SMS whose whole text is "ignore previous instructions" is held. `agent-document` is for a retrieved document a person may have written about attacks: a threat report or a test suite that quotes an override phrase passes with the note recorded, while a settings file that turns off approvals, a code-relay request, or a request for the system prompt is still held. The caller knows which one it is reading; the scanner does not guess from the content. A message is read only on a complete `clean` record. A document is read on that, or on the exact notes-only `agent-document` record in [docs/integrations.md](docs/integrations.md#documents-that-quote-attacks), and on nothing broader. Under either policy, a person reviewing the report releases a held file, never a filename or repository-wide allowlist. There is no `release` command yet ([#39](https://github.com/cgfixit/yara-gate/issues/39) tracks it; `release.py` holds the reviewed building blocks). Use a separate gate home for each policy.
+`agent-ingest` exists because a weak signal is still a reason not to let a model read something unattended: a message, a tool result, or a file the agent will act on. It holds notes too, so an SMS whose whole text is "ignore previous instructions" is held. `agent-document` is for a retrieved document a person may have written about attacks: a threat report or a test suite that quotes an override phrase passes with the note recorded, while a settings file that turns off approvals, a code-relay request, or a request for the system prompt is still held. The caller knows which one it is reading; the scanner does not guess from the content. A message is read only on a complete `clean` record. A document can also pass the [exact notes-only rule](docs/integrations.md#documents-that-quote-attacks) or carry a [verified reviewed release](docs/integrations.md#reviewed-document-releases). Use a separate gate home for each consumer or trust domain.
+
+After inspecting a held document and its report, an operator can run `yara-gate release SHA256 --home GATE --reason "review rationale"`. A release covers the exact bytes, ruleset, `agent-document` policy, and finding IDs. Block-severity findings and incomplete scans remain held. File rescans consult the release only with the same explicit `--home`. The findings stay in the report.
 
 ## Drop folder
 
@@ -107,7 +109,7 @@ A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) 
 | --- | --- |
 | `inbox/` | Drop files here |
 | `quarantine/<sha256>/` | Being scanned, or the scan did not finish |
-| `clean/<sha256>/` | Clean, or advisory under the default policy, or notes only under `agent-document` |
+| `clean/<sha256>/` | Clean, advisory under the default policy, notes only under `agent-document`, or a reviewed release |
 | `blocked/<sha256>/` | A block finding, any advisory or note under `agent-ingest`, or an advisory under `agent-document` |
 | `reports/<sha256>.{sarif,json}` | Written for every scan, before the file moves |
 
@@ -228,8 +230,8 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), pdftext (the
                      offsets), rtftext (RTF reader text), odftext (OpenDocument text), filetype,
                      heuristics, models,
                      quarantine, report, rules, hunt, demo, showcase (the catalog both demos
-                     read), selftest, samples, launchd, release (reviewed-release building
-                     blocks, not yet a command)
+                     read), selftest, samples, launchd, release (reviewed document
+                     holds and audit verification)
 rules/README.md      detection-method map, source links, loading and evidence boundaries
 rules/local/         the 87 shipped rules in 58 files; rules/rules.lock pins the vendor packs
 rules/templates/     word lists, the word separator, and templates of the three generated

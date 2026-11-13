@@ -19,7 +19,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`hunt.py`](hunt.py) creates candidate rules from confirmed blocked files and checks them against benign examples.
 - [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page, which scans a pair side by side or the whole catalog and tabulates a run by how each attack was caught.
 - [`launchd.py`](launchd.py) writes a macOS watcher plist; it does not load the agent.
-- [`release.py`](release.py) contains review and audit building blocks for a future release flow; no CLI release action or file move is implemented here.
+- [`release.py`](release.py) verifies eligibility and the audit log for the reviewed `agent-document` release flow. The CLI and quarantine module handle rescanning and disposition.
 - [`samples.py`](samples.py) creates inert synthetic examples, including EICAR; [`selftest.py`](selftest.py) exercises a fixture matrix.
 - [`showcase.py`](showcase.py) is the demo catalog: each attack beside a benign near-twin, with the verdict expected under each policy. The workbench scans it and `scripts/record_pages_demo.py` records it for the public replay.
 - [`odftext.py`](odftext.py) joins OpenDocument paragraphs across spans and other inline markup into the `odf-text` view, in each reading LibreOffice and pandoc give of an element they treat differently; `plain_xml` in [`content.py`](content.py) first hands it, and the Office readers, the part as an XML parser would.

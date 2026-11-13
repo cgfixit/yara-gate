@@ -39,6 +39,7 @@ class ScanPolicy(StrEnum):
 # findings; the reviewed-release check (release.py) reads these, so keep the strings in one place.
 INGEST_HOLD = "agent-ingest holds advisory and note findings"
 DOCUMENT_HOLD = "agent-document holds advisory findings"
+DOCUMENT_RELEASE = "agent-document hold released by review"
 DOCUMENT_NOTES = "agent-document records note findings"
 
 

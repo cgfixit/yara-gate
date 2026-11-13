@@ -2,6 +2,7 @@
 
 import errno
 import hashlib
+import json
 import os
 import secrets
 import shutil
@@ -16,9 +17,16 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from yara_gate.models import ScanPolicy, ScanResult, Verdict
-from yara_gate.report import write_reports
-from yara_gate.scanner import MAX_FILE_BYTES, scan_file
+from yara_gate.models import DOCUMENT_HOLD, ScanPolicy, ScanResult, Verdict
+from yara_gate.release import (
+    apply_release,
+    release_key,
+    release_log,
+    release_refusal,
+    reviewed_result,
+)
+from yara_gate.report import compact_report, write_reports
+from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes, scan_file
 
 if sys.platform == "win32":
     import msvcrt
@@ -138,6 +146,7 @@ def process_inbox_file(
     rules_dir: Path | None = None,
     timeout_s: int = 30,
     policy: ScanPolicy = ScanPolicy.default,
+    use_releases: bool = False,
 ) -> ScanResult:
     home.ensure()
     # One submission at a time per gate home, from intake to relocation, so a CLI scan and
@@ -157,6 +166,8 @@ def process_inbox_file(
                 policy_reason=None,
                 incomplete_reason="quarantined copy changed during the scan",
             )
+        if use_releases:
+            result = apply_release(result, home.root)
         write_reports(home.reports, result)
         _relocate(home, result)
         return result
@@ -169,12 +180,104 @@ def scan_in_place(
     rules_dir: Path | None = None,
     timeout_s: int = 30,
     policy: ScanPolicy = ScanPolicy.default,
+    use_releases: bool = False,
 ) -> ScanResult:
     """Scan a path that did not come from the inbox. The file stays where it is."""
     home.ensure()
     result = scan_file(src, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
+    if use_releases:
+        result = apply_release(result, home.root)
     write_reports(home.reports, result)
     return result
+
+
+def release_file(
+    home: GatePaths,
+    digest: str,
+    path: Path | None,
+    *,
+    reason: str,
+    rules_dir: Path | None,
+    timeout_s: int,
+) -> tuple[ScanResult, str]:
+    """Rescan the reviewed bytes and record the approval before moving any held copy."""
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise ValueError("SHA256 must be 64 hex digits")
+    if timeout_s <= 0:
+        raise ValueError("scan timeout must be positive")
+    home.ensure()
+    with _gate_lock(home):
+        slot = home.blocked / digest
+        if path is None:
+            if slot.is_symlink() or slot.is_junction() or not slot.is_dir():
+                raise ValueError("no blocked copy with that digest")
+            copies = list(slot.iterdir())
+            if len(copies) != 1:
+                raise ValueError("blocked slot must contain exactly one file")
+            target = copies[0]
+            dest = home.clean / digest
+            if os.path.lexists(dest):
+                raise ValueError("clean slot already exists")
+        else:
+            target = path
+            if target.resolve().is_relative_to(home.root.resolve()):
+                raise ValueError("release gate-owned copies by digest, without --path")
+
+        report_path = home.reports / f"{digest}.json"
+        try:
+            prior = json.loads(report_path.read_bytes())
+        except FileNotFoundError:
+            raise ValueError("no report for that digest in this gate home") from None
+        if (
+            not isinstance(prior, dict)
+            or prior.get("sha256") != digest
+            or prior.get("policy") != ScanPolicy.agent_document.value
+            or prior.get("verdict") != Verdict.block.value
+            or prior.get("policy_reason") != DOCUMENT_HOLD
+            or prior.get("incomplete_reason") is not None
+        ):
+            raise ValueError("the last report is not a complete agent-document policy hold")
+
+        fd = _open_regular(target)
+        try:
+            payload = b"".join(_bounded_chunks(fd))
+            if hashlib.sha256(payload).hexdigest() != digest:
+                raise ValueError("file bytes do not match the reviewed digest")
+            result = scan_bytes(
+                payload,
+                name=target.name,
+                timeout_s=timeout_s,
+                rules_dir=rules_dir,
+                policy=ScanPolicy.agent_document,
+            )
+            refusal = release_refusal(result)
+            if refusal is not None:
+                raise ValueError(refusal)
+            entry = target.lstat()
+            if (
+                result.path != target.name
+                or _reject_reason(entry) is not None
+                or not os.path.samestat(os.fstat(fd), entry)
+                or _hash_fd(fd) != digest
+            ):
+                raise ValueError("file changed or its name could not be preserved during review")
+        finally:
+            os.close(fd)
+
+        current = compact_report(result)
+        if any(
+            prior.get(field) != current[field]
+            for field in ("ruleset_sha256", "findings", "engine_version", "detector_sha256")
+        ):
+            raise ValueError("the scan differs from the reviewed report; scan and review again")
+        log = release_log(home.root)
+        key = release_key(result)
+        head = log.append(key, reason=reason)
+        if path is None:
+            os.replace(slot, dest)
+        result = reviewed_result(replace(result, path=str(target if path else dest / target.name)))
+        write_reports(home.reports, result)
+        return result, head
 
 
 def watch(

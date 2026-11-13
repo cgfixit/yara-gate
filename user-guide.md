@@ -94,6 +94,12 @@ Only open files from `clean/` in an editor, an indexer, or an agent. `advisory` 
 
 For an agent or indexer that must hold every advisory and note, use `yara-gate scan <path> --policy agent-ingest` or `yara-gate watch --policy agent-ingest`. Those findings then produce `block`, exit 1, and `blocked/` for inbox files; their original severity stays in the report. `--policy agent-document` holds advisories and lets a file with notes only through; the README's [policy table](README.md#verdicts-and-policies) compares the three. Use a dedicated `--home` for each consumer. Existing files are not automatically rescanned when a policy changes. A repeated inbox submission returns the existing slot to quarantine before it is scanned and relocated again, under the name it was submitted with this time.
 
+For a reviewed `agent-document` hold, inspect the file and its report, then run
+`yara-gate release SHA256 --home GATE --reason "review rationale"` with the rules
+used for the scan. The command rechecks the bytes and findings before moving
+a blocked inbox copy. See [reviewed document releases](docs/integrations.md#reviewed-document-releases)
+for in-place files, audit records, and rescan behavior.
+
 Stop watch with Control-C. One watch runs per gate home: it holds an operating-system lock on `~/YaraGate/.watch.lock`, so a second start exits 2 with `watch already running`. The lock is released when the watcher exits or crashes, so a stale file or a reused process ID never keeps the next start out. A `.watch.pid` left by an earlier release is ignored and removed.
 
 The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
