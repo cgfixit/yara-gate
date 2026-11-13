@@ -355,6 +355,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(streams, b"/Contents["),
         None,
     )
+    # The same flood after a binary content stream, so the /Contents references that let a
+    # stream failing the text sniff be read are collected over every match too.
+    binary = b"9 0 obj<</Length 12>>stream\nBT \x00\x01\x02 ET \n\nendstream endobj\n"
+    yield "pdf-contents-refs.pdf", _filled(streams + binary, b"/Contents["), None
     page = b"1 0 obj<</Type/Page/Contents[7 0 R 8 0 R]>>endobj\n"
     yield (
         "pdf-page-objects.pdf",
@@ -546,6 +550,29 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     yield (
         "mcp-description-run.json",
         prefix + b" " * (SIZE - len(prefix) - len(suffix)) + suffix,
+        None,
+    )
+    # JSON with comments: an unclosed comment opener is found once. A file over 1 MiB is not
+    # read as JSON with comments at all.
+    yield "jsonc-comment-openers.json", _filled(b"/*", b"/*"), None
+    # A page whose /Contents array names 400 streams, joined into one before it is read.
+    count = 400
+    refs = b" ".join(b"%d 0 R" % (100 + index) for index in range(count))
+    page = b"%PDF-1.7\n2 0 obj<</Type/Page/MediaBox[0 0 612 792]/Contents[" + refs + b"]>>endobj\n"
+    words = b"(ab ) Tj " * ((SIZE - len(page)) // count // 9 - 12)
+    streams = b"".join(
+        b"%d 0 obj<</Length %d>>stream\n%s\nendstream endobj\n" % (100 + index, len(words), words)
+        for index in range(count)
+    )
+    yield "pdf-contents-array.pdf", _filled(page + streams + b"%", b" ")[:-1] + b"\n", None
+    # A page content stream that fails the text sniff, read through the tokenizer.
+    yield (
+        "pdf-binary-content.pdf",
+        _content_pdf(
+            b"BT /F1 12 Tf ",
+            bytes(range(256)),
+            b"2 0 obj<</Type/Page/MediaBox[0 0 612 792]/Contents 1 0 R>>endobj\n",
+        ),
         None,
     )
     # Mail. A header block is read for 64 KiB and has to end there before the mail library

@@ -1236,6 +1236,49 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
     return findings
 
 
+# A JSON string, a comment opener, or a comma, for ``_jsonc``. A string holds no raw line break.
+_JSONC_TOKEN = re.compile(rb'"(?:[^"\\\n]++|\\.)*+"|//|/\*|,')
+_JSONC_SPACE = re.compile(rb"[ \t\r\n]*+")
+# Configuration files with comments are small; a larger file is left to strict JSON.
+_JSONC_MAX = 1 << 20
+
+
+def _jsonc(data: bytes) -> bytes | None:
+    """``data`` with comments and trailing commas removed outside strings, as jsonc-parser
+    reads it, or None when there is nothing to remove, a comment is not closed, or the file is
+    larger than ``_JSONC_MAX``. One forward pass; each comment is skipped with bytes.find."""
+    if len(data) > _JSONC_MAX:
+        return None
+    out = bytearray()
+    position = 0
+    changed = False
+    while (match := _JSONC_TOKEN.search(data, position)) is not None:
+        token = match.group()
+        out += data[position : match.start()]
+        position = match.end()
+        if token == b"//":
+            close = data.find(b"\n", position)
+            position = len(data) if close < 0 else close
+            changed = True
+        elif token == b"/*":
+            close = data.find(b"*/", position)
+            if close < 0:
+                return None
+            position = close + 2
+            out += b" "
+            changed = True
+        elif token == b",":
+            after = _JSONC_SPACE.match(data, position)
+            if after is not None and data[after.end() : after.end() + 1] in (b"}", b"]"):
+                changed = True
+            else:
+                out += token
+        else:
+            out += token
+    out += data[position:]
+    return bytes(out) if changed else None
+
+
 def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
     """Shell launchers and hidden instructions in MCP-style JSON, and an incomplete reason.
 
@@ -1244,10 +1287,21 @@ def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | Non
     incomplete when it could hold an MCP entry (it names a command, args, or a description, or
     escapes a key), never clean; other large JSON keeps its result.
     """
-    if path.suffix.lower() != ".json" or not data.lstrip().startswith((b"{", b"[")):
+    if path.suffix.lower() != ".json":
+        return [], None
+    # json.loads reads a UTF-8 byte order mark; a config with comments (VS Code's mcp.json,
+    # .vscode/settings.json) is read as jsonc-parser reads it, only when strict JSON fails.
+    body = data.removeprefix(b"\xef\xbb\xbf")
+    if not body.lstrip().startswith((b"{", b"[", b"//", b"/*")):
         return [], None
     try:
-        parsed = json.loads(data)
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            relaxed = _jsonc(body)
+            if relaxed is None:
+                return [], None
+            parsed = json.loads(relaxed)
     except json.JSONDecodeError:
         return [], None
     except RecursionError:

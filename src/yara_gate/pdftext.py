@@ -32,13 +32,16 @@ from __future__ import annotations
 import binascii
 import math
 import re
+import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 
 from yara_gate.content import (
+    _PDF_END,
     _PDF_OBJ_HEADER,
+    _PDF_STREAM,
     Budget,
     ContentLimit,
     PdfStream,
@@ -269,11 +272,17 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
     # of a continuation because leaking an invisible mode across pages can hold shown text.
     occurrences = Counter(stream.number for stream in streams)
     predecessors = _contents_predecessors(data, occurrences, budget) if len(streams) > 1 else {}
+    if len(streams) > 1:
+        _other_contents(data, streams, objects, occurrences, predecessors, budget)
+    joined, members = _joined_contents(data, streams, occurrences, predecessors, pages, budget)
     previous: int | None = None
     state = _TextState()
     for stream in streams:
-        body = stream.text
         number = stream.number
+        if number in members:
+            # Read as part of the /Contents array it belongs to, from the array's first stream.
+            continue
+        body = joined.get(number, stream.text) if number is not None else stream.text
         linked = number in predecessors
         if number is None or not linked or previous is None or predecessors.get(number) != previous:
             state.render = 0
@@ -298,6 +307,103 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
         if linked and page:
             previous = number
     return result
+
+
+# Streams of one /Contents array read as one: an array is one stream (ISO 32000-1, 7.8.2).
+MAX_JOINED_STREAMS = 1024
+
+
+def _joined_contents(
+    data: bytes,
+    streams: list[PdfStream],
+    occurrences: Counter[int | None],
+    predecessors: dict[int, int | None],
+    pages: Mapping[int, object] | None,
+    budget: Budget,
+) -> tuple[dict[int, bytes], set[int]]:
+    """The streams of each direct /Contents array joined in array order, as every reader
+    joins them, keyed by the array's first stream; and the numbers of the other members.
+
+    A run is joined only where ``predecessors`` names each stream's place once, each member is
+    one decoded stream, its dictionary marks it as page content, and the page map gives every
+    member the same fonts. A run breaks where any of these fails, and the streams on either side
+    are read as before. Streams are joined with a line feed, so a token never straddles two.
+    """
+    single = {
+        stream.number: stream
+        for stream in streams
+        if stream.number is not None and occurrences[stream.number] == 1
+    }
+    successor: dict[int, int] = {}
+    shared: set[int] = set()
+    for number, before in predecessors.items():
+        if before is None or before not in single or number not in single:
+            continue
+        if before in successor:
+            shared.add(before)
+        successor[before] = number
+    for before in shared:
+        del successor[before]
+    joined: dict[int, bytes] = {}
+    members: set[int] = set()
+    if not successor:
+        return joined, members
+    following = set(successor.values())
+    content: dict[int, bool] = {}
+
+    def readable(number: int) -> bool:
+        stream = single[number]
+        if stream.text is None and not _empty_stream(data, stream):
+            return False
+        if number not in content:
+            content[number] = _page_content(data, stream)
+        return content[number]
+
+    def fonts_of(number: int) -> object:
+        return pages.get(number) if pages else None
+
+    def flush(run: list[int]) -> None:
+        if len(run) > 1:
+            joined[run[0]] = b"\n".join(single[number].text or b"" for number in run)
+            members.update(run[1:])
+
+    for count, head in enumerate(number for number in successor if number not in following):
+        if count % 4096 == 0:
+            budget.check()
+        run: list[int] = []
+        seen: set[int] = set()
+        current: int | None = head
+        while current is not None and current not in seen:
+            seen.add(current)
+            if readable(current) and (not run or fonts_of(current) == fonts_of(run[0])):
+                if len(run) >= MAX_JOINED_STREAMS:
+                    flush(run)
+                    run = []
+                run.append(current)
+            else:
+                flush(run)
+                run = [current] if readable(current) else []
+            current = successor.get(current)
+        flush(run)
+    return joined, members
+
+
+def _empty_stream(data: bytes, stream: PdfStream) -> bool:
+    """True for a stream that holds nothing, written as it is or deflated: an empty member of a
+    /Contents array, which a reader joins past."""
+    start = _PDF_STREAM.match(data, stream.offset)
+    if start is None:
+        return False
+    end = _PDF_END.search(data, start.end(), start.end() + 64)
+    if end is None:
+        return False
+    body = data[start.end() : end.start()]
+    if not body.strip(b"\x00\t\n\f\r "):
+        return True
+    try:
+        return zlib.decompress(body) == b""
+    except zlib.error:
+        return False
 
 
 def _contents_predecessors(
@@ -351,19 +457,91 @@ def _contents_predecessors(
         refs = page.get(b"/Contents")
         if not isinstance(refs, list):
             continue
-        previous: int | None = None
-        for ref in refs:
-            if not isinstance(ref, tuple) or ref[1] != 0:
-                previous = None
-                continue
-            number = ref[0]
-            # A stream reused in different positions cannot safely inherit either state.
-            if occurrences[number] == 1:
-                predecessors[number] = (
-                    previous if predecessors.get(number, previous) == previous else None
-                )
-            previous = number
+        _link(refs, occurrences, predecessors)
     return predecessors
+
+
+def _link(
+    refs: Sequence[object], occurrences: Counter[int | None], predecessors: dict[int, int | None]
+) -> None:
+    """Record each stream of one /Contents array after the one before it."""
+    previous: int | None = None
+    for ref in refs:
+        if not isinstance(ref, tuple) or ref[1] != 0:
+            previous = None
+            continue
+        number = ref[0]
+        # A stream reused in different positions cannot safely inherit either state.
+        if occurrences[number] == 1:
+            predecessors[number] = (
+                previous if predecessors.get(number, previous) == previous else None
+            )
+        previous = number
+
+
+_CONTENTS_VALUE = re.compile(
+    rb"/Contents[\x00\t\n\f\r ]*+(?:([0-9]{1,10})[\x00\t\n\f\r ]++0[\x00\t\n\f\r ]++R"
+    # An array of references holds only digits, R, and white space, so a "[" followed by
+    # anything else fails at once and repeated "/Contents[" costs one step each.
+    rb"|(\[[0-9R\x00\t\n\f\r ]{0,65536}+\]))"
+)
+_OBJECT_END = frozenset({b"endobj", b"stream"})
+# /Contents values read past the raw page dictionaries, so one hostile file cannot make many.
+MAX_OTHER_CONTENTS = 4096
+
+
+def _other_contents(
+    data: bytes,
+    streams: list[PdfStream],
+    objects: Lookup,
+    occurrences: Counter[int | None],
+    predecessors: dict[int, int | None],
+    budget: Budget,
+) -> None:
+    """Add the /Contents arrays ``_contents_predecessors`` cannot see: an array kept in an object
+    of its own (``/Contents 7 0 R``), and a page dictionary kept in an object stream.
+
+    Every reader follows both (ISO 32000-1, 7.7.3.3: the value may be a reference to an array).
+    A referenced object is used only when it has one definition and it is an array; an array in
+    an object stream is used as written.
+    """
+    sources = [data]
+    for stream in streams:
+        if stream.inflated:
+            dictionary = _pdf_stream_dict(data, stream.offset)
+            # Only an object stream holds page dictionaries; a content stream's own text is not one.
+            if dictionary is not None and dictionary.get(b"/Type") == b"/ObjStm":
+                sources.append(stream.inflated)
+    count = 0
+    for source in sources:
+        budget.check()
+        for match in _CONTENTS_VALUE.finditer(source):
+            count += 1
+            if count % 4096 == 0:
+                budget.check()
+            if count > MAX_OTHER_CONTENTS:
+                return
+            if match.group(1) is not None:
+                # A reference to a stream has nothing to order; only an array object is used.
+                bodies = objects(int(match.group(1)), 0)
+                if len(bodies) != 1:
+                    continue
+                text = bodies[0]
+            elif source is data:
+                # A direct array in the file's own bytes is the raw page dictionaries' case.
+                continue
+            else:
+                text = match.group(2)
+            # A raw definition runs on past its object; it is read up to its endobj.
+            tokens = _pdf_tokens(text, 0, min(len(text), 65536), _OBJECT_END)
+            if not tokens:
+                continue
+            try:
+                value, used = _pdf_value(tokens, 0)
+            except (IndexError, ValueError):
+                continue
+            if used == len(tokens) and isinstance(value, list):
+                _link(value, occurrences, predecessors)
 
 
 def _page_box(sources: list[bytes], budget: Budget) -> Box | None:
