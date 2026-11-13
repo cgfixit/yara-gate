@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 75 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 76 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -106,3 +106,13 @@ x86_64, Python 3.12.3; the slowest new input took 5.9 s (`mail-nested-charset.em
 `pdf-font-readings-winansi.pdf`) and the slowest overall 6.3 s (`pdf-page-fonts.pdf`).
 `mail-punycode-part.eml` must end `archive unreadable or encrypted`; on the base revision
 the same bytes ran 136 s.
+
+## November 13, 2026: PDF page content as one stream, and JSON with comments
+
+Four inputs were added with the [PDF streams and JSON with comments](2026-11-13-pdf-streams-and-jsonc.md)
+change: a `.json` file of unclosed `/*` (0.44 s), a page whose `/Contents` array names 400
+streams joined into one (3.4 s), a binary page content stream named by a page (0.44 s), and
+4 MiB of `/Contents[` after a binary content stream (2.8 s), which drives the pattern that
+collects `/Contents` references. The first form of that pattern made the existing
+`pdf-contents-arrays.pdf` take 10.2 s; it now takes 2.9 s. All 76 passed on Linux x86_64,
+Python 3.12.3; the slowest overall took 5.0 s (`pdf-page-fonts.pdf`).

@@ -1,7 +1,8 @@
 # PDF page content as one stream, and JSON with comments — November 13, 2026
 
-Base: `main` at `0abcbe1`. Changes: `0bd55d5` (JSON), `9a3b6f4` (PDF), and the probe cases,
-timing inputs, and docs in the commit that adds this record. Linux 6.18 x86_64 container,
+Base: `main` at `0abcbe1`. Changes: `0bd55d5` (JSON), `9a3b6f4` (PDF), `64724cb` (probe cases,
+timing inputs, docs, and this record), `5f7df1d` (a timing fix the sweep found), and the commit
+that fills in this record's figures. Linux 6.18 x86_64 container,
 Python 3.12.3, YARA-X 1.23.0, 87 bundled local rules, zero skips, no vendor download. Every
 scan used a disposable copy of `rules/local`. Nothing was executed, unpacked to disk, or
 fetched by the scanner.
@@ -103,19 +104,49 @@ the same result: every attack held, every twin clean.
 
 ## Benign files, `0abcbe1` against this change
 
-SWEEP_TABLE
+`main` at `0abcbe1` and this change, each from its own source tree with the same rules,
+scanned every file under `default` and `agent-document`.
+
+| Corpus | Files | Files that changed |
+| --- | --- | --- |
+| PDFs on the machine: generator output (LibreOffice, Chromium, reportlab, pypdf, PDFium, pdftocairo, MuPDF, Pillow), test-suite files, earlier probe fixtures, and the tripwire's inputs, unique by content | 8,622 | 29, every one an attack fixture that went from clean to held: 21 written for these shapes in the earlier probe and 8 of this change's own. 0 benign files gained a finding, lost one, or became incomplete |
+| Every file on the machine that the new JSON test opens and the old did not, or a `.json` file with a mark or that needs comments read | 26 of 238,674 examined (17 unique): two C headers that open with a comment and a brace, and tsconfig files | 0 |
+| Every strict `.json` file under 1 MiB on the machine, as written | 2,936 | 0 |
+| The same 2,936 with a byte order mark added, and again with a `//` comment first and a trailing comma | 5,872 | 0: each gives the rules and verdicts its original gave on `main`. On `main` the same variants lost a finding on 2 of the 23 originals that have one (`heuristic_mcp_shell`, `agent_config_approval_bypass`) |
+
+Of the 8,622, 82 hold a direct `/Contents`
+array in their own bytes and 601 an object stream, so real arrays were few: most of the array
+evidence is the fixtures above and the backlog's earlier prototype, which changed 0 of 340
+generator PDFs while joining 126 chains in 19 stamped files.
+
+The first head sweep found one regression, in time, not in findings: the tripwire's
+`pdf-contents-arrays.pdf`, 4 MiB of `/Contents[`, took 10.2 s against 3.0 s, because the new
+array pattern ran up to 64 KB from every match looking for `]`. An array of references holds
+only digits, `R`, and white space, so the pattern now takes only those (`5f7df1d`), and the
+input is back to 3.0 s. `pdf-contents-refs.pdf` drives the same pattern where it collects the
+references for a stream that fails the sniff: 7.4 s for that pattern alone before the fix,
+0.02 s after.
 
 ## Timing
 
-Three 4 MiB inputs join the tripwire, so it scans 75: `jsonc-comment-openers.json` (a file
+Four 4 MiB inputs join the tripwire, so it scans 76: `jsonc-comment-openers.json` (a file
 of unclosed `/*`), `pdf-contents-array.pdf` (one page whose `/Contents` array names 400
-streams), and `pdf-binary-content.pdf` (a page content stream of every byte value, named by
-a page). TIMING_LINE The comment reader at its 1 MiB cap took at most 0.28 s (all commas);
+streams), `pdf-binary-content.pdf` (a page content stream of every byte value, named by
+a page), and `pdf-contents-refs.pdf` (below). All 76 passed on Linux x86_64, Python 3.12.3, with the scan ceiling at 10 s: the new inputs took 0.44 s, 3.4 s, 0.44 s, and 2.8 s, and the slowest overall 5.0 s (`pdf-page-fonts.pdf`). The comment reader at its 1 MiB cap took at most 0.28 s (all commas);
 the 400-stream page took 3.7 s against 3.6 s on `0abcbe1`, where it was read stream by stream.
 
 ## What was run
 
-CHECKS_TABLE
+| Check | Result |
+| --- | --- |
+| `probe_detection_gaps.py --verify` | 500 ok; open B3, B5, B6, B8 as before; the 24 new cases ok, and each attack among them FAIL on `0abcbe1` |
+| `probe_pdf_reader_agreement.py fixtures` / `fuzz --seed 1 --count 15000` | 141 files, MISS 0 / 532 files, MISS 0 (mupdf, pdfium, pdfminer.six, poppler, pypdf) |
+| `probe_pdf_font_reader_agreement.py fixtures` / `fuzz --seed 1 --count 15000` | 107 files, MISS 0 / 186 files, MISS 0 |
+| `probe_rule_coverage.py --verify`, `measure_precision.py --fail-over`, `check_rule_pairs.py`, `check_added_rules.py` | Pass |
+| `check_worst_case_timing.py` | 76 inputs, all under the ceiling |
+| `record_pages_demo.py --baseline web-demo/recordings.json` | Outcomes match: 82 scenarios |
+| `pytest` on `test_pdftext`, `test_scanner`, `test_pdf_text_folding`, `test_pdfannotations`, `test_pdfxref`, `test_cli_json`, `test_heuristics`, `test_demo`, `test_office_parts_by_content` | 926 passed; the full suite is left to hosted CI |
+| `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_text_controls.py`, `check_doc_links.py` | Clean |
 
 ## Not established
 
