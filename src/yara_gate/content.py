@@ -3232,6 +3232,7 @@ def pdf_streams(
         return []
     streams: list[PdfStream] = []
     objects: dict[tuple[int, int], PdfValue | None] = {}
+    contents: set[int] | None = None
     for count, start in enumerate(_PDF_STREAM.finditer(data)):
         if count >= MAX_PDF_STREAMS:
             raise ContentLimit("pdf streams exceed 2000")
@@ -3247,19 +3248,67 @@ def pdf_streams(
                 # Object-stream indexing reads this same dict. Recording the bytes
                 # keeps the expansion budget from counting the stream a second time.
                 decoded[start.start()] = inflated
+        content = inflated
         inflated = inflated if inflated and sniff(inflated) == "text" else None
         text = inflated
+        stream_dict = None
         if text is None:
             stream_dict = _pdf_stream_dict(data, start.start())
             if stream_dict is not None and b"/Filter" not in stream_dict:
                 end = _PDF_END.search(data, start.end())
                 raw = data[start.end() : end.start() if end else len(data)]
+                content = raw
                 text = raw if raw and sniff(raw) == "text" else None
         number = None
         for header in _PDF_OBJ_HEADER.finditer(data, max(0, start.start() - 4096), start.start()):
             number = int(header.group(1))
+        if text is None and content and number is not None and b"BT" in content:
+            # A page's content stream is read whatever its bytes look like: an inline image or
+            # a binary string before the text fails the sniff, and every reader still shows the
+            # page. Only a stream a /Contents entry names, whose dictionary marks it as neither
+            # an image, a form, nor a font program, is read this way; pdf-flate is unchanged.
+            if contents is None:
+                contents = _contents_refs(data, budget)
+            if number in contents:
+                if stream_dict is None:
+                    stream_dict = _pdf_stream_dict(data, start.start())
+                if stream_dict is not None and not (_NOT_CONTENT_KEYS & stream_dict.keys()):
+                    text = content
         streams.append(PdfStream(start.start(), number, inflated, text))
     return streams
+
+
+# Keys of a stream that is not a page's content: an image, a form or other drawn object, or a
+# font program (/Length1 to /Length3).
+_NOT_CONTENT_KEYS = frozenset(
+    {b"/Subtype", b"/Type", b"/PatternType", b"/BBox", b"/Matrix"}
+    | {b"/Length1", b"/Length2", b"/Length3"}
+)
+_PDF_WS = rb"[\x00\t\n\f\r ]"
+_CONTENTS_REF = re.compile(
+    rb"/Contents"
+    + _PDF_WS
+    + rb"*+(?:([0-9]{1,10})"
+    + _PDF_WS
+    + rb"++[0-9]{1,5}"
+    + _PDF_WS
+    + rb"++R|\[([^\]]{0,65536}+)\])"
+)
+_ARRAY_REF = re.compile(rb"([0-9]{1,10})" + _PDF_WS + rb"++[0-9]{1,5}" + _PDF_WS + rb"++R")
+
+
+def _contents_refs(data: bytes, budget: Budget) -> set[int]:
+    """Object numbers a ``/Contents`` entry in the file's own bytes names, directly or in a
+    direct array."""
+    found: set[int] = set()
+    for count, match in enumerate(_CONTENTS_REF.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        if match.group(1) is not None:
+            found.add(int(match.group(1)))
+        else:
+            found.update(int(ref.group(1)) for ref in _ARRAY_REF.finditer(match.group(2)))
+    return found
 
 
 def pdf_views(
