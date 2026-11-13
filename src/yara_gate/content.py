@@ -1058,6 +1058,8 @@ def _mime_part_text(charset: str | None, payload: bytes) -> bytes:
 
 
 _JSON_START = re.compile(r"[\[{]\s*(?:[\"{\[\]}\d-]|(?:true|false|null)\b)")
+# How far into a text a JSON value may start, after a mark, white space, and comments.
+_JSON_HEAD = 8192
 
 
 # A base64 token long enough to hold a sentence (12 bytes), standard or URL-safe, optionally
@@ -1207,8 +1209,30 @@ def _plus_words(text: str) -> bool:
 
 
 def _json_shaped(text: str) -> bool:
-    """True when text opens like JSON, so an INI header such as [Section] is not decoded."""
-    return _JSON_START.match(text) is not None
+    """True when text opens like JSON, so an INI header such as [Section] is not decoded.
+
+    A byte order mark, white space, and ``//`` or ``/* */`` comments may stand before the value,
+    as in the JSON with comments that VS Code and dev containers read (jsonc-parser) and that
+    ``json.loads`` reads after a mark. They are skipped within the first 8,192 characters, one
+    comment at a time with str.find, as ``_opens_as_html`` skips HTML comments.
+    """
+    head = text[:_JSON_HEAD]
+    position = 1 if head.startswith("\ufeff") else 0
+    while True:
+        while position < len(head) and head[position].isspace():
+            position += 1
+        if head.startswith("//", position):
+            close = head.find("\n", position + 2)
+            if close < 0:
+                return False
+            position = close + 1
+        elif head.startswith("/*", position):
+            close = head.find("*/", position + 2)
+            if close < 0:
+                return False
+            position = close + 2
+        else:
+            return _JSON_START.match(head, position) is not None
 
 
 def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
@@ -1229,8 +1253,7 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     if unescaped != text:
         yield "html-unescaped", _derived(unescaped, budget)
     # A chat body, webhook payload, or tool result arrives as JSON; the reader sees \u0049 as I.
-    stripped = text.lstrip()
-    if _json_shaped(stripped) and "\\" in stripped:
+    if _json_shaped(text) and "\\" in text:
         decoded = _JSON_ESCAPE.sub(_json_escape, text)
         if decoded != text:
             yield from _with_folded("json-unescaped", decoded, budget)
