@@ -3488,8 +3488,9 @@ def _pdf_stream_bytes(
 
     None means the chain does not reach FlateDecode, LZWDecode, or RunLengthDecode through
     ASCIIHexDecode and ASCII85Decode stages alone, or the stream does not decode. A stream that
-    decodes is never dropped over its predictor, and a RunLength stream has none: parameters this view will not apply leave the inflated bytes as they are, for
-    ``sniff`` and the text rules to judge.
+    decodes is never dropped over its predictor, and a RunLength stream has none: parameters
+    this view will not apply leave the decoded bytes as they are, for ``sniff`` and the text
+    rules to judge.
     """
     stream_dict = _pdf_stream_dict(data, start.start())
     end = _PDF_END.search(data, start.end())

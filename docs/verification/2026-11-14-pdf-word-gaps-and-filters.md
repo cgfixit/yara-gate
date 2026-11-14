@@ -60,7 +60,7 @@ a change to the report schema and is not part of this change.
 
 ## Fixtures
 
-The probe's `gaps` group, 11 cases. Each attack is missed on `e365218` and held here.
+The probe's `gaps` group, 12 cases. Each attack is missed on `e365218` and held here.
 
 | Case | `e365218` | This change | Readers showing the phrase |
 | --- | --- | --- | --- |
@@ -72,6 +72,7 @@ The probe's `gaps` group, 11 cases. Each attack is missed on `e365218` and held 
 | Kerning by `Td` inside words, ordinary text (benign) | clean | clean | none |
 | Page content under `LZWDecode` | clean | held | 4 of 4 |
 | Page content under `RunLengthDecode` | clean | held | 4 of 4 |
+| `RunLengthDecode` with ignored predictor parameters (review) | clean | held | poppler, pypdf, PDFium |
 | Page content under `[/ASCII85Decode /LZWDecode]` | clean | held | 4 of 4 |
 | LZW page content, ordinary text (benign) | clean | clean | none |
 | RunLength image holding content operators (boundary) | clean | clean | none |
@@ -133,6 +134,29 @@ stream read as malformed instead of unsupported. A cross-reference stream under 
 RunLength is unsupported again, as before; one under Flate is read as it was. An object stream
 under a single LZW filter is now indexed, so objects in it are found by the lookups that read
 object streams, as every reader finds them.
+
+## Review follow-up
+
+Two review findings on the decoders, each reproduced on `5355cdc` before the fix:
+
+- LZW and RunLength charged their output to the 100 MB stream limit and the shared expansion
+  budget once per 65,536 encoded bytes. A 65,410-byte LZW stream that repeats its longest
+  table entry reached 160,930,880 bytes before the check raised. Output is now charged each
+  time it grows by 64 KiB, so the same stream stops at 104,923,709 bytes; a test checks the
+  bound against a nearly spent shared budget. `pdf-lzw-content.pdf` scans in 1.0 s and
+  `pdf-run-length-content.pdf` in 0.64 s, as before.
+- A RunLength stream whose `/DecodeParms` named a predictor had it applied, and the garbled
+  text left an override sentence clean. RunLengthDecode takes no parameters (ISO 32000-1,
+  Table 6). poppler, pypdf, and PDFium ignore them and show the sentence; pdfminer.six applies
+  the predictor and fails the file with an `IndexError`. The decoded bytes are now returned as
+  they are, and the probe's `gaps` group has the case (12 cases).
+
+The hosted timing step on `5355cdc` passed all 81 inputs and then reached its 5-minute limit
+on both Ubuntu and macOS. Inputs this change does not touch ran about 1.9 times slower there
+than on `main`'s last run (`mail-nested-charset.eml` 6.9 s against 3.6 s). Here, `main` and
+this change scanned the 78 shared inputs one after the other, case by case: 145.1 s against
+149.8 s, the difference in PDF inputs read with spaces (at most 1.2 s, `pdf-hidden-stretch.pdf`).
+The three new inputs add about 4.5 s here.
 
 ## Not established
 
