@@ -130,17 +130,26 @@ def intake(
     try:
         digest = _hash_fd(fd)
         slot = home.quarantine / digest
-        for root in (home.clean, home.blocked):
-            earlier = root / digest
-            if earlier.is_dir():
-                # Every rescan passes through quarantine, including a stricter policy.
-                if slot.exists():
-                    shutil.rmtree(earlier)
-                else:
-                    os.replace(earlier, slot)
-        slot.mkdir(parents=True, exist_ok=True)
-        dest = slot / src.name
-        _copy_fd(fd, dest)
+        # Copy and verify before an earlier verdict copy is touched, so a failed or
+        # changed resubmission leaves clean/ and blocked/ as they were.
+        staged = home.quarantine / f".staged-{secrets.token_hex(4)}"
+        try:
+            _copy_fd(fd, staged)
+            if _hash_path(staged) != digest:
+                raise IntakeRejected("entry changed during intake")
+            for root in (home.clean, home.blocked):
+                earlier = root / digest
+                if earlier.is_dir():
+                    # Every rescan passes through quarantine, including a stricter policy.
+                    if slot.exists():
+                        shutil.rmtree(earlier)
+                    else:
+                        os.replace(earlier, slot)
+            slot.mkdir(parents=True, exist_ok=True)
+            dest = slot / src.name
+            os.replace(staged, dest)
+        finally:
+            staged.unlink(missing_ok=True)
         for item in slot.iterdir():
             if item.name != dest.name and not item.is_dir():
                 item.unlink()
@@ -741,6 +750,14 @@ def _hash_fd(fd: int) -> str:
     for chunk in _bounded_chunks(fd):
         hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _hash_path(path: Path) -> str:
+    fd = os.open(path, os.O_RDONLY | _BINARY)
+    try:
+        return _hash_fd(fd)
+    finally:
+        os.close(fd)
 
 
 def _copy_fd(fd: int, dest: Path) -> None:
