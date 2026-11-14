@@ -210,3 +210,29 @@ def test_release_cli_binds_review_and_resubmission(tmp_path: Path, rules_copy: P
     log.head_path.unlink()
     path.write_bytes(GUIDE)
     assert runner.invoke(app, scan).exit_code == 1
+
+
+def test_report_failure_keeps_reviewed_file_blocked(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+    from yara_gate.models import ScanPolicy
+
+    home = quarantine.GatePaths(tmp_path / "gate")
+    home.ensure()
+    src = home.inbox / "setup.md"
+    src.write_bytes(GUIDE)
+    held = quarantine.process_inbox_file(
+        home, src, rules_dir=rules_copy, policy=ScanPolicy.agent_document
+    )
+
+    def fail(*args: object) -> None:
+        raise OSError("report storage unavailable")
+
+    monkeypatch.setattr(quarantine, "write_reports", fail)
+    with pytest.raises(OSError, match="report storage unavailable"):
+        quarantine.release_file(
+            home, held.sha256, None, reason="Reviewed", rules_dir=rules_copy, timeout_s=30
+        )
+    assert (home.blocked / held.sha256 / src.name).read_bytes() == GUIDE
+    assert not (home.clean / held.sha256).exists()

@@ -273,11 +273,17 @@ def release_file(
         log = release_log(home.root)
         key = release_key(result)
         head = log.append(key, reason=reason)
+        released = reviewed_result(
+            replace(result, path=str(target if path else dest / target.name))
+        )
+        write_reports(home.reports, released)
         if path is None:
-            os.replace(slot, dest)
-        result = reviewed_result(replace(result, path=str(target if path else dest / target.name)))
-        write_reports(home.reports, result)
-        return result, head
+            try:
+                os.replace(slot, dest)
+            except OSError:
+                write_reports(home.reports, replace(result, path=str(target)))
+                raise
+        return released, head
 
 
 def watch(
