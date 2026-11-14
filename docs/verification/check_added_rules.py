@@ -11,6 +11,7 @@ import json
 import pickle
 import shutil
 import struct
+import tarfile
 import tempfile
 import urllib.parse
 import zipfile
@@ -30,6 +31,17 @@ from yara_gate.samples import (
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+def _tgz(name: str, payload: bytes) -> bytes:
+    """A one-member gzip tar, as npm packs a package."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        info = tarfile.TarInfo(name)
+        info.size = len(payload)
+        info.mtime = 0
+        archive.addfile(info, io.BytesIO(payload))
+    return output.getvalue()
 
 
 def _zip(name: str, payload: bytes) -> bytes:
@@ -1041,6 +1053,30 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             "dev_python_pth_exec",
         ),
         ("_virtualenv.pth", b"import _virtualenv\n", None),
+        (
+            "binding.gyp",
+            b'{"targets":[{"sources":["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
+            "dev_gyp_command_expansion",
+        ),
+        (
+            "inert-1.0.0.tgz",
+            _tgz(
+                "package/binding.gyp",
+                b'{"targets":[{"sources":["<!(node index.js >/dev/null; echo stub.c)"]}]}',
+            ),
+            "dev_gyp_command_expansion",
+        ),
+        (
+            "binding.gyp",
+            b'{"targets":[{"include_dirs":'
+            b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
+            None,
+        ),
+        (
+            "build.json",
+            b'{"targets":[{"sources":["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
+            None,
+        ),
         (
             "inert-1.0-py3-none-any.whl",
             _zip("inert_init.pth", b"import subprocess; subprocess.Popen(['true'])\n"),
