@@ -52,6 +52,10 @@ class XrefEntry:
     generation: int = 0
 
 
+# Filters pdf_streams decodes for page content that a cross-reference stream may not use.
+_NOT_XREF_FILTERS = frozenset({b"/LZWDecode", b"/LZW", b"/RunLengthDecode", b"/RL"})
+
+
 def _startxref_candidates(data: bytes, budget: Budget) -> list[int]:
     """The section offset each ``startxref`` in the file gives, in file order.
 
@@ -301,18 +305,22 @@ def _decode_stream(
     cache: dict[int, bytes | None] | None,
     stream_at: int,
 ) -> bytes:
+    filt = dictionary.get(b"/Filter")
+    names = filt if isinstance(filt, list) else [filt]
+    if any(name in _NOT_XREF_FILTERS for name in names):
+        # pdf_streams also decodes LZW and RunLength page content; a cross-reference stream
+        # under either is unsupported, as before, so those cached bytes are not used.
+        raise ContentLimit("pdf xref unsupported")
     cached = None if cache is None else cache.get(stream_at)
     # pdf_streams stores Flate output before a binary predictor is reversed.
     if isinstance(cached, bytes) and cached:
         decoded: bytes | None = cached
+    elif filt is None:
+        decoded = raw
+    elif filt in (b"/FlateDecode", b"/Fl"):
+        decoded = _inflate(raw, budget)
     else:
-        filt = dictionary.get(b"/Filter")
-        if filt is None:
-            decoded = raw
-        elif filt in (b"/FlateDecode", b"/Fl"):
-            decoded = _inflate(raw, budget)
-        else:
-            raise ContentLimit("pdf xref unsupported")
+        raise ContentLimit("pdf xref unsupported")
     if not decoded:
         raise ContentLimit("pdf xref malformed")
     parms = dictionary.get(b"/DecodeParms")

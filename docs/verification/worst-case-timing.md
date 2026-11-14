@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 78 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 81 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -130,3 +130,12 @@ quote. All 78 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
 The scalar-boundary follow-up uses a valid YAML sequence for the first input. On macOS
 arm64, Python 3.12.13, and PyYAML 6.0.3, that input hit the piece cap in 0.61 s. The
 plain-scalar input stayed clean in 0.30 s.
+
+## November 14, 2026: PDF word gaps, LZW, and RunLength
+
+Three inputs were added with the [PDF word gaps and filters](2026-11-14-pdf-word-gaps-and-filters.md)
+change: short `TJ` arrays whose words a -150 gap separates (3.0 s, 2.8 s on `main`), LZW codes
+at the decoder's 2 MiB cap (0.90 s), and one-byte RunLength literal runs (0.59 s). All 81
+passed on Linux x86_64, Python 3.12.3; the slowest took 5.7 s (`pdf-page-fonts.pdf`), and the
+scans summed 150 s. The inputs are built without running an encoder, so `cases()` stays cheap
+in every worker.

@@ -102,11 +102,37 @@ measured on the fixtures; their benign exposure on this corpus is close to nil.
 
 ## Timing
 
-TIMING_SECTION
+Three 4 MiB inputs join the tripwire, so it scans 81: `pdf-tj-gaps.pdf` (short `TJ` arrays with
+a -150 gap between two words, so every spaced block differs; 3.0 s, 2.8 s on `e365218`),
+`pdf-lzw-content.pdf` (LZW codes at the 2 MiB cap, a clear code and 252 nine-bit literals
+repeated; 0.90 s), and `pdf-run-length-content.pdf` (one-byte literal runs, the most loop
+steps per byte; 0.59 s). All 81 passed; the slowest took 5.7 s (`pdf-page-fonts.pdf`), and the
+scans summed 150 s. A 100,000-operator page read with spaces took 0.86 s against 0.79 s on
+`e365218`.
+
+A first form of the LZW input ran a Python LZW encoder over 3.9 MB inside `cases()`, which the
+tripwire rebuilds in every worker; it is now built from a fixed block of codes and all 81
+inputs build in 0.32 s.
 
 ## What was run
 
-CHECKS_TABLE
+| Check | Result |
+| --- | --- |
+| `probe_detection_gaps.py --verify` | 536 ok; open B3, B5, B6; the `gaps` attacks missed on `e365218` |
+| `probe_pdf_reader_agreement.py fixtures` / `fuzz --seed 1 --count 15000` | 141 files, MISS 0 / 532 files, MISS 0 |
+| `probe_pdf_font_reader_agreement.py fixtures` / `fuzz --seed 1 --count 15000` | 107 files, MISS 0 / 186 files, MISS 0 |
+| `probe_rule_coverage.py --verify`, `measure_precision.py --fail-over`, `check_rule_pairs.py`, `check_added_rules.py` | Pass |
+| `check_worst_case_timing.py` | 81 inputs, all under the ceiling |
+| `record_pages_demo.py --baseline web-demo/recordings.json` | Outcomes match: 82 scenarios |
+| `pytest` on `test_pdftext`, `test_scanner`, `test_pdf_text_folding`, `test_pdfannotations`, `test_pdfxref`, `test_heuristics`, `test_demo` | 636 passed; the full suite is left to hosted CI |
+| `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_text_controls.py`, `check_doc_links.py` | Clean |
+
+`test_unsupported_xref_filter_is_incomplete` caught a side effect: the cross-reference reader
+reuses streams `pdf_streams` decoded, which now include LZW output, so an LZW cross-reference
+stream read as malformed instead of unsupported. A cross-reference stream under LZW or
+RunLength is unsupported again, as before; one under Flate is read as it was. An object stream
+under a single LZW filter is now indexed, so objects in it are found by the lookups that read
+object streams, as every reader finds them.
 
 ## Not established
 
