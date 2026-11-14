@@ -61,6 +61,19 @@ once per message level and read as `text-folded`. Under `cProfile` almost all of
 Two bodies are read, which accounts for the 5.4 s. The cost is spread over about eight stages
 and no one of them dominates.
 
+**4. The same step then failed a second way, on this record's own pull request.** The first
+hosted run for [#230](https://github.com/cgfixit/yara-gate/pull/230) (this file only; run
+`43553475202`, `check (macos-15)` job `132320949236`) printed `PASS: 78 adversarial inputs`,
+and the step was then marked failed: `The action 'Worst-case timing tripwire (4 MiB inputs)'
+has timed out after 5 minutes`, 0.09 s after the PASS line. No scan crossed 10 s; the slowest
+was `mail-nested-charset.eml` at 9.94 s. The step has `timeout-minutes: 5`
+([`ci.yml`](../../.github/workflows/ci.yml)) and took about 311 s, against 220 s on the green
+macOS run. A documentation-only diff cannot change a scan, and the slowdown is the whole
+step's: over the 55 inputs that took over 1 s on both runs, the median ratio to the green
+macOS run is 1.37 (range 1.04 to 1.80), and the scan seconds summed 240 against 174. At about
+1.4 times the green run's speed the step reaches its five minutes while every scan is still
+under its ceiling. The step budget has the same thin margin the per-scan ceiling has.
+
 ## Tried and not kept
 
 Memoizing `_script` (called 3.7 million times, pure per character) with
@@ -76,13 +89,17 @@ which that view must keep). Neither is a fix for a failure no change caused.
 
 ## Boundaries
 
-- **The next red run on macOS is likely until the margin grows.** Two `check (macos-15)`
-  failures at this step in four days ([2026-11-10](2026-11-10-pdf-font-reading-cost.md) was
-  `pdf-page-fonts.pdf`, 10.093 s) point at the runner and the margin, not at a regression in
-  either revision. A cost reduction in `folded_text` as a whole is the honest fix and is a
-  change to the text-folding view, which the
+- **The next red run on macOS is likely until the margin grows.** `check (macos-15)` has now
+  failed at this step three times in four days: [2026-11-10](2026-11-10-pdf-font-reading-cost.md)
+  (`pdf-page-fonts.pdf`, 10.093 s), `c8c6f16` (`mail-nested-charset.eml`, 10.316 s), and this
+  record's own pull request (the five-minute step limit, finding 4). The last is a
+  documentation-only change. All three point at the runner and the margin, not at a
+  regression in any revision. A cost reduction in `folded_text` as a whole is the honest fix
+  and is a change to the text-folding view, which the
   [detection backlog](../research/detection-backlog.md) and the reader probes govern; it was
-  out of scope here.
-- Whether a rerun passes is a hosted-CI fact. None had run when this was written.
+  out of scope here. Raising `timeout-minutes` or the ceiling would only move the margin, and
+  the tripwire's own rule is not to do that without a diagnosis of the same input on base and
+  candidate; that diagnosis is above, and the choice stays with the maintainer.
+- A re-run of a failed macOS job is a hosted-CI fact and is not recorded here.
 - This container is slower than the hosted Ubuntu runner (5.4 s here, 4.5 s there on this
   input); ratios, not absolute seconds, carry over.
