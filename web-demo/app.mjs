@@ -32,6 +32,7 @@ const viewNames = {
   'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
   'pdf-hidden-text': 'PDF text a viewer does not paint (invisible mode, white, tiny, or off the page)',
   'pdf-annotation': 'one PDF annotation with its text string decoded',
+  'pdf-string': 'one PDF form value, document information string, or outline title, decoded',
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
   'html-hidden-text': 'HTML text a browser does not show (a hidden element, a comment, or a data attribute)',

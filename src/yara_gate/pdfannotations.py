@@ -1,7 +1,7 @@
 """Decode annotation Contents text strings, separately from page glyph strings."""
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 from yara_gate.content import (
     MAX_EXTRACT_BYTES,
@@ -44,22 +44,30 @@ _PDFDOC.update(
 _PDFDOC[160] = "\u20ac"
 
 
-def _text(token: bytes) -> str:
+def _string_bytes(token: bytes) -> bytes:
     if len(token) > _MAX_STRING:
         raise ContentLimit("pdf annotation string exceeds 1MiB")
     if token.startswith(b"("):
         if not token.endswith(b")"):
             raise ContentLimit("pdf annotation string malformed")
         raw, _ = _literal(token, 0)
-    elif token.startswith(b"<") and not token.startswith(b"<<"):
+        return raw
+    if token.startswith(b"<") and not token.startswith(b"<<"):
         if not token.endswith(b">"):
             raise ContentLimit("pdf annotation string malformed")
-        digits = b"".join(token[1:-1].split())
+        # NUL is PDF white space, which bytes.split() does not split on.
+        digits = b"".join(token[1:-1].replace(b"\x00", b" ").split())
         if len(digits) % 2:
             digits += b"0"
-        raw = bytes.fromhex(digits.decode("ascii"))
-    else:
-        raise ContentLimit("pdf annotation Contents is not a text string")
+        try:
+            return bytes.fromhex(digits.decode("ascii"))
+        except ValueError as exc:
+            raise ContentLimit("pdf annotation string malformed") from exc
+    raise ContentLimit("pdf annotation Contents is not a text string")
+
+
+def _text(token: bytes) -> str:
+    raw = _string_bytes(token)
     try:
         if raw.startswith(b"\xfe\xff"):
             return _LANGUAGE.sub("", raw[2:].decode("utf-16-be"))
@@ -70,6 +78,28 @@ def _text(token: bytes) -> str:
         return "".join(_PDFDOC.get(c, chr(c)) for c in raw)
     except UnicodeError as exc:
         raise ContentLimit("pdf annotation text encoding unreadable") from exc
+
+
+def _shown_text(token: bytes) -> str:
+    """A text string as pypdf decodes one: never unreadable, since nearly every file has an
+    Info dictionary and a producer's odd byte must not make a benign file incomplete.
+
+    A byte order mark, then a NUL in the first or second byte (UTF-16 without a mark), then
+    PDFDocEncoding; an invalid sequence becomes U+FFFD, as a viewer draws it.
+    """
+    raw = _string_bytes(token)
+    if raw.startswith(b"\xef\xbb\xbf"):
+        try:
+            return _LANGUAGE.sub("", raw[3:].decode("utf-8"))
+        except UnicodeError:
+            pass
+    elif raw.startswith((b"\xfe\xff", b"\xff\xfe")):
+        return _LANGUAGE.sub("", raw.decode("utf-16", errors="replace"))
+    elif raw[:1] == b"\x00":
+        return _LANGUAGE.sub("", raw.decode("utf-16-be", errors="replace"))
+    elif raw[1:2] == b"\x00":
+        return _LANGUAGE.sub("", raw.decode("utf-16-le", errors="replace"))
+    return "".join(_PDFDOC.get(c, chr(c)) for c in raw)
 
 
 def _earlier_endstream(data: bytes, begin: int, end_at: int, budget: Budget) -> bool:
@@ -282,18 +312,57 @@ def _reject_xref_inside(
             raise ContentLimit("pdf xref malformed")
 
 
+_FIELD_MARKS = (b"/FT", b"/T", b"/Parent", b"/Kids")
+# The document information strings pdfinfo, pypdf, and PyMuPDF show. /Title is also an
+# outline item's label, and a reader lists every outline title.
+_SHOWN_KEYS = (b"/Title", b"/Author", b"/Subject", b"/Keywords", b"/Creator", b"/Producer")
+
+
+def _shown_values(entry: dict[bytes, PdfValue]) -> Iterator[PdfValue]:
+    """Text strings a reader shows from this dictionary outside annotation /Contents: a form
+    field's value, a document information string, and an outline title."""
+    for key in _SHOWN_KEYS:
+        if key in entry:
+            yield entry[key]
+    if b"/V" in entry and (
+        entry.get(b"/Subtype") == b"/Widget" or any(mark in entry for mark in _FIELD_MARKS)
+    ):
+        value = entry[b"/V"]
+        # A multiple-selection choice field holds an array of its chosen options.
+        if isinstance(value, list):
+            yield from value
+        else:
+            yield value
+
+
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
+    return pdf_string_texts(data, objects, budget)[0]
+
+
+def pdf_string_texts(
+    data: bytes, objects: PdfObjects, budget: Budget
+) -> tuple[list[str], list[str]]:
+    """Annotation /Contents text (``pdf-annotation``), then the other text strings a reader
+    shows (``pdf-string``): form field values, document information strings, outline titles.
+
+    Both come from one pass over the file's dictionaries. An annotation string that does not
+    decode is incomplete, as before. The other strings are decoded as pypdf decodes them, and
+    a value that is not a text string (a check box's name, a signature dictionary, a missing
+    object) is passed over: a reader shows no text for it.
+    """
     if not data.startswith(b"%PDF"):
-        return []
+        return [], []
     values: list[PdfValue] = []
+    shown: list[PdfValue] = []
     strings: dict[tuple[int, int], list[bytes]] = {}
 
     def collect(entries: Iterator[dict[bytes, PdfValue]]) -> None:
         for entry in entries:
             if _annotation(entry) and b"/Contents" in entry:
-                if len(values) >= MAX_TEXT_PIECES:
-                    raise ContentLimit("text pieces exceed 100000")
                 values.append(entry[b"/Contents"])
+            shown.extend(_shown_values(entry))
+            if len(values) + len(shown) > MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
 
     spans: list[tuple[int, int]] = []
     # One pass over the file finds every stream length kept in an object of its own; a lookup
@@ -315,14 +384,10 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
         if len(strings) > MAX_TEXT_PIECES:
             raise ContentLimit("pdf annotation objects exceed 100000")
         collect(_dictionaries(body, objects, budget))
-    pieces: list[str] = []
     size = 0
 
-    def append(token: bytes) -> None:
+    def append(pieces: list[str], text: str) -> None:
         nonlocal size
-        if token == b"null":
-            return
-        text = _text(token)
         size += len(text.encode("utf-8"))
         if budget.expanded + size > MAX_EXTRACT_BYTES:
             raise ContentLimit("pdf annotation text exceeds extracted size budget")
@@ -330,7 +395,10 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
         pieces.extend(
             re.split(r"\n[ \t]*\n|\u2029", text.replace("\r\n", "\n").replace("\r", "\n"))
         )
+        if len(pieces) > MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
 
+    annotations: list[str] = []
     for value in values:
         budget.check()
         if isinstance(value, tuple):
@@ -338,11 +406,18 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
             if not tokens:
                 raise ContentLimit("pdf annotation Contents reference unresolved")
             for token in tokens:
-                append(token)
+                if token != b"null":
+                    append(annotations, _text(token))
         elif value != b"null":
             if not isinstance(value, bytes):
                 raise ContentLimit("pdf annotation Contents is not a text string")
-            append(value)
-        if len(pieces) > MAX_TEXT_PIECES:
-            raise ContentLimit("text pieces exceed 100000")
-    return pieces
+            append(annotations, _text(value))
+    texts: list[str] = []
+    for value in shown:
+        budget.check()
+        # Every definition of a referenced object, as for /Contents.
+        found: Sequence[PdfValue] = strings.get(value, []) if isinstance(value, tuple) else [value]
+        for item in found:
+            if isinstance(item, bytes) and item[:1] in (b"(", b"<") and item[:2] != b"<<":
+                append(texts, _shown_text(item))
+    return annotations, texts

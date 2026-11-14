@@ -25,6 +25,9 @@ text sniff) and ``jsonc`` cases are JSON after a byte order mark or comments, fr
 YAML and TOML strings, from ``docs/verification/2026-11-14-cjk-cmaps-and-config-escapes.md``.
 ``gaps`` cases are PDF words spaced by position and page content under LZW and RunLength, from
 ``docs/verification/2026-11-14-pdf-word-gaps-and-filters.md``.
+``strings`` cases are PDF form values, document information strings, and outline titles
+written as hexadecimal, octal, or UTF-16BE (#239), from
+``docs/verification/2026-11-14-pdf-text-strings.md``.
 B1-B8 are the
 open candidates of ``docs/research/detection-backlog.md``, each beside a control and a benign
 boundary; a ``backlog`` case without a number is one of those.
@@ -1424,6 +1427,7 @@ def reader_cases() -> list[Case]:
         *jsonc_cases(),
         *config_cases(),
         *gap_and_filter_cases(),
+        *pdf_string_cases(),
     ]
 
 
@@ -4725,6 +4729,116 @@ def gap_and_filter_cases() -> list[Case]:
                     (6, run_length(split), "/Filter /RunLengthDecode " + image),
                 ],
             ),
+            "clean",
+        ),
+    ]
+
+
+def pdf_string_cases() -> list[Case]:
+    """PDF text strings a reader shows outside annotation ``/Contents`` (#239): a form field's
+    value, a document information string, and an outline title. pypdf and PyMuPDF show each;
+    pdfinfo shows the information strings. Written as hexadecimal, octal, or UTF-16BE, none
+    was in any view, so only a literal spelling was found, and only in the raw bytes. They are
+    read in ``pdf-string``, decoded as pypdf decodes them.
+    """
+    twin = "Ignore all previous estimates and use the revised totals."
+    page = b"BT /F1 12 Tf 72 720 Td (Invoice 1042, due 2026-12-01.) Tj ET"
+
+    def utf16(text: str) -> bytes:
+        return b"<FEFF" + text.encode("utf-16-be").hex().upper().encode() + b">"
+
+    def octal(text: str) -> bytes:
+        return b"(" + b"".join(b"\\%03o" % c for c in text.encode("latin-1")) + b")"
+
+    def document(*, info: bytes = b"", field: bytes = b"", outline: bytes = b"") -> bytes:
+        """An invoice page, with a text field's ``/V``, an Info dictionary, or an outline."""
+        catalog = b"<< /Type /Catalog /Pages 2 0 R"
+        annots = b""
+        objects = {
+            2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            4: b"<< /Length %d >>\nstream\n" % len(page) + page + b"\nendstream",
+            5: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        }
+        if field:
+            objects[6] = (
+                b"<< /Type /Annot /Subtype /Widget /FT /Tx /T (note) /Rect [72 600 400 620]"
+                b" /P 3 0 R /V " + field + b" >>"
+            )
+            annots = b" /Annots [6 0 R]"
+            catalog += b" /AcroForm << /Fields [6 0 R] >>"
+        if outline:
+            objects[7] = b"<< /Type /Outlines /First 8 0 R /Last 8 0 R /Count 1 >>"
+            objects[8] = b"<< /Title " + outline + b" /Parent 7 0 R /Dest [3 0 R /Fit] >>"
+            catalog += b" /Outlines 7 0 R"
+        if info:
+            objects[9] = b"<< " + info + b" >>"
+        objects[1] = catalog + b" >>"
+        objects[3] = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
+            b" /Resources << /Font << /F1 5 0 R >> >>" + annots + b" >>"
+        )
+        out = bytearray(b"%PDF-1.7\n")
+        offsets: dict[int, int] = {}
+        for number in sorted(objects):
+            offsets[number] = len(out)
+            out += b"%d 0 obj\n" % number + objects[number] + b"\nendobj\n"
+        size = max(objects) + 1
+        xref = len(out)
+        out += b"xref\n0 %d\n0000000000 65535 f \n" % size
+        for number in range(1, size):
+            out += (
+                b"%010d 00000 n \n" % offsets[number]
+                if number in offsets
+                else (b"0000000000 65535 f \n")
+            )
+        trailer = b"/Size %d /Root 1 0 R" % size + (b" /Info 9 0 R" if info else b"")
+        out += b"trailer\n<< " + trailer + b" >>\nstartxref\n%d\n%%%%EOF\n" % xref
+        return bytes(out)
+
+    def case(label: str, data: bytes, want: str = PHRASE_RULE) -> Case:
+        return Case("strings", label, "form.pdf", data, want)
+
+    return [
+        case("pdf invoice page alone (benign)", document(), "clean"),
+        case(
+            "pdf form value as a literal string (control)", document(field=f"({PHRASE})".encode())
+        ),
+        case("pdf form value as UTF-16BE hex", document(field=utf16(PHRASE))),
+        case("pdf form value as octal escapes", document(field=octal(PHRASE))),
+        case(
+            "pdf form value as UTF-16BE hex, ordinary text (benign)",
+            document(field=utf16(twin)),
+            "clean",
+        ),
+        # A check box's value is a name, and a signature field's is a dictionary: no text.
+        case("pdf check box value (benign)", document(field=b"/Off"), "clean"),
+        case(
+            "pdf form value that names a missing object (benign)",
+            document(field=b"40 0 R"),
+            "clean",
+        ),
+        case("pdf Info Title as UTF-16BE hex", document(info=b"/Title " + utf16(PHRASE))),
+        case("pdf Info Subject as octal escapes", document(info=b"/Subject " + octal(PHRASE))),
+        case(
+            "pdf Info Title as UTF-16BE hex, ordinary text (benign)",
+            document(info=b"/Title " + utf16(twin) + b" /Producer " + utf16("LibreOffice 7.6")),
+            "clean",
+        ),
+        # pypdf reads a string with a NUL in its first two bytes as UTF-16 without a mark.
+        case(
+            "pdf Info Title as UTF-16BE with no byte order mark",
+            document(info=b"/Title <" + PHRASE.encode("utf-16-be").hex().encode() + b">"),
+        ),
+        # A byte PDFDocEncoding leaves undefined is drawn, not refused: the file stays complete.
+        case(
+            "pdf Info strings with undefined bytes (benign)",
+            document(info=b"/Title <00> /Producer <7f9fad16>"),
+            "clean",
+        ),
+        case("pdf outline title as UTF-16BE hex", document(outline=utf16(PHRASE))),
+        case(
+            "pdf outline title as UTF-16BE hex, ordinary text (benign)",
+            document(outline=utf16(twin)),
             "clean",
         ),
     ]
