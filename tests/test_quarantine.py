@@ -484,3 +484,74 @@ def test_rejection_report_failure_keeps_entry_in_inbox(
         process_inbox_file(home, source)
     assert source.is_dir()
     assert list((home.quarantine / "_rejected").iterdir()) == []
+
+
+def test_retry_finishes_pending_intake_under_original_policy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+    from yara_gate.samples import injection_markdown
+
+    home = _home(tmp_path)
+    source = home.inbox / "held.md"
+    source.write_bytes(injection_markdown())
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise OSError("report failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(quarantine, "write_reports", fail)
+        with pytest.raises(OSError, match="report failed"):
+            process_inbox_file(home, source, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+
+    assert not source.exists()
+    assert home.pending_intake.is_file()
+    other = home.inbox / "ordinary.txt"
+    other.write_text("Ordinary release notes.\n", encoding="utf-8")
+    assert process_inbox_file(home, other, rules_dir=rules_copy).verdict is Verdict.clean
+    assert not home.pending_intake.exists()
+    assert list(home.blocked.glob("*/held.md"))[0].read_bytes() == injection_markdown()
+    assert not list(home.clean.glob("*/held.md"))
+
+
+def test_retry_consumes_original_left_after_pending_copy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+
+    home = _home(tmp_path)
+    source = home.inbox / "ordinary.txt"
+    source.write_text("Ordinary release notes.\n", encoding="utf-8")
+    with monkeypatch.context() as patch:
+        patch.setattr(quarantine, "_unlink_entry", lambda *_: None)
+        quarantine.intake(home, source, rules_dir=rules_copy)
+    assert source.is_file()
+
+    result = process_inbox_file(home, source, rules_dir=rules_copy)
+
+    assert result.verdict is Verdict.clean
+    assert not source.exists()
+    assert (home.clean / result.sha256 / source.name).is_file()
+    assert len(list((home.reports / "events").glob("*.json"))) == 1
+
+
+def test_explicit_retry_uses_the_requested_policy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+    from yara_gate.samples import injection_markdown
+
+    home = _home(tmp_path)
+    source = home.inbox / "review.md"
+    source.write_bytes(injection_markdown())
+    with monkeypatch.context() as patch:
+        patch.setattr(quarantine, "_unlink_entry", lambda *_: None)
+        quarantine.intake(home, source, rules_dir=rules_copy)
+
+    result = process_inbox_file(home, source, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+
+    assert result.policy is ScanPolicy.agent_ingest
+    assert result.verdict is Verdict.block
+    assert (home.blocked / result.sha256 / source.name).is_file()
+    assert not (home.clean / result.sha256).exists()
+    assert len(list((home.reports / "events").glob("*.json"))) == 1

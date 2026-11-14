@@ -226,7 +226,7 @@ def test_report_failure_keeps_reviewed_file_blocked(
         home, src, rules_dir=rules_copy, policy=ScanPolicy.agent_document
     )
 
-    def fail(*args: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
         raise OSError("report storage unavailable")
 
     monkeypatch.setattr(quarantine, "write_reports", fail)

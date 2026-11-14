@@ -1,10 +1,12 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from yara_gate.models import Verdict
+from yara_gate.models import ScanPolicy, Verdict
 from yara_gate.quarantine import GatePaths, process_inbox_file
 from yara_gate.report import redact, write_reports
 from yara_gate.samples import EICAR, clean_text, eicar_bytes, injection_markdown
@@ -56,6 +58,34 @@ def test_clean_still_writes_both_reports(tmp_path: Path, rules_copy: Path) -> No
     assert result.findings == []
 
 
+def test_concurrent_reports_keep_each_scan_context(tmp_path: Path, rules_copy: Path) -> None:
+    path = tmp_path / "first.txt"
+    path.write_bytes(clean_text())
+    first = scan_file(path, rules_dir=rules_copy)
+    second = replace(first, path=str(path.with_name("second.txt")), policy=ScanPolicy.agent_ingest)
+    reports = tmp_path / "reports"
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        jobs = [executor.submit(write_reports, reports, result) for result in (first, second)]
+        for job in jobs:
+            job.result()
+
+    events = {
+        file.stem: json.loads(file.read_bytes()) for file in (reports / "events").glob("*.json")
+    }
+    assert len(events) == 2
+    assert {(entry["path"], entry["policy"]) for entry in events.values()} == {
+        (redact(first.path), "default"),
+        (redact(second.path), "agent-ingest"),
+    }
+    for scan_id, entry in events.items():
+        assert entry["schema_version"] == 1 and entry["scan_id"] == scan_id
+        assert entry["sha256"] == first.sha256
+        assert entry["ruleset_sha256"] == first.ruleset_sha256
+        assert clean_text().strip().decode() not in json.dumps(entry)
+    assert (reports / f"{first.sha256}.json").is_file()
+    assert (reports / f"{first.sha256}.sarif").is_file()
+
+
 def test_failed_report_write_keeps_previous_reports(
     tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -64,6 +94,8 @@ def test_failed_report_write_keeps_previous_reports(
     result = scan_file(path, rules_dir=rules_copy)
     reports = tmp_path / "reports"
     before = {report: report.read_bytes() for report in write_reports(reports, result)}
+    event = next((reports / "events").iterdir())
+    before[event] = event.read_bytes()
     real_write = Path.write_text
 
     def torn_write(self: Path, data: str, *args: object, **kwargs: object) -> int:
@@ -75,7 +107,7 @@ def test_failed_report_write_keeps_previous_reports(
         write_reports(reports, result)
     monkeypatch.undo()
     assert {report: report.read_bytes() for report in before} == before
-    assert sorted(reports.iterdir()) == sorted(before)
+    assert set(item for item in reports.rglob("*") if item.is_file()) == before.keys()
 
 
 def test_redact_needs_a_path_separator(monkeypatch: pytest.MonkeyPatch) -> None:

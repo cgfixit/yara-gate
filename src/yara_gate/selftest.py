@@ -137,7 +137,9 @@ def _broken_rules(root: Path) -> bool:
 
 def _reports_hide_eicar(home: GatePaths) -> bool:
     ok = True
-    for report in home.reports.iterdir():
+    for report in home.reports.rglob("*"):
+        if not report.is_file():
+            continue
         text = report.read_text(encoding="utf-8", errors="replace")
         if EICAR.decode() in text:
             ok = False

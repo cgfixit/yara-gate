@@ -25,7 +25,8 @@ from yara_gate.release import (
     release_refusal,
     reviewed_result,
 )
-from yara_gate.report import compact_report, write_reports
+from yara_gate.report import atomic_write_text, compact_report, write_reports
+from yara_gate.rules import _installed_overlay, default_rules_dir
 from yara_gate.scanner import MAX_FILE_BYTES, scan_bytes, scan_file
 
 if sys.platform == "win32":
@@ -80,6 +81,10 @@ class GatePaths:
     def reports(self) -> Path:
         return self.root / "reports"
 
+    @property
+    def pending_intake(self) -> Path:
+        return self.root / ".intake-pending.json"
+
     def ensure(self) -> None:
         """Create the gate folders and keep them private to this user."""
         self.root.mkdir(parents=True, exist_ok=True)
@@ -101,7 +106,15 @@ class IntakeRejected(Exception):
         self.reason = reason
 
 
-def intake(home: GatePaths, src: Path) -> Path:
+def intake(
+    home: GatePaths,
+    src: Path,
+    *,
+    rules_dir: Path | None = None,
+    timeout_s: int = 30,
+    policy: ScanPolicy = ScanPolicy.default,
+    use_releases: bool = False,
+) -> Path:
     """Copy one regular file into quarantine/<sha256>/<its name> and strip the executable bit.
 
     A digest has one slot holding one file, named as the latest submission. The bytes are
@@ -110,6 +123,7 @@ def intake(home: GatePaths, src: Path) -> Path:
     earlier copy under any name comes back through quarantine and is replaced.
     """
     home.ensure()
+    source = (src.parent.resolve() / src.name).relative_to(home.inbox.resolve())
     fd = _open_regular(src)
     opened = os.fstat(fd)
     consumed = False
@@ -130,6 +144,23 @@ def intake(home: GatePaths, src: Path) -> Path:
         for item in slot.iterdir():
             if item.name != dest.name and not item.is_dir():
                 item.unlink()
+        scan_rules = (rules_dir or default_rules_dir()).absolute()
+        atomic_write_text(
+            home.pending_intake,
+            json.dumps(
+                {
+                    "sha256": digest,
+                    "name": dest.name,
+                    "source": source.as_posix(),
+                    "source_stamp": _source_stamp(opened),
+                    "rules_dir": str(scan_rules),
+                    "rules_overlay": _installed_overlay(scan_rules),
+                    "timeout_s": timeout_s,
+                    "policy": policy.value,
+                    "use_releases": use_releases,
+                }
+            ),
+        )
         consumed = not _same_file(fd, dest)
         return dest
     finally:
@@ -152,12 +183,104 @@ def process_inbox_file(
     # One submission at a time per gate home, from intake to relocation, so a CLI scan and
     # watch cannot interleave on the same slot.
     with _gate_lock(home):
+        _finish_pending_intake(home, retry_source=src)
         try:
-            placed = intake(home, src)
+            intake(
+                home,
+                src,
+                rules_dir=rules_dir,
+                timeout_s=timeout_s,
+                policy=policy,
+                use_releases=use_releases,
+            )
         except IntakeRejected as exc:
             return _reject_entry(home, src, exc.reason, policy)
-        result = scan_file(placed, timeout_s=timeout_s, rules_dir=rules_dir, policy=policy)
-        if result.verdict is not Verdict.incomplete and result.sha256 != placed.parent.name:
+        finished = _finish_pending_intake(home)
+        if finished is None:
+            raise OSError("pending intake disappeared")
+        return finished
+
+
+def _finish_pending_intake(
+    home: GatePaths, *, retry_source: Path | None = None
+) -> ScanResult | None:
+    """Under the intake lock, finish the recorded submission before taking another."""
+    marker = home.pending_intake
+    try:
+        pending = json.loads(marker.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    if not isinstance(pending, dict):
+        raise ValueError("invalid pending intake")
+    digest = pending.get("sha256")
+    name = pending.get("name")
+    source = pending.get("source")
+    source_stamp = pending.get("source_stamp")
+    rules_dir = pending.get("rules_dir")
+    rules_overlay = pending.get("rules_overlay")
+    timeout_s = pending.get("timeout_s")
+    policy_name = pending.get("policy")
+    use_releases = pending.get("use_releases")
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(char not in "0123456789abcdef" for char in digest)
+        or not isinstance(name, str)
+        or Path(name).name != name
+        or name in {"", ".", ".."}
+        or not isinstance(source, str)
+        or Path(source).anchor
+        or ".." in Path(source).parts
+        or Path(source).name != name
+        or not isinstance(source_stamp, list)
+        or not isinstance(rules_dir, str)
+        or not Path(rules_dir).is_absolute()
+        or not isinstance(rules_overlay, bool)
+        or type(timeout_s) is not int
+        or not isinstance(policy_name, str)
+        or not isinstance(use_releases, bool)
+    ):
+        raise ValueError("invalid pending intake")
+    source_path = home.inbox.resolve() / source
+    if (
+        retry_source is not None
+        and retry_source.parent.resolve() / retry_source.name == source_path
+    ):
+        try:
+            if _source_stamp(source_path.lstat()) == source_stamp:
+                # Intake will replace the pending record using the settings of this submission.
+                return None
+        except FileNotFoundError:
+            pass
+    placed = home.quarantine / digest / name
+    policy = ScanPolicy(policy_name)
+    try:
+        slot = placed.parent.lstat()
+        if (
+            stat.S_ISDIR(slot.st_mode)
+            and not (getattr(slot, "st_file_attributes", 0) & _UNREAD_ATTRIBUTES)
+            and list(placed.parent.iterdir()) == [placed]
+        ):
+            info = placed.lstat()
+        else:
+            info = None
+    except FileNotFoundError:
+        # A crash after relocation leaves the marker, but no quarantined copy.
+        if (home.clean / digest / name).is_file() or (home.blocked / digest / name).is_file():
+            marker.unlink()
+            return None
+        info = None
+    reason = _reject_reason(info) if info is not None else "pending quarantine copy unavailable"
+    if reason is None and _installed_overlay(Path(rules_dir)) != rules_overlay:
+        reason = "pending intake rules overlay changed"
+    if reason is None:
+        result = scan_file(
+            placed,
+            timeout_s=timeout_s,
+            rules_dir=Path(rules_dir),
+            policy=policy,
+        )
+        if result.verdict is not Verdict.incomplete and result.sha256 != digest:
             result = replace(
                 result,
                 verdict=Verdict.incomplete,
@@ -168,9 +291,29 @@ def process_inbox_file(
             )
         if use_releases:
             result = apply_release(result, home.root)
-        write_reports(home.reports, result)
-        _relocate(home, result)
-        return result
+    else:
+        result = ScanResult(
+            sha256="0" * 64,
+            verdict=Verdict.incomplete,
+            incomplete_reason=reason,
+            path=str(placed),
+            policy=policy,
+        )
+    write_reports(home.reports, result)
+    if (
+        result.verdict is not Verdict.incomplete
+        and source_path.parent.resolve() == source_path.parent
+    ):
+        try:
+            source_info = source_path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            if _source_stamp(source_info) == source_stamp:
+                _unlink_entry(source_path, source_info)
+    _relocate(home, result)
+    marker.unlink()
+    return result
 
 
 def scan_in_place(
@@ -276,12 +419,12 @@ def release_file(
         released = reviewed_result(
             replace(result, path=str(target if path else dest / target.name))
         )
-        write_reports(home.reports, released)
+        write_reports(home.reports, released, record_event=False)
         if path is None:
             try:
                 os.replace(slot, dest)
             except OSError:
-                write_reports(home.reports, replace(result, path=str(target)))
+                write_reports(home.reports, replace(result, path=str(target)), record_event=False)
                 raise
         return released, head
 
@@ -298,6 +441,15 @@ def watch(
 
     home.ensure()
     lock_fd = _acquire_lock(home)
+    try:
+        with _gate_lock(home):
+            recovered = _finish_pending_intake(home)
+        if recovered is not None:
+            reason = f" reason={recovered.incomplete_reason}" if recovered.incomplete_reason else ""
+            print(f"recovered {recovered.verdict} sha256={recovered.sha256}{reason}", flush=True)
+    except BaseException:
+        os.close(lock_fd)
+        raise
     handler = _InboxHandler(home, rules_dir, timeout_s, policy)
 
     class Handler(FileSystemEventHandler):
@@ -338,6 +490,9 @@ def drain_inbox(
     policy: ScanPolicy = ScanPolicy.default,
 ) -> None:
     """Scan files already sitting in inbox/. A file still being written is given 0.2 s."""
+    home.ensure()
+    with _gate_lock(home):
+        _finish_pending_intake(home)
     _drain(_InboxHandler(home, rules_dir, timeout_s, policy), home, wait=True)
 
 
@@ -620,6 +775,10 @@ def _unlink_entry(src: Path, copied: os.stat_result) -> None:
         src.unlink()
     except OSError:
         return
+
+
+def _source_stamp(info: os.stat_result) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
 
 
 def _fit_name(prefix: str, name: str) -> str:

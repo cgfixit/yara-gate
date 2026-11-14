@@ -32,9 +32,9 @@ jobs:
         if: runner.os == 'Linux'
         env:
           GOFLAGS: -modcacherw
-        # go install checks the module against sum.golang.org.
+        # v1.7.12, selected by commit. go install also checks sum.golang.org.
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
           "$(go env GOPATH)/bin/actionlint"
 
       - name: Install uv and Python 3.12
