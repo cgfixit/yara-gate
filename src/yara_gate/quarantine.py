@@ -123,6 +123,7 @@ def intake(
     earlier copy under any name comes back through quarantine and is replaced.
     """
     home.ensure()
+    source = (src.parent.resolve() / src.name).relative_to(home.inbox.resolve())
     fd = _open_regular(src)
     opened = os.fstat(fd)
     consumed = False
@@ -150,6 +151,8 @@ def intake(
                 {
                     "sha256": digest,
                     "name": dest.name,
+                    "source": source.as_posix(),
+                    "source_stamp": _source_stamp(opened),
                     "rules_dir": str(scan_rules),
                     "rules_overlay": _installed_overlay(scan_rules),
                     "timeout_s": timeout_s,
@@ -180,7 +183,11 @@ def process_inbox_file(
     # One submission at a time per gate home, from intake to relocation, so a CLI scan and
     # watch cannot interleave on the same slot.
     with _gate_lock(home):
-        _finish_pending_intake(home)
+        recovered = _finish_pending_intake(home)
+        if recovered is not None:
+            result, consumed_source = recovered
+            if consumed_source == src.parent.resolve() / src.name and not os.path.lexists(src):
+                return result
         try:
             intake(
                 home,
@@ -192,13 +199,13 @@ def process_inbox_file(
             )
         except IntakeRejected as exc:
             return _reject_entry(home, src, exc.reason, policy)
-        result = _finish_pending_intake(home)
-        if result is None:
+        finished = _finish_pending_intake(home)
+        if finished is None:
             raise OSError("pending intake disappeared")
-        return result
+        return finished[0]
 
 
-def _finish_pending_intake(home: GatePaths) -> ScanResult | None:
+def _finish_pending_intake(home: GatePaths) -> tuple[ScanResult, Path] | None:
     """Under the intake lock, finish the recorded submission before taking another."""
     marker = home.pending_intake
     try:
@@ -209,6 +216,8 @@ def _finish_pending_intake(home: GatePaths) -> ScanResult | None:
         raise ValueError("invalid pending intake")
     digest = pending.get("sha256")
     name = pending.get("name")
+    source = pending.get("source")
+    source_stamp = pending.get("source_stamp")
     rules_dir = pending.get("rules_dir")
     rules_overlay = pending.get("rules_overlay")
     timeout_s = pending.get("timeout_s")
@@ -221,6 +230,11 @@ def _finish_pending_intake(home: GatePaths) -> ScanResult | None:
         or not isinstance(name, str)
         or Path(name).name != name
         or name in {"", ".", ".."}
+        or not isinstance(source, str)
+        or Path(source).anchor
+        or ".." in Path(source).parts
+        or Path(source).name != name
+        or not isinstance(source_stamp, list)
         or not isinstance(rules_dir, str)
         or not Path(rules_dir).is_absolute()
         or not isinstance(rules_overlay, bool)
@@ -277,9 +291,21 @@ def _finish_pending_intake(home: GatePaths) -> ScanResult | None:
             policy=policy,
         )
     write_reports(home.reports, result)
+    source_path = home.inbox.resolve() / source
+    if (
+        result.verdict is not Verdict.incomplete
+        and source_path.parent.resolve() == source_path.parent
+    ):
+        try:
+            source_info = source_path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            if _source_stamp(source_info) == source_stamp:
+                _unlink_entry(source_path, source_info)
     _relocate(home, result)
     marker.unlink()
-    return result
+    return result, source_path
 
 
 def scan_in_place(
@@ -411,8 +437,9 @@ def watch(
         with _gate_lock(home):
             recovered = _finish_pending_intake(home)
         if recovered is not None:
-            reason = f" reason={recovered.incomplete_reason}" if recovered.incomplete_reason else ""
-            print(f"recovered {recovered.verdict} sha256={recovered.sha256}{reason}", flush=True)
+            result, _source = recovered
+            reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
+            print(f"recovered {result.verdict} sha256={result.sha256}{reason}", flush=True)
     except BaseException:
         os.close(lock_fd)
         raise
@@ -741,6 +768,10 @@ def _unlink_entry(src: Path, copied: os.stat_result) -> None:
         src.unlink()
     except OSError:
         return
+
+
+def _source_stamp(info: os.stat_result) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
 
 
 def _fit_name(prefix: str, name: str) -> str:

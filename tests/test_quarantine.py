@@ -512,3 +512,24 @@ def test_retry_finishes_pending_intake_under_original_policy(
     assert not home.pending_intake.exists()
     assert list(home.blocked.glob("*/held.md"))[0].read_bytes() == injection_markdown()
     assert not list(home.clean.glob("*/held.md"))
+
+
+def test_retry_consumes_original_left_after_pending_copy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+
+    home = _home(tmp_path)
+    source = home.inbox / "ordinary.txt"
+    source.write_text("Ordinary release notes.\n", encoding="utf-8")
+    with monkeypatch.context() as patch:
+        patch.setattr(quarantine, "_unlink_entry", lambda *_: None)
+        quarantine.intake(home, source, rules_dir=rules_copy)
+    assert source.is_file()
+
+    result = process_inbox_file(home, source, rules_dir=rules_copy)
+
+    assert result.verdict is Verdict.clean
+    assert not source.exists()
+    assert (home.clean / result.sha256 / source.name).is_file()
+    assert len(list((home.reports / "events").glob("*.json"))) == 1
