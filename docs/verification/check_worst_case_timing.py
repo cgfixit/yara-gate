@@ -575,6 +575,14 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         None,
     )
+    # PDF word gaps: 4 MiB of short TJ arrays whose words a -150 gap separates, so the spaced
+    # reading differs from the plain one in every block it builds.
+    yield "pdf-tj-gaps.pdf", _content_pdf(b"BT /F1 12 Tf 72 700 Td ", b"[(ab) -150 (cd)] TJ "), None
+    # LZWDecode at its 2 MiB cap, and RunLengthDecode as one-byte literal runs (the most loop
+    # steps per byte), each padded to 4 MiB with a comment.
+    yield "pdf-lzw-content.pdf", _filtered_pdf(_lzw_codes(2 * 1024 * 1024), b"/LZWDecode"), None
+    runs = b"\x00B" * ((4 * 1024 * 1024 - 400) // 2)
+    yield "pdf-run-length-content.pdf", _filtered_pdf(runs, b"/RunLengthDecode"), None
     # YAML and TOML strings: a short escaped string over and over, one piece each, until the
     # piece cap; and openers that each start nothing (an apostrophe, a "#" after a letter).
     yield "config-escapes.yml", _filled(b"", b'- "\\x41"\n'), "text pieces exceed 100000"
@@ -665,6 +673,27 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         head = opening + b"Content-Transfer-Encoding: " + encoding + b"\r\n\r\n"
         count, rest = divmod(SIZE - len(head) - 160001, len(token))
         yield name, head + token * count + b"-" + b"a" * (160000 + rest), reason
+
+
+def _filtered_pdf(stream: bytes, name: bytes) -> bytes:
+    """One page whose content stream is ``stream`` under the filter ``name``, padded to 4 MiB."""
+    head = b"%PDF-1.7\n1 0 obj<</Type/Page/MediaBox[0 0 612 792]/Contents 4 0 R>>endobj\n"
+    head += b"4 0 obj<</Length %d/Filter %s>>stream\n" % (len(stream), name)
+    tail = b"\nendstream endobj\n"
+    pad = SIZE - len(head) - len(stream) - len(tail) - len(b"%%EOF\n")
+    if pad < 1:
+        raise RuntimeError("filtered stream does not fit")
+    return head + stream + tail + b"%" + b" " * (pad - 2) + b"\n%%EOF\n"
+
+
+def _lzw_codes(size: int) -> bytes:
+    """``size`` bytes of valid LZWDecode codes: a clear code and 252 literal codes, repeated, so
+    every code stays 9 bits wide and the decoder reads the most codes per byte. Built from one
+    byte-aligned block of eight groups, so no encoder runs."""
+    group = [256] + [ord("a") + index % 26 for index in range(252)]
+    bits = "".join(format(code, "09b") for _ in range(8) for code in group)
+    block = int(bits, 2).to_bytes(len(bits) // 8, "big")
+    return (block * (size // len(block) + 1))[:size]
 
 
 def _content_pdf(prelude: bytes, token: bytes, objects: bytes = b"") -> bytes:

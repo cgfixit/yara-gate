@@ -115,6 +115,10 @@ MAX_FONT_WAYS = MAX_FONT_VARIANTS + 1
 MAX_FURTHER_READINGS = 2 * MAX_FONT_VARIANTS
 # A TJ adjustment is in thousandths of an em; a gap this wide reads as a word space.
 _SPACE_ADJUST = -200.0
+# The spaced reading's word gap. Readers start a space near -120 and differ around it
+# (poppler, pdfminer.six, pypdf, and PDFium each by their own measure of the gap), so a block
+# whose text a narrower gap would split is also read with spaces there.
+_SPACED_ADJUST = -100.0
 
 _NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)\Z")
 _CP1252 = [bytes((value,)).decode("cp1252", errors="replace") for value in range(256)]
@@ -226,6 +230,10 @@ class PdfText:
     # The same grouping for text drawn so that a reader does not see it.
     hidden_blocks: list[str] = field(default_factory=list)
     hidden_paragraphs: list[str] = field(default_factory=list)
+    # The spaced reading's grouping (``_Paragraphs`` with ``spaced``), merged into ``blocks``
+    # and ``paragraphs`` where it differs, so a word placed by position reads as a word.
+    spaced_blocks: list[str] = field(default_factory=list, repr=False)
+    spaced_paragraphs: list[str] = field(default_factory=list, repr=False)
     decoded_chars: int = field(default=0, repr=False)
 
     @property
@@ -316,7 +324,32 @@ def pdf_text(data: bytes, streams: list[PdfStream], objects: Lookup, budget: Bud
         tokens = _blocks(body, selected, result, budget, tokens, state, box if page else None, page)
         if linked and page:
             previous = number
+    _merge_spaced(result)
     return result
+
+
+def _merge_spaced(result: PdfText) -> None:
+    """Add the spaced reading's blocks and paragraphs that the plain reading does not hold.
+
+    The spaced grouping holds at most as many pieces as the plain one, but together they can
+    pass ``MAX_TEXT_BLOCKS``; spaced pieces past it are not added. They are a further reading
+    of text already read, so the scan does not become incomplete for them.
+    """
+    room = MAX_TEXT_BLOCKS - len(result.blocks) - len(result.paragraphs)
+    for spaced, plain in (
+        (result.spaced_blocks, result.blocks),
+        (result.spaced_paragraphs, result.paragraphs),
+    ):
+        have = set(plain)
+        for text in spaced:
+            if room <= 0:
+                break
+            if text not in have:
+                have.add(text)
+                plain.append(text)
+                room -= 1
+    result.spaced_blocks.clear()
+    result.spaced_paragraphs.clear()
 
 
 # Streams of one /Contents array read as one: an array is one stream (ISO 32000-1, 7.8.2).
@@ -1590,12 +1623,28 @@ class _Paragraphs:
     placed with ``add`` from the readings the visible grouping already decoded.
     """
 
-    def __init__(self, result: PdfText, budget: Budget, *, hidden: bool = False) -> None:
+    def __init__(
+        self,
+        result: PdfText,
+        budget: Budget,
+        *,
+        hidden: bool = False,
+        gaps: bool = False,
+        spaced: _Paragraphs | None = None,
+    ) -> None:
         self.result = result
         self.budget = budget
         self.hidden = hidden
-        self.blocks = result.hidden_blocks if hidden else result.blocks
-        self.paragraphs = result.hidden_paragraphs if hidden else result.paragraphs
+        # ``gaps``: this grouping is the spaced reading. ``spaced``: the grouping that receives
+        # the same strings read with word gaps as spaces; it ends its blocks and paragraphs
+        # where this one does.
+        self.spaced = spaced
+        if gaps:
+            self.blocks = result.spaced_blocks
+            self.paragraphs = result.spaced_paragraphs
+        else:
+            self.blocks = result.hidden_blocks if hidden else result.blocks
+            self.paragraphs = result.hidden_paragraphs if hidden else result.paragraphs
         self.variants: list[list[str]] = []
         self.baseline: float | None = None
         self.size = 0.0
@@ -1613,7 +1662,12 @@ class _Paragraphs:
         self.utf16 = False
 
     def show(
-        self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
+        self,
+        fonts: list[Font],
+        strings: Iterable[object],
+        baseline: float,
+        size: float,
+        gap: bool = False,
     ) -> tuple[list[str], bool] | None:
         """Add one text-showing operator's strings.
 
@@ -1660,11 +1714,14 @@ class _Paragraphs:
             # The readings past the cap are not decoded, so text only they show goes unread.
             self.result.unmapped = True
         readings: list[str] = []
+        gapped: list[str] = []
+        spaced = self.spaced is not None
         printed = False
         check = self.budget.check
         used = self.result.decoded_chars
         for font in shown:
             parts: list[str] = []
+            wide: list[str] = []
             for item in strings:
                 if isinstance(item, bytes):
                     # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
@@ -1678,15 +1735,28 @@ class _Paragraphs:
                     used += len(decoded)
                     printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
                     parts.append(decoded)
-                elif isinstance(item, float) and item <= _SPACE_ADJUST:
-                    parts.append(" ")
+                    if spaced:
+                        wide.append(decoded)
+                elif isinstance(item, float) and item <= _SPACED_ADJUST:
+                    if item <= _SPACE_ADJUST:
+                        parts.append(" ")
+                    if spaced:
+                        wide.append(" ")
             readings.append("".join(parts))
+            if spaced:
+                gapped.append("".join(wide))
         self.result.decoded_chars = used
         self.add(readings, baseline, size)
+        if self.spaced is not None:
+            self.spaced.add(gapped, baseline, size, gap=gap)
         return readings, printed
 
-    def add(self, readings: list[str], baseline: float, size: float) -> None:
-        """Place one operator's already decoded text, one string per font reading."""
+    def add(self, readings: list[str], baseline: float, size: float, gap: bool = False) -> None:
+        """Place one operator's already decoded text, one string per font reading.
+
+        ``gap``: the text position was moved since the last string, so a string that goes on
+        along the same line starts a new word (the spaced reading only).
+        """
         separator = ""
         if self.baseline is not None:
             step = abs(baseline - self.baseline)
@@ -1704,12 +1774,23 @@ class _Paragraphs:
             # A name that means different fonts on different pages: one reading per font.
             self.variants.append(list(self.variants[0]))
         for index, variant in enumerate(self.variants):
+            text = readings[index % len(readings)]
             if separator and variant:
                 variant.append(separator)
-            variant.append(readings[index % len(readings)])
+            elif (
+                gap
+                and not separator
+                and variant
+                and text[:1] not in ("", " ")
+                and variant[-1][-1:] not in ("", " ", "\n")
+            ):
+                variant.append(" ")
+            variant.append(text)
 
     def end_block(self) -> None:
         """Close the current text object's piece of this paragraph and emit it as a block."""
+        if self.spaced is not None:
+            self.spaced.end_block()
         found = False
         for variant in self.variants:
             text = "".join(variant[self.block_start :]).strip()
@@ -1722,6 +1803,8 @@ class _Paragraphs:
 
     def flush(self) -> None:
         self.end_block()
+        if self.spaced is not None:
+            self.spaced.flush()
         if self.pieces > 1:
             for variant in self.variants:
                 text = "".join(variant).strip()
@@ -1908,8 +1991,10 @@ def _blocks(
         tuple[Matrix, list[Font], bytes | None, float, float, int, bool, bool, Box | None]
     ] = []
     line = _IDENTITY_MATRIX
-    paragraphs = _Paragraphs(result, budget)
+    paragraphs = _Paragraphs(result, budget, spaced=_Paragraphs(result, budget, gaps=True))
     hidden = _Paragraphs(result, budget, hidden=True)
+    # Whether the text position was moved since the last string (Td, TD, T*, Tm).
+    moved = False
 
     def extend(points: list[float]) -> None:
         nonlocal path
@@ -1926,14 +2011,17 @@ def _blocks(
         return [float(value) for value in values]  # type: ignore[arg-type]
 
     def move(tx: float, ty: float) -> None:
-        nonlocal line
+        nonlocal line, moved
         line = _multiply((1.0, 0.0, 0.0, 1.0, tx, ty), line)
+        moved = True
 
     def show(strings: list[object]) -> None:
+        nonlocal moved
         device = _multiply(line, ctm)
         scale = max(abs(device[1]), abs(device[3]), 1e-6)
         shown = abs(size) * scale
-        decoded = paragraphs.show(current, strings, device[5], shown)
+        decoded = paragraphs.show(current, strings, device[5], shown, gap=moved)
+        moved = False
         if decoded is None:
             # Unread text is reported by the coverage note; it still ends a hidden stretch.
             hidden.flush()
@@ -1980,6 +2068,7 @@ def _blocks(
             paragraphs.end_block()
             hidden.end_block()
             line = _IDENTITY_MATRIX
+            moved = True
         elif op == b"ET":
             paragraphs.end_block()
             hidden.end_block()
@@ -2038,6 +2127,7 @@ def _blocks(
             leading = values[0]
         elif op == b"Tm" and (values := numbers(6)) is not None:
             line = (values[0], values[1], values[2], values[3], values[4], values[5])
+            moved = True
         elif op in (b"Td", b"TD") and (values := numbers(2)) is not None:
             if op == b"TD":
                 leading = -values[1]

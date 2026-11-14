@@ -1,7 +1,7 @@
 # Detection backlog
 
-Last reviewed: November 14, 2026, on `main` at `e0a70ab` plus the
-[CJK CMaps and config escapes](../verification/2026-11-14-cjk-cmaps-and-config-escapes.md) change.
+Last reviewed: November 14, 2026, on `main` at `e365218` plus the
+[PDF word gaps and filters](../verification/2026-11-14-pdf-word-gaps-and-filters.md) change.
 Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
@@ -180,7 +180,7 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 | Inline Word content readers treat differently: junk in `w:fldSimple`, `w:bdo`, `w:smartTag`, an inline `w:sdt`; `mc:AlternateContent` branches; `w:sym`; math runs (`m:t`) | Verified with the same readers | A reading per reader family is the large version of the row above. Build that one first |
 | Form field values (`/V`), Info strings, and outline titles in a PDF written as hex, octal, or UTF-16BE strings | Verified: clean; `pdftotext` and PyMuPDF show a field's value in page text, `pdfinfo` and pypdf show the Info strings. LibreOffice writes every title as `<FEFF...>` | `pdfannotations.py` decodes these spellings for `/Contents` only. Widen the keys it collects; count benign titles first |
 | `/ActualText` on PDF marked content, in any spelling but a plain literal | Verified: clean; poppler and PDFium substitute it for the glyphs, the other five readers do not | The property list is dropped by `_blocks`. Needs the text-string decoder above and the `/Properties` lookup |
-| PDF word gaps written as position with no space glyph: a `TJ` adjustment between -120 and -200, or one `Tj` per word placed by `Td` | Verified: the words read as one glued word; six of seven readers show spaces | A second, spaced reading of the block. Readers start a space near -120 and differ around it |
+| PDF word gaps written as position with no space glyph: a `TJ` adjustment between -120 and -200, or one `Tj` per word placed by `Td` | **Built** on November 14 ([record](../verification/2026-11-14-pdf-word-gaps-and-filters.md)): each block is also read with spaces at a `TJ` gap of -100 or less and after a positioning operator on the same line, added where it differs | The hidden-text grouping is still read without the spaced reading |
 | A 1 pt run or a `hidden="1"` shape in an Office drawn part; a 1 pt size set by a shape's own `a:lstStyle` | Verified: reported as shown text, so `agent-document` passes it; LibreOffice's PDF does not draw it and its extractors return it. Supersedes the first row below with reader evidence: the claims that hold are an explicit size on the run and `hidden` on the shape | A prototype of those two claims changed 0 of 124 generator Office files. SmartArt data parts and inherited sizes must not be claimed |
 | OpenDocument text hidden by `text:display="none"` on a span, paragraph, or section, and hidden rows, sheets, and slides | Verified with LibreOffice as viewer and as extractor; LibreOffice writes this attribute when it converts a `w:vanish` run. Supersedes the second row below | An `odf-hidden-text` view under `heuristic_hidden_text`. The reader run narrowed the claim six times (a child span with `text:display="true"`, a link's character style, a cell merged out of a hidden row); white text and 1 pt text must not be claimed |
 | LibreOffice's `PrinterSetup` item makes its own `.odt` or `.ods` advisory | Verified false hold: `agent_base64_blob` on `settings.xml`; block under `agent-ingest` | A fix that tests the bytes before the run is a rule-side exemption. Count how many LibreOffice files carry the item first: none of its bundled templates do |
@@ -243,6 +243,7 @@ overturn.
 
 | Idea | Reason |
 | --- | --- |
+| Decode LZW or RunLength for any stream size, or for an image | A pure-Python decoder cannot cover a 100 MB stream inside the deadline, and an image holds no text; content under 2 MiB (LZW) or 8 MiB (RunLength) encoded is decoded ([record](../verification/2026-11-14-pdf-word-gaps-and-filters.md)) |
 | Join a sentence split between two PDF pages | Every reader shows two pages as two streams and the phrase split; the probe keeps it clean ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | Read an image XObject's bytes as page content when they spell text operators | Every reader draws them as pixels; only a stream a `/Contents` entry names is read as content ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | Read a JSON config whose comment never closes | jsonc-parser reports the error and VS Code does not load the file; the walk leaves it unread, as before ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |

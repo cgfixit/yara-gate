@@ -214,11 +214,15 @@ _PDF_ASCII_STAGES = frozenset({b"/ASCIIHexDecode", b"/AHx", b"/ASCII85Decode", b
 # The deadline is checked after this many bytes of predictor work, inside rows as well.
 _PREDICTOR_CHECK = 1 << 16
 # Stream filters this view decodes, by full name and by the abbreviation readers also accept.
-# LZWDecode and RunLengthDecode are left out: no stdlib decoder, and a pure-Python one cannot
-# cover a 100 MB stream within the deadline. A chain that needs either stays out of the view.
+# LZWDecode and RunLengthDecode have no stdlib decoder, and a pure-Python one cannot cover a
+# 100 MB stream within the deadline, so they are decoded only for a stream that is not an
+# image and whose encoded bytes are under ``MAX_LZW_BYTES`` or ``MAX_RUN_LENGTH_BYTES``; any
+# other chain that needs one stays out of the view, as before.
 _PDF_FLATE = b"/FlateDecode"
 _PDF_HEX = b"/ASCIIHexDecode"
 _PDF_A85 = b"/ASCII85Decode"
+_PDF_LZW = b"/LZWDecode"
+_PDF_RUN_LENGTH = b"/RunLengthDecode"
 _PDF_FILTERS = {
     _PDF_FLATE: _PDF_FLATE,
     b"/Fl": _PDF_FLATE,
@@ -226,7 +230,18 @@ _PDF_FILTERS = {
     b"/AHx": _PDF_HEX,
     _PDF_A85: _PDF_A85,
     b"/A85": _PDF_A85,
+    _PDF_LZW: _PDF_LZW,
+    b"/LZW": _PDF_LZW,
+    _PDF_RUN_LENGTH: _PDF_RUN_LENGTH,
+    b"/RL": _PDF_RUN_LENGTH,
 }
+# The filters that end a decoded chain; ASCII stages may come before one of them.
+_PDF_TERMINALS = frozenset({_PDF_FLATE, _PDF_LZW, _PDF_RUN_LENGTH})
+MAX_LZW_BYTES = 2 * 1024 * 1024
+MAX_RUN_LENGTH_BYTES = 8 * 1024 * 1024
+# LZW and RunLength output is charged to the limits each time it grows by this much, so a short
+# stream that expands far cannot allocate past them before a check sees it.
+_CHARGE_BYTES = 64 * 1024
 _PDF_WHITESPACE = b"\x00\t\n\f\r "
 _PDF_NOT_HEX = re.compile(rb"[^0-9A-Fa-f]+")
 # Whole ASCII85 groups, up to 64 KB of output: ``z`` where a group starts, otherwise five bytes.
@@ -3471,10 +3486,11 @@ def _pdf_stream_bytes(
 ) -> bytes | None:
     """The decoded bytes of the stream whose keyword ``start`` matched, or None.
 
-    None means the chain does not reach FlateDecode through ASCIIHexDecode and ASCII85Decode
-    stages alone, or the stream does not inflate. A stream that inflates is never dropped over
-    its predictor: parameters this view will not apply leave the inflated bytes as they are, for
-    ``sniff`` and the text rules to judge.
+    None means the chain does not reach FlateDecode, LZWDecode, or RunLengthDecode through
+    ASCIIHexDecode and ASCII85Decode stages alone, or the stream does not decode. A stream that
+    decodes is never dropped over its predictor, and a RunLength stream has none: parameters
+    this view will not apply leave the decoded bytes as they are, for ``sniff`` and the text
+    rules to judge.
     """
     stream_dict = _pdf_stream_dict(data, start.start())
     end = _PDF_END.search(data, start.end())
@@ -3487,11 +3503,27 @@ def _pdf_stream_bytes(
     plan = _pdf_flate_plan(data, stream_dict, objects)
     if plan is None:
         return None
-    stages, parms = plan
+    stages, parms, kind = plan
+    if kind != _PDF_FLATE and (
+        stream_dict.get(b"/Subtype") == b"/Image" or b"/Width" in stream_dict
+    ):
+        # RunLengthDecode is an image filter as often as not; an image holds no text.
+        return None
     for stage in stages:
         body = _ascii_hex(body, budget) if stage == _PDF_HEX else _ascii85(body, budget)
-    inflated = _inflate(body, budget)
-    if not inflated:
+    if kind == _PDF_LZW:
+        if len(body) > MAX_LZW_BYTES:
+            return None
+        early = _pdf_resolve(data, parms.get(b"/EarlyChange"), objects)
+        inflated = _lzw(body, 0 if early == b"0" else 1, budget)
+    elif kind == _PDF_RUN_LENGTH:
+        if len(body) > MAX_RUN_LENGTH_BYTES:
+            return None
+        inflated = _run_length(body, budget)
+    else:
+        inflated = _inflate(body, budget)
+    if not inflated or kind == _PDF_RUN_LENGTH:
+        # RunLengthDecode takes no parameters (ISO 32000-1, Table 6); readers apply none.
         return inflated
     predictor = _pdf_predictor(parms)
     if predictor is None:
@@ -3812,12 +3844,13 @@ def _pdf_resolve(
 
 def _pdf_flate_plan(
     data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
-) -> tuple[tuple[bytes, ...], dict[bytes, PdfValue]] | None:
-    """The ASCII stages before FlateDecode and FlateDecode's parameters, or None.
+) -> tuple[tuple[bytes, ...], dict[bytes, PdfValue], bytes] | None:
+    """The ASCII stages before the decoding filter, that filter's parameters, and the filter
+    (FlateDecode, LZWDecode, or RunLengthDecode), or None.
 
-    None when the chain does not reach FlateDecode through ASCIIHexDecode and ASCII85Decode
-    alone. With a ``/DecodeParms`` array, the entry at FlateDecode's index applies, as in pdf.js
-    and MuPDF. A lone dictionary applies when FlateDecode is the first filter.
+    None when the chain does not reach one of those through ASCIIHexDecode and ASCII85Decode
+    alone. With a ``/DecodeParms`` array, the entry at the filter's index applies, as in pdf.js
+    and MuPDF. A lone dictionary applies when the filter is the first one.
     """
     filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
     chain = filters if isinstance(filters, list) else [filters]
@@ -3827,7 +3860,7 @@ def _pdf_flate_plan(
         kind = _PDF_FILTERS.get(name) if isinstance(name, bytes) else None
         if kind is None:
             return None
-        if kind != _PDF_FLATE:
+        if kind not in _PDF_TERMINALS:
             stages.append(kind)
             continue
         parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects)
@@ -3835,7 +3868,7 @@ def _pdf_flate_plan(
             parms = _pdf_resolve(data, parms[index], objects) if index < len(parms) else None
         elif index:
             parms = None
-        return tuple(stages), parms if isinstance(parms, dict) else {}
+        return tuple(stages), parms if isinstance(parms, dict) else {}, kind
     return None
 
 
@@ -4043,6 +4076,94 @@ def _a85_value(group: bytes) -> bytes:
     for digit in group:
         value = value * 85 + digit - 0x21
     return (value & 0xFFFFFFFF).to_bytes(4, "big")
+
+
+def _charge(output: bytearray, grown: int, budget: Budget) -> None:
+    budget.expanded += grown
+    if budget.expanded > MAX_EXTRACT_BYTES:
+        raise ContentLimit("extracted size exceeds 500MB")
+    if len(output) > MAX_FILE_BYTES:
+        raise ContentLimit("pdf stream exceeds 100MB")
+
+
+def _run_length(raw: bytes, budget: Budget) -> bytes | None:
+    """RunLengthDecode (ISO 32000-1, 7.4.5): a length byte n below 128 copies the next n + 1
+    bytes, one above 128 repeats the next byte 257 - n times, and 128 ends the data. A run cut
+    off by the end of the stream is copied as far as it goes, as pdf.js and MuPDF do."""
+    output = bytearray()
+    index = 0
+    size = len(raw)
+    charged = 0
+    steps = 0
+    while index < size:
+        steps += 1
+        if steps & 0xFFFF == 0:
+            budget.check()
+        if len(output) - charged >= _CHARGE_BYTES:
+            _charge(output, len(output) - charged, budget)
+            charged = len(output)
+        length = raw[index]
+        if length == 128:
+            break
+        if length < 128:
+            output += raw[index + 1 : index + 2 + length]
+            index += length + 2
+        else:
+            if index + 1 >= size:
+                break
+            output += raw[index + 1 : index + 2] * (257 - length)
+            index += 2
+    _charge(output, len(output) - charged, budget)
+    return bytes(output) or None
+
+
+def _lzw(raw: bytes, early: int, budget: Budget) -> bytes | None:
+    """LZWDecode (ISO 32000-1, 7.4.4): codes of 9 to 12 bits, 256 clears the table, 257 ends the
+    data, and with ``early`` (EarlyChange, 1 by default) the width grows one code early. A code
+    the table cannot have yet ends the data, keeping what came before it, as pdf.js does."""
+    table: list[bytes] = [bytes((code,)) for code in range(256)] + [b"", b""]
+    output = bytearray()
+    width = 9
+    previous: bytes | None = None
+    bits = 0
+    count = 0
+    charged = 0
+    for position, byte in enumerate(raw):
+        if position & 0xFFFF == 0:
+            budget.check()
+        bits = (bits << 8) | byte
+        count += 8
+        while count >= width:
+            count -= width
+            code = (bits >> count) & ((1 << width) - 1)
+            bits &= (1 << count) - 1
+            if code == 256:
+                del table[258:]
+                width = 9
+                previous = None
+                continue
+            if code == 257:
+                _charge(output, len(output) - charged, budget)
+                return bytes(output) or None
+            if code < len(table):
+                entry = table[code]
+                if previous is not None and len(table) < 4096:
+                    table.append(previous + entry[:1])
+            elif code == len(table) and previous is not None and len(table) < 4096:
+                entry = previous + previous[:1]
+                table.append(entry)
+            else:
+                _charge(output, len(output) - charged, budget)
+                return bytes(output) or None
+            output += entry
+            previous = entry
+            if len(output) - charged >= _CHARGE_BYTES:
+                _charge(output, len(output) - charged, budget)
+                charged = len(output)
+            if len(table) + early >= 1 << width and width < 12:
+                width += 1
+    _charge(output, len(output) - charged, budget)
+    return bytes(output) or None
 
 
 def _inflate(raw: bytes, budget: Budget) -> bytes | None:

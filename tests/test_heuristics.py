@@ -592,3 +592,51 @@ def test_pickle_walk_calls_the_deadline_check() -> None:
     with pytest.raises(Deadline):
         heuristics.pickle_reduce_findings(Path("m.pkl"), data, check)
     assert len(calls) == 2
+
+
+def _lzw_longest_entry_repeated(repeats: int) -> bytes:
+    """LZW codes that grow each table entry by one byte to a full table, then repeat the
+    longest entry (about 3,800 bytes per 12-bit code)."""
+    out, bits, count = bytearray(), 0, 0
+
+    def emit(code: int, width: int) -> None:
+        nonlocal bits, count
+        bits, count = (bits << width) | code, count + width
+        while count >= 8:
+            count -= 8
+            out.append((bits >> count) & 0xFF)
+
+    width, table = 9, 258
+    emit(256, width)
+    emit(ord("a"), width)
+    while table < 4096:
+        emit(table, width)
+        table += 1
+        if table + 1 >= 1 << width and width < 12:
+            width += 1
+    for _ in range(repeats):
+        emit(4095, 12)
+    emit(257, 12)
+    if count:
+        out.append((bits << (8 - count)) & 0xFF)
+    return bytes(out)
+
+
+def test_lzw_output_is_charged_as_it_grows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A short LZW stream that expands far raises before allocating much past the budget."""
+    from yara_gate import content
+
+    peak = 0
+    charge = content._charge
+
+    def recording(output: bytearray, grown: int, budget: Budget) -> None:
+        nonlocal peak
+        peak = max(peak, len(output))
+        charge(output, grown, budget)
+
+    monkeypatch.setattr(content, "_charge", recording)
+    budget = Budget(time.monotonic() + 30)
+    budget.expanded = content.MAX_EXTRACT_BYTES - 10_000
+    with pytest.raises(ContentLimit, match="extracted size"):
+        content._lzw(_lzw_longest_entry_repeated(2_000), 1, budget)
+    assert peak <= 10_000 + content._CHARGE_BYTES + 4096
