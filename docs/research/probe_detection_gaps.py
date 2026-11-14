@@ -4660,6 +4660,20 @@ def gap_and_filter_cases() -> list[Case]:
             "pdf page content under RunLengthDecode",
             pdf_streams("4 0 R", [(4, run_length(split), "/Filter /RunLengthDecode")]),
         ),
+        # RunLengthDecode takes no parameters, so readers ignore a predictor named beside it.
+        case(
+            "pdf RunLength page content with ignored predictor parameters",
+            pdf_streams(
+                "4 0 R",
+                [
+                    (
+                        4,
+                        run_length(split),
+                        "/Filter /RunLengthDecode /DecodeParms << /Predictor 2 /Columns 2 >>",
+                    )
+                ],
+            ),
+        ),
         case(
             "pdf page content under ASCII85 then LZW",
             pdf_streams(

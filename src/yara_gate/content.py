@@ -239,6 +239,9 @@ _PDF_FILTERS = {
 _PDF_TERMINALS = frozenset({_PDF_FLATE, _PDF_LZW, _PDF_RUN_LENGTH})
 MAX_LZW_BYTES = 2 * 1024 * 1024
 MAX_RUN_LENGTH_BYTES = 8 * 1024 * 1024
+# LZW and RunLength output is charged to the limits each time it grows by this much, so a short
+# stream that expands far cannot allocate past them before a check sees it.
+_CHARGE_BYTES = 64 * 1024
 _PDF_WHITESPACE = b"\x00\t\n\f\r "
 _PDF_NOT_HEX = re.compile(rb"[^0-9A-Fa-f]+")
 # Whole ASCII85 groups, up to 64 KB of output: ``z`` where a group starts, otherwise five bytes.
@@ -3480,9 +3483,9 @@ def _pdf_stream_bytes(
 ) -> bytes | None:
     """The decoded bytes of the stream whose keyword ``start`` matched, or None.
 
-    None means the chain does not reach FlateDecode through ASCIIHexDecode and ASCII85Decode
-    stages alone, or the stream does not inflate. A stream that inflates is never dropped over
-    its predictor: parameters this view will not apply leave the inflated bytes as they are, for
+    None means the chain does not reach FlateDecode, LZWDecode, or RunLengthDecode through
+    ASCIIHexDecode and ASCII85Decode stages alone, or the stream does not decode. A stream that
+    decodes is never dropped over its predictor, and a RunLength stream has none: parameters this view will not apply leave the inflated bytes as they are, for
     ``sniff`` and the text rules to judge.
     """
     stream_dict = _pdf_stream_dict(data, start.start())
@@ -3515,7 +3518,8 @@ def _pdf_stream_bytes(
         inflated = _run_length(body, budget)
     else:
         inflated = _inflate(body, budget)
-    if not inflated:
+    if not inflated or kind == _PDF_RUN_LENGTH:
+        # RunLengthDecode takes no parameters (ISO 32000-1, Table 6); readers apply none.
         return inflated
     predictor = _pdf_predictor(parms)
     if predictor is None:
@@ -4091,6 +4095,7 @@ def _run_length(raw: bytes, budget: Budget) -> bytes | None:
         steps += 1
         if steps & 0xFFFF == 0:
             budget.check()
+        if len(output) - charged >= _CHARGE_BYTES:
             _charge(output, len(output) - charged, budget)
             charged = len(output)
         length = raw[index]
@@ -4122,8 +4127,6 @@ def _lzw(raw: bytes, early: int, budget: Budget) -> bytes | None:
     for position, byte in enumerate(raw):
         if position & 0xFFFF == 0:
             budget.check()
-            _charge(output, len(output) - charged, budget)
-            charged = len(output)
         bits = (bits << 8) | byte
         count += 8
         while count >= width:
@@ -4150,6 +4153,9 @@ def _lzw(raw: bytes, early: int, budget: Budget) -> bytes | None:
                 return bytes(output) or None
             output += entry
             previous = entry
+            if len(output) - charged >= _CHARGE_BYTES:
+                _charge(output, len(output) - charged, budget)
+                charged = len(output)
             if len(table) + early >= 1 << width and width < 12:
                 width += 1
     _charge(output, len(output) - charged, budget)
