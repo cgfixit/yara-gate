@@ -1293,11 +1293,14 @@ def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
     normalized = unescaped
     if not unescaped.isascii():
         # Inspect hidden formatting without modifying the original or interpreting it as authority.
-        normalized = "".join(
-            char
-            for char in unescaped
-            if unicodedata.category(char) != "Cf" and not 0xFE00 <= ord(char) <= 0xFE0F
-        )
+        # Each distinct character is looked up once and the text is rewritten in one translate
+        # pass: a check per character cost 0.66 s on 4 MiB of Cyrillic, close to the CI ceiling.
+        dropped = {
+            ord(char): None
+            for char in set(unescaped)
+            if unicodedata.category(char) == "Cf" or 0xFE00 <= ord(char) <= 0xFE0F
+        }
+        normalized = unescaped.translate(dropped) if dropped else unescaped
         if normalized != unescaped:
             yield "format-controls-removed", _derived(normalized, budget)
     # A reader sees "Ign\u043ere", fullwidth letters, "1gn0r3", or "i g n o r e" as the word; the

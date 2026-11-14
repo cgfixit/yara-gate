@@ -103,3 +103,24 @@ which that view must keep). Neither is a fix for a failure no change caused.
 - A re-run of a failed macOS job is a hosted-CI fact and is not recorded here.
 - This container is slower than the hosted Ubuntu runner (5.4 s here, 4.5 s there on this
   input); ratios, not absolute seconds, carry over.
+
+## Later on November 14: the format-control stage, without a second table
+
+`text_views` removes format controls and variation selectors for the
+`format-controls-removed` view with a Python check on every character. It now looks up each
+*distinct* character once (`set(text)`, then `unicodedata.category`, the same test as before)
+and removes the matches in one `str.translate` pass. That answers the objection above: no
+hand-kept Unicode table is added, and C0 and C1 controls are untouched because the test is
+unchanged.
+
+- **Same output.** The old and new forms gave the same string on 20,000 random strings drawn
+  from ASCII, Cyrillic, CJK, an astral emoji, a lone surrogate, U+00AD, U+061C, U+200B to
+  U+200D, U+202E, U+2060, U+2066, U+FEFF, U+FE00, U+FE0E, U+FE0F, U+1D173, U+E0001, and U+E0041.
+- **Cost.** `mail-nested-charset.eml`, the input that failed on `c8c6f16`, three runs each in
+  one session here (the container was also running a benign sweep, so the seconds are higher
+  than above; the ratio is what carries over): 4.14, 3.83, 3.95 s against 4.94, 4.97, 4.82 s
+  on `main` `e365218`, about 19% less. At that ratio the red macOS run's 10.32 s would have
+  been about 8.3 s.
+
+This widens the margin; it does not remove it. The rest of `folded_text` is still where most
+of the time goes, and the step's five-minute limit is unchanged.
