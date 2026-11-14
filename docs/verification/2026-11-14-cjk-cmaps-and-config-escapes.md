@@ -137,6 +137,23 @@ strings until the piece cap, 1.1 s, `text pieces exceed 100000`) and `config-ope
 open behaviour (no reading, unmapped alone, clean beside a map); it is replaced by a test of
 the UTF-16BE reading, its boundaries, and the drawn-character filter.
 
+## Follow-up review
+
+A quoted escape example inside a valid YAML literal block was clean on
+`e0a70ab` and blocked under `agent-ingest` on `61cb18a`. Ruby Psych preserved
+the backslash. Folded blocks and plain scalars had the same error. A quote
+inside a plain value could also prevent the reader from reaching the next
+quoted field.
+
+The follow-up uses frozen PyYAML 6.0.3 events for YAML. Only a double-quoted
+scalar containing a source backslash yields a piece. Events preserve scalar
+style and leave tags and aliases unresolved. The TOML reader keeps comments
+and literal strings separate and handles escaped delimiters and multiline
+continuations. Six probe cases cover these boundaries. On macOS arm64,
+Python 3.12.13 and YARA-X 1.23.0, the probe had 525 passing cases and three
+expected open cases. The valid 4 MiB YAML sequence hit the 100,000-piece cap
+in 0.61 s. The 4 MiB plain-scalar fixture stayed clean in 0.30 s.
+
 ## Not established
 
 - poppler was not run with poppler-data, so its reading of these fonts is not known here.

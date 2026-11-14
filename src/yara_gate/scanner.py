@@ -117,7 +117,7 @@ def scan_file(
 
 
 # Third-party parsers whose behavior reaches a verdict; YARA-X is also reported on its own.
-_DETECTOR_PACKAGES = ("olefile", "oletools", "yara-x")
+_DETECTOR_PACKAGES = ("olefile", "oletools", "pyyaml", "yara-x")
 
 
 @functools.cache

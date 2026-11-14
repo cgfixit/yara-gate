@@ -126,3 +126,7 @@ nothing (0.89 s). The first form of the reader looked for a line feed past each 
 to the end of the file and took 28 s on the second; it now looks only up to the closing
 quote. All 78 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
 (`pdf-page-fonts.pdf`, 6.3 to 6.5 s on `main` as well).
+
+The scalar-boundary follow-up uses a valid YAML sequence for the first input. On macOS
+arm64, Python 3.12.13, and PyYAML 6.0.3, that input hit the piece cap in 0.61 s. The
+plain-scalar input stayed clean in 0.30 s.

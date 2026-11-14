@@ -482,8 +482,10 @@ A Markdown paragraph or list item split by emphasis, a code span, or a link is r
 as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
 folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment
 lines is read as one `comment-text` piece, and a Jupyter cell stored as a list of lines as
-one `notebook-text` piece. A YAML double-quoted scalar or TOML basic string with escapes
-(`c\x75rl`) is read decoded, one `config-unescaped` piece per string. RTF formatting, hex bytes, and Unicode escapes are read
+one `notebook-text` piece. YAML double-quoted scalars and TOML basic strings with
+escapes yield one decoded `config-unescaped` piece each. YAML scalar events preserve
+quotation style without constructing tagged objects or expanding aliases. Plain and
+block scalars keep their literal backslashes. RTF formatting, hex bytes, and Unicode escapes are read
 as `rtf-text`, one piece per paragraph, table cell, or separate story; each piece
 is also folded before matching. Malformed RTF or unreadable declared encodings
 are incomplete. Not covered: text out of reading order or in columns,

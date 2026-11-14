@@ -4458,6 +4458,36 @@ def config_cases() -> list[Case]:
             "clean",
         ),
         case(
+            "yaml quoted example inside a literal block (benign)",
+            "notes.yaml",
+            f'notes: |\n  A test fixture says "{phrase}"\n',
+            "clean",
+        ),
+        case(
+            "yaml quoted example inside a folded block (benign)",
+            "notes.yaml",
+            f'notes: >-\n  A test fixture says "{phrase}"\n',
+            "clean",
+        ),
+        case(
+            "yaml quoted example inside a plain value (benign)",
+            "notes.yaml",
+            f'notes: A test fixture says "{phrase}"\n',
+            "clean",
+        ),
+        case(
+            "yaml quoted value after a plain value with a quote",
+            "notes.yaml",
+            f'title: A dangling " in an ordinary note\nnotes: "{phrase}"\n',
+            PHRASE_RULE,
+        ),
+        case(
+            "toml comment without a space (benign)",
+            "pyproject.toml",
+            f'count = 1# A test fixture says "{phrase}"\n',
+            "clean",
+        ),
+        case(
             "toml basic string, escaped phrase",
             "pyproject.toml",
             f'[tool.review]\nnote = "{phrase}"\n',
@@ -4467,6 +4497,12 @@ def config_cases() -> list[Case]:
             "toml multi-line basic string, escaped phrase",
             "pyproject.toml",
             f'[tool.review]\nnote = """\n{phrase}\n"""\n',
+            PHRASE_RULE,
+        ),
+        case(
+            "toml multi-line basic string, line continuation",
+            "pyproject.toml",
+            '[tool.review]\nnote = """\n' + PHRASE.replace("Ignore", "Ig\\\n  nore") + '\n"""\n',
             PHRASE_RULE,
         ),
         case(
