@@ -28,7 +28,7 @@ HUNT_FILE = re.compile(r"hunt_[0-9a-f]{12}\.yar")
 # private and global rules compile too, so they count.
 _RULE_NAME = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
-_CACHE_SALT = b"yara-gate-rules-v3"
+_CACHE_SALT = b"yara-gate-rules-v4"
 _ALLOWED_DOWNLOAD_HOSTS = frozenset(
     {
         "github.com",
@@ -457,9 +457,7 @@ def compile_ruleset(
     if _local_compile_failed(skipped):
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped), digest
 
-    compiler = yara_x.Compiler(relaxed_re_syntax=True)
-    define_scan_globals(compiler)
-    _add_include_dirs(compiler, rules_dir, overlay=use_overlay)
+    compiler = _rule_compiler(yara_x)
     for index, (path, text) in enumerate(good):
         compiler.new_namespace(f"gate_{index}")
         compiler.add_source(text, origin=path.name)
@@ -512,7 +510,7 @@ def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
     )
     import yara_x
 
-    yara_x.compile(updated)
+    _validate_one(yara_x, target, updated)
     target.write_text(updated, encoding="utf-8")
     _clear_cache(root)
     return target
@@ -1056,26 +1054,17 @@ def define_scan_globals(compiler: Any) -> None:
 
 
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
-    compiler_type = yara_x.Compiler
-    compiler = compiler_type(relaxed_re_syntax=True)
-    define_scan_globals(compiler)
-    include = getattr(compiler, "add_include_dir", None)
-    if callable(include):
-        include(str(path.parent))
+    compiler = _rule_compiler(yara_x)
     compiler.add_source(text, origin=path.name)
     compiler.build()
 
 
-def _add_include_dirs(compiler: object, rules_dir: Path, *, overlay: bool | None = None) -> None:
-    add = getattr(compiler, "add_include_dir", None)
-    if not callable(add):
-        return
-    seen: set[Path] = set()
-    for path in rule_files(rules_dir, overlay=overlay):
-        if path.parent in seen:
-            continue
-        seen.add(path.parent)
-        add(str(path.parent))
+def _rule_compiler(yara_x: Any) -> Any:
+    compiler = yara_x.Compiler(relaxed_re_syntax=True)
+    # Every loaded rule must come from a file the ruleset digest covers.
+    compiler.enable_includes(False)
+    define_scan_globals(compiler)
+    return compiler
 
 
 def _local_compile_failed(skipped: list[str]) -> bool:

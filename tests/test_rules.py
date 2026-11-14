@@ -382,6 +382,19 @@ def test_candidate_status_skips_only_a_hunt_file(rules_copy: Path) -> None:
     assert compile_sources(root)[3] == base + 2
 
 
+def test_rule_compiler_refuses_includes(tmp_path: Path, rules_copy: Path) -> None:
+    local = rules_copy / "local"
+    (local / "outside-digest.inc").write_text("rule extra { condition: true }", encoding="utf-8")
+    (local / "with_include.yar").write_text('include "outside-digest.inc"\n', encoding="utf-8")
+    source = tmp_path / "ordinary.txt"
+    source.write_bytes(clean_text())
+
+    result = scan_file(source, rules_dir=rules_copy)
+
+    assert result.verdict is Verdict.incomplete
+    assert result.incomplete_reason == "local rule compile failed"
+
+
 def _forge_lock(root: Path, blob: bytes) -> None:
     pin = PackPin(
         name="yara-forge-core",
