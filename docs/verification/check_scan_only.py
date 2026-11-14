@@ -74,7 +74,12 @@ def main() -> None:
         reports = list((home / "reports").glob("*.json"))
         if not reports:
             failures.append("no reports written")
-        for report in (home / "reports").iterdir():
+        events = list((home / "reports" / "events").glob("*.json"))
+        if len(events) != 2 * len(CASES):
+            failures.append(f"expected {2 * len(CASES)} scan events, got {len(events)}")
+        for report in (home / "reports").rglob("*"):
+            if not report.is_file():
+                continue
             if EICAR.decode() in report.read_text(encoding="utf-8", errors="replace"):
                 failures.append(f"{report.name} contains the matched EICAR bytes")
         for folder in ("inbox", "quarantine", "clean", "blocked"):
