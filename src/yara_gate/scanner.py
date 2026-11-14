@@ -23,6 +23,7 @@ from yara_gate.content import (
     comment_texts,
     config_unescaped_texts,
     content_units,
+    decoded_text,
     folded_text,
     html_text_blocks,
     markdown_texts,
@@ -53,7 +54,6 @@ from yara_gate.filetype import (
     name_has_controls,
     raster_image,
     sniff,
-    utf16_encoding,
 )
 from yara_gate.heuristics import (
     UNICODE_CONTROL_RULES,
@@ -363,7 +363,7 @@ def _scan_file(
             pdf_objects = PdfObjects(unit.data, budget)
             heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects, budget.check)
             extra.extend(heuristic)
-            decoded = _decoded_text(unit.data)
+            decoded = _decoded_text(unit.name, unit.data, budget)
             if decoded is not None:
                 text, view = decoded
                 for finding in [
@@ -378,7 +378,7 @@ def _scan_file(
             findings.extend(extra)
             if office_error:
                 return finish(office_error)
-            for view, derived in text_views(unit.data, budget):
+            for view, derived in text_views(unit.data, budget, name=unit.name, known=decoded):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, samples=image, name=base)
                 if _raw_only(view):
@@ -821,20 +821,14 @@ def _name_findings(parts: Sequence[str]) -> list[Finding]:
     return found
 
 
-def _decoded_text(data: bytes) -> tuple[str, str] | None:
+def _decoded_text(name: str, data: bytes, budget: Budget) -> tuple[str, str] | None:
     if sniff(data) != "text":
         return None
-    encoding = utf16_encoding(data)
-    if encoding is not None:
-        try:
-            return data.decode(encoding), "decoded-utf16"
-        except UnicodeError:
-            return None
     try:
-        return data.decode("utf-8"), "raw"
+        return decoded_text(name, data, budget)
     except UnicodeError:
-        # U+FFFD is three bytes, so offsets no longer match the file: not a raw view.
-        return data.decode("utf-8", errors="replace"), "utf8-replaced"
+        # UTF-16 that does not decode; ``text_views`` reports it as incomplete.
+        return None
 
 
 def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = None) -> str | None:
