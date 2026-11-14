@@ -202,6 +202,7 @@ uv run yara-gate demo --rules rules</pre>
       <p>The demo has no analytics, cookies, browser storage, or content submission. Its scripts make no API calls and cannot connect to localhost. Only the static page and its assets load; documentation links navigate when you choose them.</p>
       <p>GitHub hosts this public site and logs visitors' IP addresses for security. This is not an anonymous or offline service. See <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages#data-collection" rel="noopener noreferrer">GitHub Pages data collection</a>.</p>
       <p>Recorded results cover only these examples and their pinned source revision. A real clean scan is not proof that content is trustworthy: matching finds patterns someone has written down, with no semantic understanding, OCR, or general decryption, and unsupported or unfinished scans must be held.</p>
+      <p>For example, the PDF reader skips LZW-compressed page streams. If your extractor reads those streams, scan its text before passing it to an agent.</p>
     </section>
   </main>
   <footer class="shell">Public demonstration · Recorded results only · Keep private content in your local workflow</footer>

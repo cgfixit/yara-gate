@@ -102,6 +102,13 @@ for in-place files, audit records, and rescan behavior.
 
 Stop watch with Control-C. One watch runs per gate home: it holds an operating-system lock on `~/YaraGate/.watch.lock`, so a second start exits 2 with `watch already running`. The lock is released when the watcher exits or crashes, so a stale file or a reused process ID never keeps the next start out. A `.watch.pid` left by an earlier release is ignored and removed.
 
+On startup, watch finishes a recorded pending intake using its original policy,
+rules root, and timeout before accepting new drops. If the scan is incomplete,
+the file remains in quarantine with a new report. If the pending record itself
+is invalid, intake stops and leaves the copy held. Inspect the gate's
+`.intake-pending.json` and quarantine before resubmitting anything. Files held
+before pending records were introduced stay available for manual review.
+
 The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
 
 To leave watch running after you log in, write a plist and load it yourself.
@@ -143,7 +150,9 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 
 ## 5. Read a report
 
-Reports are `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. Open the JSON. You will see the verdict, the exit code, and a list of findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It does not include the bytes that matched.
+The latest report for a digest is `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. The JSON includes the verdict, exit code, and findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It omits matched bytes.
+
+Use `reports/events/<scan-id>.json` to compare individual scans of the same bytes under different names or policies. Each event contains the compact report plus `schema_version`, `scan_id`, and a UTC `recorded_at` timestamp. A record describes the scan, and can be present before its file moves. Release actions are recorded in `releases.jsonl`. Event files accumulate until the operator archives or removes them.
 
 A home-directory path is shown as `~/...`. For inbox scans, the path is the quarantine slot used during scanning, even after relocation to `clean/` or `blocked/`. An in-place scan retains its input path; stdin and `scan_bytes` use the final component of `--name`/`name`. Path shortening does not anonymize other filenames or directories.
 

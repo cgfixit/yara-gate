@@ -111,7 +111,8 @@ After inspecting a held document and its report, an operator can run `yara-gate 
 | `quarantine/<sha256>/` | Being scanned, or the scan did not finish |
 | `clean/<sha256>/` | Clean, advisory under the default policy, notes only under `agent-document`, or a reviewed release |
 | `blocked/<sha256>/` | A block finding, any advisory or note under `agent-ingest`, or an advisory under `agent-document` |
-| `reports/<sha256>.{sarif,json}` | Written for every scan, before the file moves |
+| `reports/<sha256>.{sarif,json}` | Latest report pair for the digest, written before the file moves |
+| `reports/events/<scan-id>.json` | One versioned record per saved scan, including repeat scans of the same bytes |
 
 Each SHA-256 has one slot holding one file, named as it was last submitted. File-type checks depend on the name, so the same bytes dropped again under another name are rescanned under that name, and the slot, report, and folder follow that scan: a PE that is clean as `tool.exe` blocks when resubmitted as `invoice.pdf`. A submission holds the gate home's `.intake.lock` from intake to relocation, so one home takes one file at a time, and the inbox entry is removed only if it is still the file that was copied.
 
@@ -131,6 +132,11 @@ without traversing their contents. Use `scan DIRECTORY` for an explicit recursiv
 scan. Finish writing in an unwatched directory, then atomically rename the
 completed file into the inbox on the same filesystem; a dot prefix is not a
 staging exemption.
+
+If intake stops after recording a complete quarantine copy, the next watcher
+start or inbox scan retries it with the recorded file name, policy, rules root,
+and timeout. A retry uses the rules currently at that root. Earlier quarantine
+slots without a pending record stay held for manual review.
 
 Intake checks the existing 100 MiB limit before hashing or copying, and bounds
 each read pass to the limit plus one detection byte if a file grows. Oversized
@@ -175,10 +181,13 @@ Start with the **[detection-method map](rules/README.md)** for links to every de
 
 A finding records its rule ID, severity, namespace, byte offset and length within its view, the `view` it came from, and its `member_path` as container positions such as `zip:0` or `mime:2`, never member names. A scan record adds the policy, `policy_reason`, engine and tool versions, a ruleset fingerprint, `detector_sha256` (a digest of the scanner's own sources and parser versions), the compiled-rule and skipped-file counts, and coverage counters: `units_scanned`, `views_scanned`, `bytes_scanned`, `scan_seconds`, and `yara_seconds`. With these, a caller can check that a mail message or archive was actually opened. Reports never contain the matched bytes. Paths are shortened only at the user's home directory. Each file is written under a temporary name and then renamed into place.
 
+The [intake and report verification record](docs/verification/2026-11-13-intake-report-integrity.md) covers watcher recovery, scan history, and SMS queue retries.
+
 ## Rules and hunting
 
 - `setup` downloads the packs pinned in `rules/rules.lock`, checks each SHA-256, and does nothing on later runs while every installed file is present (`--force` downloads again). `rules install --allow-network` does the same on demand; `rules update --allow-network` resolves new pins. These are the only three commands that use the network, each swaps the vendor tree only after the new rules compile, and a scan never downloads. Extraction refuses a pack that holds two rule files with the same name, more than 20,000 rule files, or more than 300 MiB once expanded, and keeps the previous tree.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. If a shipped rule fails to compile, or a recorded vendor file (listed in the untracked `vendor.installed.json`) is missing, the scan exits 2.
+- Rule files must be self-contained. The scanner disables YARA `include` so the ruleset fingerprint covers each compiled source file.
 
 `yara-gate hunt --confirmed <sha256> --reason "…" --scope path/to/search` writes a candidate rule from a file already in `blocked/` (`--confirmed-by` labels who confirmed it; the default is `operator`). The candidate must hit that file and none of the benign files. It does not block anything until `yara-gate rules promote <id>` compiles it and switches it to block. Only a file with hunt's own `hunt_<12 hex>.yar` name is skipped as a candidate; a `status = "candidate"` line in any other rule file is ordinary metadata and its rules load.
 

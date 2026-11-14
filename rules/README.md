@@ -25,6 +25,10 @@ loads once. Local compilation errors or missing bundled rules are fatal; vendor
 compile skips remain visible in scan results. The compiled cache is under the
 user cache directory, not this directory.
 
+Rule sources must be self-contained. YARA `include` directives are disabled so
+every compiled rule comes from a file listed in the ruleset fingerprint. Move
+shared rule source into the files that use it before adding them to the tree.
+
 `setup` consents to the first pinned download; `rules install --allow-network`
 installs pinned packs and `rules update --allow-network` resolves new pins. Each
 compiles the staged tree before swapping it into place. Scanning never downloads

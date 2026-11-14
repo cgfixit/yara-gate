@@ -7,6 +7,14 @@ policy, rule IDs, severity, member/view provenance, engine/ruleset identity,
 compiled rule count, tool version, scan time, and scan-completeness fields. No matched content is included. Paths abbreviate
 the user's home prefix; other path components remain visible.
 
+The digest-named JSON and SARIF are latest-report views. Each saved scan also
+writes `reports/events/<scan-id>.json` before relocation, with `schema_version`,
+`scan_id`, and UTC `recorded_at` alongside the compact report. Events can exist
+before a pending move completes. Use the returned record and verify the bytes for
+admission. Use the event files to inspect older scan contexts. If a deployment
+requires a particular reviewed vendor inventory, also require its expected
+`ruleset_sha256` and review the reported skip count before admitting files.
+
 The default human-readable output is unchanged when `--json` is absent.
 Diagnostics for failures before a file can be scanned go to stderr and return
 exit 2. A missing path therefore produces no JSON record. An empty directory
@@ -415,12 +423,14 @@ bridge for a Twilio number. It verifies `X-Twilio-Signature` against the auth to
 and the public URL, and holds every MMS (the gate never fetches media, and image text
 is not read). It scans each body and the sender's recent messages joined together, so
 an instruction split across two texts is held on the second, and it writes allowed and
-held messages to owner-only queues. An owner-only SQLite file tracks committed
-`MessageSid` values across restarts. Committed duplicates are acknowledged without
-scanning. An overlapping delivery during an uncommitted attempt gets HTTP 503.
-The bridge commits the SQLite reservation after the JSONL append, so a crash
-between those operations can repeat a line. The consumer must also deduplicate
-by `message_sid`. A message without a `MessageSid` is held. It sends no automatic reply. The first half of a
+held messages to owner-only queues. An owner-only SQLite transaction records the
+`MessageSid` and pending JSONL bytes together. A restart or delivery retry finishes
+the write at its recorded offset before acknowledging the message. A committed
+duplicate is acknowledged without scanning. An overlapping delivery or a storage
+failure gets HTTP 503. Stop the bridge before rotating a queue, and check that
+`SELECT count(*) FROM pending` in `processed.sqlite3` returns zero first. Consumers
+should still deduplicate by `message_sid` when rereading the queue. A message without
+a `MessageSid` is held. The bridge sends no automatic reply. The first half of a
 split instruction has already been allowed by the time the second arrives; it is
 harmless alone, but the consumer should still read messages as one sender's thread,
 not as instructions. Measured gaps for this channel, the consumer changes it needs,
