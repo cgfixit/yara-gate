@@ -499,7 +499,7 @@ block scalars keep their literal backslashes. RTF formatting, hex bytes, and Uni
 as `rtf-text`, one piece per paragraph, table cell, or separate story; each piece
 is also folded before matching. Malformed RTF or unreadable declared encodings
 are incomplete. Not covered: text out of reading order or in columns,
-a sentence split across two paragraphs, Type 3 fonts, LZW and RunLength streams,
+a sentence split across two paragraphs, Type 3 fonts, LZW streams over 2 MiB and RunLength streams over 8 MiB,
 images, ODT spans, RTF embedded-object or picture text, and Office parts a reader does not see. The
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
 structure checks still run on the raw file.
