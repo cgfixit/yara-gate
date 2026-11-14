@@ -555,6 +555,21 @@ def _other_contents(
             # Only an object stream holds page dictionaries; a content stream's own text is not one.
             if dictionary is not None and dictionary.get(b"/Type") == b"/ObjStm":
                 sources.append(stream.inflated)
+    # One pass over the file finds every referenced array; a lookup per page would rescan the
+    # file once each, which a QDF save (every page's /Contents a reference) makes quadratic.
+    prime = getattr(objects, "prime", None)
+    if callable(prime):
+        wanted: set[tuple[int, int]] = set()
+        for source in sources:
+            budget.check()
+            for match in _CONTENTS_VALUE.finditer(source):
+                if match.group(1) is not None:
+                    wanted.add((int(match.group(1)), 0))
+                if len(wanted) >= MAX_OTHER_CONTENTS:
+                    break
+            if len(wanted) >= MAX_OTHER_CONTENTS:
+                break
+        prime(wanted)
     count = 0
     for source in sources:
         budget.check()

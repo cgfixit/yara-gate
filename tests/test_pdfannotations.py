@@ -5,6 +5,7 @@ import json
 import time
 import zipfile
 import zlib
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -424,3 +425,34 @@ def test_member_and_report_provenance(tmp_path: Path, rules_copy: Path) -> None:
     assert "private-name" not in report.read_text()
     for entry in json.loads(sarif.read_text())["runs"][0]["results"]:
         assert entry["locations"][0]["physicalLocation"]["region"] == {}
+
+
+def test_indirect_lengths_and_contents_are_found_in_one_pass(
+    monkeypatch: pytest.MonkeyPatch, rules_copy: Path
+) -> None:
+    """qpdf's QDF mode keeps every stream length, and here every page's /Contents, in an object
+    of its own. Each was a scan of the whole file until the readers primed them together."""
+    passes = 0
+    prime = PdfRawObjects.prime
+
+    def counted(self: PdfRawObjects, keys: Iterable[tuple[int, int]]) -> None:
+        nonlocal passes
+        wanted = {key for key in keys if key not in self._offsets}
+        passes += bool(wanted)
+        prime(self, wanted)
+
+    monkeypatch.setattr(PdfRawObjects, "prime", counted)
+    body = b"BT /F1 12 Tf 72 720 Td (Quarterly totals were revised.) Tj ET\n"
+    data = bytearray(b"%PDF-1.7\n1 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n")
+    for n in range(1, 201):
+        page, content, length = 10 * n, 10 * n + 1, 10 * n + 2
+        data += b"%d 0 obj<</Type/Page/MediaBox[0 0 612 792]" % page
+        data += b"/Resources<</Font<</F1 1 0 R>>>>/Contents %d 0 R>>endobj\n" % content
+        data += b"%d 0 obj<</Length %d 0 R>>stream\n" % (content, length) + body
+        data += b"\nendstream\nendobj\n%d 0 obj\n%d\nendobj\n" % (length, len(body))
+    result = scan_bytes(bytes(data) + b"%%EOF\n", name="report.pdf", rules_dir=rules_copy)
+    assert result.verdict.value == "clean" and result.incomplete_reason is None
+    assert result.views_scanned.get("pdf-text") == 200
+    # 400 references. On 50f404a each was its own pass (401); now one finds the lengths, one
+    # the /Contents arrays, and one the fonts.
+    assert passes <= 4, passes
