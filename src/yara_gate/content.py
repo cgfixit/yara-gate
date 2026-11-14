@@ -3056,6 +3056,111 @@ def _markdown_inline(match: re.Match[str]) -> str:
     return match.group(1) or ""
 
 
+_CONFIG_SUFFIXES = (".yaml", ".yml", ".toml")
+# The escapes of a YAML double-quoted scalar (YAML 1.2, 5.7) and of a TOML basic string
+# (TOML 1.0, and \x and \e from TOML 1.1): code points by hex, then the one-letter ones.
+_CONFIG_ESCAPE = re.compile(
+    r"\\(?:x([0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|([0abtnvfre \"/\\N_LP]))"
+)
+_CONFIG_SIMPLE = {
+    "0": "\0",
+    "a": "\a",
+    "b": "\b",
+    "t": "\t",
+    "n": "\n",
+    "v": "\v",
+    "f": "\f",
+    "r": "\r",
+    "e": "\x1b",
+    " ": " ",
+    '"': '"',
+    "/": "/",
+    "\\": "\\",
+    "N": "\x85",
+    "_": "\xa0",
+    "L": "\u2028",
+    "P": "\u2029",
+}
+
+
+def _config_escape(match: re.Match[str]) -> str:
+    hexadecimal = match.group(1) or match.group(2) or match.group(3)
+    if hexadecimal is None:
+        return _CONFIG_SIMPLE[match.group(4)]
+    code = int(hexadecimal, 16)
+    # A surrogate or a value past U+10FFFF is not a character; keep the escape text.
+    return match.group() if 0xD800 <= code <= 0xDFFF or code > 0x10FFFF else chr(code)
+
+
+# Where a string or a comment may start in YAML or TOML; what follows is read by hand.
+_CONFIG_OPENER = re.compile(r"\"\"\"|'''|[\"'#]")
+_CONFIG_DOUBLE = re.compile(r'(?:[^"\\]++|\\.)*+', re.DOTALL)
+
+
+def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:
+    """The double-quoted strings of a YAML or TOML file whose escapes decode to other text,
+    one piece each (``config-unescaped``).
+
+    PyYAML and ``tomllib`` read ``"c\\x75rl"`` as ``curl``: escapes are decoded in a YAML
+    double-quoted scalar and in a TOML basic string, single-line or ``\"\"\"`` multi-line,
+    and nowhere else, so a block scalar's ``\\n`` stays two characters. Comments (``#`` at a
+    line start or after white space) and single-quoted and literal strings are passed over, so
+    a quote inside one does not open a string. One forward pass: a string that never closes
+    ends the reading, as it ends the parser's. The suffix is taken from the final path
+    component.
+    """
+    base = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if not base.endswith(_CONFIG_SUFFIXES) or "\\" not in text:
+        return []
+    pieces: list[str] = []
+    position = 0
+    size = len(text)
+    count = 0
+    while (match := _CONFIG_OPENER.search(text, position)) is not None:
+        count += 1
+        if count % 4096 == 0:
+            budget.check()
+        opener, start = match.group(), match.start()
+        if opener == "#":
+            if start and not text[start - 1].isspace():
+                position = start + 1
+                continue
+            stop = text.find("\n", start)
+            position = size if stop < 0 else stop
+            continue
+        if opener == "'''":
+            stop = text.find("'''", start + 3)
+            if stop < 0:
+                break
+            position = stop + 3
+            continue
+        if opener == "'":
+            stop = text.find("'", start + 1)
+            # An apostrophe in a plain scalar opens nothing. The line feed is looked for only
+            # up to the closing quote, so each byte is read once.
+            broken = stop < 0 or text.find("\n", start + 1, stop) >= 0
+            position = start + 1 if broken else stop + 1
+            continue
+        if opener == '"""':
+            stop = text.find('"""', start + 3)
+            if stop < 0:
+                break
+            body, position = text[start + 3 : stop], stop + 3
+        else:
+            found = _CONFIG_DOUBLE.match(text, start + 1)
+            close = found.end() if found else start + 1
+            if close >= size or text[close] != '"':
+                break
+            body, position = text[start + 1 : close], close + 1
+        if "\\" in body:
+            decoded = _CONFIG_ESCAPE.sub(_config_escape, body)
+            if decoded != body:
+                if len(pieces) >= MAX_TEXT_PIECES:
+                    raise ContentLimit("text pieces exceed 100000")
+                pieces.append(decoded)
+    return pieces
+
+
 def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
     """The text of each Markdown paragraph, list item, or heading that inline markup splits.
 
