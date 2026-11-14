@@ -177,6 +177,30 @@ def test_an_entry_replaced_during_the_copy_stays_in_the_inbox(
     assert src.read_bytes() == b"written after the first file was opened\n"
 
 
+def test_a_failed_copy_on_resubmission_keeps_the_clean_copy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _home(tmp_path)
+    first = home.inbox / "notes.txt"
+    first.write_bytes(clean_text())
+    clean = process_inbox_file(home, first, rules_dir=rules_copy)
+    assert clean.verdict is Verdict.clean
+    report = (home.reports / f"{clean.sha256}.json").read_bytes()
+
+    def grew_mid_copy(fd: int, dest: Path) -> None:
+        raise quarantine.IntakeRejected("file exceeds 100MB")
+
+    monkeypatch.setattr(quarantine, "_copy_fd", grew_mid_copy)
+    again = home.inbox / "notes.txt"
+    again.write_bytes(clean_text())
+    retry = process_inbox_file(home, again, rules_dir=rules_copy)
+    assert retry.verdict is Verdict.incomplete
+    assert (home.clean / clean.sha256 / "notes.txt").read_bytes() == clean_text()
+    assert not (home.quarantine / clean.sha256).exists()
+    assert not list(home.quarantine.glob(".staged-*"))
+    assert (home.reports / f"{clean.sha256}.json").read_bytes() == report
+
+
 def test_drain_scans_files_already_in_the_inbox(tmp_path: Path, rules_copy: Path) -> None:
     home = _home(tmp_path)
     src = home.inbox / "notes.txt"
