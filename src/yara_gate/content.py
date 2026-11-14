@@ -1342,7 +1342,9 @@ _PRESCAN_RAW = {
     for tag in ("style", "title", "textarea", "xmp", "iframe", "noembed", "noframes")
 }
 # Script data, which a comment opener escapes and an inner <script> escapes twice: an end tag
-# inside the second escape does not end the script.
+# inside the second escape does not end the script. Only --> ends an escape: --!> closes a
+# comment (``_comment_end``) but not a script escape, whose dash-dash state ends only at >, and
+# Chromium 153 keeps the escape open across it (probe_html_charset_browser.py, directed).
 _SCRIPT_MARK = re.compile(r"</script(?=[\t\n\f\r />])|<script(?=[\t\n\f\r />])|<!--|-->", re.I)
 # A < that can open markup; any other < is text.
 _PRESCAN_OPEN = re.compile(r"<[A-Za-z!?/]")

@@ -47,6 +47,7 @@ from the bytes):
 | After `<!-->`, `<!--->`, or `--!>`, which close a comment | honoured |
 | In a script after `<!--<script></script>`, the double escape | passed over |
 | After `<script><!-- a <!--><script></script>`: `<!-->` inside the escape ends it, so that `</script>` ends the script | honoured |
+| `--!>` inside an escaped or a doubly escaped script, before a meta | passed over: `--!>` closes a comment, not a script escape |
 | `<meta x"charset=koi8-r>`: the quote is part of the attribute name | passed over |
 | `<meta charset=a charset=b>`; `content` then `charset`; `charset` then `content` | b; `charset`; `charset` |
 | `charset=""` then a `content` | passed over |
@@ -90,7 +91,7 @@ the Japanese text and its UTF-8 reading is escape sequences.
 
 | Set | Documents | ok | wide | DIFF |
 | --- | --- | --- | --- | --- |
-| `directed` | 27 | 26 | 1 | 0 |
+| `directed` | 29 | 28 | 1 | 0 |
 | `fuzz --seed 1` | 3,000 | 2,617 | 383 | 0 |
 | `fuzz --seed 2` | 3,000 | 2,640 | 360 | 0 |
 | `fuzz --seed 3` | 3,000 | 2,653 | 347 | 0 |
@@ -109,6 +110,11 @@ escaped twice at the inner `<script>` and read the meta as script text, while Ch
 honours it. The reader now looks for `-->` from inside such a `<!--`. That document is the
 27th directed case and the shape is in the fuzz vocabulary of seeds 4 and 5; seeds 1 to 3
 were compared again with the fix and still agree.
+
+CodeQL's `py/bad-tag-filter` flagged the script-escape pattern on the pull request for
+matching `-->` and not `--!>`. Chromium keeps a script escape open across `--!>`, at either
+depth, and the reader does too; the two shapes are directed cases 28 and 29, so a reader that
+took `--!>` as the end of an escape would fail the probe.
 
 ## 5. Benign files
 

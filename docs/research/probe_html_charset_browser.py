@@ -198,6 +198,13 @@ def directed_cases() -> list[tuple[str, bytes]]:
         "script_escape_closed_inside.html": page.format(
             f"<script><!-- a <!--><script></script>{d}</script>"
         ),
+        # --!> closes a comment but not a script escape, in either depth.
+        "script_escape_bang.html": page.format(
+            f"<script><!-- x --!><script></script>{d}</script><meta charset=iso-8859-5>"
+        ),
+        "script_double_escape_bang.html": page.format(
+            f"<script><!--<script> --!> </script>{d}--></script><meta charset=iso-8859-5>"
+        ),
         "in_noscript.html": page.format(f"<noscript>{d}</noscript>"),
         "in_attribute.html": page.format(f'<link title="{d}">'),
         "quote_in_name.html": page.format('<meta x"charset=iso-8859-5><meta charset=koi8-r>'),
