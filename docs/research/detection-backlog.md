@@ -1,8 +1,8 @@
 # Detection backlog
 
-Last reviewed: November 14, 2026, on `main` at `e365218` plus the
-[PDF word gaps and filters](../verification/2026-11-14-pdf-word-gaps-and-filters.md) change.
-Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
+Last reviewed: November 14, 2026, on `main` at `50f404a` plus the
+[indirect lengths, `binding.gyp`, and recall](../verification/2026-11-14-indirect-lengths-gyp-recall.md)
+change. Python 3.12.3, YARA-X 1.23.0, 88 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
 tried or weighed and turned down. Read it before drafting a detection change. The dated
@@ -12,7 +12,8 @@ date; this page is where their open items now live.
 Evidence labels: **verified** means run in this tree with inert fixtures. **Sourced** means
 a public write-up, with **read** when the page itself was fetched on November 10 and
 **located** when only its existence and summary were confirmed. **Assessment** is judgment.
-Nothing here is a production false-positive rate or a recall figure.
+Nothing here is a production false-positive rate. The one recall figure, a floor on two public
+corpora, is in [measuring recall](#keeping-the-detector-current).
 
 ## Before you draft a detection change
 
@@ -69,7 +70,7 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B3, B5, and B6 are executable: each is
+Ordered by expected value for the agent-intake use. B3 and B5 are executable: each is
 an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
 benign boundary, so the probe fails when one starts to hold without its marker removed. B2
 (MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
@@ -133,16 +134,20 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 
 ### B6. `binding.gyp` command expansion that discards its output
 
-- **Gap (verified).** `"<!(node index.js > /dev/null 2>&1 && echo stub.c)"` in a
-  `binding.gyp` is clean. `node-gyp` runs it at install.
-- **Evidence (sourced, read; one source).** The 2026 Miasma and Hades npm wave planted it,
-  with agent settings files and a folder-open task
-  ([JFrog](https://research.jfrog.com/post/shai-hulud-miasma-redhat-cloud-services/)).
-  Confirm the shape in a second source before shipping a rule.
-- **Proposal.** `dev_gyp_command_expansion`, advisory, scoped by `yara_gate_name`: a `<!(`
-  expansion that redirects to `/dev/null` or chains with `&&`.
-- **Boundary (verified clean).** `<!(node -p "require('node-addon-api').include_dir")`,
-  the form native addons use.
+- **Built** on November 14 as `dev_gyp_command_expansion`, advisory
+  ([record](../verification/2026-11-14-indirect-lengths-gyp-recall.md)). A file with the suffix `.gyp` or `.gypi` (`binding.gyp`, or one in an
+  npm `.tgz`) holds when a `<!(` or `<!@(` expansion on one line sends output to `/dev/null`,
+  or chains with `&&`, `||`, or `;` to `echo` a C or C++ file name.
+- **Sources.** Read: [JFrog](https://research.jfrog.com/post/shai-hulud-miasma-redhat-cloud-services/)
+  shows `"sources": ["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]`; the OpenSSF
+  malicious-packages record [MAL-2026-6526](https://osv.dev/vulnerability/MAL-2026-6526)
+  (Amazon Inspector's analysis) describes a root `binding.gyp` whose `targets`/`sources` hold a
+  `<!(...)` expansion that npm's implicit `node-gyp rebuild` runs. Located only: Snyk's
+  write-up, whose host this environment could not reach.
+- **Narrower than proposed (verified).** `&&` alone is ordinary: nodegit's `binding.gyp` writes
+  `<!(node -p "os.platform() == 'aix' && ...")`. On 91 `.gyp` and `.gypi` files from 63 native
+  addons on npm, no expansion discards output or echoes a source name; fibers writes `2>&1`
+  piped to `grep`.
 
 ### B7. A PDF font dictionary read to its own end
 
@@ -226,7 +231,7 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 | PDF pages that inherit `/Resources` read through their own fonts | [2026-11-10-pdf-page-fonts.md](../verification/2026-11-10-pdf-page-fonts.md): a page with no `/Resources` of its own keeps the file-wide union, because readers inherit either through `/Parent` or down the `/Kids` they walked | Needs both paths to agree: the page's `/Parent` chain and the one `/Kids` path that lists it must name the same resources |
 | A PDF font reference in a spelling only some readers take: `6.0 0 R`, `6 0.0 R`, `+6 0 R`, `6- 0 R`, `6 0R`, a vertical tab between the tokens, or an escaped `/F#6Fnt` key | Verified with readers on main `2b6eda8` ([probe_pdf_reader_agreement.py](probe_pdf_reader_agreement.py), the `gap` rows): pdfminer.six reads all of them, PDFium, MuPDF, and pdf.js most; the union's regexes match only `N G R` and a literal `/Font`, so the text is not decoded and the scan is clean | Widen the regexes, or report `heuristic_pdf_text_unmapped` when a `/Font` dictionary holds a name whose value is not a plain reference. The same spellings in a page's `/Contents` already turn the page map off |
 | A PDF font resource that is a reference to a reference (`/F1 10 0 R`, object 10 is `6 0 R`) | Verified with readers: pdfminer.six and MuPDF follow it; `_font` reads object 10, finds no font, and gives the name no reading | One more lookup; needs a cycle bound |
-| Stream lengths kept in another object cost the annotation reader one file scan each | Verified on main `2b6eda8`: 300 such streams in 1.2 MB scan in 7.5 s against 0.4 s with direct lengths, and 900 in 4 MiB time out as incomplete. qpdf's QDF mode writes every length this way | Prime every `/Length N G R` in one pass, as the page map's layout pass does for itself; add a tripwire input |
+| Stream lengths kept in another object cost the annotation reader one file scan each | **Built** on November 14 ([record](../verification/2026-11-14-indirect-lengths-gyp-recall.md)): the annotation reader primes every `/Length N G R`, and the text reader every `/Contents N 0 R`, in one pass. A 300-page qpdf QDF save went from 23.8 s to 2.1 s; a pytest counts the passes (401 on `50f404a`, 3 now) | No 4 MiB input was added to the timing step: its five-minute budget is already thin ([record](../verification/2026-11-14-macos-timing-flake.md)) |
 | A PDF font object defined more than once | Verified clean on main `2b6eda8`: the page says `/F1 6 0 R`, object 6 is defined twice, and only the second definition's map decodes the phrase (the definition a reader that follows the last cross-reference section shows). The same holds when the phrase font is `6 1 obj`. `_font` reads the first definition only | Every definition would be a reading; the four-reading cap already reports the overflow. Needs its own tests and record |
 | PDF fonts selected through an ExtGState `/Font` entry (`gs`) | Assessment: ISO 32000-1 8.4.5 allows it; no generator sample examined uses it | The `gs` operator is not followed for fonts today; needs a generator sample before a reader change |
 | A `javascript:` scheme split by a tab, line feed, or carriage return (`java&#9;script:`), which a browser strips from a URL before reading it | Verified clean on `doc_svg_active_link`, again on `5d7ca81` for the character reference and for the byte itself; a capital spelling, a letter written as a character reference, `&colon;`, and a leading control are held. Assessment for browsers, from the WHATWG URL parser's removal of those three characters, not run | A pattern that allows a control between every letter leaves the engine no literal to search for. A derived view that deletes them inside attribute values would serve every URL rule; needs its own benign count |
@@ -244,6 +249,7 @@ overturn.
 | Idea | Reason |
 | --- | --- |
 | Decode LZW or RunLength for any stream size, or for an image | A pure-Python decoder cannot cover a 100 MB stream inside the deadline, and an image holds no text; content under 2 MiB (LZW) or 8 MiB (RunLength) encoded is decoded ([record](../verification/2026-11-14-pdf-word-gaps-and-filters.md)) |
+| `&&` alone, or `2>&1`, in a GYP command expansion as `dev_gyp_command_expansion` | nodegit's `binding.gyp` uses `&&` inside a `node -p` test and fibers pipes `2>&1` on to `grep`; the rule reads discarded output and an echoed stub name ([record](../verification/2026-11-14-indirect-lengths-gyp-recall.md)) |
 | Join a sentence split between two PDF pages | Every reader shows two pages as two streams and the phrase split; the probe keeps it clean ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | Read an image XObject's bytes as page content when they spell text operators | Every reader draws them as pixels; only a stream a `/Contents` entry names is read as content ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | Read a JSON config whose comment never closes | jsonc-parser reports the error and VS Code does not load the file; the walk leaves it unread, as before ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
@@ -324,10 +330,12 @@ and the deprecated `chat.agent.terminal.autoApprove`; Claude Code ignores
 `bypassPermissions` from a project file in current releases.
 
 **Measuring recall and benign holds.** The corpus and the sweep measure collisions, not
-recall. Whether to measure against a public corpus is still the owner's decision from
-[#171](https://github.com/cgfixit/yara-gate/issues/171): a download is outside the
-no-download default. If it is taken, keep the corpus out of git, record hashes and counts,
-and report per policy. Candidates read on November 10:
+recall. The owner decided on November 14 to measure against public corpora
+([#171](https://github.com/cgfixit/yara-gate/issues/171)), kept out of git with hashes and
+counts recorded. The first run ([record](../verification/2026-11-14-indirect-lengths-gyp-recall.md#3-a-recall-floor-on-two-public-corpora)): of 148,383 LLMail-Inject attack bodies, the
+88 bundled rules report a finding on 3.0% and `agent-document` holds 0.7%; of the 24,559 that
+triggered the defended tool, 2.4%. NotInject's 339 benign prompts give one note (0.3%) and the
+203 LLMail-Inject false-positive emails nothing. Candidates read on November 10:
 
 | Corpus | License | What it adds |
 | --- | --- | --- |

@@ -9,7 +9,7 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 
 | Path | Purpose |
 | --- | --- |
-| [`local/`](local/) | 87 shipped YARA rules in 58 `.yar`/`.yara` files: 75 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`local/`](local/) | 88 shipped YARA rules in 58 `.yar`/`.yara` files: 76 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
 | [`templates/`](templates/) | Sources of the three generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the word lists and the word separator they share. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
 | [`rules.lock`](rules.lock) | Pinned URLs, revisions, and SHA-256 values for YARA Forge core, signature-base, and Elastic protections-artifacts. A lock does not install the bodies. |
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
