@@ -4,14 +4,15 @@ A content stream rarely holds a sentence as one string. Word, LaTeX, and browser
 ``[(Ign) -20 (ore)] TJ`` arrays, one word per ``Tj``, or hex strings, so the raw and
 ``pdf-flate`` views see fragments. This module rebuilds each text block from the operators and
 decodes each string through its font: a simple font as WinAnsi bytes, a font with a ToUnicode
-CMap through that map. A composite (two-byte) font with no readable ToUnicode map cannot be
+CMap through that map, and a Type0 font with no map whose encoding is a predefined Unicode
+CMap as UTF-16BE. Any other composite (two-byte) font with no readable ToUnicode map cannot be
 decoded; the caller reports that as a coverage note instead of a silent clean. A font object
 or ToUnicode map that the file defines more than once is read through every definition, since
 readers differ in which one they use. A font's map is the one its own dictionary names, each
 of them when the key is written more than once; what follows the dictionary is read with it
 only where some reader could take it for the font's (``_Definitions.ways``). A composite font
 that names no map is still read through a map the 4 KB after its header hold, and through
-that alone (detection backlog B8).
+that alone unless its encoding is a predefined Unicode CMap (detection backlog B8).
 
 Nothing is rendered and no font program is read. Positions are not tracked, so text placed out
 of reading order is joined in stream order, and a sentence split across two text blocks is not
@@ -32,6 +33,7 @@ from __future__ import annotations
 import binascii
 import math
 import re
+import unicodedata
 import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -144,6 +146,11 @@ _TO_UNICODE = re.compile(
 _TYPE0 = re.compile(rb"/Subtype[\x00\t\n\f\r ]*/Type0\b")
 _IDENTITY = re.compile(rb"/Encoding[\x00\t\n\f\r ]*/Identity-[HV]\b")
 _IDENTITY_NAMES = (b"/Identity-H", b"/Identity-V")
+# Adobe's predefined CMaps whose codes are Unicode (ISO 32000-1, 9.7.5.2, Table 118): a font
+# that names one and no /ToUnicode shows UTF-16BE codes.
+_UNICODE_CMAP = re.compile(rb"/Uni(?:GB|CNS|JIS|KS)-(?:UCS2|UTF16)(?:-HW)?-[HV]")
+# The map number a way gives such a font in place of "no map": no object has it.
+_UTF16_MAP = -1
 # The encodings whose printable ASCII a font with no map shows as this reader decodes it.
 _LATIN_ENCODINGS = (b"/WinAnsiEncoding", b"/MacRomanEncoding")
 # What the reading of a font dictionary can turn on, as bytes: a /ToUnicode key, a composite
@@ -182,10 +189,13 @@ class Font:
     # No font: what a reader that compares generations finds for a reference whose generation
     # no definition has. It shows the string in a fallback font, read here as WinAnsi.
     missing: bool = False
+    # A composite font with no map whose /Encoding is a predefined Unicode CMap: its codes are
+    # UTF-16BE, read as PDFium, pdfminer.six, and pypdf read them (backlog B8).
+    utf16: bool = False
 
     @property
     def unreadable(self) -> bool:
-        return self.composite and not self.cmap
+        return self.composite and not self.cmap and not self.utf16
 
     @cached_property
     def widest(self) -> int:
@@ -908,8 +918,10 @@ class _Definitions:
         its dictionary was. The reading with no map decodes nothing, so the text would be
         reported as unmapped, and that report would be new on ordinary documents a tool
         rewrote: pypdf and pdfseparate write a font of reportlab's Adobe CJK set, which has
-        a predefined CMap and no map, before a font that has one. Such a font standing
-        alone is reported; beside a map it is open in the detection backlog as B8.
+        a predefined CMap and no map, before a font that has one. When that CMap is a
+        Unicode one, the font's own dictionary gives it a UTF-16BE reading instead (backlog
+        B8), and the window's reading with no map is dropped; any other such font standing
+        alone is reported.
         """
         composite = bool(_TYPE0.search(body) or _IDENTITY.search(body))
         mapping = _TO_UNICODE.search(body)
@@ -935,11 +947,15 @@ class _Definitions:
             return [wide], read and not more
         if wide in own:
             return [wide, *(way for way in own if way != wide)], not more
+        if wide[0] is None and own and all(each == _UTF16_MAP for each, _ in own):
+            # A Type0 font whose own dictionary names a predefined Unicode CMap and no map:
+            # every reading is UTF-16BE (backlog B8). The window only added "no map".
+            return own, read and not more
         if wide[0] is not None and own == [(None, True)]:
             # A composite font that names no map, with a map in the bytes after its header:
             # it keeps that one reading. With the reading that has no map beside it, its
             # text would be reported as unmapped, which is new on merged benign documents
-            # (backlog B8, open).
+            # (backlog B8; a Unicode predefined CMap is read as UTF-16BE above).
             return [wide], read and not more
         both = [wide, *own]
         if sure and (wide[0] is not None or all(each is None for each, _ in own)):
@@ -1066,6 +1082,7 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
     maps: list[int | None] = []
     type0: list[bool] = []
     identity: list[bool] = []
+    unicode: list[bool] = []
     unsure = False
     named = latin = True
     encoded = described = False
@@ -1083,8 +1100,13 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
             encoded = True
             latin = latin and bool(names) and all(name in _LATIN_ENCODINGS for name in names)
             identity.extend(dict.fromkeys(name in _IDENTITY_NAMES for name in names) or [False])
+            unicode.extend(
+                dict.fromkeys(_UNICODE_CMAP.fullmatch(name) is not None for name in names)
+                or [False]
+            )
             if len(keys) > 1:
                 identity.append(False)
+                unicode.append(False)
         if b"/FontDescriptor" in keys:
             described = True
     if unsure or not maps:
@@ -1102,6 +1124,23 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
             for composite in composites
         )
     )
+    if any(unicode) and True in kinds:
+        # A Type0 font with no map and a predefined Unicode CMap is read as UTF-16BE: in place
+        # of the reading with no map when every /Encoding value is one, beside it otherwise.
+        only = all(unicode)
+        ways = list(
+            dict.fromkeys(
+                way
+                for each, composite in ways
+                for way in (
+                    [(_UTF16_MAP, True)]
+                    if each is None and composite and only
+                    else [(each, composite), (_UTF16_MAP, True)]
+                    if each is None and composite
+                    else [(each, composite)]
+                )
+            )
+        )
     simple = bool(type0) and named and composites == [False]
     decoded = None not in maps or (latin if encoded else not described)
     return ways[:MAX_FONT_WAYS], len(ways) > MAX_FONT_WAYS, simple and decoded
@@ -1268,6 +1307,8 @@ def _font(number: int, definitions: _Definitions, cmaps: _Cmaps) -> _Readings:
 
 # A simple font with no map, read as WinAnsi bytes.
 _WINANSI = Font(False)
+# A Type0 font with no map and a predefined Unicode CMap, read as UTF-16BE.
+_UTF16 = Font(True, None, (2,), utf16=True)
 
 
 def _same_text(one: Font, other: Font) -> bool:
@@ -1279,7 +1320,12 @@ def _same_text(one: Font, other: Font) -> bool:
     a font several further ways in a few bytes each, so a walk of two maps for each pair
     would be most of a scan; two maps that happen to be equal are two readings.
     """
-    if one.cmap is not other.cmap or one.lengths != other.lengths or one.missing != other.missing:
+    if (
+        one.cmap is not other.cmap
+        or one.lengths != other.lengths
+        or one.missing != other.missing
+        or one.utf16 != other.utf16
+    ):
         return False
     return bool(one.cmap) or one.composite == other.composite
 
@@ -1342,11 +1388,13 @@ class _Cmaps:
             first: list[Font] = []
             second: list[Font] = []
             likeliest: list[Font] = []
-            for index, parsed in enumerate([None] if number is None else self.get(number)):
+            utf16 = number == _UTF16_MAP
+            listed = [None] if number is None or utf16 else self.get(number)
+            for index, parsed in enumerate(listed):
                 self.check()
                 readings: list[Font] = []
                 if parsed is None:
-                    readings.append(Font(composite, None, default))
+                    readings.append(Font(composite, None, default, utf16=utf16))
                 else:
                     cmap, lengths, alternate = parsed
                     readings.append(Font(composite, cmap or None, lengths or default))
@@ -1562,6 +1610,7 @@ class _Paragraphs:
         self.missing = False
         self.limit = MAX_FONT_VARIANTS
         self.winansi = False
+        self.utf16 = False
 
     def show(
         self, fonts: list[Font], strings: Iterable[object], baseline: float, size: float
@@ -1581,6 +1630,7 @@ class _Paragraphs:
             # The no-font reading is one WinAnsi pass and does not take a font's place.
             self.limit = MAX_FONT_VARIANTS + (self.missing and bool(fonts))
             self.winansi = _WINANSI in variants[self.limit :]
+            self.utf16 = _UTF16 in variants[self.limit :]
         limit = self.limit
         if self.unreadable:
             self.result.unmapped = True
@@ -1598,6 +1648,10 @@ class _Paragraphs:
             # shares it, and it is what a font read through its own dictionary adds beside
             # a map the bytes after it lent it, so it is decoded wherever it stands.
             shown.append(_WINANSI)
+        if self.utf16 and _UTF16 not in shown:
+            # The same holds for the UTF-16BE reading of a predefined Unicode CMap: every
+            # such font gives this one reading, so it is one more pass at most (backlog B8).
+            shown.append(_UTF16)
         if (
             len(variants) > len(shown)
             and not self.result.unmapped
@@ -1614,7 +1668,13 @@ class _Paragraphs:
             for item in strings:
                 if isinstance(item, bytes):
                     # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
-                    decoded = _decode(item, font, MAX_PDF_DECODED_CHARS - used, check)
+                    decoded = _decode(
+                        item,
+                        font,
+                        MAX_PDF_DECODED_CHARS - used,
+                        check,
+                        ambiguous_utf16=len(fonts) > 1,
+                    )
                     used += len(decoded)
                     printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
                     parts.append(decoded)
@@ -2152,9 +2212,55 @@ def _utf16(raw: bytes) -> str:
 _DECODE_CHUNK = 8192
 
 
-def _decode(raw: bytes, font: Font, remaining: int, check: Callable[[], None]) -> str:
+# What a font read as UTF-16BE keeps: characters drawn as text. A name a merged file gives
+# several fonts reads each string through all of them, and glyph ids read as UTF-16 land on
+# any code point, so format controls, combining marks, private use, unassigned code points,
+# separators other than a space, and the Hangul fillers are dropped: they would otherwise
+# look like the invisible-character and bidi tricks the Unicode rules report.
+_DRAWN_CATEGORIES = frozenset({"L", "N", "P", "S"})
+_FILLERS = frozenset({0x115F, 0x1160, 0x3164, 0xFFA0})
+_UNDRAWN: dict[int, None] | None = None
+
+
+def _drawn(text: str) -> str:
+    global _UNDRAWN
+    if _UNDRAWN is None:
+        _UNDRAWN = {
+            code: None
+            for code in range(0x10000)
+            if code in _FILLERS
+            or (
+                unicodedata.category(chr(code))[0] not in _DRAWN_CATEGORIES
+                and unicodedata.category(chr(code)) != "Zs"
+                and code not in (0x09, 0x0A)
+            )
+        }
+    text = text.translate(_UNDRAWN)
+    if any(ord(char) > 0xFFFF for char in text):
+        text = "".join(
+            char
+            for char in text
+            if ord(char) <= 0xFFFF or unicodedata.category(char)[0] in _DRAWN_CATEGORIES
+        )
+    return text
+
+
+def _decode(
+    raw: bytes,
+    font: Font,
+    remaining: int,
+    check: Callable[[], None],
+    *,
+    ambiguous_utf16: bool = False,
+) -> str:
     too_large = "pdf decoded text exceeds character limit"
     if font.cmap is None:
+        if font.utf16:
+            if len(raw) > 2 * remaining:
+                raise ContentLimit(too_large)
+            check()
+            text = raw[: len(raw) & ~1].decode("utf-16-be", errors="replace")
+            return _drawn(text) if ambiguous_utf16 else text
         if font.composite:
             return ""
         if len(raw) > remaining:

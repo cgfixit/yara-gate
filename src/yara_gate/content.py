@@ -3056,6 +3056,121 @@ def _markdown_inline(match: re.Match[str]) -> str:
     return match.group(1) or ""
 
 
+# TOML basic string escapes, including \x and \e from TOML 1.1.
+_CONFIG_SIMPLE = {
+    "b": "\b",
+    "t": "\t",
+    "n": "\n",
+    "f": "\f",
+    "r": "\r",
+    "e": "\x1b",
+    '"': '"',
+    "\\": "\\",
+}
+
+
+_TOML_ESCAPE = re.compile(
+    r"\\(?:x([0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})"
+    r"|([btnfre\"\\])|([ \t]*\r?\n[ \t\r\n]*))"
+)
+
+
+def _toml_escape(match: re.Match[str]) -> str:
+    if match.group(5) is not None:
+        return ""
+    if match.group(4) is not None:
+        return _CONFIG_SIMPLE[match.group(4)]
+    code = int(match.group(1) or match.group(2) or match.group(3), 16)
+    return match.group() if 0xD800 <= code <= 0xDFFF or code > 0x10FFFF else chr(code)
+
+
+# Where a TOML string or comment may start.
+_CONFIG_OPENER = re.compile(r"\"\"\"|'''|[\"'#]")
+_CONFIG_DOUBLE = re.compile(r'(?:[^"\\\r\n]++|\\[^\r\n])*+')
+_CONFIG_MULTI = re.compile(r'(?:[^"\\]++|\\.|"{1,2}(?!"))*+', re.DOTALL)
+
+
+def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:
+    """One piece per double-quoted YAML scalar or TOML basic string with escapes."""
+    base = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if not base.endswith((".yaml", ".yml", ".toml")) or "\\" not in text:
+        return []
+    if base.endswith((".yaml", ".yml")):
+        return _yaml_escaped_scalars(text, budget)
+
+    pieces: list[str] = []
+    position = 0
+    size = len(text)
+    count = 0
+    while (match := _CONFIG_OPENER.search(text, position)) is not None:
+        count += 1
+        if count % 4096 == 0:
+            budget.check()
+        opener, start = match.group(), match.start()
+        if opener == "#":
+            stop = text.find("\n", start)
+            position = size if stop < 0 else stop
+            continue
+        if opener == "'''":
+            stop = text.find("'''", start + 3)
+            if stop < 0:
+                break
+            position = stop + 3
+            while position < size and position < stop + 5 and text[position] == "'":
+                position += 1
+            continue
+        if opener == "'":
+            stop = text.find("'", start + 1)
+            if stop < 0 or text.find("\n", start + 1, stop) >= 0:
+                break
+            position = stop + 1
+            continue
+        if opener == '"""':
+            closing = _CONFIG_MULTI.match(text, start + 3)
+            if closing is None or not text.startswith('"""', closing.end()):
+                break
+            position = closing.end() + 3
+            while position < size and position < closing.end() + 5 and text[position] == '"':
+                position += 1
+            body = text[start + 3 : position - 3]
+        else:
+            found = _CONFIG_DOUBLE.match(text, start + 1)
+            close = found.end() if found else start + 1
+            if close >= size or text[close] != '"':
+                break
+            body, position = text[start + 1 : close], close + 1
+        decoded = _TOML_ESCAPE.sub(_toml_escape, body)
+        if decoded != body:
+            if len(pieces) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            pieces.append(decoded)
+    return pieces
+
+
+def _yaml_escaped_scalars(text: str, budget: Budget) -> list[str]:
+    import yaml
+
+    pieces: list[str] = []
+    # Events preserve scalar style without constructing objects or resolving aliases and tags.
+    loader = getattr(yaml, "CBaseLoader", yaml.BaseLoader)
+    try:
+        for event in yaml.parse(text, Loader=loader):
+            budget.check()
+            if (
+                not isinstance(event, yaml.ScalarEvent)
+                or event.style != '"'
+                or text.find("\\", event.start_mark.index, event.end_mark.index) < 0
+            ):
+                continue
+            if len(pieces) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            pieces.append(event.value)
+    except yaml.YAMLError:
+        # Keep scalar events parsed before a syntax error, alongside the raw scan.
+        pass
+    return pieces
+
+
 def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
     """The text of each Markdown paragraph, list item, or heading that inline markup splits.
 

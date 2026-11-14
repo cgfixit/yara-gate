@@ -37,6 +37,7 @@ const viewNames = {
   'html-hidden-text': 'HTML text a browser does not show (a hidden element, a comment, or a data attribute)',
   'markdown-text': 'one Markdown paragraph with its inline markup removed',
   'notebook-text': 'one notebook cell with its lines rejoined',
+  'config-unescaped': 'one YAML or TOML string with its escapes decoded',
   'comment-text': 'consecutive source comment lines rejoined',
   'pdf-flate': 'an inflated PDF stream',
   'pdf-text': 'one PDF text block, read through the encoding or map of its own font',

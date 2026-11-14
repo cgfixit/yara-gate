@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 76 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 78 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -116,3 +116,17 @@ streams joined into one (3.4 s), a binary page content stream named by a page (0
 collects `/Contents` references. The first form of that pattern made the existing
 `pdf-contents-arrays.pdf` take 10.2 s; it now takes 2.9 s. All 76 passed on Linux x86_64,
 Python 3.12.3; the slowest overall took 5.0 s (`pdf-page-fonts.pdf`).
+
+## November 14, 2026: escapes in YAML and TOML strings
+
+Two inputs were added with the [CJK CMaps and config escapes](2026-11-14-cjk-cmaps-and-config-escapes.md)
+change: 4 MiB of short escaped YAML strings, one piece each, which ends at the piece cap
+(`text pieces exceed 100000`, 1.1 s), and 4 MiB of apostrophes and `#` signs that open
+nothing (0.89 s). The first form of the reader looked for a line feed past each apostrophe
+to the end of the file and took 28 s on the second; it now looks only up to the closing
+quote. All 78 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
+(`pdf-page-fonts.pdf`, 6.3 to 6.5 s on `main` as well).
+
+The scalar-boundary follow-up uses a valid YAML sequence for the first input. On macOS
+arm64, Python 3.12.13, and PyYAML 6.0.3, that input hit the piece cap in 0.61 s. The
+plain-scalar input stayed clean in 0.30 s.

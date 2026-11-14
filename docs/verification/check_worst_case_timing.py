@@ -575,6 +575,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         ),
         None,
     )
+    # YAML and TOML strings: a short escaped string over and over, one piece each, until the
+    # piece cap; and openers that each start nothing (an apostrophe, a "#" after a letter).
+    yield "config-escapes.yml", _filled(b"", b'- "\\x41"\n'), "text pieces exceed 100000"
+    yield "config-openers.yaml", _filled(b"k: v\\", b"a'b#c"), None
     # Mail. A header block is read for 64 KiB and has to end there before the mail library
     # parses it, so a block that never ends costs two bounded passes whatever the file's size:
     # 55,000 header lines, then one Content-Type folded over 600,000 lines.

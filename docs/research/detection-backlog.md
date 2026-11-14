@@ -1,7 +1,7 @@
 # Detection backlog
 
-Last reviewed: November 13, 2026, on `main` at `0abcbe1` plus the
-[PDF streams and JSON with comments](../verification/2026-11-13-pdf-streams-and-jsonc.md) change.
+Last reviewed: November 14, 2026, on `main` at `e0a70ab` plus the
+[CJK CMaps and config escapes](../verification/2026-11-14-cjk-cmaps-and-config-escapes.md) change.
 Python 3.12.3, YARA-X 1.23.0, 87 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
@@ -69,7 +69,7 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B3, B5, B6, and B8 are executable: each is
+Ordered by expected value for the agent-intake use. B3, B5, and B6 are executable: each is
 an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
 benign boundary, so the probe fails when one starts to hold without its marker removed. B2
 (MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
@@ -157,22 +157,17 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 
 ### B8. Text in a composite font that has no map of its own
 
-- **Gap (verified).** A composite font with a predefined CMap and no `/ToUnicode` (reportlab's
-  Adobe CJK fonts: `/UniGB-UCS2-H` and its kin) is reported as `heuristic_pdf_text_unmapped`
-  when it stands alone. Beside an object that has a map it is read through that map, decodes
-  nothing, and is not reported. With the phrase in two-byte codes, PDFium, pdfminer.six, and
-  pypdf show it; the scan is clean. The same holds for a `/Type0` font with no descendant
-  fonts, a simple font with `/Encoding /Identity-H`, and a composite font whose `/ToUnicode`
-  value is not a reference.
-- **Why it is open.** Reporting the shape was built and withdrawn: of 4,216 generator-written
-  PDFs, 56 benign files went from clean to advisory, each a pypdf or pdfseparate rewrite of a
-  reportlab CJK document. Their unmerged originals are advisory on `main` already.
-- **Proposal.** Decode the predefined `Uni*-UCS2-H` and `-UTF16-H` CMaps, whose codes are
-  UTF-16BE: the text is then read instead of reported, the originals stop being advisory, and
-  the neighbour no longer matters. Count the fonts generators write with the other
-  predefined CMaps (`GBK-EUC-H`, `90ms-RKSJ-H`) first.
-- **Acceptance.** The probe's open case holds the phrase; its benign twin stays clean. The
-  case's `want` changes from the note to the phrase rule with the fix.
+- **Built** on November 14 ([record](../verification/2026-11-14-cjk-cmaps-and-config-escapes.md)) for the shape reportlab writes: a Type0 font
+  with no `/ToUnicode` whose every `/Encoding` value is a predefined Unicode CMap
+  (`Uni*-UCS2-*`, `Uni*-UTF16-*`) is read as UTF-16BE, keeping only characters drawn as text,
+  alone or beside an object that has a map. PDFium shows every such fixture, pypdf all but one
+  it cannot open, pdfminer.six three of six; poppler needs its CJK data package, which this
+  machine lacks. The reportlab originals the earlier attempt left advisory are clean.
+- **Still open (verified).** A `/Type0` font with no descendant fonts, a simple font with
+  `/Encoding /Identity-H`, a composite font whose `/ToUnicode` value is not a reference, and a
+  font whose predefined CMap is not Unicode (`GBK-EUC-H`, `90ms-RKSJ-H`): each is still
+  reported as unmapped when it stands alone. Count the fonts generators write with the
+  non-Unicode CMaps before reading them; each needs the CMap's own table.
 
 ### Further candidates, not yet in the probe
 
@@ -193,7 +188,7 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 | HTML or XML in a declared legacy charset (`<meta charset=windows-1251>`, an XML encoding declaration) | Verified: read as UTF-8 only, so the multilingual rule does not fire; Chromium, `xml.etree`, and pandoc decode it | Decode when the bytes are not UTF-8 and a declaration names a charset. A prototype gave no new finding on 249 real legacy-charset pages. UTF-7 must not be honoured: Chromium does not |
 | Escaped or CDATA HTML inside an RSS or Atom feed, and text split by a comment or entity in generic XML | Verified: scanned raw only; feedparser, `xml.etree`, and pandoc show the sentence | `plain_xml` and `xml_text` already do this for Office parts; wire them for XML that is not HTML or SVG |
 | `text-folded` keeps the remaining default-ignorable characters (U+034F, U+115F, U+3164, variation selectors) and OSC strings in place, and deletes VT, FF, and NEL so words fuse | Verified with Chromium and xterm.js | Each is a table entry in `folded_text`. The Hangul fillers and the run rule's boundary are in the row on `agent_invisible_run` below |
-| Escapes in YAML double-quoted scalars and TOML basic strings (`c\x75rl` in a workflow) | Verified: clean; PyYAML and `tomllib` decode them | A view for units named `.yaml`, `.yml`, `.toml`, as `json-unescaped` is for JSON |
+| Escapes in YAML double-quoted scalars and TOML basic strings (`c\x75rl` in a workflow) | **Built** on November 14 ([record](../verification/2026-11-14-cjk-cmaps-and-config-escapes.md)): `config-unescaped`, one piece per double-quoted string in a `.yaml`, `.yml`, or `.toml` file | YAML scalar events distinguish quoted values from plain and block scalars. TOML literal strings and comments keep their backslashes. Other filename suffixes keep the existing views |
 | Zip entries with a local header and no directory record; tar with no `ustar` magic | Verified: never opened. `java.util.zip.ZipInputStream`, stream-unzip, GNU tar, and `tarfile` extract them; Info-ZIP and `zipfile` do not see the zip entries | Search the bytes outside `_zip_spans` for local headers, under the member budget |
 | Mail left closed: a zip appended to a newly opened message (read as the archive only); a one-part `message/rfc822` wrapper; a transfer encoding with no `Content-Type`; the second message of an mbox; a header block past 64 KiB; `format=flowed` with `DelSp`; one undecodable byte, which turns the charset decode off | Verified with fixtures in the [record](../verification/2026-11-12-reader-boundaries.md)'s review | Each needs its own benign count on real mail, which this machine does not have |
 | A worksheet `<v>` split by a comment or CDATA; header and footer strings whose format codes glue or split words (`&CIgnore`) | Verified: openpyxl, pandas, and LibreOffice show the sentence | Pieces under `ooxml-cell`; only parts `plain_xml` rewrote would pay for it |

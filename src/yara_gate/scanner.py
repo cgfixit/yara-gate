@@ -21,6 +21,7 @@ from yara_gate.content import (
     PdfStream,
     _derived,
     comment_texts,
+    config_unescaped_texts,
     content_units,
     folded_text,
     html_text_blocks,
@@ -116,7 +117,7 @@ def scan_file(
 
 
 # Third-party parsers whose behavior reaches a verdict; YARA-X is also reported on its own.
-_DETECTOR_PACKAGES = ("olefile", "oletools", "yara-x")
+_DETECTOR_PACKAGES = ("olefile", "oletools", "pyyaml", "yara-x")
 
 
 @functools.cache
@@ -471,6 +472,11 @@ def _scan_file(
                 )
                 pieces += _with_folded_pieces(
                     "markdown-text", markdown_texts(unit.name, decoded[0], budget), budget
+                )
+                pieces += _with_folded_pieces(
+                    "config-unescaped",
+                    config_unescaped_texts(unit.name, decoded[0], budget),
+                    budget,
                 )
                 cells = notebook_texts(unit.name, decoded[0], budget)
                 pieces += _with_folded_pieces(
