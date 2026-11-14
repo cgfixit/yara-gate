@@ -998,6 +998,19 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"import os, base64; exec(base64.b64decode('aW5lcnQ='))\n",
             b"import _virtualenv\n",
         ),
+        (
+            "dev_gyp_command_expansion",
+            b'{"targets":[{"target_name":"Setup","type":"none",'
+            b'"sources":["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
+            b'{"variables":{"is_IBMi%":"<!(node -p \\"os.platform() == \'aix\' && '
+            b"os.type() == 'OS400' ? 1 : 0\\\")\"}}",
+        ),
+        (
+            "dev_gyp_command_expansion",
+            b"{'targets':[{'sources':['<!(node setup.js || echo stub.c)']}]}",
+            b"{'targets':[{'libraries':['<!@(pkg-config --libs cairo)'],"
+            b"'cflags':['<!(pkg-config --cflags pango || echo)']}]}",
+        ),
         # Variants added 2026-11-10: the same shape under another spelling, each beside the benign
         # text nearest to it. See docs/verification/2026-11-10-rule-variant-coverage.md.
         # PowerShell takes any unambiguous prefix of a parameter name; window style 1 is Hidden.
@@ -1514,6 +1527,7 @@ def main() -> None:
                 "dev_python_pth_exec": ("hook.pth", "venv.pth"),
                 "dev_devcontainer_lifecycle": ("devcontainer.json", "devcontainer.json"),
                 "dev_envrc_exec": (".envrc", ".envrc"),
+                "dev_gyp_command_expansion": ("binding.gyp", "binding.gyp"),
             }
             if rule_id in doc_names:
                 fire_name, miss_name = doc_names[rule_id]

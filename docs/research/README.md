@@ -61,7 +61,7 @@ the November 10 spellings.
 | Script | Run by CI | What it does |
 | --- | --- | --- |
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
-| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B3, B5, B6, and B8 are the backlog's open candidates |
+| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B3 and B5 are the probe's open backlog cases; the rest of B8 is in the backlog, not the probe |
 | [probe_html_hidden_browser.py](probe_html_hidden_browser.py), [html_hidden_oracle.js](html_hidden_oracle.js) | No; needs Node, Playwright, and Chromium | Compares the HTML hidden-text reader with what a browser draws, text by text. Run it after any change to `htmlhidden.py`, and when a browser changes its parser. See the [record](../verification/2026-11-10-hidden-html-text.md) |
 | [svg_active_oracle.js](svg_active_oracle.js) | No; needs Node, Playwright, and Chromium | Checks in a browser that each scriptless SVG shape `doc_svg_active_link` reads runs or loads something, and that the `void(0)` target it exempts does not. Run it before changing what the rule reads. See the [record](../verification/2026-11-10-svg-links-and-invisible-runs.md) |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |

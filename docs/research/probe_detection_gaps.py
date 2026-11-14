@@ -70,7 +70,6 @@ PHRASE_RULE = "agent_prompt_injection_phrases"
 OPEN: dict[str, str] = {
     "backlog html white text holding the phrase": "B3",
     "backlog ansi concealed phrase": "B5",
-    "backlog gyp command expansion, output discarded": "B6",
 }
 HIDDEN_TEXT = "heuristic_hidden_text"
 
@@ -2333,7 +2332,7 @@ def backlog_cases() -> list[Case]:
             "binding.gyp",
             b'{"targets":[{"target_name":"stub","sources":'
             b'["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
-            "any",
+            "dev_gyp_command_expansion",
         ),
         Case(
             "backlog",
@@ -2341,6 +2340,30 @@ def backlog_cases() -> list[Case]:
             "binding.gyp",
             b'{"targets":[{"target_name":"a","include_dirs":'
             b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
+            "clean",
+        ),
+        # The nearest benign shapes in real addons: && inside a node -p test (nodegit), and
+        # 2>&1 piped on to another command (fibers). Both stay clean.
+        Case(
+            "backlog",
+            "backlog gyp && inside a node -p test (benign)",
+            "binding.gyp",
+            b'{"variables":{"is_IBMi%":"<!(node -p \\"os.platform() == \'aix\' && '
+            b"os.type() == 'OS400' ? 1 : 0\\\")\"}}",
+            "clean",
+        ),
+        Case(
+            "backlog",
+            "backlog gyp 2>&1 piped to grep (benign)",
+            "binding.gyp",
+            b"{'variables':{'USE_MUSL':'<!(ldd --version 2>&1 | head -n1 | grep musl | wc -l)'}}",
+            "clean",
+        ),
+        Case(
+            "backlog",
+            "backlog gyp expansion quoted in a README (boundary)",
+            "README.md",
+            b'Miasma wrote "<!(node index.js > /dev/null 2>&1 && echo stub.c)" in binding.gyp.',
             "clean",
         ),
         # B7: a font dictionary read to its own end. One that writes /ToUnicode twice is read

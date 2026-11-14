@@ -5,6 +5,7 @@ from collections.abc import Iterator
 
 from yara_gate.content import (
     MAX_EXTRACT_BYTES,
+    MAX_PDF_STREAMS,
     MAX_TEXT_PIECES,
     Budget,
     ContentLimit,
@@ -14,6 +15,7 @@ from yara_gate.content import (
     _pdf_value,
 )
 from yara_gate.heuristics import _PDF_LEX, _decode_pdf_name
+from yara_gate.pdfpages import _LENGTH
 from yara_gate.pdftext import _literal
 from yara_gate.pdfxref import xref_file_offsets
 
@@ -294,6 +296,16 @@ def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> li
                 values.append(entry[b"/Contents"])
 
     spans: list[tuple[int, int]] = []
+    # One pass over the file finds every stream length kept in an object of its own; a lookup
+    # per stream would rescan the file once each (qpdf's QDF mode writes every length so).
+    lengths: set[tuple[int, int]] = set()
+    for count, match in enumerate(_LENGTH.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        lengths.add((int(match.group(1)), int(match.group(2))))
+        if len(lengths) >= MAX_PDF_STREAMS:
+            break
+    objects.prime(lengths)
     collect(_dictionaries(data, objects, budget, strings, spans))
     _reject_headers_inside(data, spans)
     _reject_xref_inside(data, spans, budget, objects.decoded)
