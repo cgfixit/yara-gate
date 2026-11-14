@@ -124,3 +124,130 @@ unchanged.
 
 This widens the margin; it does not remove it. The rest of `folded_text` is still where most
 of the time goes, and the step's five-minute limit is unchanged.
+
+## Later on November 14: the step budget is thin on both runners
+
+On `main` `78a0f06` (run `43599768381`) the timing step passed on macOS in 249 s and took
+289 s on Ubuntu, 11 s under its five-minute limit. The thin margin is therefore not only
+macOS's. This section measures it across the last twelve `ci` runs; it changes no code and no
+limit.
+
+### What was read
+
+Hosted CI only: for each run below, both `check` jobs' step start and end from the Actions
+job record (whole seconds), and every per-case `seconds` and log timestamp from the job log.
+Every run was attempt 1; no log was missing or cut short. On a pull request the header's
+`revision` is GitHub's merge commit, not the head named here. Ubuntu reports Python 3.12.3,
+macOS 3.12.10, and YARA-X is 1.23.0 on both. Direct runtime on this container (Linux x86_64,
+4 CPUs, Python 3.12) is marked "here".
+
+| Revision | Run | Inputs | Runner | Step | Scans summed | Outside the scans | Slowest three (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `main` `e0a70ab` | `43534903756` | 76 | Ubuntu | 218 s | 151.0 s | 67.0 s | page-fonts 5.71, nested-charset 5.36, font-definitions 5.32 |
+| `main` `e0a70ab` | `43534903756` | 76 | macOS | 246 s | 194.6 s | 51.4 s | nested-charset 8.24, quoted-parameter 7.80, font-definitions 7.27 |
+| #224 `d7c9913` | `43541851542` | 76 | Ubuntu | 225 s | 150.9 s | 74.1 s | page-fonts 5.76, nested-charset 5.41, font-definitions 5.27 |
+| #224 `d7c9913` | `43541851542` | 76 | macOS | 214 s | 168.7 s | 45.3 s | page-fonts 8.83, quoted-parameter 6.34, font-definitions 6.07 |
+| #233 `edc8e9f` | `43543389018` | 78 | Ubuntu | 220 s | 152.7 s | 67.3 s | page-fonts 5.68, nested-charset 5.47, font-definitions 5.23 |
+| #233 `edc8e9f` | `43543389018` | 78 | macOS | 277 s | 215.2 s | 61.8 s | page-fonts 7.80, font-definitions 7.46, nested-charset 6.87 |
+| `main` `e4aad66` | `43551056886` | 78 | Ubuntu | 180 s | 125.4 s | 54.6 s | page-fonts 4.68, nested-charset 4.44, font-definitions 4.36 |
+| `main` `e4aad66` | `43551056886` | 78 | macOS | 220 s | 174.4 s | 45.6 s | quoted-parameter 6.97, nested-charset 6.94, page-fonts 6.27 |
+| `main` `c8c6f16` | `43551073399` | 78 | Ubuntu | 192 s | 133.6 s | 58.4 s | page-fonts 5.08, font-definitions 4.73, readings-winansi 4.61 |
+| `main` `c8c6f16` | `43551073399` | 74 of 78 | macOS | 276 s (ceiling) | 212.3 s | 63.7 s | nested-charset 10.32, page-fonts 6.72, font-definitions 6.69 |
+| #230 `6565244` | `43553475202` | 78 | Ubuntu | 251 s | 177.2 s | 73.8 s | page-fonts 6.56, font-definitions 6.20, nested-charset 6.07 |
+| #230 `6565244` | `43553475202` | 78 | macOS | 311 s (limit) | 240.1 s | 70.9 s | nested-charset 9.94, quoted-parameter 9.23, page-fonts 8.52 |
+| #230 `4da4a82` | `43554896576` | 78 | Ubuntu | 207 s | 142.8 s | 64.2 s | page-fonts 5.44, font-definitions 5.09, readings-winansi 4.85 |
+| #230 `4da4a82` | `43554896576` | 78 | macOS | 288 s | 225.4 s | 62.6 s | page-fonts 8.62, nested-charset 8.46, font-definitions 8.23 |
+| `main` `e365218` | `43569627810` | 78 | Ubuntu | 166 s | 109.5 s | 56.5 s | page-fonts 4.63, repeated-keys 4.07, font-definitions 4.03 |
+| `main` `e365218` | `43569627810` | 78 | macOS | 238 s | 188.3 s | 49.7 s | page-fonts 6.73, hidden-stretch 6.59, nested-charset 6.45 |
+| #232 `f0b031f` | `43597522237` | 78 | Ubuntu | 225 s | 151.7 s | 73.3 s | page-fonts 5.72, font-definitions 5.23, readings-winansi 4.93 |
+| #232 `f0b031f` | `43597522237` | 78 | macOS | 197 s | 152.9 s | 44.1 s | quoted-parameter 6.29, page-fonts 5.52, font-definitions 5.18 |
+| #233 `5355cdc` | `43599057537` | 81 | Ubuntu | 307 s (limit) | 218.7 s | 88.3 s | page-fonts 7.79, readings-winansi 7.43, font-definitions 7.41 |
+| #233 `5355cdc` | `43599057537` | 81 | macOS | 309 s (limit) | 238.5 s | 70.5 s | font-definitions 9.72, page-fonts 9.51, nested-charset 8.97 |
+| `main` `78a0f06` | `43599768381` | 78 | Ubuntu | 289 s | 203.4 s | 85.6 s | page-fonts 7.63, font-definitions 7.28, readings-winansi 6.68 |
+| `main` `78a0f06` | `43599768381` | 78 | macOS | 249 s | 196.6 s | 52.4 s | page-fonts 8.72, quoted-parameter 7.81, font-definitions 7.14 |
+| #233 `6a2e0ac` | `43601473600` | 81 | Ubuntu | 282 s | 198.6 s | 83.4 s | page-fonts 7.28, readings-winansi 7.04, font-definitions 6.78 |
+| #233 `6a2e0ac` | `43601473600` | 81 | macOS | 292 s | 225.9 s | 66.1 s | quoted-parameter 8.38, readings-winansi 8.35, font-definitions 8.08 |
+
+"Limit" marks the three runs that printed `PASS` and were then stopped by `timeout-minutes: 5`
+(0.02 to 0.09 s after the `PASS` line); "ceiling" marks `mail-nested-charset.eml` at 10.316 s
+(the run stopped after 74 inputs, so its sum is partial). #233 adds three inputs, hence 81.
+
+### Headroom
+
+| | Ubuntu | macOS |
+| --- | --- | --- |
+| Step headroom to 300 s: least, median, most | -7, 77.5, 134 s | -11, 37.5, 103 s |
+| Runs with under 30 s of step headroom | 3 of 12 | 6 of 12 |
+| Per-scan headroom to 10 s: least, median, most | 2.21, 4.28, 5.37 s | -0.32, 1.50, 3.71 s |
+| Runs whose slowest scan was within 2 s of 10 s | 0 of 12 | 8 of 12 |
+| Scans summed, 78-input runs: least to most | 109.5 to 203.4 s (1.86 times) | 152.9 to 240.1 s (1.57 times) |
+
+The two constraints bind on different runners. Ubuntu's slowest scan never came within 2.2 s
+of the ceiling, but its step has reached 289 s and, on 81 inputs, 307 s. On macOS both are
+thin. The spread is the runner's, not the code's: Ubuntu's largest sum (203.4 s) is on
+`78a0f06`, which contains #232's cost reduction, and its smallest (109.5 s) on `e365218`, the
+revision before it.
+
+**The slowest inputs are now the PDF font readers.** Across the 24 jobs, `pdf-page-fonts.pdf`
+is among the slowest three in 22 and `pdf-font-definitions.pdf` in 21;
+`mail-nested-charset.eml` is in 13, and in none of the six jobs whose revision contains #232
+(`f0b031f`, `78a0f06`, and #233's `6a2e0ac`).
+`pdf-font-readings-winansi.pdf` and `mail-quoted-parameter.eml` are in 7 each. On `78a0f06`
+the PDF inputs are 87 s of macOS's 197 s of scans and 95 s of Ubuntu's 203 s; the OOXML
+inputs are next at about 36 s.
+
+### A quarter of the step is spent outside any scan
+
+The step's time less the scans' summed `seconds` is 44 to 88 s, 20 to 31% of the step. Read
+from the log timestamps, almost all of it falls between one worker's result line and the
+next's: the per-worker cost of starting Python, building fixtures, and warming the rules,
+which the 20 s watchdog counts and the per-case `seconds` does not. Its median is 0.54 to
+1.07 s a worker, and it grows with the case's position (Ubuntu on `78a0f06`, by quarter of
+the run: 0.92, 1.01, 1.12, 1.26 s; macOS 0.50, 0.59, 0.80, 0.74 s).
+
+The reason is in `main()`. Every worker builds `--case`'s `choices` from `cases()`, which
+constructs all 78 fixtures of 4 MiB, and then `scan_case` iterates `cases()` again up to its
+own input. Here a worker took a median 0.67 to 0.74 s outside its scan (five runs each of
+`html-comments.html`, `zip-end-records.zip`, and `xml-prolog-comments.xml`); the imports took
+0.08 s and the rule warmup 0.04 s once the compiled cache existed. With the `choices` list
+removed, as a throwaway edit that was not kept, the same workers took 0.18 to 0.26 s. That is
+about 0.48 s a worker and 37 s a run here. Scaled to the hosted overhead above, about 30 to
+60 s a run; that is a projection, not a hosted measurement.
+
+### Options
+
+Each is a proposal for the maintainer; none is applied.
+
+1. **Stop building every fixture in every worker** (`check_worst_case_timing.py` only). Drop
+   `choices` from `--case`, report an unknown name as a worker failure with its name, and,
+   further, build only the named input (a name-to-builder table in place of iterating
+   `cases()`). No limit, no scanner code, and no measured `seconds` change; each input still
+   runs in its own process under the 20 s watchdog. It recovers step headroom on both runners
+   and does nothing for the per-scan ceiling. The parent's own three full builds (its `choices`, the
+   loop, and the `PASS` count) are about 1.5 s here and can stay.
+2. **Lower the cost of the slowest readers.** The PDF font readers (`pdf-page-fonts.pdf`,
+   `pdf-font-definitions.pdf`, `pdf-font-readings-winansi.pdf`) are now the inputs nearest the
+   ceiling, then `mail-quoted-parameter.eml` and `folded_text`. This is the only option that
+   widens macOS's per-scan margin, which is the one that has failed on a scan. It is a change
+   to what `pdftext.py` reads and needs `probe_pdf_font_reader_agreement.py` with its fuzz pass
+   before and after, so it is the largest of the four.
+3. **Split the step**, for example PDF inputs in one step and the rest in another, each with
+   its own five minutes, through a selection argument to the script. It halves each step's
+   exposure, but the job's total time is unchanged and the combined budget doubles: in effect
+   a limit increase that leaves aggregate growth less visible. Running workers in parallel
+   inside one step would cut wall time, but the runner's few cores would then be shared
+   between timed scans, inflating the per-scan `seconds` that are already within 2 s of the
+   ceiling there.
+4. **Change a limit.** The step's `timeout-minutes: 5` is not what bounds a pathological input
+   (each worker's 20 s watchdog and the 10 s ceiling do), so a larger step limit would not
+   pass a slow reader; what it gives up is a signal when the whole set slowly grows. That
+   signal could instead be an explicit budget on the summed scan `seconds`, which excludes
+   the worker overhead and so measures the readers. The 10 s ceiling is the one the tripwire's
+   rule governs. The same input on base and candidate is diagnosed above and in this record's
+   earlier sections: identical code ran 1.86 times apart on Ubuntu and 1.57 times on macOS.
+   A per-scan change is still the maintainer's call; scaling the ceiling by a reference scan
+   timed in the same job is a further option, at the cost of the calibration's own noise.
+
+Option 1 alone would have put every run above under 300 s except, at the low end of the
+projection, #233's `5355cdc` on Ubuntu (307 s less 30 to 60 s). Options 1 and 2 together
+address both constraints without moving a limit.
