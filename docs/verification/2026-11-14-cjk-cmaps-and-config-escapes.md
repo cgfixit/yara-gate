@@ -25,7 +25,7 @@ ISO 32000-1 Table 118), its reading with no map becomes a UTF-16BE reading. When
 reading with no map is dropped when every way of the dictionary is the UTF-16BE one; a map
 the window lent is kept beside it, as before.
 
-The UTF-16BE reading keeps only characters drawn as text: letters, numbers, punctuation,
+The original UTF-16BE reader kept only characters drawn as text: letters, numbers, punctuation,
 symbols, the space separators, tab, and line feed. The first sweep showed why. A merged file
 gives one font name several fonts, and every string shown in that name is read through each
 of them, so glyph ids from an Identity-H font were read as UTF-16BE as well and landed on
@@ -33,8 +33,7 @@ U+200B, U+202E, and their kin: 6 benign merged PDFs went from clean to advisory 
 `agent_bidi_formatting`, `agent_bidi_override`, and `agent_invisible_unicode`, and more gained
 those findings while already advisory or incomplete. Format controls, combining marks, private
 use, unassigned code points, line and paragraph separators, and the Hangul fillers are now
-dropped from this reading. An invisible-character trick written inside such a font is
-therefore not reported; the phrase rules still read its words.
+dropped from this reading. The follow-up below limits this filter to ambiguous font readings.
 
 The second sweep showed one more: 2 benign merged PDFs gained `heuristic_pdf_text_unmapped`,
 because their font name's readings went from four to five, past `MAX_FONT_VARIANTS`. The
@@ -153,6 +152,12 @@ continuations. Six probe cases cover these boundaries. On macOS arm64,
 Python 3.12.13 and YARA-X 1.23.0, the probe had 525 passing cases and three
 expected open cases. The valid 4 MiB YAML sequence hit the 100,000-piece cap
 in 0.61 s. The 4 MiB plain-scalar fixture stayed clean in 0.30 s.
+
+A later review found that the unrestricted filter could discard invisible characters in a PDF
+with only one Unicode font reading. The follow-up preserves the full UTF-16BE text for that
+reading and keeps the glyph filter when several readings are possible. Focused PDF reader
+checks confirm a standalone UTF-16 reading retains its actual text controls while a font with
+a second possible reading retains the existing noise filter.
 
 ## Not established
 

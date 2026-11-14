@@ -1668,7 +1668,13 @@ class _Paragraphs:
             for item in strings:
                 if isinstance(item, bytes):
                     # A subset font numbers its glyphs from the bytes up, so b" " can be a letter.
-                    decoded = _decode(item, font, MAX_PDF_DECODED_CHARS - used, check)
+                    decoded = _decode(
+                        item,
+                        font,
+                        MAX_PDF_DECODED_CHARS - used,
+                        check,
+                        ambiguous_utf16=len(fonts) > 1,
+                    )
                     used += len(decoded)
                     printed = printed or bool(decoded.strip()) or (font.unreadable and bool(item))
                     parts.append(decoded)
@@ -2239,14 +2245,22 @@ def _drawn(text: str) -> str:
     return text
 
 
-def _decode(raw: bytes, font: Font, remaining: int, check: Callable[[], None]) -> str:
+def _decode(
+    raw: bytes,
+    font: Font,
+    remaining: int,
+    check: Callable[[], None],
+    *,
+    ambiguous_utf16: bool = False,
+) -> str:
     too_large = "pdf decoded text exceeds character limit"
     if font.cmap is None:
         if font.utf16:
             if len(raw) > 2 * remaining:
                 raise ContentLimit(too_large)
             check()
-            return _drawn(raw[: len(raw) & ~1].decode("utf-16-be", errors="replace"))
+            text = raw[: len(raw) & ~1].decode("utf-16-be", errors="replace")
+            return _drawn(text) if ambiguous_utf16 else text
         if font.composite:
             return ""
         if len(raw) > remaining:

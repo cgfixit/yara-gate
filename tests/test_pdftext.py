@@ -1565,19 +1565,28 @@ def test_a_composite_font_with_a_unicode_predefined_cmap_is_read_as_utf16(
         for policy in ("default", "agent-ingest", "agent-document"):
             result = scanner.scan_bytes(data, name="a.pdf", rules_dir=rules_copy, policy=policy)
             assert result.verdict is Verdict.clean and not result.findings, policy
+    word_with_joiner = "Quarterly\u200b notes"
+    joined = shown.replace(codes, word_with_joiner.encode("utf-16-be").hex().encode())
+    assert _read(_font_file(joined, (6, 0, cjk))).blocks == [word_with_joiner]
+    assert _read(
+        _font_file(joined, (6, 0, cjk), (5, 0, _HELVETICA % b"/ToUnicode 8 0 R "))
+    ).blocks == ["Quarterly notes"]
     # Any other predefined CMap, and an Identity CMap with no map, is still reported unread.
     for encoding in (b"/GBK-EUC-H", b"/Identity-H"):
         other = _font_file(shown, (6, 0, cjk.replace(b"/UniGB-UCS2-H", encoding)))
         assert _read(other).unmapped, encoding
 
 
-def test_a_utf16_reading_keeps_only_drawn_characters() -> None:
+def test_only_an_ambiguous_utf16_reading_filters_non_drawing_characters() -> None:
     # A merged file's font name reads every string through each font it means, so glyph ids
     # meet the UTF-16 reading too and land on any code point. Format controls, combining
     # marks, private use, and Hangul fillers would read as invisible-character tricks.
     raw = "a\u202eb\u200bc\u0301d\ue000e\u3164f\U0001f600 g\tz".encode("utf-16-be")
     font = pdftext.Font(True, None, (2,), utf16=True)
-    assert pdftext._decode(raw, font, 10_000, lambda: None) == "abcdef\U0001f600 g\tz"
+    assert pdftext._decode(raw, font, 10_000, lambda: None) == raw.decode("utf-16-be")
+    assert pdftext._decode(raw, font, 10_000, lambda: None, ambiguous_utf16=True) == (
+        "abcdef\U0001f600 g\tz"
+    )
 
 
 @pytest.mark.parametrize(
