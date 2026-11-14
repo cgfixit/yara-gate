@@ -135,7 +135,9 @@ staging exemption.
 
 If intake stops after recording a complete quarantine copy, the next watcher
 start or inbox scan retries it with the recorded file name, policy, rules root,
-and timeout. A retry uses the rules currently at that root. Earlier quarantine
+and timeout. An explicit resubmission of the original still in the inbox uses
+the settings of that submission. Recovery uses the rules currently at the
+recorded root. Earlier quarantine
 slots without a pending record stay held for manual review.
 
 Intake checks the existing 100 MiB limit before hashing or copying, and bounds

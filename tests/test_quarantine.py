@@ -533,3 +533,25 @@ def test_retry_consumes_original_left_after_pending_copy(
     assert not source.exists()
     assert (home.clean / result.sha256 / source.name).is_file()
     assert len(list((home.reports / "events").glob("*.json"))) == 1
+
+
+def test_explicit_retry_uses_the_requested_policy(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+    from yara_gate.samples import injection_markdown
+
+    home = _home(tmp_path)
+    source = home.inbox / "review.md"
+    source.write_bytes(injection_markdown())
+    with monkeypatch.context() as patch:
+        patch.setattr(quarantine, "_unlink_entry", lambda *_: None)
+        quarantine.intake(home, source, rules_dir=rules_copy)
+
+    result = process_inbox_file(home, source, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+
+    assert result.policy is ScanPolicy.agent_ingest
+    assert result.verdict is Verdict.block
+    assert (home.blocked / result.sha256 / source.name).is_file()
+    assert not (home.clean / result.sha256).exists()
+    assert len(list((home.reports / "events").glob("*.json"))) == 1

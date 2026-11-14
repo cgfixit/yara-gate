@@ -61,3 +61,12 @@ The tests cover process interruption on this Mac. They do not establish power-lo
 durability, live Twilio delivery, production precision, vendor-pack compatibility,
 or Linux and Windows runtime behavior. Issue [#223](https://github.com/cgfixit/yara-gate/issues/223)
 tracks coverage metadata for skipped PDF page streams.
+
+## Follow-up review
+
+On `74c3e42`, if interruption left the original in the inbox, a direct retry
+under `agent-ingest` could return the earlier pending `default` verdict. The
+follow-up lets explicit intake of the unchanged original supersede its pending
+record before any old-policy relocation. The focused test confirmed one scan event,
+an `agent-ingest` block, and no copy in `clean/`. Recovery of a pending file
+whose inbox original was already consumed still uses its recorded settings.

@@ -183,11 +183,7 @@ def process_inbox_file(
     # One submission at a time per gate home, from intake to relocation, so a CLI scan and
     # watch cannot interleave on the same slot.
     with _gate_lock(home):
-        recovered = _finish_pending_intake(home)
-        if recovered is not None:
-            result, consumed_source = recovered
-            if consumed_source == src.parent.resolve() / src.name and not os.path.lexists(src):
-                return result
+        _finish_pending_intake(home, retry_source=src)
         try:
             intake(
                 home,
@@ -202,10 +198,12 @@ def process_inbox_file(
         finished = _finish_pending_intake(home)
         if finished is None:
             raise OSError("pending intake disappeared")
-        return finished[0]
+        return finished
 
 
-def _finish_pending_intake(home: GatePaths) -> tuple[ScanResult, Path] | None:
+def _finish_pending_intake(
+    home: GatePaths, *, retry_source: Path | None = None
+) -> ScanResult | None:
     """Under the intake lock, finish the recorded submission before taking another."""
     marker = home.pending_intake
     try:
@@ -243,6 +241,17 @@ def _finish_pending_intake(home: GatePaths) -> tuple[ScanResult, Path] | None:
         or not isinstance(use_releases, bool)
     ):
         raise ValueError("invalid pending intake")
+    source_path = home.inbox.resolve() / source
+    if (
+        retry_source is not None
+        and retry_source.parent.resolve() / retry_source.name == source_path
+    ):
+        try:
+            if _source_stamp(source_path.lstat()) == source_stamp:
+                # Intake will replace the pending record using the settings of this submission.
+                return None
+        except FileNotFoundError:
+            pass
     placed = home.quarantine / digest / name
     policy = ScanPolicy(policy_name)
     try:
@@ -291,7 +300,6 @@ def _finish_pending_intake(home: GatePaths) -> tuple[ScanResult, Path] | None:
             policy=policy,
         )
     write_reports(home.reports, result)
-    source_path = home.inbox.resolve() / source
     if (
         result.verdict is not Verdict.incomplete
         and source_path.parent.resolve() == source_path.parent
@@ -305,7 +313,7 @@ def _finish_pending_intake(home: GatePaths) -> tuple[ScanResult, Path] | None:
                 _unlink_entry(source_path, source_info)
     _relocate(home, result)
     marker.unlink()
-    return result, source_path
+    return result
 
 
 def scan_in_place(
@@ -437,9 +445,8 @@ def watch(
         with _gate_lock(home):
             recovered = _finish_pending_intake(home)
         if recovered is not None:
-            result, _source = recovered
-            reason = f" reason={result.incomplete_reason}" if result.incomplete_reason else ""
-            print(f"recovered {result.verdict} sha256={result.sha256}{reason}", flush=True)
+            reason = f" reason={recovered.incomplete_reason}" if recovered.incomplete_reason else ""
+            print(f"recovered {recovered.verdict} sha256={recovered.sha256}{reason}", flush=True)
     except BaseException:
         os.close(lock_fd)
         raise

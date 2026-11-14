@@ -109,6 +109,9 @@ is invalid, intake stops and leaves the copy held. Inspect the gate's
 `.intake-pending.json` and quarantine before resubmitting anything. Files held
 before pending records were introduced stay available for manual review.
 
+An explicit scan of the same original still in the inbox uses the new request's
+policy and rules. An interrupted copy cannot grant that request an earlier verdict.
+
 The first scan creates `~/YaraGate` and its five folders at mode `0700`. Another account on this Mac cannot list them.
 
 To leave watch running after you log in, write a plist and load it yourself.
