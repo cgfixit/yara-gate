@@ -1537,41 +1537,47 @@ def test_a_composite_font_with_no_map_keeps_the_next_objects_map() -> None:
     assert _shown(other)
 
 
-def test_a_composite_font_with_no_map_before_a_mapped_object_reports_what_it_did(
+def test_a_composite_font_with_a_unicode_predefined_cmap_is_read_as_utf16(
     rules_copy: Path,
 ) -> None:
-    # Backlog B8, open. reportlab writes a font of its Adobe CJK set with a predefined CMap
-    # of two-byte Unicode codes and no /ToUnicode, and pypdf and pdfseparate write it before
-    # a font that has a map. The 4 KB after its header hold that map, so the font was read
-    # through it and nothing was reported. Read with no map as well, its text is reported as
-    # unmapped: a finding such a file did not have, on ordinary merged documents. The font
-    # keeps the one reading it had, and the file reports what it reported.
+    # Backlog B8. reportlab writes a font of its Adobe CJK set with a predefined CMap of
+    # two-byte Unicode codes and no /ToUnicode, and pypdf and pdfseparate write it before a
+    # font that has a map. Alone, its text was reported as unmapped; beside that map it was
+    # read through the map, which has none of its codes, and nothing was reported. Its codes
+    # are UTF-16BE, as PDFium, pypdf, and pdfminer.six read them, so both files now read the
+    # text, report nothing unread, and an ordinary sentence in it is clean.
     cjk = (
         b"<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H "
         b"/DescendantFonts [31 0 R] >>"
     )
-    codes = "Quarterly notes for the spring review.".encode("utf-16-be").hex().encode()
+    sentence = "Quarterly notes for the spring review."
+    codes = sentence.encode("utf-16-be").hex().encode()
     shown = b"BT /F1 12 Tf 72 700 Td <" + codes + b"> Tj ET"
     alone = _font_file(shown, (6, 0, cjk))
     beside = _font_file(shown, (6, 0, cjk), (5, 0, _HELVETICA % b"/ToUnicode 8 0 R "))
-    assert _font_ways(alone) == ([(None, True)], True)
-    assert _font_ways(beside) == ([(8, True)], True)
-    # The font's readings are the ones that map gives a composite font, and no other.
-    budget = Budget(math.inf)
-    cmaps = pdftext._Cmaps({8: [_bfchar(3)]}, budget)
-    definitions = pdftext._Definitions(beside, PdfObjects(beside, budget), budget)
-    fonts = pdftext._font(6, definitions, cmaps)
-    assert list(fonts) == cmaps.fonts(8, True)[0] and not fonts.further
-    # None of these codes is in that map, so no text is read and none is reported unread.
-    text = _read(beside)
-    assert text.blocks == [] and not text.unmapped
-    assert _read(alone).unmapped
-    note = "heuristic_pdf_text_unmapped"
-    found = scanner.scan_bytes(alone, name="a.pdf", rules_dir=rules_copy).findings
-    assert [item.rule_id for item in found] == [note]
-    for policy in ("default", "agent-ingest", "agent-document"):
-        result = scanner.scan_bytes(beside, name="a.pdf", rules_dir=rules_copy, policy=policy)
-        assert result.verdict is Verdict.clean and not result.findings, policy
+    utf16 = pdftext._UTF16_MAP
+    assert _font_ways(alone) == ([(utf16, True)], True)
+    # Beside the map the window's reading is kept too: a reader may take it for the font's.
+    assert _font_ways(beside) == ([(8, True), (utf16, True)], True)
+    for data in (alone, beside):
+        text = _read(data)
+        assert text.blocks == [sentence] and not text.unmapped
+        for policy in ("default", "agent-ingest", "agent-document"):
+            result = scanner.scan_bytes(data, name="a.pdf", rules_dir=rules_copy, policy=policy)
+            assert result.verdict is Verdict.clean and not result.findings, policy
+    # Any other predefined CMap, and an Identity CMap with no map, is still reported unread.
+    for encoding in (b"/GBK-EUC-H", b"/Identity-H"):
+        other = _font_file(shown, (6, 0, cjk.replace(b"/UniGB-UCS2-H", encoding)))
+        assert _read(other).unmapped, encoding
+
+
+def test_a_utf16_reading_keeps_only_drawn_characters() -> None:
+    # A merged file's font name reads every string through each font it means, so glyph ids
+    # meet the UTF-16 reading too and land on any code point. Format controls, combining
+    # marks, private use, and Hangul fillers would read as invisible-character tricks.
+    raw = "a\u202eb\u200bc\u0301d\ue000e\u3164f\U0001f600 g\tz".encode("utf-16-be")
+    font = pdftext.Font(True, None, (2,), utf16=True)
+    assert pdftext._decode(raw, font, 10_000, lambda: None) == "abcdef\U0001f600 g\tz"
 
 
 @pytest.mark.parametrize(
