@@ -1,14 +1,19 @@
+import getpass
+import hashlib
 import json
+import os
 import threading
 from pathlib import Path
 
 import pytest
 
+from yara_gate.models import DOCUMENT_RELEASE
 from yara_gate.release import (
     AuditLog,
     AuditLogError,
     ReleaseKey,
     release_key,
+    release_log,
     release_refusal,
 )
 from yara_gate.samples import risky_pdf
@@ -150,3 +155,84 @@ def test_audit_log_refuses_an_unusable_reason(tmp_path: Path, reason: str) -> No
     with pytest.raises(ValueError):
         log.append(KEY, reason=reason, reviewer=REVIEWER)
     assert not log.path.exists()
+
+
+def test_release_cli_binds_review_and_resubmission(tmp_path: Path, rules_copy: Path) -> None:
+    from typer.testing import CliRunner
+
+    from yara_gate.cli import app
+
+    runner = CliRunner()
+    home = tmp_path / "gate"
+    inbox = home / "inbox"
+    inbox.mkdir(parents=True)
+    path = inbox / "setup.md"
+    path.write_bytes(GUIDE)
+    digest = hashlib.sha256(GUIDE).hexdigest()
+    flags = ["--home", str(home), "--rules", str(rules_copy)]
+    scan = ["scan", str(path), "--json", "--policy", "agent-document", *flags]
+    release = ["release", digest, "--reason", "Reviewed exact bytes", *flags]
+
+    assert runner.invoke(app, scan).exit_code == 1
+    blocked = home / "blocked" / digest / path.name
+    assert blocked.read_bytes() == GUIDE
+    assert runner.invoke(app, release).exit_code == 2
+    blocked.write_bytes(GUIDE + b"tampered")
+    assert runner.invoke(app, [*release, "--non-interactive"]).exit_code == 2
+    blocked.write_bytes(GUIDE)
+    result = runner.invoke(app, [*release, "--non-interactive"])
+    assert result.exit_code == 0, result.output
+    clean = home / "clean" / digest / path.name
+    assert clean.read_bytes() == GUIDE and not blocked.exists()
+    log = release_log(home)
+    assert log.verify() == 1
+    assert log.entries()[0]["uid"] == (os.getuid() if hasattr(os, "getuid") else None)
+    assert log.entries()[0]["user"] == getpass.getuser()
+
+    path.write_bytes(GUIDE)
+    outcome = runner.invoke(app, scan)
+    assert outcome.exit_code == 0, outcome.output
+    assert json.loads(outcome.stdout)["policy_reason"] == DOCUMENT_RELEASE
+    assert clean.read_bytes() == GUIDE
+    stdin = ["scan", "-", "--name", path.name, "--policy", "agent-document", *flags]
+    assert runner.invoke(app, stdin, input=GUIDE).exit_code == 1
+    assert (
+        scan_bytes(GUIDE, name=path.name, rules_dir=rules_copy, policy="agent-document").verdict
+        == "block"
+    )
+
+    rule = rules_copy / "local" / "agent_eicar.yar"
+    rule.write_text(rule.read_text() + "\n// reviewed ruleset changed\n")
+    path.write_bytes(GUIDE)
+    assert runner.invoke(app, scan).exit_code == 1
+    assert blocked.read_bytes() == GUIDE and not clean.exists()
+
+    log.head_path.unlink()
+    path.write_bytes(GUIDE)
+    assert runner.invoke(app, scan).exit_code == 1
+
+
+def test_report_failure_keeps_reviewed_file_blocked(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yara_gate import quarantine
+    from yara_gate.models import ScanPolicy
+
+    home = quarantine.GatePaths(tmp_path / "gate")
+    home.ensure()
+    src = home.inbox / "setup.md"
+    src.write_bytes(GUIDE)
+    held = quarantine.process_inbox_file(
+        home, src, rules_dir=rules_copy, policy=ScanPolicy.agent_document
+    )
+
+    def fail(*args: object) -> None:
+        raise OSError("report storage unavailable")
+
+    monkeypatch.setattr(quarantine, "write_reports", fail)
+    with pytest.raises(OSError, match="report storage unavailable"):
+        quarantine.release_file(
+            home, held.sha256, None, reason="Reviewed", rules_dir=rules_copy, timeout_s=30
+        )
+    assert (home.blocked / held.sha256 / src.name).read_bytes() == GUIDE
+    assert not (home.clean / held.sha256).exists()

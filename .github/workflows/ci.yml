@@ -152,3 +152,6 @@ jobs:
 
       - name: Inbox intake without O_NOFOLLOW
         run: uv run python docs/verification/check_intake.py
+
+      - name: Reviewed release and Windows audit identity
+        run: uv run pytest -q tests/test_release.py::test_release_cli_binds_review_and_resubmission

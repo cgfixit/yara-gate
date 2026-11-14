@@ -1,19 +1,4 @@
-"""Building blocks for a reviewed release of an agent-document hold (#39).
-
-Nothing here is reachable from the CLI yet, and nothing moves a file: owner decision 3 on #39
-puts rule-precision work first and release activation second. A release is a person's
-acceptance of one exact file with its exact findings under one ruleset and policy. It never
-makes content safe to execute or obey.
-
-- ``release_refusal`` decides, from a fresh ``ScanResult``, whether a hold may be released.
-  The answer comes from the result's findings and policy reason, never from the folder the
-  bytes sit in, so a real block or an incomplete scan cannot be released. Only agent-document
-  holds qualify (owner decision 2); every agent-ingest result is refused.
-- ``AuditLog`` is an append-only JSON Lines log. Lines are hash-chained, appends hold an
-  exclusive lock, and the newest line's hash is kept in a sidecar head file, so an edited
-  line, a deleted line or suffix, and a removed head are all detected. It records no file
-  content, names, or paths.
-"""
+"""Eligibility and a gate-home audit log for reviewed agent-document holds."""
 
 from __future__ import annotations
 
@@ -25,12 +10,19 @@ import sys
 import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Any
 
-from yara_gate.models import DOCUMENT_HOLD, ScanPolicy, ScanResult, Severity, Verdict
+from yara_gate.models import (
+    DOCUMENT_HOLD,
+    DOCUMENT_RELEASE,
+    ScanPolicy,
+    ScanResult,
+    Severity,
+    Verdict,
+)
 
 # Owner decision 2: only an agent-document hold is releasable. A message held under
 # agent-ingest stays held. Policy selection is the caller's, so this holds only while
@@ -84,6 +76,27 @@ def release_key(result: ScanResult) -> ReleaseKey:
         policy=result.policy.value,
         rule_ids=tuple(sorted({finding.rule_id for finding in result.findings})),
     )
+
+
+def release_log(home: Path) -> AuditLog:
+    return AuditLog(home / "releases.jsonl")
+
+
+def reviewed_result(result: ScanResult) -> ScanResult:
+    return replace(result, verdict=Verdict.advisory, policy_reason=DOCUMENT_RELEASE)
+
+
+def apply_release(result: ScanResult, home: Path) -> ScanResult:
+    if release_refusal(result) is not None:
+        return result
+    log = release_log(home)
+    try:
+        if (log.path.exists() or log.head_path.exists()) and log.contains(release_key(result)):
+            return reviewed_result(result)
+    except (AuditLogError, OSError, ValueError):
+        # Broken audit evidence cannot authorize a read.
+        pass
+    return result
 
 
 def current_reviewer() -> tuple[int | None, str]:
@@ -184,7 +197,8 @@ class AuditLog:
             flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0)
             fd = os.open(self.path, flags, 0o600)
             try:
-                os.write(fd, line)
+                if os.write(fd, line) != len(line):
+                    raise AuditLogError("audit append was incomplete")
                 os.fsync(fd)
             finally:
                 os.close(fd)
@@ -194,23 +208,32 @@ class AuditLog:
 
     def verify(self, *, expected_head: str | None = None) -> int:
         """Check the chain and the head; return the number of entries or raise AuditLogError."""
-        self._verified_head(expected_head=expected_head)
-        if not self.path.exists():
-            return 0
-        return len(self.path.read_bytes().splitlines())
+        return len(self.entries(expected_head=expected_head))
 
     def entries(self, *, expected_head: str | None = None) -> list[dict[str, Any]]:
-        """Every entry, after a full ``verify``."""
-        self.verify(expected_head=expected_head)
-        if not self.path.exists():
-            return []
-        return [json.loads(line) for line in self.path.read_bytes().splitlines()]
+        """Read the same snapshot that was verified, under the append lock."""
+        with _exclusive(self.lock_path):
+            entries: list[dict[str, Any]] = []
+            self._verified_head(expected_head=expected_head, entries=entries)
+            return entries
+
+    def contains(self, key: ReleaseKey) -> bool:
+        return any(
+            entry["sha256"] == key.sha256
+            and entry["ruleset_sha256"] == key.ruleset_sha256
+            and entry["policy"] == key.policy
+            and entry["rule_ids"] == list(key.rule_ids)
+            for entry in self.entries()
+        )
 
     def head(self) -> str:
         """The verified head hash, or 64 zeros when no release was ever logged."""
-        return self._verified_head()
+        with _exclusive(self.lock_path):
+            return self._verified_head()
 
-    def _verified_head(self, *, expected_head: str | None = None) -> str:
+    def _verified_head(
+        self, *, expected_head: str | None = None, entries: list[dict[str, Any]] | None = None
+    ) -> str:
         log_exists, head_exists = self.path.exists(), self.head_path.exists()
         if not log_exists and not head_exists:
             computed = _GENESIS
@@ -219,7 +242,7 @@ class AuditLog:
         elif not head_exists:
             raise AuditLogError("head record is missing")
         else:
-            computed = self._chain()
+            computed = self._chain(entries)
             recorded = self.head_path.read_text(encoding="ascii").strip()
             if recorded != computed:
                 raise AuditLogError("head does not match the newest line")
@@ -227,7 +250,7 @@ class AuditLog:
             raise AuditLogError("head does not match the expected head")
         return computed
 
-    def _chain(self) -> str:
+    def _chain(self, entries: list[dict[str, Any]] | None) -> str:
         data = self.path.read_bytes()
         if data and not data.endswith(b"\n"):
             raise AuditLogError("last line is truncated")
@@ -241,5 +264,7 @@ class AuditLog:
                 raise AuditLogError(f"line {number} is missing a field")
             if entry.get("prev") != previous:
                 raise AuditLogError(f"line {number} does not follow line {number - 1}")
+            if entries is not None:
+                entries.append(entry)
             previous = hashlib.sha256(line).hexdigest()
         return previous

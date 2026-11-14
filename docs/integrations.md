@@ -21,7 +21,7 @@ Pick the policy by what the content is, then apply that policy's read rule
   conversation:** `--policy agent-ingest`, and read only a complete `clean` record.
 - **A document the agent retrieves from a corpus, repository, or synced folder:**
   `--policy agent-document`, and read a complete `clean` record or an exact
-  notes-only record. The predicate is in
+  notes-only record. File consumers can also opt in to [reviewed releases](#reviewed-document-releases). The predicate is in
   [Documents that quote attacks](#documents-that-quote-attacks).
 
 For one message-like file, an ingestion caller requires a complete clean verdict:
@@ -135,16 +135,15 @@ Pick the row by where the content lives when the caller first sees it.
 
 The two read rules from the top of this guide cover every row: a message needs
 exactly one complete `clean` record and no exit 2; a document needs that or the
-exact notes-only `agent-document` record, and nothing broader (not "exit 0", not
-"any advisory", not "no block finding"). A batch exits with its worst result, so
+exact notes-only `agent-document` record. A file consumer can also check the
+separate [reviewed release branch](#reviewed-document-releases). A batch exits with its worst result, so
 exit 1 still lets a path with its own complete `clean` record through, while exit
 2 means read nothing from that batch. No record, a malformed line, a crash, or a
 timeout all mean "not scanned, do not read".
 
 Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
-releases a held file. Release is a human review of the report, not a filename or
-repository-wide allowlist.
+reviews a held file. The operator records that decision with `yara-gate release`.
 
 ## Synced folders (Dropbox, OneDrive, iCloud Drive)
 
@@ -174,7 +173,7 @@ directory the gate owns, and reads only what the gate allowed:
    the client download them, which is a network side effect the gate must not
    cause), and zero-length files (a placeholder, or a write in progress).
 2. Take a file only when two looks at least a second apart agree on its size and
-   mtime, then copy it through a temporary name in private, unwatched staging.
+   mtime, then copy it under its original basename in private, unwatched staging.
    Reject files over 100 MiB before copying and cap the copy at 100 MiB even if
    the source grows. Compare the source's size
    and mtime again after the copy and drop the copy if they changed.
@@ -238,13 +237,16 @@ before relying on it; the skip rules above fail closed when in doubt.
 A path check cannot authorize a later read of mutable bytes. The
 [shell entry point](examples/yara_gate_pre_read_hook.sh) invokes the adjacent
 [Python implementation](examples/yara_gate_pre_read_hook.py), which captures one
-local regular file into a bounded byte buffer, scans that buffer through
-`yara-gate scan - --name ORIGINAL_NAME --json`, and checks its SHA-256 and policy.
+local regular file into a bounded byte buffer and checks the scan record against
+its SHA-256 and policy. Document scans use a private temporary file with the
+original basename so the scanner can verify releases in `YARA_GATE_HOME`.
+Message scans pass the buffer through stdin.
 It never reopens the source after scanning. Links, devices, directories, cloud
 placeholders, files over 100 MiB, and invalid or missing read inputs are held.
 
 The default `agent-document` policy permits a complete clean record or the exact
-notes-only record defined below. `YARA_GATE_POLICY=agent-ingest` permits only
+notes-only record defined below, or a verified reviewed release.
+`YARA_GATE_POLICY=agent-ingest` permits only
 complete clean records. A scan failure, malformed output, missing scanner,
 wrong digest, wrong policy, or timeout exits 2 without output content.
 
@@ -530,8 +532,8 @@ or a role-spoof header. The verdict is `advisory` with `policy_reason` set to
 `agent-document records note findings` when only notes matched, and `block` with
 `agent-document holds advisory findings` otherwise.
 
-A caller reads a document only on a complete `clean` record, or on a record that
-meets **every** one of these conditions:
+A document without a reviewed release must have a complete `clean` record or
+meet **every** one of these conditions:
 
 ```text
 policy         == "agent-document"
@@ -588,6 +590,51 @@ a document; the scanner does not guess from the content, and a size or ratio
 rule would be defeated by filler. A document that asks the reader to forward a
 one-time code, or that carries an instruction in hidden text, is still held. An
 encoded override phrase is a note, recorded like the plain phrase.
+
+## Reviewed document releases
+
+Review the document's exact bytes and the JSON report from a completed
+`agent-document` hold. For a blocked inbox copy, run:
+
+```sh
+yara-gate release SHA256 --home GATE --reason "Reviewed findings and accepted risk"
+```
+
+For a file scanned in place, add `--path FILE`. Use the same rules root as the
+reviewed scan. For the sync example, use `GATE_HOME/reports` as `--home` and the
+reviewed source file as `--path`. For the pre-read example, use
+`YARA_GATE_HOME` and the reviewed source path. The command rescans the bytes,
+checks the ruleset and findings against the last report for the digest, and
+moves a blocked copy to `clean/<sha256>/` after recording the review. An
+in-place file stays in place. Releases require a terminal by default. Use
+`--non-interactive` only to record a completed human review in a non-TTY session.
+
+A subsequent file scan under the same explicit `--home` verifies the audit log
+and looks up the content SHA-256, ruleset SHA-256, policy, and sorted finding
+IDs. The trusted scanner emits an advisory verdict and the exact reason
+`agent-document hold released by review`, with the original findings and
+severity flags. The example consumers accept that result through a separate
+branch, with exit 0, exactly one complete record, at least one advisory,
+no block-severity findings, and a SHA-256 match to the bytes they consume.
+The sync example rechecks released copies on every pass and withdraws them
+when the evidence is missing, invalid, or stale. Coordinate reads with the
+completed pass.
+
+The watch loop, stdin, `scan_bytes`, and the live workbench scan without applying
+releases. An `agent-ingest` hold, actual block-severity finding, or incomplete
+scan cannot be released. A changed ruleset or finding IDs require fresh review.
+A reviewed release permits reading as untrusted data. Keep the existing rules
+against following or executing its instructions.
+
+The audit lives in `GATE/releases.jsonl` with a `.head` sidecar and an append
+lock. Each entry records time, rules, digest, policy, the reason, and the OS
+identity. Windows records the username with `uid: null`. Use a private gate
+home with OS access controls. The chain detects inconsistent edits and
+deletions, and cannot authenticate a log and head both rewritten by someone
+with access to that home. Preserve the printed head with your review evidence.
+Keep secrets and file content out of the reason. If the log fails verification,
+the scanner keeps the hold. Previously moved copies require a new scan to
+re-evaluate their disposition.
 
 ## CyClaw and CG-agent-harness
 

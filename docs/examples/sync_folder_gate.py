@@ -2,13 +2,11 @@
 
 The sync folder is never the gate's inbox: inbox intake removes its input, and a sync client
 would propagate that deletion to every other device. This script copies each new, settled,
-regular file into a gate-owned staging directory under a temporary name, renames it into
-place, scans the staged copy with ``yara-gate scan --json --policy agent-document`` (synced
-files are documents; ``--policy agent-ingest`` makes it clean-only), and moves it to
-``allowed/<sha256>/`` only when the one record's SHA-256 matches the staged bytes and the
-record passes the document read rule: complete and ``clean``, or the exact notes-only
-``agent-document`` record from docs/integrations.md and nothing broader. Anything else
-goes to ``held/<sha256>/`` with the record beside it. A consumer reads ``allowed/`` only,
+regular file into private staging with its original basename. It scans the copy under
+``agent-document`` by default; ``--policy agent-ingest`` makes it clean-only. It moves a copy
+to ``allowed/<sha256>/`` when the record describes the staged bytes and is complete and clean,
+an exact notes-only agent-document record, or a verified reviewed release. Other copies go
+to ``held/<sha256>/`` with the record beside them. A consumer reads ``allowed/`` only,
 never the sync folder, so a later change to the source cannot reach it.
 
 Skipped, and logged once: dotfiles and client metadata (``.dropbox``, ``.DS_Store``,
@@ -107,7 +105,12 @@ def main() -> int:
         info = path.stat()
         key = f"{info.st_size}:{info.st_mtime_ns}"
         previous = ledger.get(relative, {})
-        if previous.get("key") == key and previous.get("identity") == identity:
+        if (
+            previous.get("key") == key
+            and previous.get("identity") == identity
+            and previous.get("allowed") is True
+            and previous.get("reviewed_release") is False
+        ):
             current[relative] = previous
             continue
         if not _settled(path, info):
@@ -133,6 +136,7 @@ def main() -> int:
         destination = home / ("allowed" if allowed else "held") / digest
         destination.mkdir(parents=True, exist_ok=True)
         os.replace(staged, destination / path.name)
+        staged.parent.rmdir()
         (destination / "record.json").write_text(
             json.dumps(record or {"exit_code": code}, indent=2) + "\n", encoding="utf-8"
         )
@@ -142,13 +146,14 @@ def main() -> int:
             "sha256": digest,
             "name": path.name,
             "allowed": allowed,
+            "reviewed_release": allowed and record.get("policy_reason") == REVIEWED_RELEASE,
             "identity": identity,
         }
         ledger[relative] = current[relative]
         _save_ledger(ledger_path, ledger)
         _log("allowed" if allowed else "held", relative, digest)
         worst = max(worst, code if record is not None else 2)
-    _withdraw_stale(home, current, identity)
+    _withdraw_stale(home, current, identity, keep_reviewed=True)
     _save_ledger(ledger_path, current)
     return worst
 
@@ -187,12 +192,16 @@ def _record_identity(record: dict) -> str | None:
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
-def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str | None) -> None:
+def _withdraw_stale(
+    home: Path, ledger: dict[str, dict], identity: str | None, *, keep_reviewed: bool = False
+) -> None:
     """Move every allowed copy the current identity does not admit out of the read set."""
     admitted = {
         (entry.get("sha256"), entry.get("name"))
         for entry in ledger.values()
-        if entry.get("allowed") is True and entry.get("identity") == identity
+        if entry.get("allowed") is True
+        and entry.get("identity") == identity
+        and (keep_reviewed or not entry.get("reviewed_release"))
     }
     allowed = home / "allowed"
     for directory in sorted(allowed.iterdir()):
@@ -221,11 +230,12 @@ def _withdraw_stale(home: Path, ledger: dict[str, dict], identity: str | None) -
             directory.rmdir()
 
 
+REVIEWED_RELEASE = "agent-document hold released by review"
 NOTES_ONLY = "agent-document records note findings"
 
 
 def _readable(record: dict, policy: str, digest: str) -> bool:
-    """One complete clean record, or the exact notes-only agent-document record; nothing else."""
+    """Read only records emitted by the trusted scanner for this gate home and byte digest."""
     complete = (
         record.get("policy") == policy
         and record.get("exit_code") == 0
@@ -237,6 +247,15 @@ def _readable(record: dict, policy: str, digest: str) -> bool:
     if record.get("verdict") == "clean":
         return True
     findings = record.get("findings") or []
+    if record.get("policy_reason") == REVIEWED_RELEASE:
+        # The file-scan command verifies the exact key and audit chain in its own --home.
+        return (
+            policy == "agent-document"
+            and record.get("verdict") == "advisory"
+            and record.get("advisory") is True
+            and any(finding.get("severity") == "advisory" for finding in findings)
+            and all(finding.get("severity") in ("note", "advisory") for finding in findings)
+        )
     return (
         policy == "agent-document"
         and record.get("verdict") == "advisory"
@@ -296,7 +315,10 @@ def _stage(source: Path, staging: Path) -> Path | None:
     before = source.stat()
     if before.st_size > MAX_FILE_BYTES:
         raise ValueError("file exceeds 100MB")
-    partial = staging / f".partial-{secrets.token_hex(4)}"
+    folder = staging / secrets.token_hex(8)
+    folder.mkdir(mode=0o700)
+    partial = folder / source.name
+    ready = False
     try:
         with source.open("rb") as handle, partial.open("wb") as out:
             remaining = MAX_FILE_BYTES
@@ -308,11 +330,12 @@ def _stage(source: Path, staging: Path) -> Path | None:
         after = source.stat()
         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
             return None
-        final = staging / f"{secrets.token_hex(4)}-{source.name}"
-        os.replace(partial, final)
-        return final
+        ready = True
+        return partial
     finally:
-        partial.unlink(missing_ok=True)
+        if not ready:
+            partial.unlink(missing_ok=True)
+            folder.rmdir()
 
 
 def _sha256(path: Path) -> str:
