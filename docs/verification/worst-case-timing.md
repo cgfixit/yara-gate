@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 81 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 82 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
 detection-gap probe. It has a five-minute job-step limit.
@@ -139,3 +139,12 @@ at the decoder's 2 MiB cap (0.90 s), and one-byte RunLength literal runs (0.59 s
 passed on Linux x86_64, Python 3.12.3; the slowest took 5.7 s (`pdf-page-fonts.pdf`), and the
 scans summed 150 s. The inputs are built without running an encoder, so `cases()` stays cheap
 in every worker.
+
+## November 14, 2026: PDF text strings
+
+One input was added with the [PDF text strings](2026-11-14-pdf-text-strings.md) change:
+`pdf-string-titles.pdf`, 4 MiB of `<</Title(a)>>`, the cheapest dictionary that yields a
+`pdf-string` piece. It stops at the 100,000-piece cap (`text pieces exceed 100000`) in 2.1 s.
+All 82 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
+(`pdf-font-readings-winansi.pdf`), and the scans summed 169 s on a slower container than the
+entry above.

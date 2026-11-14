@@ -7,7 +7,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`scanner.py`](scanner.py) coordinates rules, original bytes, derived views, heuristics, budgets, and results.
 - [`content.py`](content.py) constructs bounded in-memory archive and text views without extracting members to disk. Its Office readers know a part by its name or its root element and a run by its namespace; its mail reader opens a message when a mail reader shows something other than its bytes.
 - [`pdftext.py`](pdftext.py) reconstructs supported PDF text operators and fonts, without rendering the page. A font is read in each way a reader could take its own dictionary (a repeated or escaped `/ToUnicode` key, no map at all), and the map found in the 4 KB after its header is dropped only where every reader agrees it is not the font's.
-- [`pdfannotations.py`](pdfannotations.py) decodes annotation `/Contents` strings, separately from page text.
+- [`pdfannotations.py`](pdfannotations.py) decodes annotation `/Contents` strings, separately from page text, and form field values, document information strings, and outline titles (`pdf-string`).
 - [`pdfpages.py`](pdfpages.py) maps each page content stream to the fonts its page's own resources name, so a merged file's `/F1` is read per page; a file that is not plainly written throughout, or a stream readers could resolve differently, keeps the file-wide fonts.
 - [`pdfxref.py`](pdfxref.py) resolves cross-reference offsets so an object inside a length-proven stream cannot scan clean.
 - [`filetype.py`](filetype.py) identifies content from bytes and checks filename/type mismatches.
