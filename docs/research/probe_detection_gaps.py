@@ -591,7 +591,7 @@ def cases() -> list[Case]:
                 ("100-letter tag name", b"<" + b"a" * 100 + b">", phrase[3:]),
                 ("tag name with an underscore", b"<x_y>", phrase[3:]),
                 ("tag holding <", b"<i <b>", phrase[3:]),
-                ("quote that runs to the next quote", b"<a b='>x' >", phrase[3:]),
+                ("quote holding > (a control base already holds)", b"<a b='>x' >", phrase[3:]),
             )
         ),
         Case(

@@ -388,7 +388,9 @@ PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
 `percent-decoded` view, so escaping or encoding a phrase does not hide it from the
 lexical rules. Each decoded view is also folded, as `json-unescaped+text-folded` and so
 on, so an escape stacked on a look-alike spelling is read too, and `text-folded` drops
-terminal colour codes such as `ESC [ 1 m` whole. Cyrillic-only words are lowercased
+terminal colour codes such as `ESC [ 1 m` whole, takes an OSC hyperlink or title and other
+terminal strings out of the word they sit in, deletes zero-width marks such as U+034F,
+and reads VT, FF, and NEL as line breaks. Cyrillic-only words are lowercased
 without transliterating ordinary Russian prose. A view label is a provenance chain:
 read a finding's `view` to see which decoding found it, and never treat its offset as
 a position in the body unless the view is `raw`. The exact view rules are under
@@ -488,7 +490,11 @@ split across formatting runs is seen whole. An OpenDocument file (`.odt`, `.ods`
 parser hands the text on, through a comment, a CDATA section, an internal entity, or
 a UTF-16 part ([boundaries](rules.md#office-xml-and-opendocument-reader-boundaries)); an Excel inline-string cell split across rich-text
 runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
-`html-text` piece per paragraph or cell, with bold, links, and comments dropped.
+`html-text` piece per paragraph or cell, with bold, links, and comments dropped, read
+both with bounded tags and as the WHATWG tokenizer reads markup a browser discards
+(`<!-->`, `--!>`, `</>`, long or odd tag names). An RSS or Atom feed, under any name, is
+read as `feed-text`: one piece per text node a comment or CDATA boundary split, and one
+per block of the escaped HTML a `description` or `content` element carries.
 A Markdown paragraph or list item split by emphasis, a code span, or a link is read
 as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
 folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment
