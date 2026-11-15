@@ -216,7 +216,7 @@ that, so a change to what the page claims always arrives as a reviewed commit. T
 published page names the exact `main` commit it was recorded from.
 
 The [committed baseline](../web-demo/recordings.json) (schema 2) holds 82 inert
-examples, recorded with 87 bundled rules and YARA-X 1.23.0, without vendor packs.
+examples, recorded with 88 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 

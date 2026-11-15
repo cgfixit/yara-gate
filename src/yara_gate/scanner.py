@@ -24,6 +24,7 @@ from yara_gate.content import (
     config_unescaped_texts,
     content_units,
     decoded_text,
+    feed_texts,
     folded_text,
     html_text_blocks,
     markdown_texts,
@@ -491,6 +492,7 @@ def _scan_file(
                 pieces += _with_folded_pieces(
                     "markdown-text", markdown_texts(unit.name, reading, budget), budget
                 )
+                pieces += _with_folded_pieces("feed-text", feed_texts(reading, budget), budget)
                 pieces += _with_folded_pieces(
                     "config-unescaped",
                     config_unescaped_texts(unit.name, reading, budget),

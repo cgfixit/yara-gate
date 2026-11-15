@@ -140,23 +140,32 @@ _SPACERS = re.compile(r"[ .\-_*]")
 # A hyphen after a letter at a line end, before a lowercase letter on the next line.
 _HYPHEN_WRAP = re.compile(r"(?<=[A-Za-z])-[ \t]*+\r?\n[ \t]*+(?=[a-z])")
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
+# A terminal moves to the next line at VT and FF, so they become a line feed, not nothing:
+# "Ignore<VT>all" is two words on two lines to the reader, never "Ignoreall".
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
-_ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
-# Every format (Cf) and control (Cc) character other than tab, LF, and CR, plus the variation
-# selectors U+FE00-FE0F, in Unicode 15.0 (Python 3.12): what text-folded removes. One
-# str.translate replaces a per-character category lookup; tests/test_text_fast_paths.py
-# compares the table with unicodedata for every code point.
+_ASCII_CONTROL_DELETE: dict[int, str | None] = {
+    **dict.fromkeys([*range(0, 9), *range(14, 32), 127]),
+    **dict.fromkeys((11, 12), "\n"),
+}
+# Every format (Cf) and control (Cc) character other than tab, LF, and CR, the variation
+# selectors (U+FE00-FE0F, U+E0100-E01EF, and the Mongolian free variation selectors), and the
+# combining grapheme joiner U+034F, in Unicode 15.0 (Python 3.12): what text-folded removes.
+# Chromium draws each of the marks with no width. VT, FF, and NEL (U+0085) are line breaks to
+# a terminal, so they become a line feed. One str.translate replaces a per-character category
+# lookup; tests/test_text_fast_paths.py compares the table with unicodedata for every code point.
 _FOLD_DELETE_RANGES = (
-    (0x0, 0x8), (0xB, 0xC), (0xE, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x600, 0x605),
-    (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891), (0x8E2, 0x8E2),
-    (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
-    (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
-    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
-    (0xE0020, 0xE007F),
+    (0x0, 0x8), (0xE, 0x1F), (0x7F, 0x84), (0x86, 0x9F), (0xAD, 0xAD), (0x34F, 0x34F),
+    (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891),
+    (0x8E2, 0x8E2), (0x180B, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064),
+    (0x2066, 0x206F), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD), (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001), (0xE0020, 0xE007F), (0xE0100, 0xE01EF),
 )  # fmt: skip
-FOLD_DELETE = dict.fromkeys(
-    code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)
-)
+FOLD_LINE_BREAKS = (0xB, 0xC, 0x85)
+FOLD_DELETE: dict[int, str | None] = {
+    **dict.fromkeys(code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)),
+    **dict.fromkeys(FOLD_LINE_BREAKS, "\n"),
+}
 
 # Office XML parts whose text a reader sees, by the name an office suite gives them. Word splits
 # a sentence across runs on any formatting or proofing boundary, so the joined text is what the
@@ -1731,14 +1740,44 @@ def _with_folded(view: str, text: str, budget: Budget) -> Iterator[tuple[str, by
 # two-byte escape, which includes the openers of OSC, DCS, and APC strings. A terminal draws
 # none of them, so ESC [ 1 m before a word is not a separate word to the reader.
 _ANSI = re.compile(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b[ -/]+[0-~]|\x1b[@-_]")
+# A terminal string, which a terminal reads as a command and does not draw where it stands: OSC
+# (ESC ]) ends at BEL or ST (ESC \); DCS, SOS, PM, and APC (ESC P, X, ^, _) end at ST only. Any
+# other ESC, CAN, or SUB aborts the string and is read on its own. tmux 3.4 draws none of the
+# payload, so ``Ign ESC ] 8 ;; url ESC \ ore`` is shown as "Ignore". An OSC 0, 1, or 2 payload
+# is a window title, shown elsewhere, so the payloads are kept as paragraphs of their own after
+# the text. A string that never ends is left to _ANSI, which removes only its opener. The C1 forms
+# (U+009D and the rest) are left too: tmux does not read them as openers in UTF-8. Possessive,
+# and every string stops at the next ESC, so the pass is linear.
+_TERMINAL_STRING = re.compile(
+    r"\x1b\]([^\x07\x18\x1a\x1b]*+)(?:\x07|\x1b\\|(?=[\x18\x1a\x1b]))"
+    r"|\x1b[P^_X]([^\x18\x1a\x1b]*+)(?:\x1b\\|(?=[\x18\x1a\x1b]))"
+)
+
+
+def _terminal_strings(text: str) -> str:
+    """``text`` with each terminated terminal string removed and its payload moved after it."""
+    payloads: list[str] = []
+
+    def remove(match: re.Match[str]) -> str:
+        payload = match.group(1) if match.group(1) is not None else match.group(2)
+        if payload.strip():
+            payloads.append(payload)
+        return ""
+
+    joined = _TERMINAL_STRING.sub(remove, text)
+    # A blank line, so no phrase reaches across from the text into a payload or between two.
+    return "\n\n".join([joined, *payloads]) if payloads else joined
 
 
 def folded_text(text: str) -> str:
     """Return ``text`` with look-alike spellings folded to plain letters, for a derived view.
 
-    Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
-    (fullwidth and other presentation forms), removal of format controls and of control
-    characters other than tab, CR, and LF, Latin small capitals folded to ASCII, and Cyrillic
+    Terminal control sequences removed whole (``ESC [ 1 m``), terminal strings (OSC, DCS,
+    SOS, PM, APC) taken out of the line with their payloads after the text, NFKC compatibility
+    normalization (fullwidth and other presentation forms), removal of format controls,
+    variation selectors, the combining grapheme joiner, and control characters other than
+    tab, CR, and LF, with VT, FF, and NEL read as line feeds, Latin small capitals folded to
+    ASCII, and Cyrillic
     and Greek look-alikes folded to Latin inside mixed-script tokens, Cyrillic-only words
     lowercased for the multilingual rule, a word hyphenated at a line end rejoined
     (``previ-`` then ``ous``),
@@ -1749,6 +1788,8 @@ def folded_text(text: str) -> str:
     if not text.strip(" \t\r\n"):
         return text
     if "\x1b" in text or "\x9b" in text:
+        if "\x1b" in text:
+            text = _terminal_strings(text)
         text = _ANSI.sub("", text)
     folded = unicodedata.normalize("NFKC", text)
     if folded.isascii():
@@ -3164,6 +3205,43 @@ _HTML_TOKEN = re.compile(
     r"<!--|<(/?)([A-Za-z][A-Za-z0-9:-]{0,64})\b" + _HTML_ATTRIBUTES + r">|<[!?][^<>]{0,4096}>"
     r"|[^<]+|(?:<(?![A-Za-z/!?]))+[^<]*|<"
 )
+# The same tokens as the WHATWG tokenizer reads them, for a second reading of the text. A tag
+# name runs to white space, a slash, or >, at any length and in any characters; an attribute may
+# hold < and any length of value; a quoted value runs to its closing quote, and a tag that never
+# closes runs to the end of the file, which hides the rest (eof-in-tag). </> is dropped, and </
+# before anything but a letter, <!, and <? open a bogus comment that ends at the first >.
+# Comments are ended in code (_whatwg_comment_end). Possessive throughout, and each token ends
+# at a fixed character or at the end, so the pass is linear.
+_WHATWG_NAME = r"(?:=[^\t\n\f\r />=]*+|[^\t\n\f\r />=]++)"
+_WHATWG_VALUE = r"""(?:"[^"]*+(?:"|\Z)|'[^']*+(?:'|\Z)|[^\t\n\f\r >]*+)"""
+_WHATWG_ATTRIBUTES = (
+    rf"(?:[\t\n\f\r /]++|{_WHATWG_NAME}(?:[\t\n\f\r ]*+=[\t\n\f\r ]*+{_WHATWG_VALUE})?)*+"
+)
+_WHATWG_TOKEN = re.compile(
+    r"<!--|<(/?)([A-Za-z][^\t\n\f\r />]*+)" + _WHATWG_ATTRIBUTES + r"(?:>|\Z)"
+    r"|</>|</[^A-Za-z>][^>]*+(?:>|\Z)|<[!?][^>]*+(?:>|\Z)|[^<]++|<"
+)
+
+
+def _whatwg_comment_end(text: str, position: int) -> int:
+    """Where a comment opened by the ``<!--`` that ends at ``position`` ends, as WHATWG reads it.
+
+    ``<!-->`` and ``<!--->`` are empty comments, and ``--!>`` closes a comment as ``-->`` does;
+    an unclosed comment runs to the end. The second search stops at the first ``-->``, so each
+    comment is searched once.
+    """
+    if text.startswith(">", position):
+        return position + 1
+    if text.startswith("->", position):
+        return position + 2
+    close = text.find("-->", position)
+    limit = len(text) if close < 0 else close
+    bang = text.find("--!>", position, limit + 3)
+    if bang >= 0 and (close < 0 or bang < close):
+        return bang + 4
+    return len(text) if close < 0 else close + 3
+
+
 # Elements whose body is not markup: script and style are not shown, and a textarea or title
 # shows its body as written, so a <script> or <b> inside one is text, never a tag.
 _HTML_RAW_TEXT = {
@@ -3297,10 +3375,30 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     never joined. One linear pass with bounded tags; this is lexical text extraction, not
     computed visibility, sanitization, or script execution. SVG tspan/textPath are inline;
     separate text elements stay separate. SVG positioning and CSS are not interpreted.
+
+    The text is read twice: once with the bounded tokens above, and once as the WHATWG
+    tokenizer reads markup a browser discards (``<!-->``, ``--!>``, ``</>``, ``<!a<b>``, a tag
+    name of any length or spelling, a tag holding ``<``). Chromium and pandoc show a sentence
+    split by any of these whole. A block of the second reading is added where the first does not
+    have it, so every block the first reading gives is kept.
     """
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     if suffix not in _HTML_SUFFIXES and not _opens_as_html(text[:8192]):
         return []
+    blocks = _html_blocks(text, budget, whatwg=False)
+    seen = set(blocks)
+    for block in _html_blocks(text, budget, whatwg=True):
+        if block not in seen:
+            if len(blocks) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            seen.add(block)
+            blocks.append(block)
+    return blocks
+
+
+def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
+    """The blocks of :func:`html_text_blocks`, read with one of its two tokenizers."""
+    token = _WHATWG_TOKEN if whatwg else _HTML_TOKEN
     blocks: list[str] = []
     parts: list[str] = []
     segments = 0
@@ -3333,19 +3431,28 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
                 segments += 1
             parts.append(piece)
             continue
-        match = _HTML_TOKEN.match(text, position)
+        match = token.match(text, position)
         if match is None:  # pragma: no cover - the last alternative matches any character
             break
         lexeme = match.group()
         position = match.end()
         if lexeme == "<!--":
             # A comment hides its text and splits the run it sits in; unclosed, it runs to the end.
+            if whatwg:
+                position = _whatwg_comment_end(text, position)
+                continue
             close = text.find("-->", position)
             position = len(text) if close < 0 else close + 3
+            continue
+        if whatwg and lexeme.startswith(("<!", "<?", "</")) and not match.group(2):
+            # A bogus comment, a declaration, or </>: nothing shown.
             continue
         if lexeme.startswith(("<!", "<?")) and lexeme.endswith(">"):
             continue
         tag = (match.group(2) or "").lower()
+        if whatwg and tag and not lexeme.endswith(">"):
+            # eof-in-tag: a tag that never closes takes the rest of the file with it.
+            break
         if tag:
             if tag == "svg" and not lexeme.endswith("/>"):
                 svg_depth = max(0, svg_depth + (-1 if match.group(1) else 1))
@@ -3507,6 +3614,68 @@ def _toml_escape(match: re.Match[str]) -> str:
 _CONFIG_OPENER = re.compile(r"\"\"\"|'''|[\"'#]")
 _CONFIG_DOUBLE = re.compile(r'(?:[^"\\\r\n]++|\\[^\r\n])*+')
 _CONFIG_MULTI = re.compile(r'(?:[^"\\]++|\\.|"{1,2}(?!"))*+', re.DOTALL)
+
+
+# The root element of a web feed, after the prolog: RSS 2.0 (``rss``), Atom (``feed``), or RSS
+# 1.0 (an ``RDF`` root that declares the RSS 1.0 namespace). A feed is fetched under any name
+# (``index.xml``, ``rss``, ``feed``), so it is known by its root, not its suffix.
+_FEED_ROOT = re.compile(r"<(rss|feed|[A-Za-z_][\w.-]*:RDF)[\s/>]")
+_FEED_PROLOG = re.compile(
+    r"\ufeff?(?:\s++|<\?.*?\?>|<!--.*?-->|<!DOCTYPE[^<>\[]*+(?:\[.*?\])?\s*>)*+", re.S
+)
+_RSS1_NAMESPACE = "http://purl.org/rss/1.0/"
+# A tag of ``plain_xml`` output, which escapes > inside quoted values; the text nodes are the
+# character data between two of them. Each attempt stops at the next < or >, so it is linear.
+_FEED_TAG = re.compile(rb"<[^<>]*+>")
+# Decoded character data that holds a tag, a comment, or a declaration: escaped HTML.
+_ESCAPED_MARKUP = re.compile(r"<[A-Za-z/!?]")
+
+
+def feed_texts(text: str, budget: Budget) -> list[str]:
+    """The text a feed reader shows that markup splits, one piece per text node or HTML block.
+
+    For an RSS or Atom feed only (``_FEED_ROOT``). A text node that a comment, a CDATA
+    boundary, or one of the feed's own entities split is one piece, joined as an XML parser
+    joins it (``plain_xml``). A node whose text is escaped HTML (``&lt;b&gt;``, or HTML in a
+    CDATA section, as an RSS ``description``, ``content:encoded``, or an Atom ``content`` of
+    type ``html`` carries it) is read as HTML, one piece per block that inline markup splits,
+    with both of ``html_text_blocks``'s readings: a feed reader renders it. Two nodes are never
+    joined, so a title and a description stay apart; Atom ``xhtml`` content, whose markup is
+    the feed's own elements, is not read as HTML.
+    """
+    head = text[:8192]
+    prolog = _FEED_PROLOG.match(head)
+    root = _FEED_ROOT.match(head, prolog.end() if prolog else 0)
+    if root is None or (root.group(1).endswith("RDF") and _RSS1_NAMESPACE not in head):
+        return []
+    plain = plain_xml(text.encode("utf-8", "surrogatepass"), budget)
+    pieces: list[str] = []
+    seen: set[str] = set()
+
+    def add(piece: str) -> None:
+        if piece in seen:
+            return
+        if len(pieces) >= MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
+        seen.add(piece)
+        pieces.append(piece)
+
+    previous = 0
+    for count, match in enumerate(_FEED_TAG.finditer(plain)):
+        if count % 4096 == 0:
+            budget.check()
+        node, joined = xml_text(plain[previous : match.start()])
+        previous = match.end()
+        if not node.strip():
+            continue
+        decoded = html.unescape(node.decode("utf-8", "replace"))
+        if joined:
+            add(decoded)
+        if _ESCAPED_MARKUP.search(decoded) is not None:
+            for whatwg in (False, True):
+                for block in _html_blocks(decoded, budget, whatwg=whatwg):
+                    add(block)
+    return pieces
 
 
 def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:
