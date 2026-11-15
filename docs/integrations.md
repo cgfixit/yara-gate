@@ -473,8 +473,9 @@ folded when spelling changes. Annotations and blank-line-separated paragraphs
 are never joined. Unreadable supported annotation contents are incomplete; rich
 text `/RC` and unsupported stream filters are not decoded by this reader. Form
 field values, document information strings, and outline titles are decoded the
-way pypdf reads them, as `pdf-string`, and a content stream's `/ActualText`, which poppler
-and PDFium show in place of its glyphs, as `pdf-actual-text`. Text a reader hides (render mode 3 or 7, white on nothing
+way pypdf reads them, as `pdf-string`, and marked content's `/ActualText`, which poppler
+and PDFium show in place of its glyphs, as `pdf-actual-text`, whether the content stream
+writes the property list or names it from the page's `/Properties`. Text a reader hides (render mode 3 or 7, white on nothing
 painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
 hidden shapes or slides in Office; in HTML, an exact inline hiding declaration, a
 comment, a `data-*` value, or a `template`) is also scanned on its own, and an override
@@ -490,7 +491,9 @@ split across formatting runs is seen whole. An OpenDocument file (`.odt`, `.ods`
 `.odp`) gets an `odf-text` view, one line per paragraph. Both are read as an XML
 parser hands the text on, through a comment, a CDATA section, an internal entity, or
 a UTF-16 part ([boundaries](rules.md#office-xml-and-opendocument-reader-boundaries)); an Excel inline-string cell split across rich-text
-runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
+runs, or a cell value a comment or CDATA section split, is read as an `ooxml-cell` piece,
+each section of a worksheet's page headers and footers as an `ooxml-header` piece with its
+ampersand codes taken out (`&CIgnore`, `pre&Bvious`), and an HTML page or mail part as one
 `html-text` piece per paragraph or cell, with bold, links, and comments dropped, read
 both with bounded tags and as the WHATWG tokenizer reads markup a browser discards
 (`<!-->`, `--!>`, `</>`, long or odd tag names). An RSS or Atom feed, under any name, is
