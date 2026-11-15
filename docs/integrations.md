@@ -167,7 +167,7 @@ than that is scanned truncated and the rest of its write is lost with the remove
 inbox entry. On Windows, intake has no `O_NOFOLLOW`: it refuses a symlink,
 junction, hardlink, or cloud-file placeholder from its `lstat` before opening, then
 requires the opened file to match that `lstat` (#102, exercised by
-`docs/verification/check_intake.py` on the `windows-2025` CI job). `watch` still
+`docs/verification/check_intake.py` on the `windows-latest` CI job). `watch` still
 needs macOS or Linux, and a real Dropbox or OneDrive placeholder has not been
 tested on a Windows host.
 

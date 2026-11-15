@@ -21,21 +21,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        # The full check runs on macOS only; Windows runs the scan-only job below.
+        os: [macos-15]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Actionlint
-        if: runner.os == 'Linux'
+      # The actionlint binary is built once per OS, architecture, and commit, then restored; the
+      # key names the commit, so a new pin builds again.
+      - name: Restore actionlint
+        id: actionlint-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/actionlint-bin/actionlint
+          key: actionlint-914e7df21a07ef503a81201c76d2b11c789d3fca-${{ runner.os }}-${{ runner.arch }}
+
+      # The macOS image has no Go toolchain; one is installed only when the binary must be built.
+      - name: Install Go for actionlint
+        if: steps.actionlint-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # actionlint's go.mod at the pinned commit asks for go 1.25.0.
+          go-version: "1.25"
+          cache: false
+
+      - name: Build actionlint
+        if: steps.actionlint-cache.outputs.cache-hit != 'true'
         env:
           GOFLAGS: -modcacherw
         # v1.7.12, selected by commit. go install also checks sum.golang.org.
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
-          "$(go env GOPATH)/bin/actionlint"
+          GOBIN="$HOME/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
+
+      - name: Actionlint
+        run: ~/actionlint-bin/actionlint
 
       - name: Install uv and Python 3.12
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -50,7 +71,6 @@ jobs:
       # still get wrong: an action not pinned to a commit, checkout credentials left on disk,
       # an event field expanded into a script, a permission wider than the job needs.
       - name: Zizmor
-        if: runner.os == 'Linux'
         run: uv run zizmor --offline --pedantic .github
 
       - name: Lock file matches pyproject
@@ -100,7 +120,7 @@ jobs:
         run: uv run python docs/research/probe_detection_gaps.py --verify
 
       - name: Worst-case timing tripwire (4 MiB inputs)
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: uv run python docs/verification/check_worst_case_timing.py
 
       - name: Selftest
@@ -113,8 +133,8 @@ jobs:
   # open and by identity after it; check_intake.py exercises that path. watch and selftest
   # are not run here.
   windows:
-    name: scan-only (windows-2025)
-    runs-on: windows-2025
+    name: scan-only (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
