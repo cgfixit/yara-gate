@@ -473,7 +473,8 @@ folded when spelling changes. Annotations and blank-line-separated paragraphs
 are never joined. Unreadable supported annotation contents are incomplete; rich
 text `/RC` and unsupported stream filters are not decoded by this reader. Form
 field values, document information strings, and outline titles are decoded the
-way pypdf reads them, as `pdf-string`. Text a reader hides (render mode 3 or 7, white on nothing
+way pypdf reads them, as `pdf-string`, and a content stream's `/ActualText`, which poppler
+and PDFium show in place of its glyphs, as `pdf-actual-text`. Text a reader hides (render mode 3 or 7, white on nothing
 painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
 hidden shapes or slides in Office; in HTML, an exact inline hiding declaration, a
 comment, a `data-*` value, or a `template`) is also scanned on its own, and an override
@@ -494,7 +495,9 @@ runs is read as an `ooxml-cell` piece, and an HTML page or mail part as one
 both with bounded tags and as the WHATWG tokenizer reads markup a browser discards
 (`<!-->`, `--!>`, `</>`, long or odd tag names). An RSS or Atom feed, under any name, is
 read as `feed-text`: one piece per text node a comment or CDATA boundary split, and one
-per block of the escaped HTML a `description` or `content` element carries.
+per block of the escaped HTML a `description` or `content` element carries or of an Atom
+`xhtml` construct. Other XML (a `pom.xml`, a `.csproj`, a `.plist`) is read as `xml-text`:
+one piece per text node a comment, a CDATA boundary, or the document's own entity split.
 A Markdown paragraph or list item split by emphasis, a code span, or a link is read
 as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
 folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment

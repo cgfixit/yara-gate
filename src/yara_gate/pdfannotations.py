@@ -87,7 +87,12 @@ def _shown_text(token: bytes) -> str:
     A byte order mark, then a NUL in the first or second byte (UTF-16 without a mark), then
     PDFDocEncoding; an invalid sequence becomes U+FFFD, as a viewer draws it.
     """
-    raw = _string_bytes(token)
+    return shown_string(_string_bytes(token))
+
+
+def shown_string(raw: bytes) -> str:
+    """The bytes of a text string, its escapes or hex already decoded, read as
+    ``_shown_text`` reads them."""
     if raw.startswith(b"\xef\xbb\xbf"):
         try:
             return _LANGUAGE.sub("", raw[3:].decode("utf-8"))

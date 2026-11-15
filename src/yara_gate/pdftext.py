@@ -235,10 +235,30 @@ class PdfText:
     spaced_blocks: list[str] = field(default_factory=list, repr=False)
     spaced_paragraphs: list[str] = field(default_factory=list, repr=False)
     decoded_chars: int = field(default=0, repr=False)
+    # The /ActualText strings of marked content (``/Span <</ActualText ...>> BDC``), as
+    # written, string escapes and hex decoded: poppler and PDFium show one in place of
+    # the glyphs it covers. Distinct values in stream order.
+    actual_texts: list[bytes] = field(default_factory=list, repr=False)
+    _actual_seen: set[bytes] = field(default_factory=set, repr=False, compare=False)
 
     @property
     def hidden(self) -> list[str]:
         return self.hidden_blocks + self.hidden_paragraphs
+
+    def add_actual_text(self, raw: bytes) -> None:
+        if raw in self._actual_seen:
+            return
+        if len(self.actual_texts) >= MAX_TEXT_BLOCKS:
+            # Past the cap a value is not read, which the coverage note reports.
+            self.unmapped = True
+            return
+        # A value decodes to at most one character per byte, and it shares the decoded-text
+        # limit with the glyph text, so ActualText cannot hold more than the page text may.
+        self.decoded_chars += len(raw)
+        if self.decoded_chars > MAX_PDF_DECODED_CHARS:
+            raise ContentLimit("pdf decoded text exceeds character limit")
+        self._actual_seen.add(raw)
+        self.actual_texts.append(raw)
 
 
 Box = tuple[float, float, float, float]
@@ -2074,10 +2094,16 @@ def _blocks(
         if tokens > MAX_TOKENS:
             raise ContentLimit("pdf content exceeds token limit")
 
+    # Whether the token before this one was the name /ActualText, in a property list.
+    actual = False
     for token in _tokens(body, tick):
         if not isinstance(token, _Operator):
+            if actual and isinstance(token, bytes):
+                result.add_actual_text(token)
+            actual = isinstance(token, _Name) and token.value == b"ActualText"
             operands.append(token)
             continue
+        actual = False
         op = token.value
         if op == b"BT":
             paragraphs.end_block()
