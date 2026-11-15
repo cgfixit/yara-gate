@@ -23,6 +23,7 @@ from yara_gate.content import (
     comment_texts,
     config_unescaped_texts,
     content_units,
+    decoded_text,
     folded_text,
     html_text_blocks,
     markdown_texts,
@@ -53,7 +54,6 @@ from yara_gate.filetype import (
     name_has_controls,
     raster_image,
     sniff,
-    utf16_encoding,
 )
 from yara_gate.heuristics import (
     UNICODE_CONTROL_RULES,
@@ -363,9 +363,9 @@ def _scan_file(
             pdf_objects = PdfObjects(unit.data, budget)
             heuristic, office_error = heuristic_findings(path, unit.data, pdf_objects, budget.check)
             extra.extend(heuristic)
-            decoded = _decoded_text(unit.data)
-            if decoded is not None:
-                text, view = decoded
+            decoded = _decoded_text(unit.name, unit.data, budget)
+            readings = _readings(unit.data, decoded)
+            for text, view in readings:
                 for finding in [
                     *joiner_findings(text),
                     *tag_findings(text),
@@ -378,7 +378,19 @@ def _scan_file(
             findings.extend(extra)
             if office_error:
                 return finish(office_error)
-            for view, derived in text_views(unit.data, budget):
+            # A rule a later reading finds in a view an earlier reading already reported it in
+            # is the same finding.
+            earlier: set[tuple[str, str | None, str]] = set()
+            current: set[tuple[str, str | None, str]] = set()
+            knowns: list[tuple[str, str] | None] = [*readings] or [None]
+            for marked, derived in chain.from_iterable(
+                _marked(text_views(unit.data, budget, name=unit.name, known=known))
+                for known in knowns
+            ):
+                if marked is None:
+                    earlier |= current
+                    continue
+                view = marked
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, samples=image, name=base)
                 if _raw_only(view):
@@ -400,6 +412,10 @@ def _scan_file(
                     view_findings.extend(tag_findings(view_text))
                     view_findings.extend(variation_findings(view_text))
                 for finding in view_findings:
+                    key = (finding.rule_id, finding.namespace, view)
+                    if key in earlier:
+                        continue
+                    current.add(key)
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
@@ -467,26 +483,27 @@ def _scan_file(
             pieces += _with_folded_pieces("pdf-annotation", annotations, budget)
             # A form field's value, a document information string, and an outline title.
             pieces += _with_folded_pieces("pdf-string", strings, budget)
-            if decoded is not None:
+            # Both readings' pieces share their views, so a rule is reported once per view.
+            for reading, _ in readings:
                 pieces += _with_folded_pieces(
-                    "html-text", html_text_blocks(unit.name, decoded[0], budget), budget
+                    "html-text", html_text_blocks(unit.name, reading, budget), budget
                 )
                 pieces += _with_folded_pieces(
-                    "markdown-text", markdown_texts(unit.name, decoded[0], budget), budget
+                    "markdown-text", markdown_texts(unit.name, reading, budget), budget
                 )
                 pieces += _with_folded_pieces(
                     "config-unescaped",
-                    config_unescaped_texts(unit.name, decoded[0], budget),
+                    config_unescaped_texts(unit.name, reading, budget),
                     budget,
                 )
-                cells = notebook_texts(unit.name, decoded[0], budget)
+                cells = notebook_texts(unit.name, reading, budget)
                 pieces += _with_folded_pieces(
                     "notebook-text",
                     [text for text, lines, _ in cells if lines >= 2],
                     budget,
                 )
                 # A comment inside a code cell is inside a JSON string in the raw text.
-                comments = comment_texts(decoded[0], budget)
+                comments = comment_texts(reading, budget)
                 for text, _, code in cells:
                     if code:
                         comments += comment_texts(text, budget)
@@ -495,12 +512,15 @@ def _scan_file(
                 pieces += _with_folded_pieces("comment-text", comments, budget)
             if any(texts for _, texts in pieces):
                 findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
-            if decoded is not None:
-                findings.extend(
-                    _html_hidden_findings(
-                        rules, unit, decoded[0], findings[unit_start:], budget, yara, ext, base
-                    )
-                )
+            hidden_seen: set[tuple[str, str | None, str]] = set()
+            for reading, _ in readings:
+                for finding in _html_hidden_findings(
+                    rules, unit, reading, findings[unit_start:], budget, yara, ext, base
+                ):
+                    key = (finding.rule_id, finding.namespace, finding.view)
+                    if key not in hidden_seen:
+                        hidden_seen.add(key)
+                        findings.append(finding)
             conjunction = control_conjunction(findings[unit_start:])
             if conjunction is not None:
                 conjunction.member_path = list(unit.member_path)
@@ -822,20 +842,38 @@ def _name_findings(parts: Sequence[str]) -> list[Finding]:
     return found
 
 
-def _decoded_text(data: bytes) -> tuple[str, str] | None:
+def _marked(views: Iterator[tuple[str, bytes]]) -> Iterator[tuple[str | None, bytes]]:
+    """``views``, then a ``None`` marker where the next reading's views begin."""
+    yield from views
+    yield None, b""
+
+
+def _readings(data: bytes, decoded: tuple[str, str] | None) -> list[tuple[str, str]]:
+    """The reading ``decoded_text`` chose, and for a declared charset also the UTF-8 one.
+
+    A consumer that ignores the declaration decodes the bytes as UTF-8. A meta and one stray
+    byte must not hide what that reading shows (tag characters, a phrase written in UTF-8),
+    so both are scanned and a rule both find in a view is one finding.
+    """
+    if decoded is None:
+        return []
+    if decoded[1] != "decoded-charset":
+        return [decoded]
+    try:
+        utf8 = (data.decode("utf-8"), "raw")
+    except UnicodeError:
+        utf8 = (data.decode("utf-8", errors="replace"), "utf8-replaced")
+    return [decoded, utf8]
+
+
+def _decoded_text(name: str, data: bytes, budget: Budget) -> tuple[str, str] | None:
     if sniff(data) != "text":
         return None
-    encoding = utf16_encoding(data)
-    if encoding is not None:
-        try:
-            return data.decode(encoding), "decoded-utf16"
-        except UnicodeError:
-            return None
     try:
-        return data.decode("utf-8"), "raw"
+        return decoded_text(name, data, budget)
     except UnicodeError:
-        # U+FFFD is three bytes, so offsets no longer match the file: not a raw view.
-        return data.decode("utf-8", errors="replace"), "utf8-replaced"
+        # UTF-16 that does not decode; ``text_views`` reports it as incomplete.
+        return None
 
 
 def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = None) -> str | None:
