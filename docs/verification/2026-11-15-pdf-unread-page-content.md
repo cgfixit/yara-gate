@@ -1,6 +1,7 @@
 # PDF page content no view decodes (#223)
 
-Date: 2026-11-15. Base: `main` at `3cff4d1`. Engine: YARA-X 1.23.0, Python 3.12.3, Linux
+Date: 2026-11-15. Base: `main` at `3cff4d1` for the reproduction, then `4c4c031` (after #247)
+for the sweep, probes, and timing. Engine: YARA-X 1.23.0, Python 3.12.3, Linux
 container. Rules: the shipped `rules/local` and `rules/rules.lock`, no vendor packs.
 
 ## What changed
@@ -100,13 +101,13 @@ Filters by stream class, across the 624 unique files:
 No page content stream uses a filter the views cannot decode, so no file is marked. The only
 unsupported filters in the corpus are on 18 images, and none is reported.
 
-`main` (`3cff4d1`, its own worktree) and this change each scanned all 624 files under
+`main` (`4c4c031`, its own worktree) and this change each scanned all 624 files under
 `default`, `agent-ingest`, and `agent-document`, with the same rules, in separate processes:
 
 - **0 of 1,872 outcomes changed**: verdict, finding set (rule, severity, view), and
   incomplete reason.
-- No file took more than twice as long plus half a second. The sums were 173.3 s on `main` and
-  171.9 s here.
+- No file took more than twice as long plus half a second. The sums were 174.5 s on `main` and
+  172.0 s here. An earlier run against `3cff4d1` also changed nothing (173.3 s against 171.9 s).
 
 On both revisions, 335 of these files are advisory under `default` and held under
 `agent-ingest`. Every one is from the pre-existing note `heuristic_pdf_OpenAction_goto`:
@@ -165,14 +166,12 @@ The JSON reports carry `"pdf_content_unread": {"LZWDecode": 1}`. The nested find
 
 | Check | Result |
 | --- | --- |
-| `probe_detection_gaps.py --verify` | 631 ok, with 11 new `unread` cases; open B3, B5, and generic XML text, as before |
+| `probe_detection_gaps.py --verify` | 653 ok, with 11 new `unread` cases; open B3, B5, and the ActualText named-property case, as on `main` |
 | `probe_rule_coverage.py --verify`, `measure_precision.py --fail-over`, `check_rule_pairs.py` (119 rules, with the new pair), `check_added_rules.py` (246 + 4) | Pass |
-| `check_worst_case_timing.py` | See below |
+| `check_worst_case_timing.py` | PASS, 83 inputs of 4 MiB; slowest 7.4 s (`pdf-page-fonts.pdf`), `pdf-unread-content.pdf` 4.7 s, 201 s in all |
 | `record_pages_demo.py --baseline`, `build_pages.py` | Outcomes match; 246 recordings validated |
 | `pytest` on `test_report` (with the new test), `test_pages_build`, `test_demo`, `test_pdftext`, `test_scanner`, `test_pdfannotations`, `test_pdfxref` | 516 passed. The full suite is left to hosted CI |
 | `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_text_controls.py`, `check_doc_links.py` | Clean |
-
-TIMING_PLACEHOLDER
 
 `probe_pdf_reader_agreement.py` and `probe_pdf_font_reader_agreement.py` were not run. This
 change does not alter what the page map accepts, which fonts are read, or any text a view
