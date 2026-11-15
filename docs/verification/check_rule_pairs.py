@@ -52,10 +52,35 @@ HEURISTICS = {
     "heuristic_pdf_AA",
     "heuristic_pdf_RichMedia",
     "heuristic_pdf_text_unmapped",
+    "heuristic_pdf_content_unread",
     "agent_encoded_instruction",
     "heuristic_embedded_pe",
     "heuristic_office_autoexec",
 }
+
+
+_PDF_IMAGE = b"/Type /XObject /Subtype /Image /Width 8 /Height 8 /BitsPerComponent 1"
+
+
+def _filtered_pdf(content_keys: bytes, image_keys: bytes | None = None) -> bytes:
+    """A one-page PDF whose content stream (object 4) has ``content_keys`` beside /Length, and,
+    with ``image_keys``, an image XObject (object 5) the page lists."""
+    body = b"BT /F1 12 Tf 72 700 Td (Quarterly totals) Tj ET"
+    xobject = b" /XObject << /Im1 5 0 R >>" if image_keys is not None else b""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 "
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >>" + xobject + b" >> "
+        b"/Contents 4 0 R >>",
+        b"<< /Length %d %s >>\nstream\n" % (len(body), content_keys) + body + b"\nendstream",
+    ]
+    if image_keys is not None:
+        objects.append(b"<< /Length 8 %s >>\nstream\n" % image_keys + bytes(8) + b"\nendstream")
+    output = bytearray(b"%PDF-1.7\n")
+    for index, obj in enumerate(objects, 1):
+        output += b"%d 0 obj\n" % index + obj + b"\nendobj\n"
+    return bytes(output + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
 
 
 def _probe():
@@ -164,6 +189,13 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
                 added._TYPE0_MAPPED,
                 (added._to_unicode("inert"),),
             ),
+        ),
+        # Page content under a filter no view decodes is the note; the same filter on an
+        # image beside a readable page is not page text.
+        (
+            "heuristic_pdf_content_unread",
+            _filtered_pdf(b"/Filter /CCITTFaxDecode"),
+            _filtered_pdf(b"", b"/Filter /CCITTFaxDecode " + _PDF_IMAGE),
         ),
         # The retired fixed-phrase rule's substring reading, kept for decoded base64 only.
         (
@@ -1518,6 +1550,7 @@ def main() -> None:
                 "heuristic_mcp_hidden_instruction": ("hidden.json", "plain.json"),
                 "heuristic_pickle_reduce": ("danger.pkl", "note.pkl"),
                 "heuristic_pdf_text_unmapped": ("glyphs.pdf", "mapped.pdf"),
+                "heuristic_pdf_content_unread": ("unread.pdf", "image.pdf"),
                 "heuristic_safetensors_header": ("bad.safetensors", "ok.safetensors"),
                 "heuristic_gguf_header": ("bad.gguf", "ok.gguf"),
                 "heuristic_keras_unsafe_call": ("unsafe.keras", "dense.keras"),
