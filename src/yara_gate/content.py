@@ -301,12 +301,13 @@ _MIME_NOT_CHARSETS = frozenset(
 # through it up to this size; a larger one is unread, which is incomplete.
 _MIME_PUNYCODE_BYTES = 16 * 1024
 # The single-byte charsets that hold a directional mark (and windows-1256 the zero-width
-# joiners) as one byte. Ordinary Hebrew, Arabic, and Persian mail carries those marks. In
-# the message as written they are not the invisible characters the rules note; in a part
-# transcoded whole they would be, on mail whose text is ordinary. So ``_mime_newly_read``
-# transcodes without them: they have no width, and the words either side of one stay apart.
-_MIME_MARK_CODECS = frozenset({"cp1255", "cp1256", "iso8859-8"})
-_MIME_MARKS = dict.fromkeys((0x200C, 0x200D, 0x200E, 0x200F))
+# joiners) as one byte. Ordinary Hebrew, Arabic, and Persian mail and web pages carry those
+# marks. In the bytes as written they are not the invisible characters the rules note; in a
+# part or page transcoded whole they would be, on text that is ordinary. So
+# ``_mime_newly_read`` and ``decoded_text`` transcode without them: they have no width, and
+# the words either side of one stay apart.
+_MARK_CODECS = frozenset({"cp1255", "cp1256", "iso8859-8"})
+_MARKS = dict.fromkeys((0x200C, 0x200D, 0x200E, 0x200F))
 # A unit that starts with a byte order mark and then does not decode makes the scan
 # incomplete, and Python's own mail generator writes such bodies (it joins the encoded lines
 # with ASCII line ends). ``_mime_members`` says what a part in one of these is read as.
@@ -1011,9 +1012,9 @@ def _mime_newly_read(charset: str | None, payload: bytes, one_body: bool) -> byt
             return None
     if one_body and codec in _MIME_NOT_CHARSETS:
         return payload
-    if codec in _MIME_MARK_CODECS:
+    if codec in _MARK_CODECS:
         try:
-            return payload.decode(codec).translate(_MIME_MARKS).encode("utf-8")
+            return payload.decode(codec).translate(_MARKS).encode("utf-8")
         except UnicodeError:
             return payload
     return _mime_part_text(charset, payload)
@@ -1250,20 +1251,420 @@ def _json_shaped(text: str) -> bool:
             return _JSON_START.match(head, position) is not None
 
 
-def text_views(data: bytes, budget: Budget) -> Iterator[tuple[str, bytes]]:
-    """Return UTF-8 derived views, keeping their offsets separate from raw bytes."""
+# The labels a browser reads a declared charset by, from the WHATWG Encoding Standard's
+# encodings.json, under the Python codec that decodes that encoding. The standard decodes GBK
+# as gb18030, Big5 as Big5-HKSCS, Shift_JIS as Windows-31J (cp932), EUC-KR as windows-949
+# (cp949), and ISO-8859-1 and ASCII as windows-1252, so those labels name the supersets; its
+# ISO-2022-JP reads half-width katakana, which Python's iso2022_jp_ext does. "" is the
+# replacement encoding, which shows no text. UTF-7 is not a label, and Chromium ignores it.
+_WEB_ENCODINGS: dict[str, str] = {
+    "utf-8": "unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8",
+    "cp866": "866 cp866 csibm866 ibm866",
+    "iso8859-2": (
+        "csisolatin2 iso-8859-2 iso-ir-101 iso8859-2 iso88592 iso_8859-2 iso_8859-2:1987 l2 latin2"
+    ),
+    "iso8859-3": (
+        "csisolatin3 iso-8859-3 iso-ir-109 iso8859-3 iso88593 iso_8859-3 iso_8859-3:1988 l3 latin3"
+    ),
+    "iso8859-4": (
+        "csisolatin4 iso-8859-4 iso-ir-110 iso8859-4 iso88594 iso_8859-4 iso_8859-4:1988 l4 latin4"
+    ),
+    "iso8859-5": (
+        "csisolatincyrillic cyrillic iso-8859-5 iso-ir-144 iso8859-5 iso88595 iso_8859-5 "
+        "iso_8859-5:1988"
+    ),
+    "iso8859-6": (
+        "arabic asmo-708 csiso88596e csiso88596i csisolatinarabic ecma-114 iso-8859-6 iso-8859-6-e "
+        "iso-8859-6-i iso-ir-127 iso8859-6 iso88596 iso_8859-6 iso_8859-6:1987"
+    ),
+    "iso8859-7": (
+        "csisolatingreek ecma-118 elot_928 greek greek8 iso-8859-7 iso-ir-126 iso8859-7 iso88597 "
+        "iso_8859-7 iso_8859-7:1987 sun_eu_greek"
+    ),
+    "iso8859-8": (
+        "csiso88598e csisolatinhebrew hebrew iso-8859-8 iso-8859-8-e iso-ir-138 iso8859-8 iso88598 "
+        "iso_8859-8 iso_8859-8:1988 visual csiso88598i iso-8859-8-i logical"
+    ),
+    "iso8859-10": "csisolatin6 iso-8859-10 iso-ir-157 iso8859-10 iso885910 l6 latin6",
+    "iso8859-13": "iso-8859-13 iso8859-13 iso885913",
+    "iso8859-14": "iso-8859-14 iso8859-14 iso885914",
+    "iso8859-15": "csisolatin9 iso-8859-15 iso8859-15 iso885915 iso_8859-15 l9",
+    "iso8859-16": "iso-8859-16",
+    "koi8-r": "cskoi8r koi koi8 koi8-r koi8_r",
+    "koi8-u": "koi8-ru koi8-u",
+    "mac-roman": "csmacintosh mac macintosh x-mac-roman",
+    "cp874": "dos-874 iso-8859-11 iso8859-11 iso885911 tis-620 windows-874",
+    "cp1250": "cp1250 windows-1250 x-cp1250",
+    "cp1251": "cp1251 windows-1251 x-cp1251",
+    "cp1252": (
+        "ansi_x3.4-1968 ascii cp1252 cp819 csisolatin1 ibm819 iso-8859-1 iso-ir-100 iso8859-1 "
+        "iso88591 iso_8859-1 iso_8859-1:1987 l1 latin1 us-ascii windows-1252 x-cp1252"
+    ),
+    "cp1253": "cp1253 windows-1253 x-cp1253",
+    "cp1254": (
+        "cp1254 csisolatin5 iso-8859-9 iso-ir-148 iso8859-9 iso88599 iso_8859-9 iso_8859-9:1989 l5 "
+        "latin5 windows-1254 x-cp1254"
+    ),
+    "cp1255": "cp1255 windows-1255 x-cp1255",
+    "cp1256": "cp1256 windows-1256 x-cp1256",
+    "cp1257": "cp1257 windows-1257 x-cp1257",
+    "cp1258": "cp1258 windows-1258 x-cp1258",
+    "mac-cyrillic": "x-mac-cyrillic x-mac-ukrainian",
+    "gb18030": (
+        "chinese csgb2312 csiso58gb231280 gb2312 gb_2312 gb_2312-80 gbk iso-ir-58 x-gbk gb18030"
+    ),
+    "big5hkscs": "big5 big5-hkscs cn-big5 csbig5 x-x-big5",
+    "euc_jp": "cseucpkdfmtjapanese euc-jp x-euc-jp",
+    "iso2022_jp_ext": "csiso2022jp iso-2022-jp",
+    "cp932": "csshiftjis ms932 ms_kanji shift-jis shift_jis sjis windows-31j x-sjis",
+    "cp949": (
+        "cseuckr csksc56011987 euc-kr iso-ir-149 korean ks_c_5601-1987 ks_c_5601-1989 ksc5601 "
+        "ksc_5601 windows-949"
+    ),
+    "": "csiso2022kr hz-gb-2312 iso-2022-cn iso-2022-cn-ext iso-2022-kr replacement",
+    "utf-16be": "unicodefffe utf-16be",
+    "utf-16le": "csunicode iso-10646-ucs-2 ucs-2 unicode unicodefeff utf-16 utf-16le",
+    "x-user-defined": "x-user-defined",
+}
+_WEB_CODECS = {label: codec for codec, labels in _WEB_ENCODINGS.items() for label in labels.split()}
+# Names a browser opens with its XML parser, which reads the XML declaration and not a meta.
+_XML_SUFFIXES = (".xml", ".xhtml", ".xht", ".svg")
+# Chromium reads a meta anywhere in the head and, after the head ends, in the first 1,024
+# bytes. A tag outside this list ends the head; a start tag for html or head does not.
+_PRESCAN_BYTES = 1024
+_PRESCAN_HEAD = frozenset(
+    {"script", "noscript", "style", "link", "meta", "object", "title", "base", "html", "head"}
+)
+# Elements whose text the tokenizer does not read as tags. A noscript body is read as markup:
+# the prescan runs with scripting off, and Chromium honours a meta inside one.
+_PRESCAN_RAW = {
+    tag: re.compile(rf"</{tag}(?=[\t\n\f\r />])", re.I)
+    for tag in ("style", "title", "textarea", "xmp", "iframe", "noembed", "noframes")
+}
+# Script data, which a comment opener escapes and an inner <script> escapes twice: an end tag
+# inside the second escape does not end the script. Only --> ends an escape: --!> closes a
+# comment (``_comment_end``) but not a script escape, whose dash-dash state ends only at >, and
+# Chromium 153 keeps the escape open across it (probe_html_charset_browser.py, directed).
+_SCRIPT_MARK = re.compile(r"</script(?=[\t\n\f\r />])|<script(?=[\t\n\f\r />])|<!--|-->", re.I)
+# A < that can open markup; any other < is text.
+_PRESCAN_OPEN = re.compile(r"<[A-Za-z!?/]")
+_PRESCAN_TAG = re.compile(r"<(/?)([A-Za-z][^\t\n\f\r />]*+)")
+# The rest of a tag through its >, as in htmlhidden: a quote opens a value only after =.
+_PRESCAN_TAG_REST = re.compile(
+    r"""(?:[^>="']++|=[\t\n\f\r ]*+"[^"]*+"|=[\t\n\f\r ]*+'[^']*+'|[="'])*+>"""
+)
+# One attribute as the tokenizer reads it: white space and slashes before it, a name that runs
+# to white space, a slash, or = (its first character may be = or a quote), then an optional
+# value, quoted (to the end when the quote never closes) or running to white space.
+_PRESCAN_ATTRIBUTE = re.compile(
+    r"[\t\n\f\r /]*+([^\t\n\f\r /][^\t\n\f\r /=]*+)[\t\n\f\r ]*+"
+    r"""(?:=[\t\n\f\r ]*+(?:"([^"]*+)"?|'([^']*+)'?|([^\t\n\f\r ]*+)))?"""
+)
+_HTML_BLANKS = "\t\n\f\r "
+_LOWER_ASCII = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+def decoded_text(name: str, data: bytes, budget: Budget) -> tuple[str, str]:
+    """Text bytes as a reader decodes them, and the view that names the reading.
+
+    UTF-16 (a byte order mark, or text that is mostly NUL in alternate bytes) is
+    ``decoded-utf16``; UnicodeError means it does not decode. Text that is not UTF-8 and
+    declares a charset a browser honours is read through that charset, as ``decoded-charset``
+    (``declared_codec``). Anything else is UTF-8: ``raw``, or ``utf8-replaced`` where U+FFFD
+    stands for the bytes that are not, so offsets no longer match the file.
+    """
+    encoding = utf16_encoding(data)
+    if encoding is not None:
+        return data.decode(encoding), "decoded-utf16"
+    try:
+        text = data.decode("utf-8")
+    except UnicodeError:
+        codec = declared_codec(name, data, budget)
+        if codec:
+            return _transcoded(data, codec), "decoded-charset"
+        return data.decode("utf-8", errors="replace"), "utf8-replaced"
+    # ISO-2022-JP is written in seven bits, so a Japanese page in it is valid UTF-8 whose
+    # UTF-8 reading no reader shows. Its text switches character set with an escape.
+    if "\x1b" in text and declared_codec(name, data, budget) == "iso2022_jp_ext":
+        return _transcoded(data, "iso2022_jp_ext"), "decoded-charset"
+    return text, "raw"
+
+
+def declared_codec(name: str, data: bytes, budget: Budget) -> str:
+    """The codec a browser reads ``data`` through by the charset it declares, or "".
+
+    An HTML page declares its charset in a meta (``charset``, or ``http-equiv=content-type``
+    with a ``content`` that names one), found as Chromium's prescan finds it, and failing
+    that in an XML declaration at the first byte. A file named as XML (``.xml``, ``.xhtml``,
+    ``.xht``, ``.svg``) is read through its XML declaration first, as a browser reads it, and
+    then through a meta, which a reader that parses it as HTML honours. The first label the
+    standard knows decides. A UTF-8 byte order mark, a UTF-8 or UTF-16 label, the replacement
+    encoding, and a mail message (whose parts carry their own charsets) give "".
+    """
+    if data.startswith(codecs.BOM_UTF8) or _mime_message(data):
+        return ""
+    # Chromium scans the bytes as Latin-1, so a position is a byte offset.
+    text = data.decode("latin-1")
+    base = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if base.endswith(_XML_SUFFIXES):
+        codec = _xml_declared(text)
+        if codec is None:
+            codec = _meta_declared(text, budget)
+    else:
+        codec = _meta_declared(text, budget)
+        if codec is None:
+            codec = _xml_declared(text)
+    return "" if codec is None or codec == "utf-8" else codec
+
+
+def _transcoded(data: bytes, codec: str) -> str:
+    """``data`` read through ``codec``, a byte it does not define as U+FFFD, as a browser does.
+
+    The directional marks and joiners that windows-1255, windows-1256, and ISO-8859-8 hold as
+    one byte are dropped, as in a transcoded mail part (``_MARK_CODECS``).
+    """
+    text = data.decode(codec, errors="replace")
+    return text.translate(_MARKS) if codec in _MARK_CODECS else text
+
+
+def _web_codec(label: str, *, meta: bool) -> str | None:
+    """The codec a label names, or None for a label the standard does not know.
+
+    A meta that names UTF-16 means UTF-8 and one that names x-user-defined means
+    windows-1252 (HTML, "prescan a byte stream"). An XML declaration that names UTF-16 in a
+    file with no UTF-16 bytes is read as UTF-8 by Chromium, and x-user-defined there gives
+    private-use code points, which hold no letters.
+    """
+    codec = _WEB_CODECS.get(label.strip(_HTML_BLANKS).translate(_LOWER_ASCII))
+    if codec is None:
+        return None
+    if codec.startswith("utf-16"):
+        return "utf-8"
+    if codec == "x-user-defined":
+        return "cp1252" if meta else ""
+    return codec
+
+
+def _xml_declared(text: str) -> str | None:
+    """The codec an XML declaration at the first byte names, read as Chromium reads it.
+
+    ``<?xml`` and ``encoding`` are matched in lower case only. The declaration runs to the
+    first ``>``; any character up to a space may stand on either side of the ``=``, and the
+    label is quoted.
+    """
+    if not text.startswith("<?xml"):
+        return None
+    end = text.find(">")
+    found = text.find("encoding", 5, end)
+    if end < 0 or found < 0:
+        return None
+    position = found + 8
+    while position < end and text[position] <= " ":
+        position += 1
+    if position >= end or text[position] != "=":
+        return None
+    position += 1
+    while position < end and text[position] <= " ":
+        position += 1
+    if position >= end or text[position] not in "\"'":
+        return None
+    close = text.find(text[position], position + 1, end)
+    return None if close < 0 else _web_codec(text[position + 1 : close], meta=False)
+
+
+def _meta_declared(text: str, budget: Budget) -> str | None:
+    """The codec the first meta a browser takes a charset from names, or None for none.
+
+    The tokenizer's comments (``<!-->`` and ``--!>`` close one), bogus comments, raw-text
+    bodies, and script escapes are passed over, so a meta inside any of them is text. A meta
+    whose label the standard does not know is passed over too. The scan ends at the end of
+    the input, at a ``plaintext`` tag, inside an unclosed tag, or once the head has ended and
+    1,024 bytes have been read.
+    """
+    position, size, count = 0, len(text), 0
+    in_head = True
+    while True:
+        count += 1
+        if count % 4096 == 0:
+            budget.check()
+        opened = _PRESCAN_OPEN.search(text, position)
+        if opened is None:
+            return None
+        start = opened.start()
+        if not in_head and start >= _PRESCAN_BYTES:
+            return None
+        if text.startswith("<!--", start):
+            position = _comment_end(text, start)
+            continue
+        tag = _PRESCAN_TAG.match(text, start)
+        if tag is None:
+            # A declaration, a processing instruction, or a bogus comment: to the next >.
+            close = text.find(">", start + 2)
+            if close < 0:
+                return None
+            position = close + 1
+            continue
+        rest = _PRESCAN_TAG_REST.match(text, tag.end())
+        if rest is None:
+            return None
+        position = rest.end()
+        name = tag.group(2).translate(_LOWER_ASCII)
+        ending = bool(tag.group(1))
+        if not ending:
+            if name == "meta":
+                codec = _meta_codec(text[tag.end() : position - 1])
+                if codec is not None:
+                    return codec
+            elif name == "plaintext":
+                return None
+            elif name == "script":
+                position = _script_end(text, position)
+            elif name in _PRESCAN_RAW:
+                found = _PRESCAN_RAW[name].search(text, position)
+                position = size if found is None else found.start()
+        if name not in _PRESCAN_HEAD or (ending and name in {"html", "head"}):
+            in_head = False
+        if position >= size or (not in_head and position >= _PRESCAN_BYTES):
+            return None
+
+
+def _comment_end(text: str, start: int) -> int:
+    """Where the comment that opens at ``start`` ends: ``<!-->`` and ``<!--->`` close at
+    once, any other at ``-->`` or ``--!>``, or at the end of the input."""
+    if text.startswith(">", start + 4):
+        return start + 5
+    if text.startswith("->", start + 4):
+        return start + 6
+    close = text.find("-->", start + 4)
+    stop = len(text) if close < 0 else close
+    bang = text.find("--!>", start + 4, stop + 3)
+    if bang >= 0:
+        return bang + 4
+    return len(text) if close < 0 else close + 3
+
+
+def _script_end(text: str, position: int) -> int:
+    """Where the script whose body starts at ``position`` ends, as the tokenizer finds it.
+
+    ``<!--`` escapes the body, ``-->`` ends the escape (also as the end of ``<!-->`` inside
+    one), and ``<script`` inside an escape escapes it again, where ``</script`` returns to the
+    first escape instead of ending the script.
+    """
+    depth = 0
+    while True:
+        mark = _SCRIPT_MARK.search(text, position)
+        if mark is None:
+            return len(text)
+        kind = mark.group().translate(_LOWER_ASCII)
+        position = mark.end()
+        if kind == "<!--":
+            if depth == 0:
+                depth = 1
+                # The dashes of <!-- count toward a closing -->: <!--> and <!---> close it.
+                while text.startswith("-", position):
+                    position += 1
+                if text.startswith(">", position):
+                    depth = 0
+            else:
+                # Inside an escape <!-- opens nothing, and its dashes can close one: <!-->.
+                position = mark.start() + 2
+        elif kind == "-->":
+            depth = 0
+        elif kind == "<script":
+            if depth == 1:
+                depth = 2
+        elif depth == 2:
+            depth = 1
+        else:
+            return mark.start()
+
+
+def _meta_codec(inside: str) -> str | None:
+    """The codec a meta tag's attributes name, read as Chromium reads them.
+
+    The last ``charset`` attribute wins over any ``content``; a ``content`` counts only when
+    no ``charset`` came first and an ``http-equiv`` equal to ``content-type`` is present.
+    """
+    pragma = False
+    charset: str | None = None
+    from_content = False
+    for key, value in _tag_attributes(inside):
+        if key == "http-equiv":
+            pragma = pragma or value.translate(_LOWER_ASCII) == "content-type"
+        elif key == "charset":
+            charset, from_content = value, False
+        elif key == "content" and charset is None:
+            found = _content_charset(value)
+            if found:
+                charset, from_content = found, True
+    if charset is None or (from_content and not pragma):
+        return None
+    return _web_codec(charset, meta=True)
+
+
+def _tag_attributes(inside: str) -> list[tuple[str, str]]:
+    """A start tag's attributes in order, duplicates kept, as the HTML tokenizer reads them.
+
+    ``inside`` runs from the end of the tag name to before the closing ``>``. Names are in
+    lower case and character references in values are decoded.
+    """
+    found: list[tuple[str, str]] = []
+    for key, double, single, bare in _PRESCAN_ATTRIBUTE.findall(inside):
+        value = double or single or bare
+        found.append((key.translate(_LOWER_ASCII), html.unescape(value) if "&" in value else value))
+    return found
+
+
+def _content_charset(value: str) -> str:
+    """The charset a meta ``content`` names, as Chromium extracts it, or "" for none.
+
+    The first ``charset`` followed by ``=`` counts; any character up to a space may stand on
+    either side of the ``=``. A quoted value runs to its closing quote, and one never closed
+    is none; an unquoted value runs to white space, a quote, or ``;``.
+    """
+    lowered = value.translate(_LOWER_ASCII)
+    position, size = 0, len(value)
+    while True:
+        found = lowered.find("charset", position)
+        if found < 0:
+            return ""
+        position = found + 7
+        while position < size and value[position] <= " ":
+            position += 1
+        if position >= size or value[position] != "=":
+            continue
+        position += 1
+        while position < size and value[position] <= " ":
+            position += 1
+        if position >= size:
+            return ""
+        if value[position] in "\"'":
+            close = value.find(value[position], position + 1)
+            return "" if close < 0 else value[position + 1 : close]
+        end = position
+        while end < size and value[end] > " " and value[end] not in "\"';":
+            end += 1
+        return value[position:end]
+
+
+def text_views(
+    data: bytes, budget: Budget, *, name: str = "", known: tuple[str, str] | None = None
+) -> Iterator[tuple[str, bytes]]:
+    """Return UTF-8 derived views, keeping their offsets separate from raw bytes.
+
+    The views are read from the text ``decoded_text`` gives, which is the file transcoded
+    when it is UTF-16 or declares a legacy charset; one stray byte in UTF-8 is U+FFFD and does
+    not switch off every derived view. A caller that has already decoded ``data`` passes
+    that reading as ``known``.
+    """
     if sniff(data) != "text":
         return
-    encoding = utf16_encoding(data) or "utf-8"
     try:
-        text = data.decode(encoding)
+        text, reading = known or decoded_text(name, data, budget)
     except UnicodeError:
-        if encoding != "utf-8":
-            raise ContentLimit("invalid UTF-16 text") from None
-        # One stray byte must not switch off every derived view.
-        text = data.decode("utf-8", errors="replace")
-    if encoding != "utf-8":
-        yield "decoded-utf16", _derived(text, budget)
+        raise ContentLimit("invalid UTF-16 text") from None
+    if reading in {"decoded-utf16", "decoded-charset"}:
+        yield reading, _derived(text, budget)
     unescaped = html.unescape(text)
     if unescaped != text:
         yield "html-unescaped", _derived(unescaped, budget)
