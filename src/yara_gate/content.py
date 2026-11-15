@@ -25,7 +25,7 @@ import zipfile
 import zlib
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO
 
@@ -4162,6 +4162,9 @@ class PdfStream:
     number: int | None
     inflated: bytes | None
     text: bytes | None
+    # The filter, from ``UNREAD_FILTERS``, that keeps page content from being read: a stream a
+    # ``/Contents`` entry names, or a form XObject, whose filter chain this view cannot decode.
+    unread: str | None = None
 
 
 _PDF_OBJ_HEADER = re.compile(
@@ -4178,6 +4181,8 @@ def pdf_streams(
     streams: list[PdfStream] = []
     objects: dict[tuple[int, int], PdfValue | None] = {}
     contents: set[int] | None = None
+    # (index into streams, filter) for each stream whose filter chain was not decoded.
+    unread: list[tuple[int, str]] = []
     for count, start in enumerate(_PDF_STREAM.finditer(data)):
         if count >= MAX_PDF_STREAMS:
             raise ContentLimit("pdf streams exceed 2000")
@@ -4188,7 +4193,9 @@ def pdf_streams(
             # An object stream the /OpenAction lookup already inflated and charged.
             inflated = decoded[start.start()]
         else:
-            inflated = _pdf_stream_bytes(data, start, budget, objects)
+            inflated, reason = _pdf_stream_decode(data, start, budget, objects)
+            if reason is not None:
+                unread.append((len(streams), reason))
             if decoded is not None:
                 # Object-stream indexing reads this same dict. Recording the bytes
                 # keeps the expansion budget from counting the stream a second time.
@@ -4220,7 +4227,81 @@ def pdf_streams(
                 if stream_dict is not None and not (_NOT_CONTENT_KEYS & stream_dict.keys()):
                     text = content
         streams.append(PdfStream(start.start(), number, inflated, text))
+    if unread:
+        _mark_unread(data, streams, unread, budget)
     return streams
+
+
+# The filter names an unread stream is reported under: the standard filters of ISO 32000-1
+# Table 6, by full name and by the inline-image abbreviation. Any other name is ``other``, so a
+# report never carries a name taken from the file.
+_FILTER_LABELS = {
+    **{name: name[1:].decode() for name in _PDF_FILTERS.values()},
+    **{key: value[1:].decode() for key, value in _PDF_FILTERS.items()},
+    b"/CCITTFaxDecode": "CCITTFaxDecode",
+    b"/CCF": "CCITTFaxDecode",
+    b"/DCTDecode": "DCTDecode",
+    b"/DCT": "DCTDecode",
+    b"/JBIG2Decode": "JBIG2Decode",
+    b"/JPXDecode": "JPXDecode",
+    b"/Crypt": "Crypt",
+}
+UNREAD_FILTERS = frozenset(_FILTER_LABELS.values()) | {"other"}
+
+
+def _unread_label(
+    data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
+) -> str:
+    """The first filter of the chain this view does not decode, or the last one when every
+    filter is an ASCII stage with nothing after it, as a ``UNREAD_FILTERS`` label."""
+    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+    chain = filters if isinstance(filters, list) else [filters]
+    label = "other"
+    for item in chain:
+        name = _pdf_resolve(data, item, objects)
+        label = _FILTER_LABELS.get(name, "other") if isinstance(name, bytes) else "other"
+        if not isinstance(name, bytes) or name not in _PDF_FILTERS:
+            break
+    return label
+
+
+def _mark_unread(
+    data: bytes, streams: list[PdfStream], unread: list[tuple[int, str]], budget: Budget
+) -> None:
+    """Set ``unread`` on each stream that is page content: one a ``/Contents`` entry names,
+    in the file's own bytes or in an object stream, whose dictionary marks it as no image, form,
+    or font program, or a form XObject, which a page draws the same way. An image, a font, an
+    object stream, or a stream nothing names as content is not page text, so it is not marked.
+    """
+    named: set[int] | None = None
+    for index, reason in unread:
+        stream = streams[index]
+        stream_dict = _pdf_stream_dict(data, stream.offset)
+        if stream_dict is None:
+            continue
+        if stream_dict.get(b"/Subtype") == b"/Form":
+            streams[index] = replace(stream, unread=reason)
+            continue
+        if stream.number is None or _NOT_CONTENT_KEYS & stream_dict.keys():
+            continue
+        if named is None:
+            named = _contents_refs(data, budget)
+            for other in streams:
+                if other.inflated:
+                    other_dict = _pdf_stream_dict(data, other.offset)
+                    if other_dict is not None and other_dict.get(b"/Type") == b"/ObjStm":
+                        named |= _contents_refs(other.inflated, budget)
+            # A /Contents value may be a reference to an array object (ISO 32000-1, 7.7.3.3).
+            arrays: dict[int, set[int]] = {}
+            for count, match in enumerate(_ARRAY_OBJECT.finditer(data)):
+                if count % 4096 == 0:
+                    budget.check()
+                refs = {int(ref.group(1)) for ref in _ARRAY_REF.finditer(match.group(2))}
+                arrays.setdefault(int(match.group(1)), set()).update(refs)
+            for number in named & arrays.keys():
+                named.update(arrays[number])
+        if stream.number in named:
+            streams[index] = replace(stream, unread=reason)
 
 
 # Keys of a stream that is not a page's content: an image, a form or other drawn object, or a
@@ -4240,6 +4321,18 @@ _CONTENTS_REF = re.compile(
     + rb"++R|\[([0-9R\x00\t\n\f\r ]{0,65536}+)\])"
 )
 _ARRAY_REF = re.compile(rb"([0-9]{1,10})" + _PDF_WS + rb"++[0-9]{1,5}" + _PDF_WS + rb"++R")
+
+
+# An object whose value is an array of references, written in the file's own bytes.
+_ARRAY_OBJECT = re.compile(
+    rb"(?<![0-9])([0-9]{1,10})"
+    + _PDF_WS
+    + rb"++[0-9]{1,5}"
+    + _PDF_WS
+    + rb"++obj"
+    + _PDF_WS
+    + rb"*+\[([0-9R\x00\t\n\f\r ]{0,65536}+)\]"
+)
 
 
 def _contents_refs(data: bytes, budget: Budget) -> set[int]:
@@ -4296,7 +4389,21 @@ def _pdf_stream_bytes(
     budget: Budget,
     objects: dict[tuple[int, int], PdfValue | None],
 ) -> bytes | None:
-    """The decoded bytes of the stream whose keyword ``start`` matched, or None.
+    """The decoded bytes of the stream whose keyword ``start`` matched, or None."""
+    return _pdf_stream_decode(data, start, budget, objects)[0]
+
+
+def _pdf_stream_decode(
+    data: bytes,
+    start: re.Match[bytes],
+    budget: Budget,
+    objects: dict[tuple[int, int], PdfValue | None],
+) -> tuple[bytes | None, str | None]:
+    """The decoded bytes of the stream whose keyword ``start`` matched, or None, and the
+    ``UNREAD_FILTERS`` label of the filter that kept a stream that is not an image from being
+    decoded: one this view has no decoder for, or LZW or RunLength past its size cap. A stream
+    that is decoded, an image, one with no parsable dictionary, and one whose decoder fails on
+    its bytes have no label.
 
     None means the chain does not reach FlateDecode, LZWDecode, or RunLengthDecode through
     ASCIIHexDecode and ASCII85Decode stages alone, or the stream does not decode. A stream that
@@ -4310,38 +4417,40 @@ def _pdf_stream_bytes(
     if stream_dict is None:
         # No parsable dictionary ends at this keyword: inflate when FlateDecode is near.
         if b"/FlateDecode" not in data[max(0, start.start() - 1024) : start.start()]:
-            return None
-        return _inflate(body, budget)
+            return None, None
+        return _inflate(body, budget), None
     plan = _pdf_flate_plan(data, stream_dict, objects)
     if plan is None:
-        return None
+        if b"/Filter" not in stream_dict or stream_dict.get(b"/Subtype") == b"/Image":
+            return None, None
+        return None, _unread_label(data, stream_dict, objects)
     stages, parms, kind = plan
     if kind != _PDF_FLATE and (
         stream_dict.get(b"/Subtype") == b"/Image" or b"/Width" in stream_dict
     ):
         # RunLengthDecode is an image filter as often as not; an image holds no text.
-        return None
+        return None, None
     for stage in stages:
         body = _ascii_hex(body, budget) if stage == _PDF_HEX else _ascii85(body, budget)
     if kind == _PDF_LZW:
         if len(body) > MAX_LZW_BYTES:
-            return None
+            return None, "LZWDecode"
         early = _pdf_resolve(data, parms.get(b"/EarlyChange"), objects)
         inflated = _lzw(body, 0 if early == b"0" else 1, budget)
     elif kind == _PDF_RUN_LENGTH:
         if len(body) > MAX_RUN_LENGTH_BYTES:
-            return None
+            return None, "RunLengthDecode"
         inflated = _run_length(body, budget)
     else:
         inflated = _inflate(body, budget)
     if not inflated or kind == _PDF_RUN_LENGTH:
         # RunLengthDecode takes no parameters (ISO 32000-1, Table 6); readers apply none.
-        return inflated
+        return inflated, None
     predictor = _pdf_predictor(parms)
     if predictor is None:
-        return inflated
+        return inflated, None
     decoded = _unpredict(inflated, predictor, budget)
-    return inflated if decoded is None else decoded
+    return (inflated if decoded is None else decoded), None
 
 
 @dataclass(frozen=True)

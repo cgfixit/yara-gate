@@ -160,3 +160,51 @@ def test_coverage_counts_members_and_views(rules_copy: Path) -> None:
     broken = scan_bytes(b"PK\x03\x04broken", name="bad.zip", rules_dir=rules_copy)
     assert broken.incomplete_reason is not None
     assert broken.units_scanned == 0 and broken.yara_seconds is None
+
+
+def _content_pdf(content_keys: bytes, extra: bytes = b"") -> bytes:
+    body = b"BT /F1 12 Tf 72 700 Td (Quarterly totals) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+        b"<< /Length %d %s >>\nstream\n" % (len(body), content_keys) + body + b"\nendstream",
+    ]
+    out = bytearray(b"%PDF-1.7\n")
+    for index, obj in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % index + obj + b"\nendobj\n"
+    return bytes(out + extra + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def test_unread_pdf_page_content_is_a_counted_note(tmp_path: Path, rules_copy: Path) -> None:
+    from yara_gate.scanner import scan_bytes
+
+    unread = scan_bytes(
+        _content_pdf(b"/Filter /CCITTFaxDecode"), name="a.pdf", rules_dir=rules_copy
+    )
+    assert [(f.rule_id, f.severity.value) for f in unread.findings] == [
+        ("heuristic_pdf_content_unread", "note")
+    ]
+    assert unread.pdf_content_unread == {"CCITTFaxDecode": 1}
+    # A filter name the file makes up is never copied into the report.
+    made_up = scan_bytes(_content_pdf(b"/Filter /SecretName"), name="a.pdf", rules_dir=rules_copy)
+    assert made_up.pdf_content_unread == {"other": 1}
+    held = scan_bytes(
+        _content_pdf(b"/Filter /CCITTFaxDecode"),
+        name="a.pdf",
+        rules_dir=rules_copy,
+        policy=ScanPolicy.agent_ingest,
+    )
+    assert held.verdict is Verdict.block
+    # The same filter on an image is not page content.
+    image = (
+        b"5 0 obj\n<< /Length 4 /Type /XObject /Subtype /Image /Width 2 /Height 2 "
+        b"/BitsPerComponent 1 /Filter /CCITTFaxDecode >>\nstream\n\x00\x00\x00\x00\nendstream\n"
+        b"endobj\n"
+    )
+    clean = scan_bytes(_content_pdf(b"", image), name="a.pdf", rules_dir=rules_copy)
+    assert clean.verdict is Verdict.clean and clean.pdf_content_unread == {}
+    sarif_path, js = write_reports(tmp_path / "reports", unread)
+    assert json.loads(js.read_text(encoding="utf-8"))["pdf_content_unread"] == {"CCITTFaxDecode": 1}
+    sarif = json.loads(sarif_path.read_text(encoding="utf-8"))
+    assert sarif["runs"][0]["properties"]["pdf_content_unread"] == {"CCITTFaxDecode": 1}
