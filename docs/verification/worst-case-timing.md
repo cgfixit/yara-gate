@@ -2,8 +2,8 @@
 
 [`check_worst_case_timing.py`](check_worst_case_timing.py) scans 82 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
-of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
-detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
+of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
+2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
 2026: a slow hosted runner had stopped the step while every scan was still under its
 ceiling, four times on record ([diagnosis](2026-11-14-macos-timing-flake.md), option 4).
 The step limit does not bound a slow input; the 10-second ceiling and the 20-second
