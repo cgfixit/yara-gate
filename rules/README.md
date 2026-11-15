@@ -138,4 +138,6 @@ scanned separately. A phrase retains its note severity and policy behavior.
 See [annotation limits](../docs/rules.md#pdf-annotation-boundaries) and
 [verification](../docs/verification/2026-11-07-pdf-annotations.md). PDF form field
 values, document information strings, and outline titles reach them the same way as
-`pdf-string` ([limits](../docs/rules.md#pdf-text-strings)).
+`pdf-string` ([limits](../docs/rules.md#pdf-text-strings)), and a content stream's
+marked-content `/ActualText` as `pdf-actual-text`
+([limits](../docs/rules.md#marked-content-actualtext)).

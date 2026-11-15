@@ -1886,6 +1886,10 @@ _MAX_XML_ENTITY_ROUNDS = 8
 _MAX_XML_ENTITY_GROWTH = 1024 * 1024
 
 
+class XmlEntityLimit(ContentLimit):
+    """A part declares more entities, or expands them further, than ``plain_xml`` reads."""
+
+
 def _xml_char(match: re.Match[bytes]) -> bytes:
     code = int(match.group(1), 16) if match.group(1) else int(match.group(2))
     if code > 0x10FFFF or 0xD800 <= code <= 0xDFFF:
@@ -1909,7 +1913,7 @@ def _xml_entities(data: bytes) -> dict[bytes, bytes]:
         if name in _XML_PREDEFINED or name in entities:
             continue
         if len(entities) >= _MAX_XML_ENTITIES:
-            raise ContentLimit("xml entities exceed 64")
+            raise XmlEntityLimit("xml entities exceed 64")
         value = match.group(2) if match.group(2) is not None else match.group(3)
         entities[name] = _XML_CHAR_REF.sub(_xml_char, value)
     return entities
@@ -1939,7 +1943,7 @@ def xml_text(text: bytes) -> tuple[bytes, bool]:
     return text.replace(_XML_JOIN, b""), _XML_JOIN in text.strip(_XML_JOIN)
 
 
-def plain_xml(data: bytes, budget: Budget) -> bytes:
+def plain_xml(data: bytes, budget: Budget, *, expand: bool = True) -> bytes:
     """``data`` as an XML parser hands its text on, for the readers that match tags by pattern.
 
     Comments, processing instructions, and the DOCTYPE are removed; a CDATA section becomes
@@ -1951,12 +1955,12 @@ def plain_xml(data: bytes, budget: Budget) -> bytes:
 
     A part that uses none of these is returned as it is, which is every part an office suite
     writes. Nothing external is read: an entity with a system or public identifier has no
-    literal value and stays a reference.
+    literal value and stays a reference. With ``expand`` false no entity is expanded.
     """
     if b"<!" not in data and data.find(b"<?", 1) < 0 and not _XML_QUOTED_GT.search(data):
         return data
     budget.check()
-    entities = _xml_entities(data) if b"<!ENTITY" in data[:_XML_PROLOG_WINDOW] else {}
+    entities = _xml_entities(data) if expand and b"<!ENTITY" in data[:_XML_PROLOG_WINDOW] else {}
     for _ in range(_MAX_XML_ENTITY_ROUNDS if entities else 0):
         growth = sum(
             len(entities[match.group(1)]) + 2 - len(match.group())
@@ -1964,7 +1968,7 @@ def plain_xml(data: bytes, budget: Budget) -> bytes:
             if match.group(1) in entities
         )
         if growth > _MAX_XML_ENTITY_GROWTH:
-            raise ContentLimit("xml entity expansion exceeds 1MB")
+            raise XmlEntityLimit("xml entity expansion exceeds 1MB")
         budget.check()
         expanded = _XML_ENTITY_REF.sub(
             lambda match: (
@@ -1977,7 +1981,7 @@ def plain_xml(data: bytes, budget: Budget) -> bytes:
         if expanded == data:
             break
         if len(expanded) > len(data) + _MAX_XML_ENTITY_GROWTH:
-            raise ContentLimit("xml entity expansion exceeds 1MB")
+            raise XmlEntityLimit("xml entity expansion exceeds 1MB")
         data = expanded
     output = bytearray()
     position = 0
@@ -3629,6 +3633,82 @@ _RSS1_NAMESPACE = "http://purl.org/rss/1.0/"
 _FEED_TAG = re.compile(rb"<[^<>]*+>")
 # Decoded character data that holds a tag, a comment, or a declaration: escaped HTML.
 _ESCAPED_MARKUP = re.compile(r"<[A-Za-z/!?]")
+# An Atom text construct of type ``xhtml`` (RFC 4287 3.1.1.3), in ``plain_xml`` output: its
+# content is the feed's own elements, an XHTML ``div`` a feed reader renders as HTML. The
+# element may carry a prefix bound to the Atom namespace (``atom:content``).
+_ATOM_XHTML = re.compile(
+    rb"<((?:[A-Za-z_][\w.-]*:)?(?:content|summary|title|subtitle|rights))"
+    rb"\s[^<>]*?\btype\s*=\s*([\"'])xhtml\2[^<>]*+>"
+)
+# A tag's prefix (``<xhtml:p>``, ``</xhtml:p>``), so the HTML reader sees ``<p>``.
+_TAG_PREFIX = re.compile(r"<(/?)[A-Za-z_][\w.-]*:(?=[A-Za-z_])")
+# The root element of an XML document after its prolog, for ``xml_texts``.
+_XML_DOCUMENT_ROOT = re.compile(r"<([A-Za-z_][\w.:-]*)[\s/>]")
+# Names under which a file is XML whether or not it opens with a declaration.
+_XML_DOCUMENT_SUFFIXES = frozenset(
+    {"xml", "xsd", "xsl", "xslt", "plist", "csproj", "vbproj", "fsproj", "props", "targets"}
+    | {"xaml", "resx", "nuspec", "wsdl", "kml", "gpx", "opf", "ncx", "rdf", "xlf", "xliff"}
+)
+# The OpenDocument text namespace, which ``odftext.odf_text_views`` reads any part by.
+_ODF_TEXT_NAMESPACE = b"urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+
+
+def _xml_root(text: str) -> re.Match[str] | None:
+    head = text[:8192]
+    prolog = _FEED_PROLOG.match(head)
+    return _XML_DOCUMENT_ROOT.match(head, prolog.end() if prolog else 0)
+
+
+def _is_feed(text: str) -> bool:
+    head = text[:8192]
+    prolog = _FEED_PROLOG.match(head)
+    root = _FEED_ROOT.match(head, prolog.end() if prolog else 0)
+    return root is not None and (not root.group(1).endswith("RDF") or _RSS1_NAMESPACE in head)
+
+
+class _Pieces:
+    """Distinct pieces in the order found, capped at ``MAX_TEXT_PIECES``."""
+
+    def __init__(self) -> None:
+        self.items: list[str] = []
+        self._seen: set[str] = set()
+
+    def add(self, piece: str) -> None:
+        if piece in self._seen:
+            return
+        if len(self.items) >= MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
+        self._seen.add(piece)
+        self.items.append(piece)
+
+
+def _loose_plain_xml(data: bytes, budget: Budget) -> bytes:
+    """``plain_xml`` for a document no Office reader resolves: one that declares more entities
+    than are read, or expands them past the cap, is read without them rather than left
+    incomplete, so its comments and CDATA sections are still read through."""
+    try:
+        return plain_xml(data, budget)
+    except XmlEntityLimit:
+        return plain_xml(data, budget, expand=False)
+
+
+def _xml_nodes(plain: bytes, budget: Budget) -> Iterator[tuple[str, bool]]:
+    """Each non-blank text node of ``plain_xml`` output, decoded, and whether markup an XML
+    parser removes (a comment, a CDATA boundary, an internal entity) split it."""
+    previous = 0
+    for count, match in enumerate(_FEED_TAG.finditer(plain)):
+        if count % 4096 == 0:
+            budget.check()
+        node, joined = xml_text(plain[previous : match.start()])
+        previous = match.end()
+        if node.strip():
+            yield html.unescape(node.decode("utf-8", "replace")), joined
+
+
+def _html_pieces(markup: str, pieces: _Pieces, budget: Budget) -> None:
+    for whatwg in (False, True):
+        for block in _html_blocks(markup, budget, whatwg=whatwg):
+            pieces.add(block)
 
 
 def feed_texts(text: str, budget: Budget) -> list[str]:
@@ -3639,43 +3719,62 @@ def feed_texts(text: str, budget: Budget) -> list[str]:
     joins it (``plain_xml``). A node whose text is escaped HTML (``&lt;b&gt;``, or HTML in a
     CDATA section, as an RSS ``description``, ``content:encoded``, or an Atom ``content`` of
     type ``html`` carries it) is read as HTML, one piece per block that inline markup splits,
-    with both of ``html_text_blocks``'s readings: a feed reader renders it. Two nodes are never
-    joined, so a title and a description stay apart; Atom ``xhtml`` content, whose markup is
-    the feed's own elements, is not read as HTML.
+    with both of ``html_text_blocks``'s readings: a feed reader renders it. An Atom text
+    construct of type ``xhtml`` holds the feed's own elements, an XHTML ``div``; its markup is
+    read as HTML the same way, with element prefixes (``xhtml:p``) removed. Two nodes are never
+    joined, so a title and a description stay apart.
     """
-    head = text[:8192]
-    prolog = _FEED_PROLOG.match(head)
-    root = _FEED_ROOT.match(head, prolog.end() if prolog else 0)
-    if root is None or (root.group(1).endswith("RDF") and _RSS1_NAMESPACE not in head):
+    if not _is_feed(text):
         return []
-    plain = plain_xml(text.encode("utf-8", "surrogatepass"), budget)
-    pieces: list[str] = []
-    seen: set[str] = set()
-
-    def add(piece: str) -> None:
-        if piece in seen:
-            return
-        if len(pieces) >= MAX_TEXT_PIECES:
-            raise ContentLimit("text pieces exceed 100000")
-        seen.add(piece)
-        pieces.append(piece)
-
-    previous = 0
-    for count, match in enumerate(_FEED_TAG.finditer(plain)):
-        if count % 4096 == 0:
-            budget.check()
-        node, joined = xml_text(plain[previous : match.start()])
-        previous = match.end()
-        if not node.strip():
-            continue
-        decoded = html.unescape(node.decode("utf-8", "replace"))
+    plain = _loose_plain_xml(text.encode("utf-8", "surrogatepass"), budget)
+    pieces = _Pieces()
+    for decoded, joined in _xml_nodes(plain, budget):
         if joined:
-            add(decoded)
+            pieces.add(decoded)
         if _ESCAPED_MARKUP.search(decoded) is not None:
-            for whatwg in (False, True):
-                for block in _html_blocks(decoded, budget, whatwg=whatwg):
-                    add(block)
-    return pieces
+            _html_pieces(decoded, pieces, budget)
+    position = 0
+    while (opened := _ATOM_XHTML.search(plain, position)) is not None:
+        budget.check()
+        close = plain.find(b"</" + opened.group(1) + b">", opened.end())
+        if close < 0:
+            break
+        position = close
+        markup = plain[opened.end() : close].replace(_XML_JOIN, b"").decode("utf-8", "replace")
+        _html_pieces(_TAG_PREFIX.sub(r"<\1", markup), pieces, budget)
+    return pieces.items
+
+
+def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
+    """Each text node of an XML document that a comment, CDATA boundary, or internal entity
+    split, joined as an XML parser (``xml.etree``, libxml2) hands it on.
+
+    For a document that opens with an XML declaration or has an XML name
+    (``_XML_DOCUMENT_SUFFIXES``), whose root is an element, and that is neither a feed
+    (``feed_texts`` reads those), a document the HTML reader reads, nor a part the Office or
+    OpenDocument readers read. A document ``plain_xml`` leaves as it is gives no piece. Two
+    nodes are never joined, and escaped markup in a node is not read as HTML: nothing renders
+    it.
+    """
+    suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if suffix in _HTML_SUFFIXES or _opens_as_html(text[:8192]):
+        return []
+    if suffix not in _XML_DOCUMENT_SUFFIXES and not text.lstrip("\ufeff").startswith("<?xml"):
+        return []
+    if _xml_root(text) is None or _is_feed(text):
+        return []
+    data = text.encode("utf-8", "surrogatepass")
+    # A part the Office or OpenDocument readers read is theirs: they join its runs already.
+    if _ODF_TEXT_NAMESPACE in data or _named_role(name) or _root_roles(data, budget):
+        return []
+    plain = _loose_plain_xml(data, budget)
+    if plain is data:
+        return []
+    pieces = _Pieces()
+    for decoded, joined in _xml_nodes(plain, budget):
+        if joined:
+            pieces.add(decoded)
+    return pieces.items
 
 
 def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:

@@ -37,6 +37,7 @@ from yara_gate.content import (
     pdf_views,
     svg_scope_proven,
     text_views,
+    xml_texts,
 )
 from yara_gate.content import (
     MAX_ARCHIVE_DEPTH as MAX_ARCHIVE_DEPTH,
@@ -81,7 +82,7 @@ from yara_gate.models import (
     result_from_findings,
 )
 from yara_gate.odftext import odf_text_views
-from yara_gate.pdfannotations import pdf_string_texts
+from yara_gate.pdfannotations import pdf_string_texts, shown_string
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
@@ -494,6 +495,9 @@ def _scan_file(
                 )
                 pieces += _with_folded_pieces("feed-text", feed_texts(reading, budget), budget)
                 pieces += _with_folded_pieces(
+                    "xml-text", xml_texts(unit.name, reading, budget), budget
+                )
+                pieces += _with_folded_pieces(
                     "config-unescaped",
                     config_unescaped_texts(unit.name, reading, budget),
                     budget,
@@ -598,6 +602,13 @@ def _pdf_text_findings(
         ("pdf-paragraph", text.paragraphs),
         ("pdf-paragraph" + FOLDED_SUFFIX, _fold_pdf_pieces(text.paragraphs, budget)),
     ]
+    # Marked content's /ActualText, which poppler and PDFium show in place of its glyphs.
+    actual = [value for raw in text.actual_texts if (value := shown_string(raw)).strip()]
+    if actual:
+        pieces += [
+            ("pdf-actual-text", actual),
+            ("pdf-actual-text" + FOLDED_SUFFIX, _fold_pdf_pieces(actual, budget)),
+        ]
     found = _piece_findings(rules, unit, pieces, budget, yara, ext, name, extra)
     hidden = _hidden_text_findings(
         rules, unit, "pdf-hidden-text", text.hidden, budget, yara, ext, name
