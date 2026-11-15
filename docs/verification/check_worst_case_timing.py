@@ -68,6 +68,8 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             b"0 ",
             "pdf annotation dictionary exceeds 100000 tokens",
         ),
+        # Document information and outline titles: the cheapest dictionary that yields a piece.
+        ("pdf-string-titles.pdf", b"%PDF-1.7\n", b"<</Title(a)>>\n", "text pieces exceed 100000"),
         ("svg-spans.svg", b"<svg><text>", b"<tspan>a</tspan>", None),
         ("small-capitals.txt", b"", "\u026a\u0262\u0274\u1d0f\u0280\u1d07 ".encode(), None),
     )

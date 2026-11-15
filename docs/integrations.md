@@ -469,8 +469,9 @@ as `pdf-annotation` (literal/octal, hexadecimal, PDFDocEncoding, UTF-16BE or
 UTF-8 with BOM, including indirect and supported object-stream members), then
 folded when spelling changes. Annotations and blank-line-separated paragraphs
 are never joined. Unreadable supported annotation contents are incomplete; rich
-text `/RC`, form-field values, and unsupported stream filters are not decoded
-by this reader. Text a reader hides (render mode 3 or 7, white on nothing
+text `/RC` and unsupported stream filters are not decoded by this reader. Form
+field values, document information strings, and outline titles are decoded the
+way pypdf reads them, as `pdf-string`. Text a reader hides (render mode 3 or 7, white on nothing
 painted, under 1 pt, or off the page in a PDF; vanished, white, or 1 pt runs and
 hidden shapes or slides in Office; in HTML, an exact inline hiding declaration, a
 comment, a `data-*` value, or a `template`) is also scanned on its own, and an override

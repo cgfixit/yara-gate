@@ -80,7 +80,7 @@ from yara_gate.models import (
     result_from_findings,
 )
 from yara_gate.odftext import odf_text_views
-from yara_gate.pdfannotations import pdf_annotation_texts
+from yara_gate.pdfannotations import pdf_string_texts
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
@@ -479,9 +479,10 @@ def _scan_file(
                 "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
             )
             pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
-            pieces += _with_folded_pieces(
-                "pdf-annotation", pdf_annotation_texts(unit.data, pdf_objects, budget), budget
-            )
+            annotations, strings = pdf_string_texts(unit.data, pdf_objects, budget)
+            pieces += _with_folded_pieces("pdf-annotation", annotations, budget)
+            # A form field's value, a document information string, and an outline title.
+            pieces += _with_folded_pieces("pdf-string", strings, budget)
             # Both readings' pieces share their views, so a rule is reported once per view.
             for reading, _ in readings:
                 pieces += _with_folded_pieces(

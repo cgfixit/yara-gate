@@ -136,4 +136,6 @@ Encoded PDF annotation `/Contents` strings reach the same rules as
 `pdf-annotation` and `pdf-annotation+text-folded`; each annotation/paragraph is
 scanned separately. A phrase retains its note severity and policy behavior.
 See [annotation limits](../docs/rules.md#pdf-annotation-boundaries) and
-[verification](../docs/verification/2026-11-07-pdf-annotations.md).
+[verification](../docs/verification/2026-11-07-pdf-annotations.md). PDF form field
+values, document information strings, and outline titles reach them the same way as
+`pdf-string` ([limits](../docs/rules.md#pdf-text-strings)).
