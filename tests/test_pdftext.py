@@ -92,15 +92,16 @@ def test_same_rule_ids_from_two_namespaces_are_both_kept(
         ]
 
     unit = ContentUnit("d.pdf", b"%PDF-")
-    found = scanner._pdf_text_findings(
+    budget = Budget(float("inf"))
+    found, _ = scanner._pdf_text_findings(
         None,
         unit,
         [],
-        None,
-        Budget(float("inf")),
+        PdfObjects(unit.data, budget),
+        budget,
         yara,
         "pdf",
-        "d.pdf",  # type: ignore[arg-type]
+        "d.pdf",
     )
     assert {(f.namespace, f.severity) for f in found} == {
         ("gate_0", Severity.note),
