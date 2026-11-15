@@ -3616,6 +3616,68 @@ _CONFIG_DOUBLE = re.compile(r'(?:[^"\\\r\n]++|\\[^\r\n])*+')
 _CONFIG_MULTI = re.compile(r'(?:[^"\\]++|\\.|"{1,2}(?!"))*+', re.DOTALL)
 
 
+# The root element of a web feed, after the prolog: RSS 2.0 (``rss``), Atom (``feed``), or RSS
+# 1.0 (an ``RDF`` root that declares the RSS 1.0 namespace). A feed is fetched under any name
+# (``index.xml``, ``rss``, ``feed``), so it is known by its root, not its suffix.
+_FEED_ROOT = re.compile(r"<(rss|feed|[A-Za-z_][\w.-]*:RDF)[\s/>]")
+_FEED_PROLOG = re.compile(
+    r"\ufeff?(?:\s++|<\?.*?\?>|<!--.*?-->|<!DOCTYPE[^<>\[]*+(?:\[.*?\])?\s*>)*+", re.S
+)
+_RSS1_NAMESPACE = "http://purl.org/rss/1.0/"
+# A tag of ``plain_xml`` output, which escapes > inside quoted values; the text nodes are the
+# character data between two of them. Each attempt stops at the next < or >, so it is linear.
+_FEED_TAG = re.compile(rb"<[^<>]*+>")
+# Decoded character data that holds a tag, a comment, or a declaration: escaped HTML.
+_ESCAPED_MARKUP = re.compile(r"<[A-Za-z/!?]")
+
+
+def feed_texts(text: str, budget: Budget) -> list[str]:
+    """The text a feed reader shows that markup splits, one piece per text node or HTML block.
+
+    For an RSS or Atom feed only (``_FEED_ROOT``). A text node that a comment, a CDATA
+    boundary, or one of the feed's own entities split is one piece, joined as an XML parser
+    joins it (``plain_xml``). A node whose text is escaped HTML (``&lt;b&gt;``, or HTML in a
+    CDATA section, as an RSS ``description``, ``content:encoded``, or an Atom ``content`` of
+    type ``html`` carries it) is read as HTML, one piece per block that inline markup splits,
+    with both of ``html_text_blocks``'s readings: a feed reader renders it. Two nodes are never
+    joined, so a title and a description stay apart; Atom ``xhtml`` content, whose markup is
+    the feed's own elements, is not read as HTML.
+    """
+    head = text[:8192]
+    prolog = _FEED_PROLOG.match(head)
+    root = _FEED_ROOT.match(head, prolog.end() if prolog else 0)
+    if root is None or (root.group(1).endswith("RDF") and _RSS1_NAMESPACE not in head):
+        return []
+    plain = plain_xml(text.encode("utf-8", "surrogatepass"), budget)
+    pieces: list[str] = []
+    seen: set[str] = set()
+
+    def add(piece: str) -> None:
+        if piece in seen:
+            return
+        if len(pieces) >= MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
+        seen.add(piece)
+        pieces.append(piece)
+
+    previous = 0
+    for count, match in enumerate(_FEED_TAG.finditer(plain)):
+        if count % 4096 == 0:
+            budget.check()
+        node, joined = xml_text(plain[previous : match.start()])
+        previous = match.end()
+        if not node.strip():
+            continue
+        decoded = html.unescape(node.decode("utf-8", "replace"))
+        if joined:
+            add(decoded)
+        if _ESCAPED_MARKUP.search(decoded) is not None:
+            for whatwg in (False, True):
+                for block in _html_blocks(decoded, budget, whatwg=whatwg):
+                    add(block)
+    return pieces
+
+
 def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:
     """One piece per double-quoted YAML scalar or TOML basic string with escapes."""
     base = name.replace("\\", "/").rsplit("/", 1)[-1].lower()

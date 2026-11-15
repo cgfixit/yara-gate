@@ -37,6 +37,7 @@ const viewNames = {
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
   'html-hidden-text': 'HTML text a browser does not show (a hidden element, a comment, or a data attribute)',
+  'feed-text': 'one RSS or Atom text node or escaped HTML block with its markup removed',
   'markdown-text': 'one Markdown paragraph with its inline markup removed',
   'notebook-text': 'one notebook cell with its lines rejoined',
   'config-unescaped': 'one YAML or TOML string with its escapes decoded',
@@ -79,7 +80,7 @@ const methodDetail = {
   structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
   pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
-const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
+const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'feed-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
   const findings = item.results['agent-ingest'].findings;
   const tags = new Set();

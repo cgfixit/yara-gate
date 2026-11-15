@@ -314,6 +314,7 @@
       "rtf-text": "one RTF paragraph with formatting and character escapes decoded",
       "html-text": "one HTML block or SVG text element with its inline text rejoined",
       "html-hidden-text": "HTML text a browser does not show (a hidden element, a comment, or a data attribute)",
+      "feed-text": "one RSS or Atom text node or escaped HTML block with its markup removed",
       "markdown-text": "one Markdown paragraph with its inline markup removed",
       "notebook-text": "one notebook cell with its lines rejoined",
       "config-unescaped": "one YAML or TOML string with its escapes decoded",
@@ -348,7 +349,7 @@
       rebuilt: "Split across formatting", decoded: "Encoded", container: "Inside an archive or message",
       structure: "File structure", pattern: "Plain pattern"
     };
-    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-comment", "html-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
+    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-comment", "html-text", "feed-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
     function methodsOf(findings) {
       const tags = new Set();
       // A rule that already matched the bytes as sent needed no derived view.
