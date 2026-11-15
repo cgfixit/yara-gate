@@ -3954,9 +3954,10 @@ class PdfObjects:
 
     ISO 32000-1 7.5.7: an object stream's dictionary has /Type /ObjStm, /N, and /First; its
     decoded data starts with /N pairs of object number and offset, and the objects follow at
-    /First. Objects in a stream have generation 0. A stream whose dictionary does not parse, a
-    header that does not parse, or offsets outside its data is skipped, so its objects stay
-    unresolved. More than ``MAX_PDF_DEFINITIONS`` definitions of one object return one empty
+    /First. Objects in a stream have generation 0. A stream with /N 0 holds no objects and is
+    still readable, so it does not make the file opaque. A stream whose dictionary does not
+    parse, a header that does not parse, or offsets outside its data is skipped, so its objects
+    stay unresolved. More than ``MAX_PDF_DEFINITIONS`` definitions of one object return one empty
     body, which is not a page open.
     """
 
@@ -4043,7 +4044,8 @@ class PdfObjects:
             self._tables.append(PdfObjectStream(start.start(), numbers, offsets, origin, decoded))
             self._streams.append(decoded)
             stream = len(self._streams) - 1
-            bounds = [*offsets[1:], len(decoded) - origin]
+            # A stream with /N 0 is empty, not unreadable: it is recorded and has no members.
+            bounds = [*offsets[1:], len(decoded) - origin] if offsets else []
             for number, offset, stop in zip(numbers, offsets, bounds, strict=True):
                 slot = members.setdefault(number, [])
                 if len(slot) <= MAX_PDF_DEFINITIONS:

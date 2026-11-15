@@ -354,6 +354,17 @@ def test_a_second_filter_after_flate_leaves_the_object_stream_unread(
     assert "heuristic_pdf_OpenAction_goto" not in ids
 
 
+def test_an_object_stream_with_no_objects_is_empty_not_opaque() -> None:
+    data = _objstm_pdf(b"", b"not a member header").replace(b"/N 1 /First 4", b"/N 0 /First 0")
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    assert objects.opaque is False
+    assert [(table.numbers, table.offsets) for table in objects.object_streams()] == [([], [])]
+    assert list(objects.stream_members()) == []
+    # Nothing in the stream redefines object 5, so the raw definition still settles the open.
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction_goto" in ids
+
+
 def test_unfiltered_object_stream_with_a_page_open_is_still_a_page_open() -> None:
     data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]")
     objects = PdfObjects(data, Budget(time.monotonic() + 30))
