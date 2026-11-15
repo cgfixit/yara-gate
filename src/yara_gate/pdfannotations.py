@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Iterator, Sequence
+from typing import NamedTuple
 
 from yara_gate.content import (
     MAX_EXTRACT_BYTES,
@@ -402,25 +403,45 @@ def _array_items(
             index += 1
 
 
+def _property_list(entry: dict[bytes, PdfValue]) -> bool:
+    """True for a dictionary whose /ActualText a page's marked content can name: anything but
+    a structure element, which has /S (ISO 32000-1, Table 323). poppler and PDFium show a
+    property list's /ActualText in place of its glyphs when a ``BDC`` names it from the page's
+    /Properties, and show no structure element's."""
+    return b"/S" not in entry and entry.get(b"/Type") != b"/StructElem"
+
+
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
-    return pdf_string_texts(data, objects, budget)[0]
+    return pdf_string_texts(data, objects, budget).annotations
 
 
-def pdf_string_texts(
-    data: bytes, objects: PdfObjects, budget: Budget
-) -> tuple[list[str], list[str]]:
-    """Annotation /Contents text (``pdf-annotation``), then the other text strings a reader
-    shows (``pdf-string``): form field values, document information strings, outline titles.
+class PdfStrings(NamedTuple):
+    # Annotation /Contents (``pdf-annotation``).
+    annotations: list[str]
+    # Form field values, document information strings, outline titles (``pdf-string``).
+    shown: list[str]
+    # /ActualText of a property list outside a content stream (``pdf-actual-text``).
+    actual: list[str]
 
-    Both come from one pass over the file's dictionaries. An annotation string that does not
+
+def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStrings:
+    """Annotation /Contents text (``pdf-annotation``), the other text strings a reader shows
+    (``pdf-string``): form field values, document information strings, outline titles; and
+    the /ActualText of property lists written as objects, which a page's ``/Span /MC0 BDC``
+    names from its /Properties (``pdf-actual-text``).
+
+    All come from one pass over the file's dictionaries. An annotation string that does not
     decode is incomplete, as before. The other strings are decoded as pypdf decodes them, and
     a value that is not a text string (a check box's name, a signature dictionary, a missing
-    object) is passed over: a reader shows no text for it.
+    object) is passed over: a reader shows no text for it. A property list is read whether or
+    not a page names it, as a document information string is read whether or not a reader
+    shows the dictionary; its value is one piece, never joined to the glyphs around it.
     """
     if not data.startswith(b"%PDF"):
-        return [], []
+        return PdfStrings([], [], [])
     values: list[PdfValue] = []
     shown: list[PdfValue] = []
+    actual: list[PdfValue] = []
     strings: dict[tuple[int, int], list[bytes]] = {}
 
     def collect(entries: Iterator[dict[bytes, PdfValue]]) -> None:
@@ -428,7 +449,9 @@ def pdf_string_texts(
             if _annotation(entry) and b"/Contents" in entry:
                 values.append(entry[b"/Contents"])
             shown.extend(_shown_values(entry))
-            if len(values) + len(shown) > MAX_TEXT_PIECES:
+            if b"/ActualText" in entry and _property_list(entry):
+                actual.append(entry[b"/ActualText"])
+            if len(values) + len(shown) + len(actual) > MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
 
     spans: list[tuple[int, int]] = []
@@ -499,4 +522,16 @@ def pdf_string_texts(
         for item in found:
             if isinstance(item, bytes) and item[:1] in (b"(", b"<") and item[:2] != b"<<":
                 append(texts, _shown_text(item))
-    return annotations, texts
+    replacements: list[str] = []
+    for value in dict.fromkeys(actual):
+        budget.check()
+        found = strings.get(value, []) if isinstance(value, tuple) else [value]
+        for item in found:
+            if isinstance(item, bytes) and item[:1] in (b"(", b"<") and item[:2] != b"<<":
+                text = _shown_text(item)
+                if text.strip():
+                    size += len(text.encode("utf-8"))
+                    if budget.expanded + size > MAX_EXTRACT_BYTES:
+                        raise ContentLimit("pdf annotation text exceeds extracted size budget")
+                    replacements.append(text)
+    return PdfStrings(annotations, texts, list(dict.fromkeys(replacements)))

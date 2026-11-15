@@ -2774,7 +2774,8 @@ def _pieces_each_way(part: _OfficePart, budget: Budget, elements: Iterable[bytes
 
 
 def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
-    """The text of each worksheet inline-string cell that is split across two or more runs.
+    """The text of each worksheet inline-string cell that is split across two or more runs,
+    and of each cell value that a comment, CDATA, or an entity split.
 
     A cell whose text sits in one run is contiguous in the part's raw bytes already. Each cell is
     its own piece, so text from two cells is never joined into one phrase. Phonetic runs (rPh,
@@ -2786,6 +2787,13 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
     if "sheet" not in part.roles:
         return []
     data = _part_text(part)
+    # A cell's value split by a comment, CDATA, or an entity is one string to openpyxl,
+    # pandas, and LibreOffice. Only ``plain_xml`` joins it, and no office suite writes one.
+    values = (
+        _each_reading(_office_readings(part, budget), lambda text, _: _split_values(text, budget))
+        if b"<!" in data or data.find(b"<?", 1) >= 0
+        else []
+    )
     # An inline string is an ``is`` element. The cell type that announces it (t="inlineStr")
     # can be written with a character reference, so the element itself is looked for; and
     # the element can come from the part's own entity, which only ``plain_xml`` writes out.
@@ -2795,8 +2803,96 @@ def ooxml_cell_texts(name: str, data: bytes, budget: Budget) -> list[str]:
         and b"inlineStr" not in data
         and b"<!ENTITY" not in data[:_XML_PROLOG_WINDOW]
     ):
+        return values
+    return _more_pieces(_pieces_each_way(part, budget, (b"is",)), values)
+
+
+# A worksheet's page header or footer (ECMA-376 Part 1, 18.3.1.36 to 18.3.1.40) once
+# ``_office_prefixes`` has put SpreadsheetML under no prefix or ``x``.
+_HEADER_FOOTER = re.compile(
+    rb"<(?:x:)?((?:odd|even|first)(?:Header|Footer))(?:\s[^<>]*+)?>([^<]*+)</(?:x:)?\1\s*+>"
+)
+# One ampersand code as LibreOffice prints it, letters in either case: ``&&`` is an ampersand;
+# ``&L``, ``&C``, and ``&R`` start the left, centre, and right section; a field (page, pages,
+# date, time, path, file, sheet) prints a value; a font (``&"Arial,Bold"``, to the closing
+# quote or the end), a size (digits), a colour (``&K`` with six hex digits or a theme colour),
+# and any other character after ``&`` are taken out and print nothing.
+_HEADER_CODE = re.compile(
+    r'&(?:(&)|([LCRlcr])|([PNDTZFApndtzfa])|"[^"]*+"?|[0-9]++|[Kk](?:[0-9A-Fa-f]{6}|[0-9]{2}[-+][0-9]{3})?|.)?',
+    re.DOTALL,
+)
+# What a field prints stands in its place: something, and no space, so it parts no words and
+# joins none.
+_HEADER_FIELD = "\ufffc"
+
+
+def ooxml_header_texts(name: str, data: bytes, budget: Budget) -> list[str]:
+    """The text of each section of a worksheet's page headers and footers, one piece each.
+
+    A code glues a section's text to it (``&CIgnore``) and a formatting code can sit inside a
+    word (``pre&Bvious``); LibreOffice and openpyxl print the words without them. A section
+    switched to twice is one section, as LibreOffice prints it, and two sections are never
+    joined. A header that holds no ``&`` is in the raw bytes already.
+    """
+    part = _office_part(name, data, budget)
+    if "sheet" not in part.roles:
         return []
-    return _pieces_each_way(part, budget, (b"is",))
+    text = _part_text(part)
+    if b"Header" not in text and b"Footer" not in text:
+        return []
+    readings = _office_readings(part, budget)
+
+    def read(reading: bytes, _: bool) -> tuple[list[str], bool]:
+        found: list[str] = []
+        for count, match in enumerate(_HEADER_FOOTER.finditer(reading)):
+            if count % 4096 == 0:
+                budget.check()
+            value = xml_text(match.group(2))[0]
+            if b"&" not in value:
+                continue
+            sections: dict[str, list[str]] = {"c": [], "l": [], "r": []}
+            current = sections["c"]
+            source = html.unescape(value.decode("utf-8", "replace"))
+            position = 0
+            for code in _HEADER_CODE.finditer(source):
+                current.append(source[position : code.start()])
+                position = code.end()
+                if code.group(1):
+                    current.append("&")
+                elif code.group(2):
+                    current = sections[code.group(2).lower()]
+                elif code.group(3):
+                    current.append(_HEADER_FIELD)
+            current.append(source[position:])
+            for section in sections.values():
+                piece = "".join(section)
+                if piece.strip():
+                    if len(found) >= MAX_TEXT_PIECES:
+                        raise ContentLimit("text pieces exceed 100000")
+                    found.append(piece)
+        return found, False
+
+    return _each_reading(readings, read)
+
+
+# A cell's value element once ``_office_prefixes`` has put SpreadsheetML under no prefix or
+# ``x``. Its text runs to the next tag, as ``plain_xml`` leaves no markup inside one.
+_CELL_VALUE = re.compile(rb"<(?:x:)?v(?:\s[^<>]*+)?>([^<]*+)</(?:x:)?v\s*+>")
+
+
+def _split_values(data: bytes, budget: Budget) -> tuple[list[str], bool]:
+    """The text of each cell value (``<v>``, a formula's cached string or any other) that
+    markup split, one piece each. A value written whole is in the raw bytes already."""
+    pieces: list[str] = []
+    for count, match in enumerate(_CELL_VALUE.finditer(data)):
+        if count % 4096 == 0:
+            budget.check()
+        text, split = xml_text(match.group(1))
+        if split:
+            if len(pieces) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            pieces.append(html.unescape(text.decode("utf-8", "replace")))
+    return pieces, False
 
 
 def ooxml_comment_texts(name: str, data: bytes, budget: Budget) -> list[str]:
