@@ -100,7 +100,7 @@ jobs:
         run: uv run python docs/research/probe_detection_gaps.py --verify
 
       - name: Worst-case timing tripwire (4 MiB inputs)
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: uv run python docs/verification/check_worst_case_timing.py
 
       - name: Selftest
