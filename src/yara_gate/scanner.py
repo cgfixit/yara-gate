@@ -603,7 +603,11 @@ def _pdf_text_findings(
         ("pdf-paragraph" + FOLDED_SUFFIX, _fold_pdf_pieces(text.paragraphs, budget)),
     ]
     # Marked content's /ActualText, which poppler and PDFium show in place of its glyphs.
-    actual = [value for raw in text.actual_texts if (value := shown_string(raw)).strip()]
+    actual: list[str] = []
+    for raw in text.actual_texts:
+        budget.check()
+        if (value := shown_string(raw)).strip():
+            actual.append(value)
     if actual:
         pieces += [
             ("pdf-actual-text", actual),

@@ -184,6 +184,33 @@ sections are still read through. The Office and OpenDocument readers still raise
 named Office part past the cap stays incomplete, as `test_a_look_at_the_root_never_ends_a_scan`
 requires.
 
+For a feed, the fallback holds only when the text uses none of the entities the feed declares.
+A feed whose text still refers to a declared entity stays incomplete, as on `6856994`: a
+parser would expand that reference into the text, and this reading would not. `xml-text` reads
+loose XML without its entities either way. `6856994` has no XML view, so no incomplete status
+is lost there, and the DocBook case in `test_a_look_at_the_root_never_ends_a_scan` (70
+entities, `&e1;` used) is required to stay clean.
+
+## 5. Review findings on `0c818b9`
+
+The maintainer asked Codex to review `0c818b9`, and it left four findings. Each was reproduced
+with `scan_bytes(..., policy="agent-ingest")` from that commit's tree and fixed:
+
+| Finding | `0c818b9` | Fixed |
+| --- | --- | --- |
+| P1. A feed declaring 65 entities whose phrase is split by one of them (`pre&e0;ous`, `e0` = `vi`): the fallback dropped the incomplete status `6856994` gave it | clean | incomplete, `xml entities exceed 64`. The same feed with the 65 entities unused stays clean |
+| P2. `/ActualText` values were not charged to `MAX_PDF_DECODED_CHARS` (16 Mi characters), and decoding did not check the deadline | 17 Mi characters decoded; block on `raw` only | incomplete, `pdf decoded text exceeds character limit`. Each value's byte length is charged as it is collected, and the deadline is checked before each decode |
+| P2. An Atom end tag with white space before `>` (`</content >`, valid XML 1.0 production 42) was not found, and the loop stopped there | clean | block, `feed-text`; a construct with no end tag is passed over and the ones after it are still read |
+| P2. The OpenDocument text namespace anywhere in a document, a comment included, turned `xml-text` off | clean | block, `xml-text`; only a binding on the root's own start tag counts, as every LibreOffice part writes it |
+
+The end-tag fix searches once per distinct element name. A name with no end tag is not searched
+again, and at most 32 names are searched (a feed writes one or two), so the pass stays linear.
+4 MiB of 102,509 openers, each with its own prefix and none closed, scans in 1.0 s; 4 MiB of
+constructs closed by `</x:content \n>` scans in 1.6 s. Each case is in
+[`probe_detection_gaps.py`](../research/probe_detection_gaps.py), which now passes 641 cases
+with 3 open. `pytest` passes again (1,164 passed, 5 skipped). The 2,761 XML, feed, and PDF
+files of the sweep were scanned again from the fixed tree: 0 changed against `6856994`.
+
 ## Sweep
 
 Each file was scanned under `default` and `agent-ingest` from `6856994`'s source tree and from
@@ -229,7 +256,8 @@ reviewed recordings, so they were not re-recorded.
 
 ## Probe and checks
 
-- `docs/research/probe_detection_gaps.py --verify`: 637 cases pass, 3 open. Removed: the `OPEN`
+- `docs/research/probe_detection_gaps.py --verify`: 641 cases pass, 3 open (637 before the
+  review fixes in section 5). Removed: the `OPEN`
   marker on "xml that is not a feed, split by a comment". Added:
   - feeds and XML: CDATA, entity, and no-declaration splits; two benign twins; a 70-entity
     feed in its benign and attack forms; Atom `xhtml` plain and prefixed, and its benign twin;

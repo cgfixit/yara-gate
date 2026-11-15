@@ -785,6 +785,49 @@ def cases() -> list[Case]:
             )[1],
             PHRASE_RULE,
         ),
+        # Past the cap, a feed whose text uses one of its declared entities stays incomplete:
+        # a parser expands the reference into the text and this reading would not.
+        Case(
+            "feed",
+            "rss feed declaring 65 entities, split by one of them",
+            "index.xml",
+            b'<?xml version="1.0"?><!DOCTYPE rss [<!ENTITY e0 "vi">'
+            + b"".join(b'<!ENTITY e%d "x">' % n for n in range(1, 65))
+            + b"]>"
+            + rss_item(
+                b"<description>Ignore all pre&e0;ous" + phrase[21:] + b"</description>"
+            ).split(b"?>", 1)[1],
+            "incomplete:xml entities exceed 64",
+        ),
+        Case(
+            "feed",
+            "atom xhtml content closed by an end tag with white space",
+            "atom.xml",
+            ATOM_ENTRY
+            + b'<content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Ign<b>ore</b>'
+            + phrase[6:]
+            + b"</p></div></content\n></entry></feed>",
+            PHRASE_RULE,
+        ),
+        Case(
+            "feed",
+            "atom xhtml content after a summary with no end tag",
+            "atom.xml",
+            ATOM_ENTRY
+            + b'<summary type="xhtml"><div>x</div><content type="xhtml">'
+            + b'<div xmlns="http://www.w3.org/1999/xhtml"><p>Ign<b>ore</b>'
+            + phrase[6:]
+            + b"</p></div></content></entry></feed>",
+            PHRASE_RULE,
+        ),
+        Case(
+            "feed",
+            "xml naming the OpenDocument namespace in a comment, split by a comment",
+            "pom.xml",
+            b'<?xml version="1.0"?><project><!-- urn:oasis:names:tc:opendocument:xmlns:text:1.0 -->'
+            b"<description>Ign<!-- x -->" + phrase[3:] + b"</description></project>",
+            PHRASE_RULE,
+        ),
         Case(
             "feed",
             "atom xhtml content split by bold",
