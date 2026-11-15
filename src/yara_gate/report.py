@@ -80,6 +80,7 @@ def compact_report(result: ScanResult) -> dict[str, object]:
         "views_scanned": result.views_scanned,
         "bytes_scanned": result.bytes_scanned,
         "yara_seconds": result.yara_seconds,
+        "pdf_content_unread": result.pdf_content_unread,
         "findings": [_finding(item) for item in result.findings],
     }
 
@@ -154,6 +155,7 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                     "views_scanned": result.views_scanned,
                     "bytes_scanned": result.bytes_scanned,
                     "yara_seconds": result.yara_seconds,
+                    "pdf_content_unread": result.pdf_content_unread,
                     "verdict": result.verdict.value,
                     "policy": result.policy.value,
                     "policy_reason": result.policy_reason,

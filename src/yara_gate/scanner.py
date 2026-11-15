@@ -208,6 +208,8 @@ def _scan_file(
     compiled = 0
     units = 0
     views: dict[str, int] = {}
+    # Page-content streams of every PDF unit left unread, by the filter that kept them unread.
+    unread: dict[str, int] = {}
     scanned_bytes = 0
     yara_time = 0.0
 
@@ -258,6 +260,7 @@ def _scan_file(
         result.scan_seconds = round(time.monotonic() - started, 3)
         result.units_scanned = units
         result.views_scanned = dict(sorted(views.items()))
+        result.pdf_content_unread = dict(sorted(unread.items()))
         result.bytes_scanned = scanned_bytes
         result.yara_seconds = round(yara_time, 3) if units else None
         result.policy = policy
@@ -422,6 +425,7 @@ def _scan_file(
                     finding.view = view
                     findings.append(finding)
             streams = pdf_streams(unit.data, budget, pdf_objects.decoded)
+            findings.extend(_pdf_unread_findings(unit, streams, unread))
             for view, derived in pdf_views(unit.data, budget, pdf_objects.decoded, streams):
                 budget.check()
                 view_findings = yara(rules, derived, ext, view, name=base)
@@ -563,6 +567,33 @@ def _scan_file(
     except Exception:
         return finish("content scan failed")
     return finish()
+
+
+def _pdf_unread_findings(
+    unit: ContentUnit, streams: list[PdfStream], unread: dict[str, int]
+) -> list[Finding]:
+    """``heuristic_pdf_content_unread`` when page content in this unit was not decoded.
+
+    A stream a ``/Contents`` entry names, or a form XObject, whose filter chain the PDF views
+    cannot decode (a filter with no decoder here, or LZW or RunLength past its size cap) holds
+    text a reader with that decoder shows and no view read. It is a note, as unmapped glyphs
+    are: ``agent-ingest`` holds it, ``agent-document`` records it. Each such stream is counted
+    in ``unread`` under its filter. Images, fonts, and other resources are never counted.
+    """
+    labels = [stream.unread for stream in streams if stream.unread is not None]
+    for label in labels:
+        unread[label] = unread.get(label, 0) + 1
+    if not labels:
+        return []
+    return [
+        Finding(
+            rule_id="heuristic_pdf_content_unread",
+            severity=Severity.note,
+            source=FindingSource.heuristic,
+            member_path=list(unit.member_path),
+            view="pdf-text",
+        )
+    ]
 
 
 def _pdf_text_findings(

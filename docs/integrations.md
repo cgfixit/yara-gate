@@ -471,7 +471,16 @@ as `pdf-annotation` (literal/octal, hexadecimal, PDFDocEncoding, UTF-16BE or
 UTF-8 with BOM, including indirect and supported object-stream members), then
 folded when spelling changes. Annotations and blank-line-separated paragraphs
 are never joined. Unreadable supported annotation contents are incomplete; rich
-text `/RC` and unsupported stream filters are not decoded by this reader. Form
+text `/RC` is not decoded by this reader. Page content under a filter it cannot decode
+(CCITTFax, JBIG2, JPX, DCT, Crypt, an ASCII stage with nothing after it, a name no reader
+knows, or LZW over 2 MiB and RunLength over 8 MiB encoded) is the note
+`heuristic_pdf_content_unread`, graded like `heuristic_pdf_text_unmapped`. The report's
+`pdf_content_unread` counts those streams by filter (`{"LZWDecode": 1}`; a name outside the
+standard filters is `other`). An empty object means every page content stream with a filter was
+decoded, not that the PDF holds no text the gate missed. Under `agent-document`, route a PDF
+with a non-empty count to your own extractor's gate: poppler and pypdf show the text of an
+LZW or RunLength stream past the caps, and pypdf shows CCITTFax and JPX page bytes as they
+are. Images and fonts under those filters are not counted. Form
 field values, document information strings, and outline titles are decoded the
 way pypdf reads them, as `pdf-string`, and a content stream's `/ActualText`, which poppler
 and PDFium show in place of its glyphs, as `pdf-actual-text`. Text a reader hides (render mode 3 or 7, white on nothing
@@ -509,7 +518,8 @@ block scalars keep their literal backslashes. RTF formatting, hex bytes, and Uni
 as `rtf-text`, one piece per paragraph, table cell, or separate story; each piece
 is also folded before matching. Malformed RTF or unreadable declared encodings
 are incomplete. Not covered: text out of reading order or in columns,
-a sentence split across two paragraphs, Type 3 fonts, LZW streams over 2 MiB and RunLength streams over 8 MiB,
+a sentence split across two paragraphs, Type 3 fonts, page content past the LZW and RunLength caps
+or under another filter (reported, above, not read),
 images, ODT spans, RTF embedded-object or picture text, and Office parts a reader does not see. The
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
 structure checks still run on the raw file.
