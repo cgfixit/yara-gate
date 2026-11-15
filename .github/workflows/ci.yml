@@ -38,6 +38,15 @@ jobs:
           path: ~/actionlint-bin/actionlint
           key: actionlint-914e7df21a07ef503a81201c76d2b11c789d3fca-${{ runner.os }}-${{ runner.arch }}
 
+      # The macOS image has no Go toolchain; one is installed only when the binary must be built.
+      - name: Install Go for actionlint
+        if: steps.actionlint-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # actionlint's go.mod at the pinned commit asks for go 1.25.0.
+          go-version: "1.25"
+          cache: false
+
       - name: Build actionlint
         if: steps.actionlint-cache.outputs.cache-hit != 'true'
         env:
