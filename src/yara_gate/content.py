@@ -3814,7 +3814,7 @@ def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
     # A part the Office or OpenDocument readers read is theirs: they join its runs already.
     if _odf_root(text, root) or _named_role(name) or _root_roles(data, budget):
         return []
-    plain = _loose_plain_xml(data, budget)
+    plain = _loose_plain_xml(data, budget, keep_used=True)
     if plain is data:
         return []
     pieces = _Pieces()

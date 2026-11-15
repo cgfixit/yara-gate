@@ -184,12 +184,13 @@ sections are still read through. The Office and OpenDocument readers still raise
 named Office part past the cap stays incomplete, as `test_a_look_at_the_root_never_ends_a_scan`
 requires.
 
-For a feed, the fallback holds only when the text uses none of the entities the feed declares.
-A feed whose text still refers to a declared entity stays incomplete, as on `6856994`: a
-parser would expand that reference into the text, and this reading would not. `xml-text` reads
-loose XML without its entities either way. `6856994` has no XML view, so no incomplete status
-is lost there, and the DocBook case in `test_a_look_at_the_root_never_ends_a_scan` (70
-entities, `&e1;` used) is required to stay clean.
+The fallback holds only when the text uses none of the entities the document declares. A feed
+or XML document whose text still refers to a declared entity is incomplete: a parser would
+expand that reference into the text, and this reading would not. For a feed this is the
+`6856994` outcome. For loose XML it is new: `6856994` read none of it and scanned such a file
+clean. The maintainer chose fail-closed after Codex's security review (section 5), so the
+DocBook case in `test_a_look_at_the_root_never_ends_a_scan` now keeps its 70 entities with
+none used (clean) and checks that the same file using `&e1;` is incomplete.
 
 ## 5. Review findings on `0c818b9`
 
@@ -202,6 +203,11 @@ with `scan_bytes(..., policy="agent-ingest")` from that commit's tree and fixed:
 | P2. `/ActualText` values were not charged to `MAX_PDF_DECODED_CHARS` (16 Mi characters), and decoding did not check the deadline | 17 Mi characters decoded; block on `raw` only | incomplete, `pdf decoded text exceeds character limit`. Each value's byte length is charged as it is collected, and the deadline is checked before each decode |
 | P2. An Atom end tag with white space before `>` (`</content >`, valid XML 1.0 production 42) was not found, and the loop stopped there | clean | block, `feed-text`; a construct with no end tag is passed over and the ones after it are still read |
 | P2. The OpenDocument text namespace anywhere in a document, a comment included, turned `xml-text` off | clean | block, `xml-text`; only a binding on the root's own start tag counts, as every LibreOffice part writes it |
+
+Codex's security review of `0c818b9` then reported the P1 shape for loose XML (Medium): a
+`pom.xml` declaring 65 entities and composing the phrase from one was clean in `xml-text`.
+`6856994` scanned it clean too, since it had no XML view, but `xml-text` now fails closed the
+same way feeds do, at the maintainer's choice. It is a probe case.
 
 The end-tag fix searches once per distinct element name. A name with no end tag is not searched
 again, and at most 32 names are searched (a feed writes one or two), so the pass stays linear.
@@ -274,7 +280,8 @@ reviewed recordings, so they were not re-recorded.
 
 - **XML.** A phrase split by a child element in XML that is not rendered (`<v>Ign<x/>ore</v>`).
   `itertext()` joins it and `.text` does not, and no consumer reading was chosen.
-- **The entity cap.** A document past it whose phrase is split by an entity.
+- **The entity cap.** A document past it is incomplete when its text uses a declared entity,
+  so a benign XML file with more than 64 entities that uses one is held.
 - **Names.** XML under another name with no declaration.
 - **PDF.** `/ActualText` named from `/Properties`, and `/ActualText` on a structure element.
 - **Partial substitution.** A value that stands in for part of a sentence (`Ignore all

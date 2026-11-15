@@ -801,6 +801,17 @@ def cases() -> list[Case]:
         ),
         Case(
             "feed",
+            "xml declaring 65 entities, split by one of them",
+            "pom.xml",
+            b'<?xml version="1.0"?><!DOCTYPE project [<!ENTITY e0 "vi">'
+            + b"".join(b'<!ENTITY e%d "x">' % n for n in range(1, 65))
+            + b"]><project><description>Ignore all pre&e0;ous"
+            + phrase[21:]
+            + b"</description></project>",
+            "incomplete:xml entities exceed 64",
+        ),
+        Case(
+            "feed",
             "atom xhtml content closed by an end tag with white space",
             "atom.xml",
             ATOM_ENTRY
