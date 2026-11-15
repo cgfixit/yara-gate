@@ -243,11 +243,15 @@ def test_a_base64_png_after_an_equals_sign_stays_clean(tmp_path: Path, rules_cop
 
 
 def test_fold_delete_matches_unicodedata() -> None:
-    """text-folded removes exactly the Cf and Cc characters (not tab, LF, CR) and U+FE00-FE0F."""
+    """text-folded removes the Cf and Cc characters (not tab, LF, CR), the variation selectors,
+    and U+034F, and reads VT, FF, and NEL as line feeds."""
+    selectors = (*range(0xFE00, 0xFE10), *range(0xE0100, 0xE01F0), *range(0x180B, 0x1810))
     expected = {
         code
         for code in range(0x110000)
         if code not in (9, 10, 13)
-        and (unicodedata.category(chr(code)) in ("Cf", "Cc") or 0xFE00 <= code <= 0xFE0F)
+        and (unicodedata.category(chr(code)) in ("Cf", "Cc") or code in {0x34F, *selectors})
     }
     assert set(FOLD_DELETE) == expected
+    assert {code for code, value in FOLD_DELETE.items() if value is not None} == {0xB, 0xC, 0x85}
+    assert all(value == "\n" for value in FOLD_DELETE.values() if value is not None)

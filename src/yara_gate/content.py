@@ -140,23 +140,32 @@ _SPACERS = re.compile(r"[ .\-_*]")
 # A hyphen after a letter at a line end, before a lowercase letter on the next line.
 _HYPHEN_WRAP = re.compile(r"(?<=[A-Za-z])-[ \t]*+\r?\n[ \t]*+(?=[a-z])")
 # Control characters other than tab, CR, and LF, which is what the Cc filter removes from ASCII.
+# A terminal moves to the next line at VT and FF, so they become a line feed, not nothing:
+# "Ignore<VT>all" is two words on two lines to the reader, never "Ignoreall".
 _ASCII_CONTROL = re.compile(r"[\x00-\x1f]")
-_ASCII_CONTROL_DELETE = dict.fromkeys([*range(0, 9), 11, 12, *range(14, 32), 127])
-# Every format (Cf) and control (Cc) character other than tab, LF, and CR, plus the variation
-# selectors U+FE00-FE0F, in Unicode 15.0 (Python 3.12): what text-folded removes. One
-# str.translate replaces a per-character category lookup; tests/test_text_fast_paths.py
-# compares the table with unicodedata for every code point.
+_ASCII_CONTROL_DELETE: dict[int, str | None] = {
+    **dict.fromkeys([*range(0, 9), *range(14, 32), 127]),
+    **dict.fromkeys((11, 12), "\n"),
+}
+# Every format (Cf) and control (Cc) character other than tab, LF, and CR, the variation
+# selectors (U+FE00-FE0F, U+E0100-E01EF, and the Mongolian free variation selectors), and the
+# combining grapheme joiner U+034F, in Unicode 15.0 (Python 3.12): what text-folded removes.
+# Chromium draws each of the marks with no width. VT, FF, and NEL (U+0085) are line breaks to
+# a terminal, so they become a line feed. One str.translate replaces a per-character category
+# lookup; tests/test_text_fast_paths.py compares the table with unicodedata for every code point.
 _FOLD_DELETE_RANGES = (
-    (0x0, 0x8), (0xB, 0xC), (0xE, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x600, 0x605),
-    (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891), (0x8E2, 0x8E2),
-    (0x180E, 0x180E), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
-    (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
-    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A), (0xE0001, 0xE0001),
-    (0xE0020, 0xE007F),
+    (0x0, 0x8), (0xE, 0x1F), (0x7F, 0x84), (0x86, 0x9F), (0xAD, 0xAD), (0x34F, 0x34F),
+    (0x600, 0x605), (0x61C, 0x61C), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891),
+    (0x8E2, 0x8E2), (0x180B, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064),
+    (0x2066, 0x206F), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD), (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001), (0xE0020, 0xE007F), (0xE0100, 0xE01EF),
 )  # fmt: skip
-FOLD_DELETE = dict.fromkeys(
-    code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)
-)
+FOLD_LINE_BREAKS = (0xB, 0xC, 0x85)
+FOLD_DELETE: dict[int, str | None] = {
+    **dict.fromkeys(code for start, stop in _FOLD_DELETE_RANGES for code in range(start, stop + 1)),
+    **dict.fromkeys(FOLD_LINE_BREAKS, "\n"),
+}
 
 # Office XML parts whose text a reader sees, by the name an office suite gives them. Word splits
 # a sentence across runs on any formatting or proofing boundary, so the joined text is what the
@@ -1731,14 +1740,44 @@ def _with_folded(view: str, text: str, budget: Budget) -> Iterator[tuple[str, by
 # two-byte escape, which includes the openers of OSC, DCS, and APC strings. A terminal draws
 # none of them, so ESC [ 1 m before a word is not a separate word to the reader.
 _ANSI = re.compile(r"(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]|\x1b[ -/]+[0-~]|\x1b[@-_]")
+# A terminal string, which a terminal reads as a command and does not draw where it stands: OSC
+# (ESC ]) ends at BEL or ST (ESC \); DCS, SOS, PM, and APC (ESC P, X, ^, _) end at ST only. Any
+# other ESC, CAN, or SUB aborts the string and is read on its own. tmux 3.4 draws none of the
+# payload, so ``Ign ESC ] 8 ;; url ESC \ ore`` is shown as "Ignore". An OSC 0, 1, or 2 payload
+# is a window title, shown elsewhere, so the payloads are kept as paragraphs of their own after
+# the text. A string that never ends is left to _ANSI, which removes only its opener. The C1 forms
+# (U+009D and the rest) are left too: tmux does not read them as openers in UTF-8. Possessive,
+# and every string stops at the next ESC, so the pass is linear.
+_TERMINAL_STRING = re.compile(
+    r"\x1b\]([^\x07\x18\x1a\x1b]*+)(?:\x07|\x1b\\|(?=[\x18\x1a\x1b]))"
+    r"|\x1b[P^_X]([^\x18\x1a\x1b]*+)(?:\x1b\\|(?=[\x18\x1a\x1b]))"
+)
+
+
+def _terminal_strings(text: str) -> str:
+    """``text`` with each terminated terminal string removed and its payload moved after it."""
+    payloads: list[str] = []
+
+    def remove(match: re.Match[str]) -> str:
+        payload = match.group(1) if match.group(1) is not None else match.group(2)
+        if payload.strip():
+            payloads.append(payload)
+        return ""
+
+    joined = _TERMINAL_STRING.sub(remove, text)
+    # A blank line, so no phrase reaches across from the text into a payload or between two.
+    return "\n\n".join([joined, *payloads]) if payloads else joined
 
 
 def folded_text(text: str) -> str:
     """Return ``text`` with look-alike spellings folded to plain letters, for a derived view.
 
-    Terminal control sequences removed whole (``ESC [ 1 m``), NFKC compatibility normalization
-    (fullwidth and other presentation forms), removal of format controls and of control
-    characters other than tab, CR, and LF, Latin small capitals folded to ASCII, and Cyrillic
+    Terminal control sequences removed whole (``ESC [ 1 m``), terminal strings (OSC, DCS,
+    SOS, PM, APC) taken out of the line with their payloads after the text, NFKC compatibility
+    normalization (fullwidth and other presentation forms), removal of format controls,
+    variation selectors, the combining grapheme joiner, and control characters other than
+    tab, CR, and LF, with VT, FF, and NEL read as line feeds, Latin small capitals folded to
+    ASCII, and Cyrillic
     and Greek look-alikes folded to Latin inside mixed-script tokens, Cyrillic-only words
     lowercased for the multilingual rule, a word hyphenated at a line end rejoined
     (``previ-`` then ``ous``),
@@ -1749,6 +1788,8 @@ def folded_text(text: str) -> str:
     if not text.strip(" \t\r\n"):
         return text
     if "\x1b" in text or "\x9b" in text:
+        if "\x1b" in text:
+            text = _terminal_strings(text)
         text = _ANSI.sub("", text)
     folded = unicodedata.normalize("NFKC", text)
     if folded.isascii():
