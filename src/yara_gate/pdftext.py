@@ -252,6 +252,11 @@ class PdfText:
             # Past the cap a value is not read, which the coverage note reports.
             self.unmapped = True
             return
+        # A value decodes to at most one character per byte, and it shares the decoded-text
+        # limit with the glyph text, so ActualText cannot hold more than the page text may.
+        self.decoded_chars += len(raw)
+        if self.decoded_chars > MAX_PDF_DECODED_CHARS:
+            raise ContentLimit("pdf decoded text exceeds character limit")
         self._actual_seen.add(raw)
         self.actual_texts.append(raw)
 

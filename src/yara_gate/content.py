@@ -1874,6 +1874,8 @@ _XML_ENTITY = re.compile(
 _XML_ENTITY_REF = re.compile(rb"&([A-Za-z_:][\w.:-]{0,63}+);")
 _XML_CHAR_REF = re.compile(rb"&#(?:x([0-9A-Fa-f]{1,6})|([0-9]{1,7}));")
 _XML_PREDEFINED = frozenset({b"amp", b"lt", b"gt", b"quot", b"apos"})
+# The name of any general entity declaration, whatever its value, for ``_loose_plain_xml``.
+_XML_DECLARED_ENTITY = re.compile(rb"<!ENTITY\s++([A-Za-z_:][\w.:-]{0,63}+)")
 _XML_PROLOG_WINDOW = 64 * 1024
 # Left where ``plain_xml`` took markup out of character data. U+0001 cannot occur in an XML
 # 1.0 document, so a reader that finds it between two stretches of one text element knows the
@@ -3640,6 +3642,9 @@ _ATOM_XHTML = re.compile(
     rb"<((?:[A-Za-z_][\w.-]*:)?(?:content|summary|title|subtitle|rights))"
     rb"\s[^<>]*?\btype\s*=\s*([\"'])xhtml\2[^<>]*+>"
 )
+# Distinct element names (a prefix and one of the five constructs) whose end tags are searched
+# for. A feed writes one or two; each is at most one search to the end of the feed.
+_MAX_ATOM_XHTML_NAMES = 32
 # A tag's prefix (``<xhtml:p>``, ``</xhtml:p>``), so the HTML reader sees ``<p>``.
 _TAG_PREFIX = re.compile(r"<(/?)[A-Za-z_][\w.-]*:(?=[A-Za-z_])")
 # The root element of an XML document after its prolog, for ``xml_texts``.
@@ -3657,6 +3662,14 @@ def _xml_root(text: str) -> re.Match[str] | None:
     head = text[:8192]
     prolog = _FEED_PROLOG.match(head)
     return _XML_DOCUMENT_ROOT.match(head, prolog.end() if prolog else 0)
+
+
+def _odf_root(text: str, root: re.Match[str]) -> bool:
+    """Whether the root's own start tag binds the OpenDocument text namespace, as every part
+    LibreOffice writes does. The namespace in a comment or deeper in the text does not count."""
+    end = text.find(">", root.end() - 1)
+    tag = text[root.start() : end if end >= 0 else len(text)]
+    return _ODF_TEXT_NAMESPACE.decode() in tag
 
 
 def _is_feed(text: str) -> bool:
@@ -3682,14 +3695,32 @@ class _Pieces:
         self.items.append(piece)
 
 
-def _loose_plain_xml(data: bytes, budget: Budget) -> bytes:
+def _loose_plain_xml(data: bytes, budget: Budget, *, keep_used: bool = False) -> bytes:
     """``plain_xml`` for a document no Office reader resolves: one that declares more entities
     than are read, or expands them past the cap, is read without them rather than left
-    incomplete, so its comments and CDATA sections are still read through."""
+    incomplete, so its comments and CDATA sections are still read through.
+
+    With ``keep_used``, a document whose text still refers to one of the entities it declares
+    stays incomplete: a parser would expand that reference into the text, and this reading
+    would not. Only a document whose declarations go unused is read without them.
+    """
     try:
         return plain_xml(data, budget)
     except XmlEntityLimit:
-        return plain_xml(data, budget, expand=False)
+        plain = plain_xml(data, budget, expand=False)
+        if keep_used:
+            doctype = _XML_DOCTYPE.search(data, 0, _XML_PROLOG_WINDOW)
+            declared = (
+                {match.group(1) for match in _XML_DECLARED_ENTITY.finditer(doctype.group(1))}
+                if doctype is not None
+                else set()
+            )
+            for count, match in enumerate(_XML_ENTITY_REF.finditer(plain)):
+                if count % 4096 == 0:
+                    budget.check()
+                if match.group(1) in declared:
+                    raise
+        return plain
 
 
 def _xml_nodes(plain: bytes, budget: Budget) -> Iterator[tuple[str, bool]]:
@@ -3726,7 +3757,7 @@ def feed_texts(text: str, budget: Budget) -> list[str]:
     """
     if not _is_feed(text):
         return []
-    plain = _loose_plain_xml(text.encode("utf-8", "surrogatepass"), budget)
+    plain = _loose_plain_xml(text.encode("utf-8", "surrogatepass"), budget, keep_used=True)
     pieces = _Pieces()
     for decoded, joined in _xml_nodes(plain, budget):
         if joined:
@@ -3734,12 +3765,27 @@ def feed_texts(text: str, budget: Budget) -> list[str]:
         if _ESCAPED_MARKUP.search(decoded) is not None:
             _html_pieces(decoded, pieces, budget)
     position = 0
+    # An end tag may hold white space before its > (XML 1.0, production 42). A name with no end
+    # tag after one opener has none after any later one either, so it is not searched again.
+    ends: dict[bytes, re.Pattern[bytes] | None] = {}
     while (opened := _ATOM_XHTML.search(plain, position)) is not None:
         budget.check()
-        close = plain.find(b"</" + opened.group(1) + b">", opened.end())
-        if close < 0:
-            break
-        position = close
+        element = opened.group(1)
+        if element not in ends:
+            if len(ends) >= _MAX_ATOM_XHTML_NAMES:
+                # Each new name is a search to the end of the feed; past the cap the rest of
+                # the feed's xhtml constructs are not read.
+                break
+            ends[element] = re.compile(rb"</" + re.escape(element) + rb"\s*+>")
+        end = ends[element]
+        closed = end.search(plain, opened.end()) if end is not None else None
+        if closed is None:
+            # No end tag: this construct is not read, the ones after it still are.
+            ends[element] = None
+            position = opened.end()
+            continue
+        close = closed.start()
+        position = closed.end()
         markup = plain[opened.end() : close].replace(_XML_JOIN, b"").decode("utf-8", "replace")
         _html_pieces(_TAG_PREFIX.sub(r"<\1", markup), pieces, budget)
     return pieces.items
@@ -3761,13 +3807,14 @@ def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
         return []
     if suffix not in _XML_DOCUMENT_SUFFIXES and not text.lstrip("\ufeff").startswith("<?xml"):
         return []
-    if _xml_root(text) is None or _is_feed(text):
+    root = _xml_root(text)
+    if root is None or _is_feed(text):
         return []
     data = text.encode("utf-8", "surrogatepass")
     # A part the Office or OpenDocument readers read is theirs: they join its runs already.
-    if _ODF_TEXT_NAMESPACE in data or _named_role(name) or _root_roles(data, budget):
+    if _odf_root(text, root) or _named_role(name) or _root_roles(data, budget):
         return []
-    plain = _loose_plain_xml(data, budget)
+    plain = _loose_plain_xml(data, budget, keep_used=True)
     if plain is data:
         return []
     pieces = _Pieces()

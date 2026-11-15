@@ -184,6 +184,39 @@ sections are still read through. The Office and OpenDocument readers still raise
 named Office part past the cap stays incomplete, as `test_a_look_at_the_root_never_ends_a_scan`
 requires.
 
+The fallback holds only when the text uses none of the entities the document declares. A feed
+or XML document whose text still refers to a declared entity is incomplete: a parser would
+expand that reference into the text, and this reading would not. For a feed this is the
+`6856994` outcome. For loose XML it is new: `6856994` read none of it and scanned such a file
+clean. The maintainer chose fail-closed after Codex's security review (section 5), so the
+DocBook case in `test_a_look_at_the_root_never_ends_a_scan` now keeps its 70 entities with
+none used (clean) and checks that the same file using `&e1;` is incomplete.
+
+## 5. Review findings on `0c818b9`
+
+The maintainer asked Codex to review `0c818b9`, and it left four findings. Each was reproduced
+with `scan_bytes(..., policy="agent-ingest")` from that commit's tree and fixed:
+
+| Finding | `0c818b9` | Fixed |
+| --- | --- | --- |
+| P1. A feed declaring 65 entities whose phrase is split by one of them (`pre&e0;ous`, `e0` = `vi`): the fallback dropped the incomplete status `6856994` gave it | clean | incomplete, `xml entities exceed 64`. The same feed with the 65 entities unused stays clean |
+| P2. `/ActualText` values were not charged to `MAX_PDF_DECODED_CHARS` (16 Mi characters), and decoding did not check the deadline | 17 Mi characters decoded; block on `raw` only | incomplete, `pdf decoded text exceeds character limit`. Each value's byte length is charged as it is collected, and the deadline is checked before each decode |
+| P2. An Atom end tag with white space before `>` (`</content >`, valid XML 1.0 production 42) was not found, and the loop stopped there | clean | block, `feed-text`; a construct with no end tag is passed over and the ones after it are still read |
+| P2. The OpenDocument text namespace anywhere in a document, a comment included, turned `xml-text` off | clean | block, `xml-text`; only a binding on the root's own start tag counts, as every LibreOffice part writes it |
+
+Codex's security review of `0c818b9` then reported the P1 shape for loose XML (Medium): a
+`pom.xml` declaring 65 entities and composing the phrase from one was clean in `xml-text`.
+`6856994` scanned it clean too, since it had no XML view, but `xml-text` now fails closed the
+same way feeds do, at the maintainer's choice. It is a probe case.
+
+The end-tag fix searches once per distinct element name. A name with no end tag is not searched
+again, and at most 32 names are searched (a feed writes one or two), so the pass stays linear.
+4 MiB of 102,509 openers, each with its own prefix and none closed, scans in 1.0 s; 4 MiB of
+constructs closed by `</x:content \n>` scans in 1.6 s. Each case is in
+[`probe_detection_gaps.py`](../research/probe_detection_gaps.py), which now passes 641 cases
+with 3 open. `pytest` passes again (1,164 passed, 5 skipped). The 2,761 XML, feed, and PDF
+files of the sweep were scanned again from the fixed tree: 0 changed against `6856994`.
+
 ## Sweep
 
 Each file was scanned under `default` and `agent-ingest` from `6856994`'s source tree and from
@@ -204,7 +237,7 @@ files in the set were scanned again from it. 0 changed against `6856994`.
 ## Timing
 
 4 MiB inputs built for the new code, timed with `scan_bytes` under `default`, on 4 cores with
-nothing else running. `check_worst_case_timing.py` was also run from this tree (below).
+nothing else running.
 
 | Input | `6856994` | This change |
 | --- | --- | --- |
@@ -219,10 +252,18 @@ nothing else running. `check_worst_case_timing.py` was also run from this tree (
 | PDF, 4 MiB content stream, `/ActualText` on every glyph, one value | 2.19 s | 2.13 s |
 | PDF, 5 MiB content stream, 69,000 distinct values | 1.90 s | 2.90 s, note `heuristic_pdf_text_unmapped` |
 
+`check_worst_case_timing.py` from this tree: PASS, 82 adversarial inputs of 4 MiB each. The
+scans summed to 156.4 s (158.6 s in [#244's record](2026-11-15-terminal-strings-html-tokens-feeds.md));
+the slowest was `pdf-font-readings-winansi.pdf` at 5.5 s, under the 10 s ceiling. The step
+took 3 min 50 s of wall time. No input was added to the tripwire.
+`scripts/record_pages_demo.py --baseline web-demo/recordings.json`: the outcomes match the
+reviewed recordings, so they were not re-recorded.
+
 
 ## Probe and checks
 
-- `docs/research/probe_detection_gaps.py --verify`: 637 cases pass, 3 open. Removed: the `OPEN`
+- `docs/research/probe_detection_gaps.py --verify`: 641 cases pass, 3 open (637 before the
+  review fixes in section 5). Removed: the `OPEN`
   marker on "xml that is not a feed, split by a comment". Added:
   - feeds and XML: CDATA, entity, and no-declaration splits; two benign twins; a 70-entity
     feed in its benign and attack forms; Atom `xhtml` plain and prefixed, and its benign twin;
@@ -239,7 +280,8 @@ nothing else running. `check_worst_case_timing.py` was also run from this tree (
 
 - **XML.** A phrase split by a child element in XML that is not rendered (`<v>Ign<x/>ore</v>`).
   `itertext()` joins it and `.text` does not, and no consumer reading was chosen.
-- **The entity cap.** A document past it whose phrase is split by an entity.
+- **The entity cap.** A document past it is incomplete when its text uses a declared entity,
+  so a benign XML file with more than 64 entities that uses one is held.
 - **Names.** XML under another name with no declaration.
 - **PDF.** `/ActualText` named from `/Properties`, and `/ActualText` on a structure element.
 - **Partial substitution.** A value that stands in for part of a sentence (`Ignore all

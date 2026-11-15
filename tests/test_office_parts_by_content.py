@@ -1021,14 +1021,19 @@ def test_a_look_at_the_root_never_ends_a_scan(rules_copy: Path) -> None:
     # "&", so its namespace is read through plain_xml, whose limit is not this file's.
     docbook = (
         f'<?xml version="1.0"?><!DOCTYPE article [{entities}]>'
-        '<article xmlns="http://docbook.org/ns/docbook" xml:id="a&amp;b"><para>&e1; notes'
+        '<article xmlns="http://docbook.org/ns/docbook" xml:id="a&amp;b"><para>Meeting notes'
         "</para></article>"
     )
     result = scan_bytes(docbook.encode(), name="article.xml", rules_dir=rules_copy)
     assert result.verdict.value == "clean" and result.incomplete_reason is None
+    # Text that uses one of the entities past the cap is not read as a parser would read it,
+    # so xml-text leaves the scan incomplete rather than pass it.
+    used = docbook.replace("<para>Meeting notes", "<para>&e1; notes")
+    held = scan_bytes(used.encode(), name="article.xml", rules_dir=rules_copy)
+    assert held.incomplete_reason == "xml entities exceed 64"
     assert roles("article.xml", docbook.encode(), budget()) == ()
     # The same DOCTYPE around a Word root under no usual name: no role, as before.
-    renamed = docbook.replace("http://docbook.org/ns/docbook", WORD_NS)
+    renamed = used.replace("http://docbook.org/ns/docbook", WORD_NS)
     assert roles("word/other.xml", renamed.encode(), budget()) == ()
     # In a part the readers read by its name, the limit stands.
     named = scan_bytes(package({"word/document.xml": renamed}), name="a.docx", rules_dir=rules_copy)
