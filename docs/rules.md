@@ -605,6 +605,12 @@ UTF-16. A browser shows a windows-1251 page as Cyrillic, so a phrase written in 
 reaches the multilingual rule; read as UTF-8 its letters were U+FFFD. The bytes as written
 are still scanned raw.
 
+The UTF-8 reading is scanned as well, with the same checks and views it had before. A
+consumer that ignores the declaration decodes UTF-8, so a meta and one stray byte must not
+hide what that reading shows: tag characters, joiners, a fullwidth or UTF-8 phrase. A rule
+both readings find in one view is one finding. This doubles the text work for a declared
+file that is not UTF-8 (4 MiB of HTML comments: 3.2 s on `f54c57e`, 7.5 s here).
+
 The declaration is found the way Chromium finds it:
 
 - A `meta` with `charset`, or with `http-equiv="content-type"` and a `content` that names a

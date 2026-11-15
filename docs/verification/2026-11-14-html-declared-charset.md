@@ -179,6 +179,46 @@ and 6.40 s. No input was added to that step: its five-minute limit is already th
 | `pytest tests/test_scanner.py tests/test_filetype.py -k "utf16 or legacy or stray or mail or charset or joiner or html or text_views or json"` | 67 passed |
 | Ruff check and format, `mypy --strict src scripts`, `check_text_controls.py`, `check_doc_links.py` | Pass |
 
+## Review: the UTF-8 reading kept beside the charset's
+
+Codex's security review of `ac17d97` found that a meta plus one invalid byte chose the
+charset for every check, so a reading a UTF-8 consumer shows went unscanned. Reproduced
+under `agent-ingest` with the tag-smuggling sample (`samples.tag_smuggled_markdown`):
+
+| Input | `f54c57e` | `ac17d97` | This change |
+| --- | --- | --- | --- |
+| The sample, `notes.md` | block, `heuristic_unicode_tag` | block | block |
+| `<meta charset=windows-1251>` + the sample + `\xff`, as `notes.md` | block | **clean** | block |
+| The same as `notes.txt` | block | **clean** | block |
+| The same inside an HTML page | block | **clean** | block |
+| The sample + `\xff`, no meta | block | block | block |
+
+Restricting the meta to HTML names, Codex's first suggestion, would not close it: the HTML
+page regressed too. The second is what changed. When the reading is `decoded-charset`, the
+UTF-8 reading (`utf8-replaced`, or `raw` for an ISO-2022-JP page) also runs the control
+checks, every text view, the piece views, and the hidden-HTML reader, and a rule both
+readings find in one view is reported once. The probe's `charset` group gains five cases
+(tag characters in Markdown and in HTML, a fullwidth phrase, a UTF-8 Russian phrase, and the
+benign page): `ac17d97` misses three, `f54c57e` and this change hold all five. The gap probe
+passes (569 cases ok, B3 and B5 still open), and so does `probe_rule_coverage.py --verify`.
+
+A shortcut that skips the UTF-8 reading when it holds only ASCII and U+FFFD was weighed and
+not taken: under a multibyte codec a lead byte takes the ASCII byte after it, so an entity
+the UTF-8 reading unescapes can be gone from the charset's. Both readings are always
+scanned, which costs a declared file that is not UTF-8 its text work twice:
+
+| 4 MiB declared windows-1251 page | `f54c57e` | `ac17d97` | This change |
+| --- | --- | --- | --- |
+| Paragraphs with cp1251 words | 1.91 s | 2.05 s | 3.99 s |
+| HTML comments around stray bytes | 3.16 s | 3.99 s | 7.52 s |
+| Base64-like runs around stray bytes | 2.23 s | 2.34 s | 4.54 s |
+
+Each is clean on all three, inside the 30 s scan deadline; none is a CI timing input.
+
+The benign sets of section 5 were scanned again with this change against `f54c57e`: 0
+verdict, rule-set, or finding-view changes on the 4,156 installed paths and on the 76
+meta-restored pages.
+
 ## Not established
 
 - Firefox and Safari were not run. The HTML standard's "change the encoding" step lets a
