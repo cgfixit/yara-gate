@@ -3205,6 +3205,43 @@ _HTML_TOKEN = re.compile(
     r"<!--|<(/?)([A-Za-z][A-Za-z0-9:-]{0,64})\b" + _HTML_ATTRIBUTES + r">|<[!?][^<>]{0,4096}>"
     r"|[^<]+|(?:<(?![A-Za-z/!?]))+[^<]*|<"
 )
+# The same tokens as the WHATWG tokenizer reads them, for a second reading of the text. A tag
+# name runs to white space, a slash, or >, at any length and in any characters; an attribute may
+# hold < and any length of value; a quoted value runs to its closing quote, and a tag that never
+# closes runs to the end of the file, which hides the rest (eof-in-tag). </> is dropped, and </
+# before anything but a letter, <!, and <? open a bogus comment that ends at the first >.
+# Comments are ended in code (_whatwg_comment_end). Possessive throughout, and each token ends
+# at a fixed character or at the end, so the pass is linear.
+_WHATWG_NAME = r"(?:=[^\t\n\f\r />=]*+|[^\t\n\f\r />=]++)"
+_WHATWG_VALUE = r"""(?:"[^"]*+(?:"|\Z)|'[^']*+(?:'|\Z)|[^\t\n\f\r >]*+)"""
+_WHATWG_ATTRIBUTES = (
+    rf"(?:[\t\n\f\r /]++|{_WHATWG_NAME}(?:[\t\n\f\r ]*+=[\t\n\f\r ]*+{_WHATWG_VALUE})?)*+"
+)
+_WHATWG_TOKEN = re.compile(
+    r"<!--|<(/?)([A-Za-z][^\t\n\f\r />]*+)" + _WHATWG_ATTRIBUTES + r"(?:>|\Z)"
+    r"|</>|</[^A-Za-z>][^>]*+(?:>|\Z)|<[!?][^>]*+(?:>|\Z)|[^<]++|<"
+)
+
+
+def _whatwg_comment_end(text: str, position: int) -> int:
+    """Where a comment opened by the ``<!--`` that ends at ``position`` ends, as WHATWG reads it.
+
+    ``<!-->`` and ``<!--->`` are empty comments, and ``--!>`` closes a comment as ``-->`` does;
+    an unclosed comment runs to the end. The second search stops at the first ``-->``, so each
+    comment is searched once.
+    """
+    if text.startswith(">", position):
+        return position + 1
+    if text.startswith("->", position):
+        return position + 2
+    close = text.find("-->", position)
+    limit = len(text) if close < 0 else close
+    bang = text.find("--!>", position, limit + 3)
+    if bang >= 0 and (close < 0 or bang < close):
+        return bang + 4
+    return len(text) if close < 0 else close + 3
+
+
 # Elements whose body is not markup: script and style are not shown, and a textarea or title
 # shows its body as written, so a <script> or <b> inside one is text, never a tag.
 _HTML_RAW_TEXT = {
@@ -3338,10 +3375,30 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     never joined. One linear pass with bounded tags; this is lexical text extraction, not
     computed visibility, sanitization, or script execution. SVG tspan/textPath are inline;
     separate text elements stay separate. SVG positioning and CSS are not interpreted.
+
+    The text is read twice: once with the bounded tokens above, and once as the WHATWG
+    tokenizer reads markup a browser discards (``<!-->``, ``--!>``, ``</>``, ``<!a<b>``, a tag
+    name of any length or spelling, a tag holding ``<``). Chromium and pandoc show a sentence
+    split by any of these whole. A block of the second reading is added where the first does not
+    have it, so every block the first reading gives is kept.
     """
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     if suffix not in _HTML_SUFFIXES and not _opens_as_html(text[:8192]):
         return []
+    blocks = _html_blocks(text, budget, whatwg=False)
+    seen = set(blocks)
+    for block in _html_blocks(text, budget, whatwg=True):
+        if block not in seen:
+            if len(blocks) >= MAX_TEXT_PIECES:
+                raise ContentLimit("text pieces exceed 100000")
+            seen.add(block)
+            blocks.append(block)
+    return blocks
+
+
+def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
+    """The blocks of :func:`html_text_blocks`, read with one of its two tokenizers."""
+    token = _WHATWG_TOKEN if whatwg else _HTML_TOKEN
     blocks: list[str] = []
     parts: list[str] = []
     segments = 0
@@ -3374,19 +3431,28 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
                 segments += 1
             parts.append(piece)
             continue
-        match = _HTML_TOKEN.match(text, position)
+        match = token.match(text, position)
         if match is None:  # pragma: no cover - the last alternative matches any character
             break
         lexeme = match.group()
         position = match.end()
         if lexeme == "<!--":
             # A comment hides its text and splits the run it sits in; unclosed, it runs to the end.
+            if whatwg:
+                position = _whatwg_comment_end(text, position)
+                continue
             close = text.find("-->", position)
             position = len(text) if close < 0 else close + 3
+            continue
+        if whatwg and lexeme.startswith(("<!", "<?", "</")) and not match.group(2):
+            # A bogus comment, a declaration, or </>: nothing shown.
             continue
         if lexeme.startswith(("<!", "<?")) and lexeme.endswith(">"):
             continue
         tag = (match.group(2) or "").lower()
+        if whatwg and tag and not lexeme.endswith(">"):
+            # eof-in-tag: a tag that never closes takes the rest of the file with it.
+            break
         if tag:
             if tag == "svg" and not lexeme.endswith("/>"):
                 svg_depth = max(0, svg_depth + (-1 if match.group(1) else 1))
