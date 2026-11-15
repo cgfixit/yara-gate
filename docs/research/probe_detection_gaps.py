@@ -4750,8 +4750,15 @@ def pdf_string_cases() -> list[Case]:
     def octal(text: str) -> bytes:
         return b"(" + b"".join(b"\\%03o" % c for c in text.encode("latin-1")) + b")"
 
-    def document(*, info: bytes = b"", field: bytes = b"", outline: bytes = b"") -> bytes:
-        """An invoice page, with a text field's ``/V``, an Info dictionary, or an outline."""
+    def document(
+        *,
+        info: bytes = b"",
+        field: bytes = b"",
+        outline: bytes = b"",
+        extra: dict[int, bytes] | None = None,
+    ) -> bytes:
+        """An invoice page, with a text field's ``/V``, an Info dictionary, an outline, and
+        ``extra`` objects (numbered 10 and up) for a value to refer to."""
         catalog = b"<< /Type /Catalog /Pages 2 0 R"
         annots = b""
         objects = {
@@ -4772,6 +4779,7 @@ def pdf_string_cases() -> list[Case]:
             catalog += b" /Outlines 7 0 R"
         if info:
             objects[9] = b"<< " + info + b" >>"
+        objects.update(extra or {})
         objects[1] = catalog + b" >>"
         objects[3] = (
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
@@ -4805,6 +4813,29 @@ def pdf_string_cases() -> list[Case]:
         ),
         case("pdf form value as UTF-16BE hex", document(field=utf16(PHRASE))),
         case("pdf form value as octal escapes", document(field=octal(PHRASE))),
+        # A multiple-selection choice field's /V may refer to an array of its options, each a
+        # string or a reference to one; pypdf reads both. The array past the 4 KB object
+        # window is read whole, from the same pass as the dictionaries.
+        case(
+            "pdf choice field value as a referenced array",
+            document(field=b"10 0 R", extra={10: b"[" + utf16("Option A") + utf16(PHRASE) + b"]"}),
+        ),
+        case(
+            "pdf choice field value as a referenced array past 4 KB",
+            document(
+                field=b"10 0 R",
+                extra={10: b"[" + b" ".join([b"(x)"] * 2000) + b" " + utf16(PHRASE) + b"]"},
+            ),
+        ),
+        case(
+            "pdf choice field value as a referenced array of references",
+            document(field=b"10 0 R", extra={10: b"[11 0 R]", 11: utf16(PHRASE)}),
+        ),
+        case(
+            "pdf choice field value as a referenced array, ordinary text (benign)",
+            document(field=b"10 0 R", extra={10: b"[" + utf16(twin) + b"]"}),
+            "clean",
+        ),
         case(
             "pdf form value as UTF-16BE hex, ordinary text (benign)",
             document(field=utf16(twin)),

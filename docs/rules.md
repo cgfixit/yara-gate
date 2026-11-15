@@ -389,7 +389,8 @@ shared deadline and expansion budget. See [verification](verification/2026-11-07
 
 `pdf-string` reads the other text strings a PDF reader shows ([#239](https://github.com/cgfixit/yara-gate/issues/239)):
 a form field's value (`/V` in a dictionary that is a widget or carries `/FT`, `/T`,
-`/Parent`, or `/Kids`, including each string of a choice field's array), the document
+`/Parent`, or `/Kids`, including each string of a choice field's array, written in place
+or in an array object of its own whose items may each be a reference), the document
 information strings (`/Title`, `/Author`, `/Subject`, `/Keywords`, `/Creator`,
 `/Producer`), and an outline item's `/Title`. pypdf and PyMuPDF show each of these, and
 pdfinfo shows the information strings. They come from the same pass, and every
@@ -405,7 +406,9 @@ as U+FFFD. Nearly every PDF has an information dictionary, so an odd byte from a
 never makes this view incomplete. A value that is not a text string (a check box's
 name, a signature dictionary, a reference to a missing object) is passed over: a reader
 shows no text for it. A string over 1 MiB, a malformed literal, and more than 100,000
-pieces across both views are incomplete, under the same reasons as annotations.
+pieces across both views are incomplete, under the same reasons as annotations. An array
+object over 100,000 tokens is incomplete (`pdf string array exceeds 100000 tokens`) only
+when a value refers to it.
 
 The view reaches the existing rules and adds no rule or severity. Rich text (`/RV`,
 `/RC`), a field's default value (`/DV`), its tooltip (`/TU`), the options of a choice

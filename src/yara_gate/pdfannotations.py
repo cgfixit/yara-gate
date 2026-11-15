@@ -206,21 +206,59 @@ def _annotation(value: dict[bytes, PdfValue]) -> bool:
     )
 
 
+# An array object kept for a shown value that refers to it; past this many tokens it is kept
+# as None, and only a reference to it from a shown value makes the scan incomplete.
+_MAX_ARRAY_TOKENS = 100_000
+Arrays = dict[tuple[int, int], list[list[bytes] | None]]
+
+
+class _ArrayCapture:
+    """The tokens of one array object, from its opening ``[`` to the matching ``]``."""
+
+    def __init__(self) -> None:
+        self.tokens: list[bytes] | None = []
+        self.depth = 0
+
+    def feed(self, token: bytes) -> bool:
+        """Take one token; True once the array has closed."""
+        if token == b"[":
+            self.depth += 1
+            if self.depth == 1:
+                return False
+        elif token == b"]":
+            self.depth -= 1
+            if self.depth == 0:
+                return True
+        if self.tokens is not None:
+            self.tokens.append(token)
+            if len(self.tokens) > _MAX_ARRAY_TOKENS:
+                self.tokens = None
+        return False
+
+
 def _dictionaries(
     data: bytes,
     objects: PdfObjects,
     budget: Budget,
     strings: dict[tuple[int, int], list[bytes]] | None = None,
     spans: list[tuple[int, int]] | None = None,
+    arrays: Arrays | None = None,
 ) -> Iterator[dict[bytes, PdfValue]]:
     tokens: list[bytes] = []
     depth = 0
     previous: list[bytes] = []
     key: tuple[int, int] | None = None
+    capture: tuple[tuple[int, int], _ArrayCapture] | None = None
     for token, _ in _tokens(data, budget, objects, spans):
+        if capture is not None and arrays is not None and capture[1].feed(token):
+            arrays.setdefault(capture[0], []).append(capture[1].tokens)
+            capture = None
         if strings is not None and not depth:
             if key is not None:
                 strings.setdefault(key, []).append(token)
+                if token == b"[" and arrays is not None and capture is None:
+                    capture = (key, _ArrayCapture())
+                    capture[1].feed(token)
                 key = None
                 if len(strings) > MAX_TEXT_PIECES:
                     raise ContentLimit("pdf annotation objects exceed 100000")
@@ -335,6 +373,30 @@ def _shown_values(entry: dict[bytes, PdfValue]) -> Iterator[PdfValue]:
             yield value
 
 
+def _array_items(
+    definitions: list[list[bytes] | None], strings: dict[tuple[int, int], list[bytes]]
+) -> Iterator[bytes]:
+    for tokens in definitions:
+        if tokens is None:
+            raise ContentLimit("pdf string array exceeds 100000 tokens")
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if (
+                index + 2 < len(tokens)
+                and token.isdigit()
+                and tokens[index + 1].isdigit()
+                and tokens[index + 2] == b"R"
+                and len(token) <= 32
+                and len(tokens[index + 1]) <= 32
+            ):
+                yield from strings.get((int(token), int(tokens[index + 1])), [])
+                index += 3
+                continue
+            yield token
+            index += 1
+
+
 def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
     return pdf_string_texts(data, objects, budget)[0]
 
@@ -375,14 +437,22 @@ def pdf_string_texts(
         if len(lengths) >= MAX_PDF_STREAMS:
             break
     objects.prime(lengths)
-    collect(_dictionaries(data, objects, budget, strings, spans))
+    arrays: Arrays = {}
+    collect(_dictionaries(data, objects, budget, strings, spans, arrays))
     _reject_headers_inside(data, spans)
     _reject_xref_inside(data, spans, budget, objects.decoded)
     for number, source in objects.stream_members():
         body = bytes(source)
-        strings.setdefault((number, 0), []).append(next(_tokens(body, budget), (b"", 0))[0])
+        first = next(_tokens(body, budget), (b"", 0))[0]
+        strings.setdefault((number, 0), []).append(first)
         if len(strings) > MAX_TEXT_PIECES:
             raise ContentLimit("pdf annotation objects exceed 100000")
+        if first == b"[":
+            member = _ArrayCapture()
+            for token, _ in _tokens(body, budget):
+                if member.feed(token):
+                    break
+            arrays.setdefault((number, 0), []).append(member.tokens)
         collect(_dictionaries(body, objects, budget))
     size = 0
 
@@ -417,6 +487,10 @@ def pdf_string_texts(
         budget.check()
         # Every definition of a referenced object, as for /Contents.
         found: Sequence[PdfValue] = strings.get(value, []) if isinstance(value, tuple) else [value]
+        if isinstance(value, tuple):
+            # A choice field's /V may refer to an array of its chosen options, and each
+            # option may itself be a reference to a string (pypdf reads both).
+            found = [*found, *_array_items(arrays.get(value, []), strings)]
         for item in found:
             if isinstance(item, bytes) and item[:1] in (b"(", b"<") and item[:2] != b"<<":
                 append(texts, _shown_text(item))

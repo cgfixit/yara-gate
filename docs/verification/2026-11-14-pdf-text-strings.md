@@ -38,7 +38,8 @@ outline on both revisions. Under `default` the verdicts are the same: the phrase
 definitions, as annotation `/Contents`, and the scanner reads them as `pdf-string`:
 
 - A form field's `/V`, in a dictionary that is a widget or carries `/FT`, `/T`, `/Parent`, or
-  `/Kids`, and each string of a choice field's array.
+  `/Kids`, and each string of a choice field's array, written in place or in an array object
+  of its own whose items may each be a reference.
 - `/Title`, `/Author`, `/Subject`, `/Keywords`, `/Creator`, and `/Producer` in any dictionary:
   the information dictionary, and the `/Title` of every outline item.
 
@@ -65,7 +66,7 @@ both readers; before, `bytes.split` kept it and `bytes.fromhex` raised.
 
 Each string, and each blank-line paragraph inside one, is a piece, folded as
 `pdf-string+text-folded` where the spelling changes. No rule, severity, or policy changes. The
-gap probe has a `strings` group: 14 cases, 6 of which miss on `f54c57e`.
+gap probe has a `strings` group: 18 cases, 9 of which miss on `f54c57e`.
 
 ## Benign files, `f54c57e` against this change
 
@@ -111,7 +112,32 @@ Other shapes, timed once each at 4 MiB under `default` (`f54c57e`, then this cha
 The two incompletes are the existing caps, under the existing reason strings: a 1 MiB
 title or more than 100,000 strings is not a document a reader opens.
 
-## What was run
+## Review: a choice field's value in an array object
+
+Codex's review of `16f1ecc` found that a multiple-selection choice field whose `/V` is a
+reference to an array (`/V 10 0 R`, object 10 `[<FEFF...> <FEFF...>]`) was not read: the
+reference resolved to its first token, `[`, which is not a text string. pypdf 7.1.0 shows
+the array's strings as the field's value. Reproduced on `16f1ecc` (each clean) and fixed:
+
+| Fixture | pypdf | `16f1ecc` | This change |
+| --- | --- | --- | --- |
+| `/V` refers to `[<FEFF Option A> <FEFF phrase>]` | both options | clean | advisory, `pdf-string` |
+| The same array padded past the 4 KB object window | every option | clean | advisory |
+| `/V` refers to `[11 0 R]`, object 11 the phrase | the reference | clean | advisory |
+| Each of the two above, written again by qpdf with object streams | as above | clean | advisory |
+| `/Title` refers to an array holding the phrase | the array | clean | advisory |
+| The array holding the benign twin | the option | clean | clean |
+| An array of 150,000 tokens a `/V` refers to | n/a | clean | incomplete, `pdf string array exceeds 100000 tokens` |
+| An array of 150,000 tokens nothing refers to | n/a | clean | clean |
+
+Each array object is kept from the same pass over the file (and over each object-stream
+member) as the dictionaries, so the 4 KB window an object lookup reads does not cut it short.
+A reference inside the array is resolved one level, through the same indirect strings.
+4 MiB of one array object, of numbers or of strings, costs the same on `f54c57e` and here
+(3.6 s and 3.5 s, incomplete at the existing 4,000,000-token cap; 2.1 s and 2.1 s, clean).
+The 3,567 benign PDFs, scanned again with the fix under both policies, gave the same
+verdict, reason, and findings for every file as the first sweep of this change.
+
 
 - The fixtures and edge cases above, with pypdf, PyMuPDF, and pdfinfo as readers and the gate
   on both trees.
