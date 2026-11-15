@@ -306,6 +306,7 @@
       "ooxml-text": "the joined text of an Office document, read as an XML parser hands it on",
       "odf-text": "the joined paragraphs of an OpenDocument file",
       "ooxml-cell": "one spreadsheet cell with its rich-text runs rejoined",
+      "ooxml-header": "one section of a spreadsheet page header or footer, codes removed",
       "ooxml-comment": "one Office comment with its text runs rejoined",
       "ooxml-hidden-text": "Office text a reader does not show (hidden, white, or 1 pt)",
       "pdf-annotation": "one PDF annotation with its text string decoded",
@@ -351,7 +352,7 @@
       rebuilt: "Split across formatting", decoded: "Encoded", container: "Inside an archive or message",
       structure: "File structure", pattern: "Plain pattern"
     };
-    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-comment", "html-text", "feed-text", "xml-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
+    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-header", "ooxml-comment", "html-text", "feed-text", "xml-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
     function methodsOf(findings) {
       const tags = new Set();
       // A rule that already matched the bytes as sent needed no derived view.

@@ -31,6 +31,7 @@ from yara_gate.content import (
     notebook_texts,
     ooxml_cell_texts,
     ooxml_comment_texts,
+    ooxml_header_texts,
     ooxml_hidden_texts,
     ooxml_text_views,
     pdf_streams,
@@ -82,7 +83,7 @@ from yara_gate.models import (
     result_from_findings,
 )
 from yara_gate.odftext import odf_text_views
-from yara_gate.pdfannotations import pdf_string_texts, shown_string
+from yara_gate.pdfannotations import PdfStrings, pdf_string_texts, shown_string
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
@@ -439,9 +440,10 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
-            findings.extend(
-                _pdf_text_findings(rules, unit, streams, pdf_objects, budget, yara, ext, base)
+            text_findings, strings = _pdf_text_findings(
+                rules, unit, streams, pdf_objects, budget, yara, ext, base
             )
+            findings.extend(text_findings)
             findings.extend(
                 _hidden_text_findings(
                     rules,
@@ -484,11 +486,14 @@ def _scan_file(
             pieces += _with_folded_pieces(
                 "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
             )
+            # A worksheet's page header or footer, one section at a time.
+            pieces += _with_folded_pieces(
+                "ooxml-header", ooxml_header_texts(unit.name, unit.data, budget), budget
+            )
             pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
-            annotations, strings = pdf_string_texts(unit.data, pdf_objects, budget)
-            pieces += _with_folded_pieces("pdf-annotation", annotations, budget)
+            pieces += _with_folded_pieces("pdf-annotation", strings.annotations, budget)
             # A form field's value, a document information string, and an outline title.
-            pieces += _with_folded_pieces("pdf-string", strings, budget)
+            pieces += _with_folded_pieces("pdf-string", strings.shown, budget)
             # Both readings' pieces share their views, so a rule is reported once per view.
             for reading, _ in readings:
                 pieces += _with_folded_pieces(
@@ -605,9 +610,12 @@ def _pdf_text_findings(
     yara: Callable[..., list[Finding]],
     ext: str,
     name: str,
-) -> list[Finding]:
+) -> tuple[list[Finding], PdfStrings]:
     """Scan the text a reader sees: each text block (``pdf-text``), then each paragraph that
     spans blocks (``pdf-paragraph``), including each piece's folded spelling when different.
+    Marked content's /ActualText (``pdf-actual-text``) is read from the content streams and
+    from property lists written as objects, as one view. The file's other text strings are
+    returned for the caller to scan.
 
     A block is one text object's strings, cut at a paragraph break, so a phrase cannot be
     assembled from two paragraphs. A paragraph view exists only when a word in bold or a
@@ -617,6 +625,7 @@ def _pdf_text_findings(
     ``heuristic_pdf_text_unmapped``.
     """
     text = pdf_text(unit.data, streams, objects, budget)
+    strings = pdf_string_texts(unit.data, objects, budget)
     extra: list[Finding] = []
     if text.unmapped:
         extra.append(
@@ -639,6 +648,8 @@ def _pdf_text_findings(
         budget.check()
         if (value := shown_string(raw)).strip():
             actual.append(value)
+    # A property list a page names from its /Properties (``/Span /MC0 BDC``) is an object.
+    actual = list(dict.fromkeys([*actual, *strings.actual]))
     if actual:
         pieces += [
             ("pdf-actual-text", actual),
@@ -648,7 +659,7 @@ def _pdf_text_findings(
     hidden = _hidden_text_findings(
         rules, unit, "pdf-hidden-text", text.hidden, budget, yara, ext, name
     )
-    return found + hidden
+    return found + hidden, strings
 
 
 # Rules that match invisible characters by their UTF-8 bytes: the Unicode-control notes and the

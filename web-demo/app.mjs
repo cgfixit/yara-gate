@@ -29,6 +29,7 @@ const viewNames = {
   'ooxml-text': 'the joined text of an Office document, read as an XML parser hands it on',
   'odf-text': 'the joined paragraphs of an OpenDocument file',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
+  'ooxml-header': 'one section of a spreadsheet page header or footer, codes removed',
   'ooxml-comment': 'one Office comment with its text runs rejoined',
   'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
   'pdf-hidden-text': 'PDF text a viewer does not paint (invisible mode, white, tiny, or off the page)',
@@ -82,7 +83,7 @@ const methodDetail = {
   structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
   pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
-const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'feed-text', 'xml-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
+const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-header', 'ooxml-comment', 'html-text', 'feed-text', 'xml-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
   const findings = item.results['agent-ingest'].findings;
   const tags = new Set();
