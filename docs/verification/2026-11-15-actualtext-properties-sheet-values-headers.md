@@ -239,8 +239,10 @@ not re-recorded.
   `measure_precision.py --fail-over` (328 files, 0 incomplete), `check_text_controls.py`, and
   `check_doc_links.py` pass.
 - Ruff, `ruff format --check`, and `mypy --strict src scripts` are clean.
-- `pytest tests/test_pdfannotations.py tests/test_pdfxref.py
-  tests/test_office_parts_by_content.py tests/test_demo.py`: 253 passed. The full suite was
+- `pytest tests/test_pdfannotations.py tests/test_pdfxref.py tests/test_pdftext.py
+  tests/test_office_parts_by_content.py tests/test_demo.py`: 502 passed. Hosted CI ran the full
+  suite first and caught one test that called `_pdf_text_findings` with no `PdfObjects`; it
+  now passes real ones and unpacks the returned strings. The full suite was
   left to hosted CI.
 
 ## Boundaries left
