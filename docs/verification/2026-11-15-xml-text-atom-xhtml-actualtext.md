@@ -204,7 +204,7 @@ files in the set were scanned again from it. 0 changed against `6856994`.
 ## Timing
 
 4 MiB inputs built for the new code, timed with `scan_bytes` under `default`, on 4 cores with
-nothing else running. `check_worst_case_timing.py` was also run from this tree (below).
+nothing else running.
 
 | Input | `6856994` | This change |
 | --- | --- | --- |
@@ -218,6 +218,13 @@ nothing else running. `check_worst_case_timing.py` was also run from this tree (
 | Atom, `content` tags without a `type` | 0.56 s | 0.59 s |
 | PDF, 4 MiB content stream, `/ActualText` on every glyph, one value | 2.19 s | 2.13 s |
 | PDF, 5 MiB content stream, 69,000 distinct values | 1.90 s | 2.90 s, note `heuristic_pdf_text_unmapped` |
+
+`check_worst_case_timing.py` from this tree: PASS, 82 adversarial inputs of 4 MiB each. The
+scans summed to 156.4 s (158.6 s in [#244's record](2026-11-15-terminal-strings-html-tokens-feeds.md));
+the slowest was `pdf-font-readings-winansi.pdf` at 5.5 s, under the 10 s ceiling. The step
+took 3 min 50 s of wall time. No input was added to the tripwire.
+`scripts/record_pages_demo.py --baseline web-demo/recordings.json`: the outcomes match the
+reviewed recordings, so they were not re-recorded.
 
 
 ## Probe and checks
