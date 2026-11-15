@@ -35,7 +35,8 @@ from the recordings themselves, the attacks `agent-ingest` held, the twins that
 were clean under every policy, the findings on twins across every policy recording
 (zero in the committed baseline), and the unfinished scans that stayed incomplete.
 The limits section separately gives an example of coverage the PDF reader does
-not provide, LZW-compressed page streams. The scoreboard counts recorded cases.
+not provide: page streams under a filter it cannot decode, which it reports as the
+note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases.
 A strip under the scoreboard shows every pair at once, the attack above its twin,
 marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without

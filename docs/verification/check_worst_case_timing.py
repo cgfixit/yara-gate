@@ -585,6 +585,9 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     yield "pdf-lzw-content.pdf", _filtered_pdf(_lzw_codes(2 * 1024 * 1024), b"/LZWDecode"), None
     runs = b"\x00B" * ((4 * 1024 * 1024 - 400) // 2)
     yield "pdf-run-length-content.pdf", _filtered_pdf(runs, b"/RunLengthDecode"), None
+    # Page content under a filter no view decodes, beside array objects that /Contents names and
+    # that fill the file, so marking it unread reads every array and every reference in them.
+    yield "pdf-unread-content.pdf", _unread_pdf(), None
     # YAML and TOML strings: a short escaped string over and over, one piece each, until the
     # piece cap; and openers that each start nothing (an apostrophe, a "#" after a letter).
     yield "config-escapes.yml", _filled(b"", b'- "\\x41"\n'), "text pieces exceed 100000"
@@ -675,6 +678,22 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         head = opening + b"Content-Transfer-Encoding: " + encoding + b"\r\n\r\n"
         count, rest = divmod(SIZE - len(head) - 160001, len(token))
         yield name, head + token * count + b"-" + b"a" * (160000 + rest), reason
+
+
+def _unread_pdf() -> bytes:
+    """A 4 MiB PDF: one JPXDecode content stream, then array objects of 9,000 references each,
+    every one named by a /Contents entry of the page."""
+    stream = b"5 0 obj<</Length 1/Filter/JPXDecode>>stream\nx\nendstream endobj\n"
+    array = b"[" + b"1 0 R " * 9000 + b"]"
+    count = (SIZE - 400_000) // (len(array) + 24)
+    arrays = b"".join(b"%d 0 obj%sendobj\n" % (10 + index, array) for index in range(count))
+    names = b"".join(b"/Contents %d 0 R" % (10 + index) for index in range(count))
+    head = b"%PDF-1.7\n1 0 obj<</Type/Page" + names + b"/Contents 5 0 R>>endobj\n"
+    body = head + stream + arrays
+    pad = SIZE - len(body) - len(b"%%EOF\n")
+    if pad < 2:
+        raise RuntimeError("unread content does not fit")
+    return body + b"%" + b" " * (pad - 2) + b"\n%%EOF\n"
 
 
 def _filtered_pdf(stream: bytes, name: bytes) -> bytes:

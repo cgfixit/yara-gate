@@ -107,6 +107,10 @@ class ScanResult(_Dumpable):
     views_scanned: dict[str, int] = field(default_factory=dict)
     bytes_scanned: int = 0
     yara_seconds: float | None = None
+    # PDF page-content streams no view could decode, by the filter that kept each unread
+    # (``LZWDecode``, ``DCTDecode``, ... or ``other``; never a name taken from the file).
+    # Each one is also the note ``heuristic_pdf_content_unread``. Counts only.
+    pdf_content_unread: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.verdict = Verdict(self.verdict)
