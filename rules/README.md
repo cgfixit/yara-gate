@@ -9,8 +9,8 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 
 | Path | Purpose |
 | --- | --- |
-| [`local/`](local/) | 88 shipped YARA rules in 58 `.yar`/`.yara` files: 76 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
-| [`templates/`](templates/) | Sources of the three generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the word lists and the word separator they share. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
+| [`local/`](local/) | 89 shipped YARA rules in 59 `.yar`/`.yara` files: 77 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`templates/`](templates/) | Sources of the generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the shared word lists and regular-expression fragments. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
 | [`rules.lock`](rules.lock) | Pinned URLs, revisions, and SHA-256 values for YARA Forge core, signature-base, and Elastic protections-artifacts. A lock does not install the bodies. |
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
 | `vendor/` (downloaded, untracked) | Rule bodies installed by `setup` or the network-authorized install/update commands; omitted from wheels. |
@@ -38,7 +38,9 @@ or repairs vendor state. See [installation and operation](../user-guide.md) and
 ## Generated rule files
 
 `agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`, and
-`agent_hidden_html.yar` are rendered from [`templates/`](templates/). The words an order is
+`agent_hidden_html.yar`, and `agent_model_addressed_instruction.yar` are rendered from
+[`templates/`](templates/). The model-addressed rule shares a boundary pattern for
+plain text and HTML. The words an order is
 built from, the separator between words, the hiding cues, and the phrases read after a cue
 are each written once, in [`fragments.toml`](templates/fragments.toml). A template is the
 rule file with `{{name}}` where a fragment goes; `{{lazy name}}` gives the non-greedy copy

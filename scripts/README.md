@@ -4,7 +4,7 @@ Run these from the repository root.
 
 ## Rule files
 
-- [`generate_rules.py`](generate_rules.py) renders the three generated rule files in `rules/local/` from [`rules/templates/`](../rules/templates/): a template per file and one `fragments.toml` of word lists and the word separator. `--check` writes nothing and exits 1 when a generated file is stale; [`lint_rules.py`](../docs/verification/lint_rules.py) runs the same check in CI. See [generated rule files](../rules/README.md#generated-rule-files).
+- [`generate_rules.py`](generate_rules.py) renders the generated rule files in `rules/local/` from [`rules/templates/`](../rules/templates/): a template per file and one `fragments.toml` of word lists and shared regex fragments. `--check` writes nothing and exits 1 when a generated file is stale; [`lint_rules.py`](../docs/verification/lint_rules.py) runs the same check in CI. See [generated rule files](../rules/README.md#generated-rule-files).
 
 ## Demo build and deployment
 
