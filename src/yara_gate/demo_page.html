@@ -455,7 +455,7 @@
         $("sample").append(group);
       }
       const pairs = catalog.cases.filter((item) => item.kind === "detection").length;
-      $("sample-count").textContent = pairs + " attack and benign-twin pairs, plus " + catalog.cases.filter((item) => item.kind === "failure").length + " fail-closed cases. The public replay records the same catalog.";
+      $("sample-count").textContent = pairs + " attack and benign-twin pairs, plus " + catalog.cases.filter((item) => item.kind === "failure").length + " fail-closed cases. The public replay records these pairs and adds a broken-rule failure.";
       $("sample").value = presets[0][0];
     }
     function describeSample() {
@@ -482,7 +482,7 @@
           $("policy-help").textContent = policyHelp["agent-ingest"];
           $("workflow-context").textContent = "Fictional task · " + context;
           $("workflow-context").hidden = false;
-          clearResult("Workflow selected. Scan the pair to compare the attack with its benign twin.");
+          clearResult("Workflow selected. Scan the sample, or compare its pair when one is available.");
         });
       }
     }
