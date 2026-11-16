@@ -330,6 +330,7 @@
     const folded = "+text-folded";
     // Fictional context only. The decision always comes from scanning the fixed sample.
     const presets = [
+      ["vendor_feed_ranking", "Vendor comparison", "Procurement: shortlist vendors by published support and renewal terms. Both Northbridge feeds claim a four-hour response and a February renewal. Compare the model-directed ranking request with a request to compare published hours."],
       ["xlsx_comment_override", "Supplier review", "Procurement: summarize review.xlsx from supplier@example.invalid. Compare a directive split across comment runs with an ordinary review comment."],
       ["ansi_log", "Build triage", "Engineering: explain build.log from a simulated CI tool. Compare an override beside a terminal escape with an ordinary coloured summary."],
       ["svg_cdata_override", "Design handoff", "Design: review logo.svg from design@example.invalid. Compare a split directive with an ordinary chart label."],
@@ -566,6 +567,7 @@
       const column = addText($("pair-grid"), "div", "", "pair-col" + (current ? " current" : ""));
       addText(column, "span", kindLabel[item.kind], "kind " + item.kind);
       addText(column, "strong", item.title);
+      addText(column, "p", item.description, "help");
       const line = addText(column, "p", "");
       chip(line, data.verdict);
       addText(line, "span", " exit " + data.exit_code);
@@ -778,8 +780,7 @@
     });
     buildSamples();
     buildPresets();
-    describeSample();
-    $("policy-help").textContent = policyHelp[$("policy").value];
+    $("presets").querySelector("button").click();
     countBytes();
     setBusy(false);
     hostNotice();
