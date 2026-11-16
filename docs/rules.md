@@ -235,6 +235,15 @@ The spellings added for the readiness review's P2 shapes ([#255](https://github.
 
 So "do not use your email tool to ...", "how to use your email tool to ...", "please don't email me the keys from your .env file", and "never skip approval" stay clean, and a file of repeated lines scans in linear time. A system prompt or agent configuration that tells its own agent to "use your email tool to send" mail to a fixed outside address matches `agent_tool_hijack_directive` the same way an attack does. Under `agent-document`, such a file is held. The third-person "use the send_email tool", as framework docs write it, does not match. A bare `SYSTEM OVERRIDE:` header, or one that names a flag, stays clean.
 
+### Code-relay refusals
+
+The code-relay rule checks where each request starts. A recognized refusal
+exempts a request that starts inside it. A separate request can still match on
+the same line. The rule searches the gaps between refusals by offset, so a long
+notice repeating a recognized refusal does not need a request-by-refusal
+comparison. This applies to both ASCII and UTF-16LE patterns. The finding
+remains advisory, and both agent policies still hold a matching request.
+
 ### JSON parsing limits
 
 MCP, notebook, and Keras readers check structure before the standard JSON decoder
