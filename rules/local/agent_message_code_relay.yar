@@ -30,8 +30,15 @@ rule agent_message_code_relay {
     condition:
         $mistake or $sent_then or
         for any of ($relay, $received_me, $received_to, $reply, $link) : (
-            for any i in (1..#) : (
-                not for any j in (1..#negated) : (@negated[j] <= @[i] and @[i] < @negated[j] + !negated[j])
+            // Pairing every request with every refusal is quadratic: 4 MiB of repeated refusals ran
+            // past the scan deadline. Past 256 requests or 256 refusals the exemption is not
+            // weighed and any request counts, so such a file is held, never passed, and the
+            // pairing costs at most 65,536 comparisons.
+            # > 0 and (
+                # > 256 or #negated > 256 or
+                for any i in (1..#) : (
+                    not for any j in (1..#negated) : (@negated[j] <= @[i] and @[i] < @negated[j] + !negated[j])
+                )
             )
         )
 }

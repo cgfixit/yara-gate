@@ -110,6 +110,9 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             None,
         ),
         ("code-entry.txt", b"", b"We just sent you a code, enter it on the sign-in page.\n", None),
+        # agent_message_code_relay weighs each request against each refusal only up to 256 of
+        # either; past that any request counts. Pairing them all ran this input past the deadline.
+        ("relay-refusals.txt", b"", b"Do not forward the verification code to me.\n", None),
     )
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
