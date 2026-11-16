@@ -144,6 +144,10 @@ The static replay was rebuilt with its allowlisting builder (82 scenarios, 246
 policy recordings) and opened separately in Computer Use. Its recorded MCP attack
 and clean twin displayed exits 1 and 0; the painted page clearly labels the result
 as a recording. This is static presentation acceptance, not another live scan.
+The recorder then ran all 82 scenarios under all three policies from commit
+`a712f726b98e`: every outcome matched `web-demo/recordings.json`, with only
+provenance refreshed in the disposable output. The committed public recordings
+therefore needed no outcome update.
 
 This repository ships a Python CLI/library, a live browser demo, and a static
 replay; it does not ship a native `.app`. No native app was invented for acceptance.
