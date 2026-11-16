@@ -153,6 +153,48 @@ Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
 reviews a held file. The operator records that decision with `yara-gate release`.
 
+## Revalidating admitted files
+
+`clean/` records an admission at scan time. After changing rules, detector code, or
+policy, pause downstream readers and stop the watcher, then run:
+
+```bash
+yara-gate rescan --home GATE --rules RULES --policy agent-ingest --dry-run
+yara-gate rescan --home GATE --rules RULES --policy agent-ingest
+```
+
+The explicit command applies changes by default. It takes the watch lock and the
+intake lock; a running watcher refuses the pass. It never releases or rescans an
+existing blocked or quarantined copy. Watch startup does not invoke it. Pending
+intake must first be recovered by the existing intake/watch path.
+
+Every clean copy is opened under the intake regular-file, single-link and byte-limit
+checks and hashed. A complete clean report with the same bytes, filename, policy,
+ruleset and detector identity skips scanning. Missing, malformed or stale reports
+and every advisory admission are scanned again. Missing recorded vendor rules make
+rescans incomplete, including with a warm compiled cache. Reviewed releases are not
+applied by this command; a document may need fresh review after revalidation.
+
+Fresh JSON and SARIF reports precede relocation. Blocks move to `blocked/<digest>/`;
+incomplete copies move to `quarantine/<digest>/`; allowed copies remain in place.
+Changed or unreadable bytes have an unknown (zero) report digest, stored under the
+original slot identifier. Existing held destinations are never overwritten. Malformed
+slot layouts, pending intake, report-write or relocation failures abort with exit 2;
+remaining copies are unvalidated. A retry rechecks any non-clean report. Keep consumers
+paused until the error is resolved and a full pass finishes. This is a maintenance
+pass, not a transaction across the whole home or protection against another process
+writing files or rules during the pass. It cannot withdraw bytes a consumer already
+copied; consumers still need their own exact-byte identity and admission checks.
+
+Stdout is JSON Lines: each rescanned item uses the existing compact report schema
+plus `dry_run`; the last line contains `dry_run`, `rescanned`, `unchanged`,
+`newly_held`, `newly_incomplete`, and `exit_code`. `unchanged` includes both skipped
+current clean copies and rescanned copies that remain allowed. Exit 2 takes precedence
+when any result is incomplete or the pass aborts, then 1 for any new block, otherwise 0.
+Dry runs return those same predicted exits but do not change reports or copies; lock
+files and the ordinary compiled-rule cache may still be written. No finding text is
+included, and filenames use the usual home-prefix redaction.
+
 ## Synced folders (Dropbox, OneDrive, iCloud Drive)
 
 A sync client's folder is never the gate's inbox. Inbox intake copies its input

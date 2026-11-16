@@ -115,6 +115,13 @@ After inspecting a held document and its report, an operator can run `yara-gate 
 | `reports/<sha256>.{sarif,json}` | Latest report pair for the digest, written before the file moves |
 | `reports/events/<scan-id>.json` | One versioned record per saved scan, including repeat scans of the same bytes |
 
+After changing rules, detector code, or policy, stop the watcher and consumers, then run
+`yara-gate rescan --home GATE --rules RULES --policy agent-ingest` before reading admitted
+copies again. It rechecks stale and advisory files in `clean/`, writes reports before
+moving new blocks to `blocked/` and incomplete scans to `quarantine/`. Use `--dry-run`
+to preview without changing reports or copies. See [revalidating admitted files](docs/integrations.md#revalidating-admitted-files)
+for exit codes and failure recovery. Watch startup does not run this pass automatically.
+
 Each SHA-256 has one slot holding one file, named as it was last submitted. File-type checks depend on the name, so the same bytes dropped again under another name are rescanned under that name, and the slot, report, and folder follow that scan: a PE that is clean as `tool.exe` blocks when resubmitted as `invoice.pdf`. A submission holds the gate home's `.intake.lock` from intake to relocation, so one home takes one file at a time, and the inbox entry is removed only if it is still the file that was copied.
 
 ```mermaid

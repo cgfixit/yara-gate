@@ -170,6 +170,48 @@ def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
 
 
 @app.command()
+def rescan(
+    home: Path = typer.Option(..., "--home", help="Gate home whose clean copies are revalidated."),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+    policy: ScanPolicy = typer.Option(ScanPolicy.default, "--policy"),
+    timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Scan and preview; do not write reports or move copies."
+    ),
+) -> None:
+    """Recheck stale or advisory clean copies; withdraw new holds. Stop watch first."""
+    from yara_gate.quarantine import GatePaths
+    from yara_gate.report import compact_report
+    from yara_gate.rescan import rescan_clean
+
+    counts = {"rescanned": 0, "unchanged": 0, "newly_held": 0, "newly_incomplete": 0}
+    code = 0
+    try:
+        for result in rescan_clean(
+            GatePaths(home), rules_dir=rules, timeout_s=timeout_s, policy=policy, dry_run=dry_run
+        ):
+            if result is None:
+                counts["unchanged"] += 1
+                continue
+            counts["rescanned"] += 1
+            code = max(code, exit_code(result))
+            if result.verdict is Verdict.block:
+                counts["newly_held"] += 1
+            elif result.verdict is Verdict.incomplete:
+                counts["newly_incomplete"] += 1
+            else:
+                counts["unchanged"] += 1
+            typer.echo(json.dumps({"dry_run": dry_run, **compact_report(result)}))
+    except Exception as exc:
+        typer.echo(
+            f"incomplete: {_incomplete_text(exc)}; remaining copies are unvalidated", err=True
+        )
+        code = 2
+    typer.echo(json.dumps({"dry_run": dry_run, **counts, "exit_code": code}))
+    raise typer.Exit(code)
+
+
+@app.command()
 def release(
     sha256: str = typer.Argument(..., metavar="SHA256"),
     home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),
