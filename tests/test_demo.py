@@ -309,6 +309,11 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     server, thread = serve_in_thread(rules_copy)
     port = int(server.server_address[1])
     expected = {
+        "vendor_feed_ranking": (
+            "vendor_feed_comparison",
+            "agent_model_addressed_instruction",
+            {"feed-text"},
+        ),
         "pdf_annotation_override": (
             "pdf_annotation_benign",
             "agent_prompt_injection_phrases",

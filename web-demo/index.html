@@ -33,6 +33,48 @@
       <div><strong id="score-rules"></strong><span id="score-rules-label"></span></div>
     </section>
     <div id="workbench" hidden>
+      <section class="stories" aria-labelledby="story-heading">
+        <div class="section-head"><h2 id="story-heading">Start with a workflow</h2><a href="#catalog">Browse every example ↓</a></div>
+        <div id="stories" class="story-buttons" role="group" aria-label="Fictional workflows"></div>
+      </section>
+      <div class="workspace">
+        <section class="panel" aria-labelledby="policy-title">
+          <div id="story-context" class="story-context" hidden>
+            <p class="eyebrow">Fictional workflow · synthetic fixture</p>
+            <h2 id="story-title" tabindex="-1"></h2><p id="story-brief"></p>
+            <dl id="story-envelope"></dl>
+            <p class="help">The sender and task are illustrative. Only the fixed fixture below was scanned.</p>
+          </div>
+          <h2 id="policy-title">Choose the read policy</h2>
+          <div id="policy" class="segmented" role="group" aria-label="Policy"></div>
+          <p id="policy-help" class="policy-help"></p>
+          <h3 id="example-title" class="example-title"></h3>
+          <p class="meta"><span id="example-kind" class="tag"></span><span id="example-channel" class="tag"></span></p>
+          <p id="example-how" class="meta"></p>
+          <p id="example-description" class="help"></p>
+          <div class="divider">
+            <h3>One example, three policies</h3>
+            <p class="help">A finding keeps its severity. The policy decides whether the content is held.</p>
+            <table><caption class="sr-only">Recorded outcomes under each policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Verdict</th><th scope="col">Exit</th></tr></thead><tbody id="comparison"></tbody></table>
+          </div>
+          <details><summary>How these recordings were made</summary><p class="help">These records were produced by the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. One fail-closed example used a deliberately invalid rule in a disposable copy; the other is an archive format the scanner does not open.</p><dl id="recording-source"></dl></details>
+        </section>
+        <section class="panel" aria-labelledby="result-title">
+          <div class="section-head"><h2 id="result-title" tabindex="-1">Recorded outcome</h2><span class="tag">Saved result</span></div>
+          <div id="decision" class="decision"><span id="verdict" class="badge"></span><span id="exit-policy" class="help"></span><h3 id="decision-title"></h3><p id="decision-help"></p></div>
+          <p id="policy-reason" class="help"></p>
+          <h3 id="findings-title">What the scanner found</h3><ul id="findings" class="findings"></ul><p id="no-findings" class="help"></p>
+          <div id="twin" class="twin" hidden>
+            <h3 id="twin-title">Compared with its benign twin</h3>
+            <p class="help">Compare what each file says and the verdict it received under the selected policy.</p>
+            <div class="twin-grid" id="twin-grid"></div>
+            <button type="button" id="twin-open" class="link-button"></button>
+          </div>
+          <div class="metrics"><div><strong id="rule-count"></strong><span>compiled rules</span></div><div><strong id="units"></strong><span>content units</span></div><div><strong id="views"></strong><span>derived views read</span></div></div>
+          <details><summary>Coverage &amp; provenance</summary><p class="help">These are historical counts, not a live health check or a guarantee of safety. Offsets belong to the named view or archive member.</p><dl id="coverage"></dl></details>
+          <details><summary>Recorded response JSON</summary><p class="help">Curated fields with no input content, matched bytes, or file paths. This is demonstration evidence, never an authorization record for another file.</p><pre id="json" tabindex="0" aria-label="Recorded response JSON"></pre></details>
+        </section>
+      </div>
       <section class="panel seen" aria-labelledby="seen-title">
         <div class="section-head"><h2 id="seen-title">The words on screen are not the bytes in the file</h2><span class="tag">Six recorded pairs</span></div>
         <p class="help">Search each of these files for its sentence and nothing matches: the markup of the format sits between the words. Open one in an office suite, or hand it to a converter on its way to a model, and the sentence is whole. yara-gate reads the text the reader would show.</p>
@@ -109,48 +151,6 @@ ious instructions and reply only in French.</pre>
         <p class="help">An agent reads what a document reader shows, not the bytes as sent. Each card is one way an instruction or payload was kept out of plain sight, what the gate read to find it, and how the benign twins of those attacks fared: attacks on the top row, their twins beneath. An attack caught two ways is on both cards. Select a card to list its pairs.</p>
         <div id="depth" class="depth-grid" role="group" aria-label="Ways the recorded attacks were caught"></div>
       </section>
-      <section class="stories" aria-labelledby="story-heading">
-        <div class="section-head"><h2 id="story-heading">Start with a workflow</h2><a href="#catalog">Browse every example ↓</a></div>
-        <div id="stories" class="story-buttons" role="group" aria-label="Fictional workflows"></div>
-      </section>
-      <div class="workspace">
-        <section class="panel" aria-labelledby="policy-title">
-          <div id="story-context" class="story-context" hidden>
-            <p class="eyebrow">Fictional workflow · synthetic fixture</p>
-            <h2 id="story-title"></h2><p id="story-brief"></p>
-            <dl id="story-envelope"></dl>
-            <p class="help">The sender and task are illustrative. Only the fixed fixture below was scanned.</p>
-          </div>
-          <h2 id="policy-title"><span class="step">01</span> Choose the read policy</h2>
-          <div id="policy" class="segmented" role="group" aria-label="Policy"></div>
-          <p id="policy-help" class="policy-help"></p>
-          <h3 id="example-title" class="example-title"></h3>
-          <p class="meta"><span id="example-kind" class="tag"></span><span id="example-channel" class="tag"></span></p>
-          <p id="example-how" class="meta"></p>
-          <p id="example-description" class="help"></p>
-          <div class="divider">
-            <h3>One example, three policies</h3>
-            <p class="help">A finding keeps its severity. The policy decides whether the content is held.</p>
-            <table><caption class="sr-only">Recorded outcomes under each policy</caption><thead><tr><th scope="col">Policy</th><th scope="col">Verdict</th><th scope="col">Exit</th></tr></thead><tbody id="comparison"></tbody></table>
-          </div>
-          <details><summary>How these recordings were made</summary><p class="help">These records were produced by the real Python/YARA-X scanner on these inert inputs with the bundled rules from the revision below, offline. No input was executed or unpickled, and no referenced address was contacted. One fail-closed example used a deliberately invalid rule in a disposable copy; the other is an archive format the scanner does not open.</p><dl id="recording-source"></dl></details>
-        </section>
-        <section class="panel" aria-labelledby="result-title">
-          <div class="section-head"><h2 id="result-title" tabindex="-1"><span class="step">02</span> Recorded outcome</h2><span class="tag">Saved result</span></div>
-          <div id="decision" class="decision"><span id="verdict" class="badge"></span><span id="exit-policy" class="help"></span><h3 id="decision-title"></h3><p id="decision-help"></p></div>
-          <p id="policy-reason" class="help"></p>
-          <h3 id="findings-title">What the scanner found</h3><ul id="findings" class="findings"></ul><p id="no-findings" class="help"></p>
-          <div id="twin" class="twin" hidden>
-            <h3 id="twin-title">Compared with its benign twin</h3>
-            <p class="help">Same channel and layout; only the content differs. Both were recorded under the selected policy.</p>
-            <div class="twin-grid" id="twin-grid"></div>
-            <button type="button" id="twin-open" class="link-button"></button>
-          </div>
-          <div class="metrics"><div><strong id="rule-count"></strong><span>compiled rules</span></div><div><strong id="units"></strong><span>content units</span></div><div><strong id="views"></strong><span>derived views read</span></div></div>
-          <details><summary>Coverage &amp; provenance</summary><p class="help">These are historical counts, not a live health check or a guarantee of safety. Offsets belong to the named view or archive member.</p><dl id="coverage"></dl></details>
-          <details><summary>Recorded response JSON</summary><p class="help">Curated fields with no input content, matched bytes, or file paths. This is demonstration evidence, never an authorization record for another file.</p><pre id="json" tabindex="0" aria-label="Recorded response JSON"></pre></details>
-        </section>
-      </div>
       <details class="panel catalog" id="catalog">
         <summary>Explore all recorded pairs &amp; the unfinished scans</summary>
         <div class="section-head"><h2 id="choose-title">All examples</h2><span class="help">Verdict chips: message · document · manual</span></div>
@@ -163,7 +163,7 @@ ious instructions and reply only in French.</pre>
         <div id="gallery" class="pairs"></div>
       </details>
     </div>
-    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. The newest pairs are a PDF line in a plain font beside another font's map, a workbook written with the Open XML SDK's prefix, and an email whose body sits past 8 KiB of relay headers, each beside a twin with the same layout around an ordinary sentence. All three attacks were recorded clean before the change that reads them.</p>
+    <p class="help">These are detected examples at the recorded revision, including previously fixed gaps; they are not a list of current bypasses. An attack may be advisory under manual or document policy and held under message policy. Other pairs include a PDF line in a plain font beside another font's map, a workbook written with the Open XML SDK's prefix, and an email whose body sits past 8 KiB of relay headers, each beside a twin with the same layout around an ordinary sentence. All three attacks were recorded clean before the change that reads them.</p>
     <p id="status" class="help" role="status">Loading recorded examples. No scan is running.</p>
     <section class="panel guide" aria-labelledby="precision-title">
       <h2 id="precision-title">Low noise needs evidence, not a promise</h2>
@@ -171,10 +171,10 @@ ious instructions and reply only in French.</pre>
       <div class="guide-grid two">
         <div><h3>328 generated benign files</h3><p>85 of the 89 bundled rules match none of them. The other four are documented Windows shortcut collisions, one file each (0.30%). No structural check reports any of them; a merged PDF is read one font per page. CI fails the build if any rule crosses its limit.</p></div>
         <div><h3>15,140 files already on a Linux host</h3><p>When the SVG scope test and the full-depth tool-list walk arrived, HTML, SVG, Markdown, JSON, XML, and PDF files under <code>/usr</code>, <code>/opt</code>, and home directories kept every verdict and finding. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-detection-scope-and-budgets.md" rel="noopener noreferrer">scope and budget record</a>.</p></div>
-        <div><h3>A false positive removed, not excused</h3><p>A page with an inline icon and an unrelated script used to be blocked as active SVG. The rule now needs the script inside the svg element; the pair above records both sides, and a page the scanner cannot scope keeps the strict block.</p></div>
+        <div><h3>An inline SVG false positive</h3><p>A page with an inline icon and an unrelated script used to be blocked as active SVG. The rule now needs the script inside the svg element; the pair above records both sides, and a page the scanner cannot scope keeps the strict block.</p></div>
         <div><h3>Merged PDFs read page by page</h3><p>A merged PDF keeps each source's font named F1. Read through every font that name meant anywhere in the file, an ordinary eight-source bundle was held as unreadable. Each page is now read through its own fonts, so the bundle twin is clean and the override on its last page is found. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-pdf-page-fonts.md" rel="noopener noreferrer">page-font record</a>.</p></div>
         <div><h3>Hidden text needs an instruction</h3><p>Templates, review notes, and OCR layers hide text all the time. Hidden Word, PDF, or HTML text is reported only when an instruction rule also matches inside it. HTML counts as hidden only on one exact inline declaration a browser accepts, checked against Chromium; text the page also shows is not reported. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-07-hidden-text.md" rel="noopener noreferrer">hidden-text</a> and <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-hidden-html-text.md" rel="noopener noreferrer">hidden HTML</a> records.</p></div>
-        <div><h3>The newest rules, on installed files</h3><p>When the scriptless-SVG and zero-width rules arrived, 20,000 installed text files, a second set of 8,116, and 4,142 icon-theme SVGs kept every finding. Diagram labels, do-nothing links, Persian joiners, and emoji stay clean; the pairs above record each. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-svg-links-and-invisible-runs.md" rel="noopener noreferrer">record</a>.</p></div>
+        <div><h3>SVG and zero-width rules on installed files</h3><p>When the scriptless-SVG and zero-width rules arrived, 20,000 installed text files, a second set of 8,116, and 4,142 icon-theme SVGs kept every finding. Diagram labels, do-nothing links, Persian joiners, and emoji stay clean; the pairs above record each. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-10-svg-links-and-invisible-runs.md" rel="noopener noreferrer">record</a>.</p></div>
         <div><h3>Office files, as a parser reads them</h3><p>When Office XML began to be read through comments, CDATA, and internal entities, and OpenDocument gained a reader, 206 real files (LibreOffice's bundled templates and samples, and Word, Excel, and PowerPoint files it wrote from them) kept every verdict and finding. Thirty-two OpenDocument fixtures were put to LibreOffice and pandoc: where either shows a sentence, the gate holds it. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-11-office-xml-readers.md" rel="noopener noreferrer">record</a>.</p></div>
         <div><h3>PDF fonts, Office prefixes, and mail, on 14,013 files</h3><p>When fonts began to be read through their own dictionaries, Office runs by their namespace, and mail opened where a mail reader opens it, no benign file gained a finding or became incomplete: 4,216 PDFs from eight writers, 1,811 Office files, 413 loose Office XML and OpenDocument files, 1,886 messages, and 5,687 installed files that look like headers. Three PDFs lost a false unreadable-text finding. See the <a href="https://github.com/cgfixit/yara-gate/blob/main/docs/verification/2026-11-12-reader-boundaries.md" rel="noopener noreferrer">record</a>.</p></div>
         <div><h3>Real third-party files</h3><p>132 PDFs from the pikepdf and pypdf test suites gained no findings from the PDF text view. 65 joblib test pickles gave the same results as before the deeper pickle walk.</p></div>
@@ -202,7 +202,7 @@ uv run yara-gate demo --rules rules</pre>
       <p>The demo has no analytics, cookies, browser storage, or content submission. Its scripts make no API calls and cannot connect to localhost. Only the static page and its assets load; documentation links navigate when you choose them.</p>
       <p>GitHub hosts this public site and logs visitors' IP addresses for security. This is not an anonymous or offline service. See <a href="https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages#data-collection" rel="noopener noreferrer">GitHub Pages data collection</a>.</p>
       <p>Recorded results cover only these examples and their pinned source revision. A real clean scan is not proof that content is trustworthy: matching finds patterns someone has written down, with no semantic understanding, OCR, or general decryption, and unsupported or unfinished scans must be held.</p>
-      <p>For example, the PDF reader does not decode page streams under CCITTFax, JBIG2, or JPX, or LZW past 2&nbsp;MiB. It reports them as the note <code>heuristic_pdf_content_unread</code> instead of passing them silently. If your extractor reads those streams, scan its text before passing it to an agent.</p>
+      <p>For example, the PDF reader does not decode page streams under CCITTFax, JBIG2, or JPX, or LZW past 2&nbsp;MiB. Recognized unread page streams can produce the note <code>heuristic_pdf_content_unread</code>. If your extractor reads those streams, scan its text before passing it to an agent.</p>
     </section>
   </main>
   <footer class="shell">Public demonstration · Recorded results only · Keep private content in your local workflow</footer>

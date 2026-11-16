@@ -5,7 +5,7 @@ YARA-X backend. This site therefore replays **real recorded results** for 82
 inert examples under `agent-ingest`, `agent-document`, and `default`: 40
 attacks, each with a benign near-twin, and two scans that could not finish. Selecting
 an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The newest pairs cover a PDF line in plain Helvetica,
+revision, not current bypasses. The vendor feed demonstrates model-directed ranking in an RSS description. Other pairs include a PDF line in plain Helvetica,
 spaced by kerning, whose neighbour object is another font's map; a workbook written the
 Open XML SDK way, every element under `x:`; and a quoted-printable email behind 26 relay
 and ARC headers. Before them come an OpenDocument file with one bold word, a Word sentence
@@ -21,7 +21,8 @@ uppercase Russian, and glyph-encoded PDF spelling. The UI labels
 every result as recorded and shows the scanner revision, capture time, rule coverage,
 and engine version.
 
-The page opens on the idea the catalog rests on. Under the scoreboard, a panel sets
+The page opens with a fictional procurement task and its recorded policy comparison.
+Below the workflow, a reader panel sets
 what six files hold beside what a reader shows: the span around a bold word, the XML
 comment between two words, a sentence kept on the slide master, a PDF `TJ` array whose
 words are spaced by kerning, a run of `x:` elements, and a quoted-printable body with a
@@ -73,7 +74,8 @@ checks.
 
 ## Guided workflows
 
-Fourteen fictional tasks open directly beside their recorded outcome: supplier review
+Fifteen fictional tasks open directly beside their recorded outcome: vendor comparison
+(a ranking directive rebuilt from escaped HTML in an RSS description), supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
 onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
@@ -85,13 +87,14 @@ export (a workbook written with the `x:` prefix).
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 40-pair catalog and the two unfinished scans remain under an expandable section.
+The full 41-pair catalog and the two unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same fourteen shortcuts and the same catalog: both read
+The local workbench offers the same fifteen shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
-list different pairs. Selecting a shortcut clears the previous result and prepares a
-sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
+list different pairs. Both demos open with the vendor feed. The paired outcomes show the exact synthetic directives,
+and the ranking request produces an advisory finding in `feed-text` under all three policies.
+Selecting a shortcut clears the previous result and prepares a sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
 by side** scans the attack and its twin under the same policy, and **Run every pair**
 scans the whole catalog and counts the attacks held, the twins clean, and the
 findings on twins, marking any result that differs from the catalog's expected
@@ -216,13 +219,14 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 82 inert
-examples, recorded with 88 bundled rules and YARA-X 1.23.0, without vendor packs.
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 84 inert
+examples, recorded with 89 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
 | --- | --- | --- |
+| Web page | An RSS description uses escaped HTML to split the model address from a request to rank the vendor first | The same support terms, markup, and model address with a request to compare published support hours |
 | Document | A PDF annotation with UTF-16BE hexadecimal instructions | The same encoded annotation with an ordinary revision note |
 | Document | An RTF override split by formatting and encoded letters | The same formatted RTF with an ordinary revision note |
 | Attachment | SVG text split across a CDATA section and a span | An ordinary SVG chart label in the same layout |
@@ -321,7 +325,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 82 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 84 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
