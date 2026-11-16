@@ -15,7 +15,7 @@ rule agent_secret_transfer_request {
         // A key or token alone is every API quick-start, so these need a .env file and a request to
         // send it to the writer. The request opens a clause or follows "please", "can you", and the
         // like, so "Please don't email me the keys from your .env" stays clean.
-        $env_send = /(^|[\r\n.!?;:,(]|\b(please|pls|can you|could you|would you|and|then|just|now|also|so|quickly|kindly))[ \t]*(send|text|email|forward|paste|post|dm|message)[ \t]+me[ \t]+(the|your|all|all the|those|its)[ \t]+(((api|secret|access|private)[ \t]+)?keys|api key|secrets|credentials|tokens|passwords|contents|values)\b[^\r\n]{0,48}\.env\b/ nocase ascii wide
+        $env_send = /(^|[\r\n.!?;:,(>]|\b(please|pls|can you|could you|would you|and|then|just|now|also|so|quickly|kindly))[ \t]*(send|text|email|forward|paste|post|dm|message)[ \t]+me[ \t]+(the|your|all|all the|those|its)[ \t]+(((api|secret|access|private)[ \t]+)?keys|api key|secrets|credentials|tokens|passwords|contents|values)\b[^\r\n]{0,48}\.env\b/ nocase ascii wide
         $env_ask = /\.env\b([ \t]+file)?[^\r\n.?!;]{0,32}[.?!;:,][ \t]*((please|pls|now|just|then|and)[ \t,]+)*(send|text|email|forward|paste|post|dm|message)[ \t]+me[ \t]+(the|your|all|all the|those|its)[ \t]+(((api|secret|access|private)[ \t]+)?keys|api key|secrets|credentials|tokens|passwords|contents|values)\b/ nocase ascii wide
         $env_read = /\b(read|open|check|cat)[ \t]+(your|the)[ \t]+\.env\b([ \t]+file)?[ \t]+(and|then)[ \t]+(send|text|email|forward|paste|post|dm|message)[ \t]+me[ \t]+(the|your|all|all the|those|its)[ \t]+(((api|secret|access|private)[ \t]+)?keys|api key|secrets|credentials|tokens|passwords|contents|values)\b/ nocase ascii wide
     condition:

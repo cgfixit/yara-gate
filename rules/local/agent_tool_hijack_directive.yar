@@ -21,8 +21,9 @@ rule agent_tool_hijack_directive {
         // or an order to keep it from the owner. The order opens a clause, so a warning ("do not use
         // your email tool to ...") and a help page ("how to use your email tool to ...") stay
         // clean, and so do a system prompt's "use your email tool to send the summary to the user",
-        // "use your email client", and "use the send_email tool" in a framework's docs.
-        $use_tool = /(^|[\r\n.!?;:,(]|\b(please|now|and|then|just|also|so|quickly|kindly|immediately))[ \t]*use[ \t]+your[ \t]+([A-Za-z0-9_.-]{1,32}[ \t]+){1,2}tools?[ \t]+to[ \t]+(forward|send|email|upload|post|transfer|share|export|exfiltrate|copy)\b[^\r\n]{0,96}(\bto[ \t]+(\+?[0-9][0-9 ().-]{6,}[0-9]|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|https?:\/\/)|\b(don't|dont|do not|without)[ \t]+(tell|telling|inform|informing|notify|notifying|alert|alerting)[ \t]+(the[ \t]+)?(owner|user|them|anyone)\b)/ nocase ascii wide
+        // "use your email client", and "use the send_email tool" in a framework's docs. A tag end
+        // (">") opens a clause too, for an HTML fragment read as text.
+        $use_tool = /(^|[\r\n.!?;:,(>]|\b(please|now|and|then|just|also|so|quickly|kindly|immediately))[ \t]*use[ \t]+your[ \t]+([A-Za-z0-9_.-]{1,32}[ \t]+){1,2}tools?[ \t]+to[ \t]+(forward|send|email|upload|post|transfer|share|export|exfiltrate|copy)\b[^\r\n]{0,96}(\bto[ \t]+(\+?[0-9][0-9 ().-]{6,}[0-9]|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|https?:\/\/)|\b(don't|dont|do not|without)[ \t]+(tell|telling|inform|informing|notify|notifying|alert|alerting)[ \t]+(the[ \t]+)?(owner|user|them|anyone)\b)/ nocase ascii wide
     condition:
         any of them
 }
