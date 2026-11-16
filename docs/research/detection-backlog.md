@@ -184,6 +184,14 @@ exceeds the budget. Ordinary JSON without MCP keys bypasses that heuristic's tre
 allocation. See [the measurements and compatibility checks](../verification/2026-11-16-json-allocation.md).
 There was no `OPEN` detection-gap marker for this availability issue.
 
+### Code-relay refusal timing
+
+Issue [#269](https://github.com/cgfixit/yara-gate/issues/269) replaces the
+request-by-refusal loop with ordered range lookups. The 4 MiB repeated-refusal
+fixture must complete clean under the timing tripwire. Separate requests still
+match outside a refusal. This was a performance defect without an `OPEN`
+detection-gap marker. See [the verification record](../verification/2026-11-16-code-relay-timing.md).
+
 ### Further candidates, not yet in the probe
 
 | Candidate | Evidence | Why it is not built yet |

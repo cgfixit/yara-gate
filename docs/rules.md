@@ -228,6 +228,15 @@ The agent-settings rules cover a cloned or synced project that reconfigures the 
 
 `agent_message_code_relay` is for chat, SMS, and mail bodies passed to `scan_bytes` or `scan -`. Every real one-time-code notice says "code", "verification", and "do not share", so the rule needs a relay verb, a code that carries a one-time qualifier, and a destination. A bare "code" in chat is usually source code. A refusal on the same line ("never forward the verification code to anyone") exempts the match. English only; a paraphrase without the listed verbs passes.
 
+### Code-relay refusals
+
+The code-relay rule checks where each request starts. A recognized refusal
+exempts a request that starts inside it. A separate request can still match on
+the same line. The rule searches the gaps between refusals by offset, so a long
+notice repeating a recognized refusal does not need a request-by-refusal
+comparison. This applies to both ASCII and UTF-16LE patterns. The finding
+remains advisory, and both agent policies still hold a matching request.
+
 ### JSON parsing limits
 
 MCP, notebook, and Keras readers check structure before the standard JSON decoder
