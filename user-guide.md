@@ -153,6 +153,28 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 
 ## 5. Read a report
 
+Start with the current held queue:
+
+```sh
+yara-gate held --home ~/YaraGate
+yara-gate held --home ~/YaraGate --since 7d --json
+```
+
+This lists entries still in `blocked/`, `quarantine/`, or `quarantine/_rejected/`.
+It reads directory metadata and reports, never held bytes, and makes no changes.
+Each line gives the current path, identifier, disposition, report age, policy,
+reasons, finding IDs/severities, and provisional release eligibility. Strings are
+JSON-escaped so a filename or report cannot send control sequences to the terminal.
+`--json` wraps the rows in the [versioned index](docs/integrations.md#listing-held-items).
+Unreadable or missing reports remain visible; a rejection without an associated
+readable report has an unknown identifier. Unknown ages remain visible with `--since`.
+An empty queue exits 0, as does a nonempty queue; an unavailable home or invalid option
+exits 2. In-place scans are not held copies and are not included.
+
+An eligible row is a review candidate, not permission to read or move its bytes.
+Use the [reviewed release command](docs/integrations.md#reviewed-document-releases)
+after review; it performs the fresh scan and audit checks.
+
 The latest report for a digest is `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. The JSON includes the verdict, exit code, and findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It omits matched bytes.
 
 Use `reports/events/<scan-id>.json` to compare individual scans of the same bytes under different names or policies. Each event contains the compact report plus `schema_version`, `scan_id`, and a UTC `recorded_at` timestamp. A record describes the scan, and can be present before its file moves. Release actions are recorded in `releases.jsonl`. Event files accumulate until the operator archives or removes them.
