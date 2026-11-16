@@ -195,9 +195,9 @@ message as `.txt` files, plus a zip of the tool directive.
   outcomes match for 82 scenarios × 3 policies, with only provenance refreshed. The committed
   recordings are not changed.
 
-### Overlap with open pull requests
+### Overlap with other pull requests
 
-#264 (`51622a3`) and #265 (`bdf0116`) both merge onto this change with no conflict. Shared
+#264 (`51622a3`) and #265 (`bdf0116`) were open during this work and merged into `main` before it was published. Before they merged, both merged onto this change with no conflict. Shared
 files are `README.md`, `user-guide.md`, `docs/integrations.md`, `docs/rules.md`, the backlog,
 `probe_detection_gaps.py`, and `check_worst_case_timing.py`; each edits other lines. On the
 three-way merge, with `PYTHONPATH` on its own `src`, the following passed:
@@ -206,6 +206,15 @@ three-way merge, with `PYTHONPATH` on its own `src`, the following passed:
 - the tripwire (94 inputs);
 - `check_doc_links.py` (876 links);
 - `pytest tests/test_jsonbounds.py tests/test_held.py` (35 passed).
+
+This branch then merged `main` at `8500f19` (#264 through #267). `README.md` conflicted on
+the agent-ingestion line, and the resolution kept #267's wording with this change's three
+clauses. On the merged head, the following passed again:
+- `lint_rules.py`, `check_rule_pairs.py`, and `check_added_rules.py`;
+- `measure_precision.py --fail-over` and `probe_rule_coverage.py --verify`;
+- `probe_detection_gaps.py --verify` (730 ok) and the tripwire (94 inputs);
+- `record_pages_demo.py --baseline` (outcomes match);
+- `ruff check .`, `ruff format --check .`, and the text-control check.
 
 ## What was run
 
