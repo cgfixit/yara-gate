@@ -16,6 +16,7 @@ from yara_gate.content import (
     html_text_blocks,
     ooxml_comment_texts,
 )
+from yara_gate.htmlhidden import html_hidden_texts
 from yara_gate.models import exit_code
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_bytes
@@ -186,13 +187,17 @@ def test_feed_format(opening: str, closing: str, expected: list[str]) -> None:
     assert list(feed_texts(feed, Budget(time.monotonic() + 10))) == expected
 
 
-def test_comment_delimiter_at_read_boundary() -> None:
-    body = "x" * (content._HTML_READ_CHUNK - 1)
-    html = f"<p>Blue<!--{body}--!><b>berry</b>.</p><p>New <b>text</b></p>"
+@pytest.mark.parametrize("ending", ["-->", "--!>"])
+@pytest.mark.parametrize("offset", [-3, -2, -1, 0, 1])
+def test_comment_delimiter_at_read_boundary(ending: str, offset: int) -> None:
+    body = "x" * (content._HTML_READ_CHUNK + offset)
+    html = f"<p>Blue<!--{body}{ending}<b>berry</b>.</p><p>New <b>text</b></p>"
     assert list(html_text_blocks("a.html", html, Budget(time.monotonic() + 10))) == [
         "Blueberry.",
         "New text",
     ]
+    hidden = html_hidden_texts("a.html", html, Budget(time.monotonic() + 10))
+    assert hidden.pieces == [body]
 
 
 def test_html_comment_checks_deadline_inside_a_read(monkeypatch: pytest.MonkeyPatch) -> None:

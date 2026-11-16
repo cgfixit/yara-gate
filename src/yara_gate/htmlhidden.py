@@ -1562,10 +1562,8 @@ def html_hidden_texts(name: str, text: str, budget: Budget) -> HtmlHidden:
             continue
         if (tree.foreign or as_xml) and text.startswith("<![CDATA[", start):
             cdata_end = _html_delimiter(text, start + 9, _HTML_CDATA_END, budget)
-            tree.text(
-                text[start + 9 : size if cdata_end is None else cdata_end.start()], entities=False
-            )
-            position = size if cdata_end is None else cdata_end.end()
+            tree.text(text[start + 9 : size if cdata_end is None else cdata_end[0]], entities=False)
+            position = size if cdata_end is None else cdata_end[1]
             continue
         tag_match = _TAG.match(text, start)
         if tag_match is None:

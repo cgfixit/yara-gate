@@ -3325,22 +3325,26 @@ _WHATWG_TOKEN = re.compile(
 )
 
 
-_HTML_COMMENT_END = re.compile(r"-->")
+# The strict pass keeps its literal boundary; the WHATWG pass also reads past --!>.
+_HTML_COMMENT_END = "-->"
 _WHATWG_COMMENT_END = re.compile(r"--!?>")
-_HTML_CDATA_END = re.compile(r"\]\]>")
+_HTML_CDATA_END = "]]>"
 _HTML_READ_CHUNK = 64 * 1024
 
 
 def _html_delimiter(
-    text: str, position: int, delimiter: re.Pattern[str], budget: Budget
-) -> re.Match[str] | None:
+    text: str, position: int, delimiter: str | re.Pattern[str], budget: Budget
+) -> tuple[int, int] | None:
     """Search forward in chunks, allowing a delimiter to straddle a chunk boundary."""
     while position < len(text):
         budget.check()
         stop = position + _HTML_READ_CHUNK
-        match = delimiter.search(text, position, stop + 3)
-        if match is not None:
-            return match
+        if isinstance(delimiter, str):
+            start = text.find(delimiter, position, stop + 3)
+            if start >= 0:
+                return start, start + len(delimiter)
+        elif (match := delimiter.search(text, position, stop + 3)) is not None:
+            return match.span()
         position = stop
     return None
 
@@ -3354,7 +3358,7 @@ def _html_comment(text: str, position: int, budget: Budget, *, whatwg: bool) -> 
             return position, position + 2
     delimiter = _WHATWG_COMMENT_END if whatwg else _HTML_COMMENT_END
     close = _html_delimiter(text, position, delimiter, budget)
-    return (len(text), len(text)) if close is None else close.span()
+    return (len(text), len(text)) if close is None else close
 
 
 # Elements whose body is not markup: script and style are not shown, and a textarea or title
@@ -3541,8 +3545,8 @@ def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> Iterator[str]:
         count += 1
         if svg_depth and text.startswith("<![CDATA[", position):
             close = _html_delimiter(text, position + 9, _HTML_CDATA_END, budget)
-            piece = text[position + 9 : close.start() if close is not None else len(text)]
-            position = len(text) if close is None else close.end()
+            piece = text[position + 9 : close[0] if close is not None else len(text)]
+            position = len(text) if close is None else close[1]
             # XML character data is visible text; entity-looking bytes remain literal.
             if not pre:
                 piece = _HTML_SPACE.sub(" ", piece)
