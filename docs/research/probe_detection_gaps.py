@@ -30,7 +30,7 @@ note ``heuristic_pdf_content_unread``, from
 ``docs/verification/2026-11-15-pdf-unread-page-content.md``. ``#255`` cases are the
 readiness review's P2 shapes, each a spelling of an existing advisory rule beside the nearest
 ordinary message, from ``docs/verification/2026-11-16-readiness-p2-shapes.md``. ``relay``
-cases are the bound on the code-relay refusal check, from
+cases are many code-relay refusals with and without a request (#269, #270), from
 ``docs/verification/2026-11-16-code-relay-linear.md``.
 ``strings`` cases are PDF form values, document information strings, and outline titles
 written as hexadecimal, octal, or UTF-16BE (#239), from
@@ -6081,10 +6081,10 @@ def readiness_p2_cases() -> list[Case]:
 
 
 def relay_cap_cases() -> list[Case]:
-    """The code-relay refusal check is weighed for at most 256 requests and 256 refusals.
+    """Many code-relay refusals, with and without a request, around the old 256-match draft cap.
 
-    Past either count any request counts, so a file of many refusals that carries a request is
-    advisory rather than incomplete; refusals with no request stay clean.
+    #270 finds a request in the gaps between refusals, so a unit of refusals alone stays
+    clean at any count and a request outside every refusal still counts.
     """
     rule = "agent_message_code_relay"
     refusal = "Do not forward the verification code to me.\n"
@@ -6093,12 +6093,20 @@ def relay_cap_cases() -> list[Case]:
     return [
         Case("relay", "one refusal", "sms.txt", refusal.encode(), "clean"),
         Case("relay", "256 refusals", "sms.txt", (refusal * 256).encode(), "clean"),
-        Case("relay", "257 refusals, past the cap", "sms.txt", (refusal * 257).encode(), rule),
+        Case("relay", "257 refusals", "sms.txt", (refusal * 257).encode(), "clean"),
+        Case("relay", "4,000 refusals", "sms.txt", (refusal * 4000).encode(), "clean"),
         Case(
             "relay",
             "256 refusals and a request",
             "sms.txt",
             (refusal * 256 + request).encode(),
+            rule,
+        ),
+        Case(
+            "relay",
+            "a request between refusals",
+            "sms.txt",
+            (refusal * 300 + request + refusal * 300).encode(),
             rule,
         ),
         Case(

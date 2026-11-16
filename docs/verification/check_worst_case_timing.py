@@ -110,13 +110,15 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             None,
         ),
         ("code-entry.txt", b"", b"We just sent you a code, enter it on the sign-in page.\n", None),
-        # agent_message_code_relay weighs each request against each refusal only up to 256 of
-        # either; past that any request counts. Pairing them all ran this input past the deadline.
-        ("relay-refusals.txt", b"", b"Do not forward the verification code to me.\n", None),
     )
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
         yield name, prefix + token * count + b" " * rest, reason
+    yield (
+        "code-relay-refusals.txt",
+        _filled(b"", b"Do not forward the verification code to me.\n"),
+        None,
+    )
     prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
     count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
     yield (
@@ -872,6 +874,8 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         raise RuntimeError(f"{name}: {seconds:.3f}s exceeds {SCAN_SECONDS}s")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
+    if name == "code-relay-refusals.txt" and result.verdict.value != "clean":
+        raise RuntimeError(f"{name}: expected clean, got {result.verdict.value}")
     view = {
         "comment-block.py": "comment-text",
         "markdown-lines.md": "markdown-text",
