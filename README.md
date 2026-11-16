@@ -150,6 +150,11 @@ the settings of that submission. Recovery uses the rules currently at the
 recorded root. Earlier quarantine
 slots without a pending record stay held for manual review.
 
+JSON parsing also has a structure budget before it allocates an object tree. Dense or
+deeply nested notebooks and potentially relevant MCP/Keras configs return incomplete
+(exit 2); ordinary JSON without those fields keeps its normal scan. See the
+[JSON parsing limits](docs/rules.md#json-parsing-limits) for the exact boundary.
+
 Intake checks the existing 100 MiB limit before hashing or copying, and bounds
 each read pass to the limit plus one detection byte if a file grows. Oversized
 entries move intact to `_rejected/` without a full hash or copy, receive

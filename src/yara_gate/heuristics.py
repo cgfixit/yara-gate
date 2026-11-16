@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
+from yara_gate.jsonbounds import JsonLimit, check_json_structure
 from yara_gate.models import Finding, FindingSource, Severity
 
 
@@ -62,10 +63,10 @@ def heuristic_findings(
     pickled, pickle_error = pickle_reduce_findings(path, data, check)
     findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
-    keras, keras_error = keras_config_findings(path, data)
+    keras, keras_error = keras_config_findings(path, data, check)
     findings.extend(keras)
     findings.extend(ooxml_structure_findings(path, data))
-    mcp, mcp_error = mcp_tool_findings(path, data)
+    mcp, mcp_error = mcp_tool_findings(path, data, check)
     findings.extend(mcp)
     office, error = office_findings(path, data)
     findings.extend(office)
@@ -960,7 +961,7 @@ _MCP_MAX_NODES = 2_000_000
 _MCP_MAX_DEPTH = 64
 _MCP_TOO_LARGE = "mcp json exceeds walk limit"
 # A budget-truncated document holds the scan only when it could carry an MCP entry.
-_MCP_KEYS = (b'"command"', b'"args"', b'"description"', b"\\u")
+_MCP_KEYS = ('"command"', '"args"', '"description"', "\\u")
 _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|pwsh)(\s|$)")
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
 # Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
@@ -1098,7 +1099,9 @@ _KERAS_H5_SPAN = 16 * 1024 * 1024
 _KERAS_TOO_LARGE = "keras config exceeds walk limit"
 
 
-def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
+def keras_config_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
     """Walk a Keras model config without loading it.
 
     A ``.keras`` archive keeps its graph in ``config.json``; ``model.to_json()`` writes the same
@@ -1109,7 +1112,9 @@ def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str |
     since safe_mode refuses it by default and an operator may still allow it. A config too large
     or too deep to walk completely is incomplete, never clean.
     """
-    for config in _keras_configs(path, data):
+    for config in _keras_configs(path, data, check):
+        if config is _KERAS_END:
+            return [], "keras config exceeds structure limit"
         if not (isinstance(config, dict) and "class_name" in config):
             # load_model needs class_name at the top. Without it this is a JSON document that
             # merely names a module, such as an API index or a label map, not a loadable model.
@@ -1128,7 +1133,9 @@ def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str |
     return [], None
 
 
-def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
+def _keras_configs(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> Iterator[object]:
     suffix = path.suffix.lower()
     if suffix == ".json":
         # Decode as json.loads does for bytes, so a BOM, UTF-16, or UTF-32 file and an escaped key
@@ -1141,7 +1148,10 @@ def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
         if not text.startswith("{") or ('"class_name"' not in text and "\\u" not in text):
             return
         try:
+            check_json_structure(text, check)
             yield json.loads(text)
+        except JsonLimit:
+            yield _KERAS_END
         except (ValueError, RecursionError):
             return
         return
@@ -1156,7 +1166,11 @@ def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
         start = match.start()
         window = data[start : start + _KERAS_H5_SPAN].decode("utf-8", "replace")
         try:
+            check_json_structure(window, check, embedded=True)
             config, end = decoder.raw_decode(window)
+        except JsonLimit:
+            yield _KERAS_END
+            return
         except (json.JSONDecodeError, RecursionError):
             position = start + 1
             continue
@@ -1279,7 +1293,9 @@ def _jsonc(data: bytes) -> bytes | None:
     return bytes(out) if changed else None
 
 
-def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
+def mcp_tool_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
     """Shell launchers and hidden instructions in MCP-style JSON, and an incomplete reason.
 
     The walk visits every element up to a shared node and depth budget, so the position of an
@@ -1295,18 +1311,26 @@ def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | Non
     if not body.lstrip().startswith((b"{", b"[", b"//", b"/*")):
         return [], None
     try:
+        text = body.decode(json.detect_encoding(body), "surrogatepass")
+        if not any(key in text for key in _MCP_KEYS):
+            return [], None
+        needs_jsonc = check_json_structure(text, check)
         try:
             parsed = json.loads(body)
         except json.JSONDecodeError:
             relaxed = _jsonc(body)
             if relaxed is None:
+                if needs_jsonc and len(body) > _JSONC_MAX:
+                    return [], "mcp json exceeds comment limit"
                 return [], None
             parsed = json.loads(relaxed)
+    except JsonLimit:
+        return [], "mcp json exceeds structure limit"
     except json.JSONDecodeError:
         return [], None
     except RecursionError:
         # Nested past what json.loads can parse: unwalked, so the same rule as the budget.
-        return [], _MCP_TOO_LARGE if any(key in data for key in _MCP_KEYS) else None
+        return [], _MCP_TOO_LARGE
     hits: set[str] = set()
     _walk_mcp(parsed, hits)
     findings: list[Finding] = []
@@ -1314,7 +1338,7 @@ def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | Non
         findings.append(_advisory("heuristic_mcp_shell"))
     if "hidden" in hits:
         findings.append(_advisory("heuristic_mcp_hidden_instruction"))
-    if "truncated" in hits and any(key in data for key in _MCP_KEYS):
+    if "truncated" in hits:
         return findings, _MCP_TOO_LARGE
     return findings, None
 

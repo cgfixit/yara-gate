@@ -995,7 +995,7 @@ def cases() -> list[Case]:
             "mcp entry past the depth budget",
             "mcp.json",
             b'{"a":' * 80 + b'{"command":"node"}' + b"}" * 80,
-            "incomplete:mcp json exceeds walk limit",
+            "incomplete:mcp json exceeds structure limit",
         ),
         Case(
             "#183.6",

@@ -508,13 +508,13 @@ def test_mcp_walk_limit_is_incomplete_not_clean() -> None:
     from yara_gate.heuristics import mcp_tool_findings
 
     deep = json.dumps(_nested({"command": "node"}, 80)).encode()
-    assert mcp_tool_findings(Path("mcp.json"), deep) == ([], "mcp json exceeds walk limit")
+    assert mcp_tool_findings(Path("mcp.json"), deep) == ([], "mcp json exceeds structure limit")
     # Without a key an MCP entry needs, the same depth keeps its clean result.
     plain = json.dumps(_nested({"a": 1}, 80)).encode()
     assert mcp_tool_findings(Path("data.json"), plain) == ([], None)
     # Past json.loads' own nesting limit, the same rule applies.
     keyed = b'{"x":' * 100_000 + b'{"command":"bash"}' + b"}" * 100_000
-    assert mcp_tool_findings(Path("mcp.json"), keyed) == ([], "mcp json exceeds walk limit")
+    assert mcp_tool_findings(Path("mcp.json"), keyed) == ([], "mcp json exceeds structure limit")
     assert mcp_tool_findings(Path("data.json"), b"[" * 100_000 + b"]" * 100_000) == ([], None)
 
 

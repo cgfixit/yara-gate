@@ -169,6 +169,8 @@ long HTML comment reads and treats more than 256 nested feed namespace scopes as
 
 For any finding, start with the [detection-method map](rules/README.md) or look up its `rule_id` in [docs/rules.md](docs/rules.md), which gives the indicators each rule needs and its known benign collisions. Most rules are advisory. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
 
+MCP, notebook, and Keras readers also enforce a [JSON structure budget](docs/rules.md#json-parsing-limits) before allocating their object trees. Dense or deeply nested candidates are incomplete even when they have no findings.
+
 If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `archive members exceed 1000`, `archive unreadable or encrypted`, `encrypted pdf`, `encrypted office file`, `pickle exceeds walk limit`, `mcp json exceeds walk limit` (MCP-shaped JSON too large or deep to walk whole), `pdf cmap entries exceed 524288`, `pdf cmap tokens exceed 1572864`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
 A reader limit such as `text pieces exceed 100000` or a deadline can stop a scan midway.

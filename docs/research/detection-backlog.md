@@ -175,6 +175,15 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   reported as unmapped when it stands alone. Count the fonts generators write with the
   non-Unicode CMaps before reading them; each needs the CMap's own table.
 
+### JSON object-tree allocation
+
+Issue [#258](https://github.com/cgfixit/yara-gate/issues/258) is addressed by a
+pre-decode structure budget shared by MCP, notebook, and Keras readers. It preserves
+supported readings and returns incomplete when a potentially relevant document
+exceeds the budget. Ordinary JSON without MCP keys bypasses that heuristic's tree
+allocation. See [the measurements and compatibility checks](../verification/2026-11-16-json-allocation.md).
+There was no `OPEN` detection-gap marker for this availability issue.
+
 ### Further candidates, not yet in the probe
 
 | Candidate | Evidence | Why it is not built yet |
@@ -263,6 +272,7 @@ Revisit these proposals when new evidence addresses the reason in the table.
 | `&&` alone, or `2>&1`, in a GYP command expansion as `dev_gyp_command_expansion` | nodegit's `binding.gyp` uses `&&` inside a `node -p` test and fibers pipes `2>&1` on to `grep`; the rule reads discarded output and an echoed stub name ([record](../verification/2026-11-14-indirect-lengths-gyp-recall.md)) |
 | Join a sentence split between two PDF pages | Every reader shows two pages as two streams and the phrase split; the probe keeps it clean ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | Read an image XObject's bytes as page content when they spell text operators | Every reader draws them as pixels; only a stream a `/Contents` entry names is read as content ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
+| Parse an arbitrarily dense notebook/config to preserve a clean result | Tree allocations amplify small inputs; the [pre-decode budget](../rules.md#json-parsing-limits) holds over-budget candidates as incomplete. Streaming selective extraction is deferred unless real held documents justify its additional parser surface. |
 | Read a JSON config whose comment never closes | jsonc-parser reports the error and VS Code does not load the file; the walk leaves it unread, as before ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)) |
 | `opacity:0`, white or transparent text, zero height, or `data-*` as `agent_hidden_html` cues | Shown text carries them (fade-in animation, dark themes, gradient headings, share widgets). The reader takes what an element settles ([record](../verification/2026-11-10-hidden-html-text.md)); a lexical cue cannot tell a fade-in from hidden text |
 | A box of no size that clips its content, a font of one pixel, or an offset off the page, as hidden text in the HTML reader | Each depends on layout the markup does not settle, and each was claimed and then failed against Chromium ([record](../verification/2026-11-10-hidden-html-text.md)). A fixed box 11,599 px wide with an inherited `text-align:right` drew its "off-screen" text at x = 1,318. `agent_hidden_html` keeps the offset and the small font as cues beside a phrase |

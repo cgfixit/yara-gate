@@ -55,7 +55,12 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             "zip end records exceed 64",
         ),
         ("json-escapes.json", b'{"cells":["', b"\\u005b", None),
-        ("notebook-nesting.ipynb", b'{"nbformat":4,"cells":', b"[", None),
+        (
+            "notebook-nesting.ipynb",
+            b'{"nbformat":4,"cells":',
+            b"[",
+            "notebook json exceeds structure limit",
+        ),
         ("comment-lines.py", b"", b"#\n", None),
         ("comment-block.py", b"", b"# ab\n", None),
         ("comment-pieces.py", b"", b"# a\n# b\n\n", "text pieces exceed 100000"),
@@ -95,7 +100,7 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     )
     prefix = b'{"nbformat":4,"cells":[{"cell_type":"markdown","source":['
     suffix = b'"last line"]}]}'
-    token = b'"ab\\n",'
+    token = b'"' + b"a" * 254 + b'\\n",'
     count, rest = divmod(SIZE - len(prefix) - len(suffix), len(token))
     yield "notebook-lines.ipynb", prefix + token * count + b" " * rest + suffix, None
     yield (
