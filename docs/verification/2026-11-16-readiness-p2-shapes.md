@@ -89,4 +89,149 @@ your ... safety"). The new string does not match it.
 
 ## Measurements
 
-Pending: the corpus, sweep, timing, and replay runs on `4a76fb2` are being recorded.
+Every run below is on `05ab9ea`, the rule head of this change, against `e6d92bc`'s rules.
+One fix came after the first runs. A bare HTML fragment such as `<p>Use your email tool
+...</p>` has no `html` or `body` element, so it is scanned as text. There, `>` stands before
+"Use", so a tag end now opens the clause for the tool and `.env` strings too. The gap probe's
+page case caught this.
+
+### Downloaded corpora
+
+The owner approved the downloads on November 16, for this measurement only. Each corpus was
+downloaded to a scratch directory outside the repository, pinned to a dataset commit; none of
+its text is in git or in this record. Each item was scanned as `scan_bytes(text,
+name="message.txt")`, once with each rules tree.
+
+| Corpus | Revision | Files read | SHA-256 |
+| --- | --- | --- | --- |
+| [SMS Spam Collection](https://huggingface.co/datasets/ucirvine/sms_spam) (CC BY 4.0) | `cae486f` | `plain_text/train` parquet | `6e5518e4…` |
+| [LLMail-Inject](https://huggingface.co/datasets/microsoft/llmail-inject-challenge) (MIT) | `1063bdf` | `emails_for_fp_tests.json`, both labelled phase files | as in the [recall record](2026-11-14-indirect-lengths-gyp-recall.md#3-a-recall-floor-on-two-public-corpora) |
+| [NotInject](https://huggingface.co/datasets/leolee99/NotInject) (MIT) | `847ae76` | `NotInject_one`, `_two`, `_three` | as in the recall record |
+
+| Set | n | Any finding, `e6d92bc` → this change | `agent-document` holds |
+| --- | ---: | --- | --- |
+| SMS, ordinary (ham) | 4,827 | 0 → 0 | 0 → 0 |
+| SMS, spam | 747 | 0 → 0 | 0 → 0 |
+| LLMail-Inject false-positive emails | 203 | 0 → 0 | 0 → 0 |
+| NotInject | 339 | 1 → 1 | 0 → 0 |
+| LLMail-Inject phase 1 and 2 submissions | 198,044 | 5,117 → 5,117 | 1,451 → 1,451 |
+
+**0 of 204,160 items changed findings.** The `e6d92bc` counts match the recall record's
+row by row (for example 374 and 207 `api_triggered` bodies with a finding), which checks
+this harness against that one. The new strings add no detection on the LLMail-Inject
+submissions. Those attacks ask a mail agent to send an email in other words, and none uses
+these six shapes. This is a false-positive measurement on ordinary SMS and mail. It is not
+a recall figure.
+
+### Installed files
+
+`sweep_rule_changes.py --jobs 4 --base-ref origin/main` scanned 6,021 files from
+`/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked
+environment's site-packages, and this repository's docs. Six files changed findings, every
+one a file of this repository that quotes the attack sentences on purpose:
+- `docs/research/probe_detection_gaps.py` and `docs/research/probe_integration_readiness.py`
+  (the fixtures);
+- `docs/reviews/2026-11-02-integration-readiness.md` (the review that found the misses);
+- this record, `docs/research/detection-backlog.md`, and `docs/integrations.md`, which quote
+  them.
+
+No installed file outside the repository changed.
+
+### The review's own probe
+
+`docs/research/probe_integration_readiness.py`, run from a worktree of `e6d92bc` and from this
+change:
+
+| Channel | `e6d92bc` | This change |
+| --- | --- | --- |
+| SMS attacks held under `agent-ingest` | 18 of 31 | 24 of 31 |
+| SMS ordinary messages passed | 18 of 18 | 18 of 18 |
+| Document attacks held under `agent-document` | 9 of 30 | 9 of 30 |
+
+The six newly held messages are the six shapes of the issue. Seven SMS attacks still pass:
+- ROT13 and reversed text;
+- a polite paraphrase;
+- "send me the backup codes", with no keyword;
+- the instruction split across two texts, scanned apart and together.
+
+### Timing
+
+`check_worst_case_timing.py` passed 94 inputs of 4 MiB; six are new. The slowest was 5.6 s
+(`pdf-page-fonts.pdf`), against the 10 s ceiling.
+
+| New input | Seconds | Verdict |
+| --- | ---: | --- |
+| `override-flag.txt` | 1.19 | clean |
+| `tool-warning.txt` | 1.13 | clean |
+| `standing-kept.txt` (the input the paired-match draft ran past the deadline) | 1.04 | clean |
+| `env-refusal.txt` | 0.84 | clean |
+| `admin-notice.txt` | 0.57 | clean |
+| `code-entry.txt` | 0.54 | clean |
+
+### Installed CLI
+
+On a disposable home and rules copy, the inbox held each attack and its nearest ordinary
+message as `.txt` files, plus a zip of the tool directive.
+
+| Policy | Exit | Six attacks and the zip | Six ordinary messages |
+| --- | ---: | --- | --- |
+| `agent-ingest` | 1 | `blocked/` | `clean/` |
+| `agent-document` | 1 | `blocked/` | `clean/` |
+| `default` | 0 | `clean/`, each report `advisory` | `clean/`, each report `clean` |
+
+`scan -` from stdin on the tool directive exits 1 under both agent policies, with
+`agent_tool_hijack_directive` and the policy's hold reason.
+
+### Live demo and public replay
+
+- **Live workbench.** `yara-gate demo --rules <disposable copy>` was driven in headless
+  Chromium (Playwright):
+  - "Run every pair" gave 81 of 81 as expected under each of `agent-ingest`,
+    `agent-document`, and `default`, with 0 findings on benign twins.
+  - Under both agent policies, the twelve attack sentences pasted into the page were block with
+    the rule named, and the 22 nearest ordinary messages were clean.
+  - There were no console errors.
+- **Recorder.** `record_pages_demo.py --baseline web-demo/recordings.json` reported that
+  outcomes match for 82 scenarios × 3 policies, with only provenance refreshed. The committed
+  recordings are not changed.
+
+### Overlap with open pull requests
+
+#264 (`51622a3`) and #265 (`bdf0116`) both merge onto this change with no conflict. Shared
+files are `README.md`, `user-guide.md`, `docs/integrations.md`, `docs/rules.md`, the backlog,
+`probe_detection_gaps.py`, and `check_worst_case_timing.py`; each edits other lines. On the
+three-way merge, with `PYTHONPATH` on its own `src`, the following passed:
+- `check_rule_pairs.py` (120);
+- `probe_detection_gaps.py --verify`;
+- the tripwire (94 inputs);
+- `check_doc_links.py` (876 links);
+- `pytest tests/test_jsonbounds.py tests/test_held.py` (35 passed).
+
+## What was run
+
+| Check | Result |
+| --- | --- |
+| `lint_rules.py` | 89 rules compiled and linted |
+| `check_rule_pairs.py` | 120 rules, with six new pairs |
+| `check_added_rules.py` | 246 plus 4 vendor-override cases |
+| `measure_precision.py --fail-over` | Pass; no new hit on the 328 generated files |
+| `probe_rule_coverage.py --verify` | Pass |
+| `probe_detection_gaps.py --verify` | 730 ok, with the 31 `#255` cases; B3 and B5 open, as on `main` |
+| `check_worst_case_timing.py` | PASS, 94 inputs |
+| `sweep_rule_changes.py` | 6 of 6,021 files changed, each explained above |
+| `ruff check`, `ruff format --check`, `check_text_controls.py`, `check_doc_links.py` | Clean |
+
+Python files changed only under `docs/`, and no source module changed, so `mypy --strict` and
+pytest were not run for this change. The full suite is left to hosted CI.
+
+## Not established
+
+- **English only.** A paraphrase that uses none of the listed verbs passes, as do the seven SMS
+  attacks listed above.
+- **System prompts and agent configuration.** One that tells its own agent to "use your email
+  tool to send" mail to a fixed outside address matches `agent_tool_hijack_directive`. Under
+  `agent-document`, such a file is held. No such file was among the installed files, and real
+  agent configurations were not counted.
+- **The SMS corpus is from 2012.** It holds no message written to an AI agent, so it measures
+  the ordinary-chat boundary only.
+- **Synthetic fixtures.** These are evidence for the listed shapes, not a detection rate.
