@@ -714,6 +714,36 @@ def cases() -> list[Case]:
         ),
         Case(
             "feed",
+            "atom plain title keeps escaped bold literal (benign)",
+            "atom.xml",
+            ATOM_ENTRY
+            + b'<title type="text">Ign&lt;b&gt;ore&lt;/b&gt;'
+            + phrase[6:]
+            + b"</title></entry></feed>",
+            "clean",
+        ),
+        Case(
+            "feed",
+            "atom default text title keeps CDATA markup literal (benign)",
+            "atom.xml",
+            ATOM_ENTRY
+            + b"<title>Ign<![CDATA[<b>ore</b>]]>"
+            + phrase[6:]
+            + b"</title></entry></feed>",
+            "clean",
+        ),
+        Case(
+            "feed",
+            "atom plain title split by XML comment",
+            "atom.xml",
+            ATOM_ENTRY
+            + b'<title type="text">Ign<!-- x -->'
+            + phrase[3:]
+            + b"</title></entry></feed>",
+            PHRASE_RULE,
+        ),
+        Case(
+            "feed",
             "rss halves in a title and a description (benign)",
             "index.xml",
             rss_item(
