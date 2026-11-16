@@ -26,3 +26,5 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`rtftext.py`](rtftext.py) reads bounded RTF text through formatting, codepages, and hex or Unicode escapes, one piece per paragraph, cell, or story.
 - [`htmlhidden.py`](htmlhidden.py) reads the HTML text a browser does not show (comments, `data-*` values, and elements hidden by one exact inline declaration), without rendering; it follows the HTML parser's tree and claims nothing that depends on layout or on a stylesheet.
 - [`py.typed`](py.typed) marks the package as providing type information.
+
+- [`rescan.py`](rescan.py) revalidates admitted copies under the watch and intake locks, writes reports, and withdraws new holds without releasing existing ones.
