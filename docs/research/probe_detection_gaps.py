@@ -27,7 +27,9 @@ YAML and TOML strings, from ``docs/verification/2026-11-14-cjk-cmaps-and-config-
 ``docs/verification/2026-11-14-pdf-word-gaps-and-filters.md``.
 ``unread`` cases are PDF page content under a filter no view decodes (#223), reported as the
 note ``heuristic_pdf_content_unread``, from
-``docs/verification/2026-11-15-pdf-unread-page-content.md``.
+``docs/verification/2026-11-15-pdf-unread-page-content.md``. ``#255`` cases are the
+readiness review's P2 shapes, each a spelling of an existing advisory rule beside the nearest
+ordinary message, from ``docs/verification/2026-11-16-readiness-p2-shapes.md``.
 ``strings`` cases are PDF form values, document information strings, and outline titles
 written as hexadecimal, octal, or UTF-16BE (#239), from
 ``docs/verification/2026-11-14-pdf-text-strings.md``.
