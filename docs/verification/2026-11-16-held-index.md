@@ -26,8 +26,12 @@ owner decisions. Issue-body proposals are not assumed to override those decision
 
 The only open PR at selection was #264. Its file list overlaps this change in
 README, user guide, integrations, and the source map; its runtime changes are in
-JSON readers, while this change adds the index and CLI. Compatibility is checked
-separately from either PR's own acceptance.
+JSON readers, while this change adds the index and CLI. Candidate `182d1ad98714405c48297dc0175c62d7e7f77920`
+trial-merged cleanly with #264's head above; no conflict resolution was needed.
+The disposable combined tree passed 35 focused checks (`test_held.py` and
+`test_jsonbounds.py`), strict mypy, and documentation-link validation. This is
+focused combination evidence, separate from this PR's installed CLI/browser
+acceptance and from #264's own measurements.
 
 ## Behavior and acceptance
 
@@ -81,7 +85,8 @@ Bundled-only scans compiled 89 rules with zero skips. No vendor packs were downl
   playback validation, distinct from live-scanner browser acceptance.
 - Ruff check/format on changed Python and Markdown, strict `mypy src scripts`,
   actionlint 1.7.12 on the changed workflow, and `zizmor --offline --pedantic .github`
-  passed. Text-control and relative-link checks are run on the staged candidate.
+  passed. Staged-candidate text-control and relative-link checks passed (348 files
+  and 862 relative links respectively).
 
 The final installed module bytes were compared with the candidate source. SHA-256:
 
