@@ -476,57 +476,21 @@ def _scan_file(
                     finding.member_path = list(unit.member_path)
                     finding.view = view
                     findings.append(finding)
+
             # A worksheet cell split across rich-text runs, an HTML paragraph split by bold, a
             # link, or a comment, a Markdown paragraph split by emphasis or a code span, a
             # sentence wrapped over two comment lines, and a notebook cell stored as a list of
             # lines are each one piece of text to the reader.
-            pieces = _with_folded_pieces(
-                "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget), budget
+            _piece_findings(
+                rules,
+                unit,
+                _reader_pieces(unit, strings, readings, budget),
+                budget,
+                yara,
+                ext,
+                base,
+                output=findings,
             )
-            pieces += _with_folded_pieces(
-                "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
-            )
-            # A worksheet's page header or footer, one section at a time.
-            pieces += _with_folded_pieces(
-                "ooxml-header", ooxml_header_texts(unit.name, unit.data, budget), budget
-            )
-            pieces += _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
-            pieces += _with_folded_pieces("pdf-annotation", strings.annotations, budget)
-            # A form field's value, a document information string, and an outline title.
-            pieces += _with_folded_pieces("pdf-string", strings.shown, budget)
-            # Both readings' pieces share their views, so a rule is reported once per view.
-            for reading, _ in readings:
-                pieces += _with_folded_pieces(
-                    "html-text", html_text_blocks(unit.name, reading, budget), budget
-                )
-                pieces += _with_folded_pieces(
-                    "markdown-text", markdown_texts(unit.name, reading, budget), budget
-                )
-                pieces += _with_folded_pieces("feed-text", feed_texts(reading, budget), budget)
-                pieces += _with_folded_pieces(
-                    "xml-text", xml_texts(unit.name, reading, budget), budget
-                )
-                pieces += _with_folded_pieces(
-                    "config-unescaped",
-                    config_unescaped_texts(unit.name, reading, budget),
-                    budget,
-                )
-                cells = notebook_texts(unit.name, reading, budget)
-                pieces += _with_folded_pieces(
-                    "notebook-text",
-                    [text for text, lines, _ in cells if lines >= 2],
-                    budget,
-                )
-                # A comment inside a code cell is inside a JSON string in the raw text.
-                comments = comment_texts(reading, budget)
-                for text, _, code in cells:
-                    if code:
-                        comments += comment_texts(text, budget)
-                        if len(comments) > MAX_TEXT_PIECES:
-                            raise ContentLimit("text pieces exceed 100000")
-                pieces += _with_folded_pieces("comment-text", comments, budget)
-            if any(texts for _, texts in pieces):
-                findings.extend(_piece_findings(rules, unit, pieces, budget, yara, ext, base))
             hidden_seen: set[tuple[str, str | None, str]] = set()
             for reading, _ in readings:
                 for finding in _html_hidden_findings(
@@ -777,15 +741,66 @@ def _html_hidden_findings(
     return []
 
 
+def _reader_pieces(
+    unit: ContentUnit, strings: PdfStrings, readings: Sequence[tuple[str, str]], budget: Budget
+) -> Iterator[tuple[str, Iterable[str]]]:
+    """Produce groups lazily so each reader's pieces can be scanned and released."""
+    yield from _with_folded_pieces(
+        "ooxml-cell", ooxml_cell_texts(unit.name, unit.data, budget), budget
+    )
+    yield from _with_folded_pieces(
+        "ooxml-comment", ooxml_comment_texts(unit.name, unit.data, budget), budget
+    )
+    # A worksheet's page header or footer, one section at a time.
+    yield from _with_folded_pieces(
+        "ooxml-header", ooxml_header_texts(unit.name, unit.data, budget), budget
+    )
+    yield from _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
+    yield from _with_folded_pieces("pdf-annotation", strings.annotations, budget)
+    # A form field's value, a document information string, and an outline title.
+    yield from _with_folded_pieces("pdf-string", strings.shown, budget)
+    # Both readings' pieces share their views, so a rule is reported once per view.
+    for reading, _ in readings:
+        yield from _with_folded_pieces(
+            "html-text", html_text_blocks(unit.name, reading, budget), budget
+        )
+        yield from _with_folded_pieces(
+            "markdown-text", markdown_texts(unit.name, reading, budget), budget
+        )
+        yield from _with_folded_pieces("feed-text", feed_texts(reading, budget), budget)
+        yield from _with_folded_pieces("xml-text", xml_texts(unit.name, reading, budget), budget)
+        yield from _with_folded_pieces(
+            "config-unescaped",
+            config_unescaped_texts(unit.name, reading, budget),
+            budget,
+        )
+        cells = notebook_texts(unit.name, reading, budget)
+        yield from _with_folded_pieces(
+            "notebook-text",
+            [text for text, lines, _ in cells if lines >= 2],
+            budget,
+        )
+        # A comment inside a code cell is inside a JSON string in the raw text.
+        comments = comment_texts(reading, budget)
+        for text, _, code in cells:
+            if code:
+                comments += comment_texts(text, budget)
+                if len(comments) > MAX_TEXT_PIECES:
+                    raise ContentLimit("text pieces exceed 100000")
+        yield from _with_folded_pieces("comment-text", comments, budget)
+
+
 def _piece_findings(
     rules: object,
     unit: ContentUnit,
-    pieces: Sequence[tuple[str, Iterable[str]]],
+    pieces: Iterable[tuple[str, Iterable[str]]],
     budget: Budget,
     yara: Callable[..., list[Finding]],
     ext: str,
     name: str,
     extra: Sequence[Finding] = (),
+    *,
+    output: list[Finding] | None = None,
 ) -> list[Finding]:
     """One YARA pass per piece of text, keeping one finding per rule and namespace per view.
 
@@ -795,28 +810,30 @@ def _piece_findings(
     (already labeled with their view) are kept in their view's order.
     """
     # Keyed by namespace and rule: two rule files may share an id with different severities.
-    views: dict[str, dict[tuple[str, str], Finding]] = {view: {} for view, _ in pieces}
+    views: dict[str, dict[tuple[str, str], Finding]] = {}
+    ordered = [] if output is None else output
     _SCANNERS.reuse = True
     try:
         for view, texts in pieces:
+            matches = views.setdefault(view, {})
             for piece in texts:
                 budget.check()
                 for finding in yara(rules, _derived(piece, budget), ext, view, name=name):
                     if finding.rule_id in _RAW_ONLY_RULES:
                         continue
-                    views[view].setdefault((finding.rule_id, finding.namespace or ""), finding)
+                    matches.setdefault((finding.rule_id, finding.namespace or ""), finding)
     finally:
         _SCANNERS.reuse = False
         _SCANNERS.pair = None
-    for finding in extra:
-        views.setdefault(finding.view, {})[(finding.rule_id, finding.namespace or "")] = finding
-    ordered: list[Finding] = []
-    for view, found in views.items():
-        for key in sorted(found):
-            finding = found[key]
-            finding.member_path = list(unit.member_path)
-            finding.view = view
-            ordered.append(finding)
+        # A later reader can hit a limit. Preserve matches from pieces already scanned.
+        for finding in extra:
+            views.setdefault(finding.view, {})[(finding.rule_id, finding.namespace or "")] = finding
+        for view, found in views.items():
+            for key in sorted(found):
+                finding = found[key]
+                finding.member_path = list(unit.member_path)
+                finding.view = view
+                ordered.append(finding)
     return ordered
 
 
@@ -829,16 +846,22 @@ def _fold_pdf_pieces(texts: Sequence[str], budget: Budget) -> Iterator[str]:
 
 
 def _with_folded_pieces(
-    view: str, texts: Sequence[str], budget: Budget
-) -> list[tuple[str, Sequence[str]]]:
-    """``view``'s pieces, then each one whose folded spelling differs, as ``<view>+text-folded``."""
+    view: str, texts: Iterable[str], budget: Budget
+) -> Iterator[tuple[str, Iterable[str]]]:
+    """Scan original pieces as they arrive, then their changed folded spellings."""
     folded: list[str] = []
-    for piece in texts:
-        budget.check()
-        result = folded_text(piece)
-        if result != piece:
-            folded.append(result)
-    return [(view, texts), (view + FOLDED_SUFFIX, folded)] if folded else [(view, texts)]
+
+    def originals() -> Iterator[str]:
+        for piece in texts:
+            budget.check()
+            yield piece
+            result = folded_text(piece)
+            if result != piece:
+                folded.append(result)
+
+    yield view, originals()
+    if folded:
+        yield view + FOLDED_SUFFIX, folded
 
 
 _SCANNERS = threading.local()

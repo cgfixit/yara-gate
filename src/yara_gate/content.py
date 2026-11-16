@@ -3312,7 +3312,7 @@ _HTML_TOKEN = re.compile(
 # hold < and any length of value; a quoted value runs to its closing quote, and a tag that never
 # closes runs to the end of the file, which hides the rest (eof-in-tag). </> is dropped, and </
 # before anything but a letter, <!, and <? open a bogus comment that ends at the first >.
-# Comments are ended in code (_whatwg_comment_end). Possessive throughout, and each token ends
+# Comments are ended in code (_html_comment). Possessive throughout, and each token ends
 # at a fixed character or at the end, so the pass is linear.
 _WHATWG_NAME = r"(?:=[^\t\n\f\r />=]*+|[^\t\n\f\r />=]++)"
 _WHATWG_VALUE = r"""(?:"[^"]*+(?:"|\Z)|'[^']*+(?:'|\Z)|[^\t\n\f\r >]*+)"""
@@ -3325,23 +3325,40 @@ _WHATWG_TOKEN = re.compile(
 )
 
 
-def _whatwg_comment_end(text: str, position: int) -> int:
-    """Where a comment opened by the ``<!--`` that ends at ``position`` ends, as WHATWG reads it.
+# The strict pass keeps its literal boundary; the WHATWG pass also reads past --!>.
+_HTML_COMMENT_END = "-->"
+_WHATWG_COMMENT_END = re.compile(r"--!?>")
+_HTML_CDATA_END = "]]>"
+_HTML_READ_CHUNK = 64 * 1024
 
-    ``<!-->`` and ``<!--->`` are empty comments, and ``--!>`` closes a comment as ``-->`` does;
-    an unclosed comment runs to the end. The second search stops at the first ``-->``, so each
-    comment is searched once.
-    """
-    if text.startswith(">", position):
-        return position + 1
-    if text.startswith("->", position):
-        return position + 2
-    close = text.find("-->", position)
-    limit = len(text) if close < 0 else close
-    bang = text.find("--!>", position, limit + 3)
-    if bang >= 0 and (close < 0 or bang < close):
-        return bang + 4
-    return len(text) if close < 0 else close + 3
+
+def _html_delimiter(
+    text: str, position: int, delimiter: str | re.Pattern[str], budget: Budget
+) -> tuple[int, int] | None:
+    """Search forward in chunks, allowing a delimiter to straddle a chunk boundary."""
+    while position < len(text):
+        budget.check()
+        stop = position + _HTML_READ_CHUNK
+        if isinstance(delimiter, str):
+            start = text.find(delimiter, position, stop + 3)
+            if start >= 0:
+                return start, start + len(delimiter)
+        elif (match := delimiter.search(text, position, stop + 3)) is not None:
+            return match.span()
+        position = stop
+    return None
+
+
+def _html_comment(text: str, position: int, budget: Budget, *, whatwg: bool) -> tuple[int, int]:
+    """Return the end of the comment body and the next tokenizer position."""
+    if whatwg:
+        if text.startswith(">", position):
+            return position, position + 1
+        if text.startswith("->", position):
+            return position, position + 2
+    delimiter = _WHATWG_COMMENT_END if whatwg else _HTML_COMMENT_END
+    close = _html_delimiter(text, position, delimiter, budget)
+    return (len(text), len(text)) if close is None else close
 
 
 # Elements whose body is not markup: script and style are not shown, and a textarea or title
@@ -3466,7 +3483,7 @@ def _opens_as_html(head: str) -> bool:
         position = close + 3
 
 
-def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
+def html_text_blocks(name: str, text: str, budget: Budget) -> Iterator[str]:
     """The text of each HTML block or SVG text element split by inline markup.
 
     A paragraph, list item, table cell, or other block is one piece; bold, links, spans,
@@ -3474,58 +3491,62 @@ def html_text_blocks(name: str, text: str, budget: Budget) -> list[str]:
     is a line break, and whitespace collapses to one space outside ``<pre>``. Script and style
     bodies are not text, and a textarea or title body is read as written, with no tags in it.
     A block whose text is one run is left to the raw and HTML-unescaped views. Two blocks are
-    never joined. One linear pass with bounded tags; this is lexical text extraction, not
-    computed visibility, sanitization, or script execution. SVG tspan/textPath are inline;
+    never joined. This is lexical text extraction. SVG tspan/textPath are inline;
     separate text elements stay separate. SVG positioning and CSS are not interpreted.
 
-    The text is read twice: once with the bounded tokens above, and once as the WHATWG
-    tokenizer reads markup a browser discards (``<!-->``, ``--!>``, ``</>``, ``<!a<b>``, a tag
-    name of any length or spelling, a tag holding ``<``). Chromium and pandoc show a sentence
-    split by any of these whole. A block of the second reading is added where the first does not
-    have it, so every block the first reading gives is kept.
+    The second pass is a bounded lexical reading of markup the WHATWG tokenizer discards
+    (``<!-->``, ``--!>``, ``</>``, ``<!a<b>``, odd tag names, and tags containing ``<``).
+    Chromium and pandoc agreed on the
+    tested examples. Every block from the first reading is yielded, then additional blocks
+    from the second.
     """
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     if suffix not in _HTML_SUFFIXES and not _opens_as_html(text[:8192]):
-        return []
-    blocks = _html_blocks(text, budget, whatwg=False)
-    seen = set(blocks)
-    for block in _html_blocks(text, budget, whatwg=True):
-        if block not in seen:
-            if len(blocks) >= MAX_TEXT_PIECES:
+        return
+    seen: set[str] = set()
+    count = 0
+    for whatwg in (False, True):
+        for block in _html_blocks(text, budget, whatwg=whatwg):
+            if whatwg and block in seen:
+                continue
+            if count >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
+            count += 1
             seen.add(block)
-            blocks.append(block)
-    return blocks
+            yield block
 
 
-def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
-    """The blocks of :func:`html_text_blocks`, read with one of its two tokenizers."""
+def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> Iterator[str]:
+    """Yield blocks from one tokenizer and bound its work even on duplicate blocks."""
     token = _WHATWG_TOKEN if whatwg else _HTML_TOKEN
-    blocks: list[str] = []
     parts: list[str] = []
     segments = 0
+    emitted = 0
     pre = 0
     svg_depth = 0
 
-    def flush() -> None:
-        nonlocal segments
+    def flush() -> str | None:
+        nonlocal segments, emitted
+        block = None
         if segments >= 2:
-            if len(blocks) >= MAX_TEXT_PIECES:
+            if emitted >= MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
-            blocks.append("".join(parts).strip(" "))
+            emitted += 1
+            block = "".join(parts).strip(" ")
         parts.clear()
         segments = 0
+        return block
 
     position = 0
     count = 0
     while position < len(text):
-        count += 1
         if count % 4096 == 0:
             budget.check()
+        count += 1
         if svg_depth and text.startswith("<![CDATA[", position):
-            end = text.find("]]>", position + 9)
-            piece = text[position + 9 : end if end >= 0 else len(text)]
-            position = end + 3 if end >= 0 else len(text)
+            close = _html_delimiter(text, position + 9, _HTML_CDATA_END, budget)
+            piece = text[position + 9 : close[0] if close is not None else len(text)]
+            position = len(text) if close is None else close[1]
             # XML character data is visible text; entity-looking bytes remain literal.
             if not pre:
                 piece = _HTML_SPACE.sub(" ", piece)
@@ -3539,12 +3560,7 @@ def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
         lexeme = match.group()
         position = match.end()
         if lexeme == "<!--":
-            # A comment hides its text and splits the run it sits in; unclosed, it runs to the end.
-            if whatwg:
-                position = _whatwg_comment_end(text, position)
-                continue
-            close = text.find("-->", position)
-            position = len(text) if close < 0 else close + 3
+            _, position = _html_comment(text, position, budget, whatwg=whatwg)
             continue
         if whatwg and lexeme.startswith(("<!", "<?", "</")) and not match.group(2):
             # A bogus comment, a declaration, or </>: nothing shown.
@@ -3560,13 +3576,15 @@ def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
                 svg_depth = max(0, svg_depth + (-1 if match.group(1) else 1))
             if tag in _HTML_RAW_TEXT and not match.group(1) and not lexeme.endswith("/>"):
                 # A textarea or title body is one run of shown text: never a split phrase.
-                flush()
+                if (block := flush()) is not None:
+                    yield block
                 close_match = _HTML_RAW_TEXT[tag].search(text, position)
                 position = len(text) if close_match is None else close_match.end()
             elif tag == "br":
                 parts.append("\n")
             elif tag in _HTML_BLOCKS:
-                flush()
+                if (block := flush()) is not None:
+                    yield block
                 if tag == "pre":
                     pre = max(0, pre + (-1 if match.group(1) else 1))
             continue
@@ -3576,8 +3594,9 @@ def _html_blocks(text: str, budget: Budget, *, whatwg: bool) -> list[str]:
         if piece.strip():
             segments += 1
         parts.append(piece)
-    flush()
-    return blocks
+    budget.check()
+    if (block := flush()) is not None:
+        yield block
 
 
 # A line comment: indentation, a leader, more leader characters, and the rest of the line. The
@@ -3718,29 +3737,17 @@ _CONFIG_DOUBLE = re.compile(r'(?:[^"\\\r\n]++|\\[^\r\n])*+')
 _CONFIG_MULTI = re.compile(r'(?:[^"\\]++|\\.|"{1,2}(?!"))*+', re.DOTALL)
 
 
-# The root element of a web feed, after the prolog: RSS 2.0 (``rss``), Atom (``feed``), or RSS
-# 1.0 (an ``RDF`` root that declares the RSS 1.0 namespace). A feed is fetched under any name
-# (``index.xml``, ``rss``, ``feed``), so it is known by its root, not its suffix.
-_FEED_ROOT = re.compile(r"<(rss|feed|[A-Za-z_][\w.-]*:RDF)[\s/>]")
 _FEED_PROLOG = re.compile(
     r"\ufeff?(?:\s++|<\?.*?\?>|<!--.*?-->|<!DOCTYPE[^<>\[]*+(?:\[.*?\])?\s*>)*+", re.S
 )
-_RSS1_NAMESPACE = "http://purl.org/rss/1.0/"
-# A tag of ``plain_xml`` output, which escapes > inside quoted values; the text nodes are the
-# character data between two of them. Each attempt stops at the next < or >, so it is linear.
+_ATOM_NAMESPACE = b"http://www.w3.org/2005/Atom"
+_RSS1_NAMESPACE = b"http://purl.org/rss/1.0/"
+_RDF_NAMESPACE = b"http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+_RSS_CONTENT_NAMESPACE = b"http://purl.org/rss/1.0/modules/content/"
+_ATOM_TEXT_FIELDS = frozenset({b"content", b"summary", b"title", b"subtitle", b"rights"})
+# Generic XML character data lies between the tags of plain_xml output.
 _FEED_TAG = re.compile(rb"<[^<>]*+>")
-# Decoded character data that holds a tag, a comment, or a declaration: escaped HTML.
 _ESCAPED_MARKUP = re.compile(r"<[A-Za-z/!?]")
-# An Atom text construct of type ``xhtml`` (RFC 4287 3.1.1.3), in ``plain_xml`` output: its
-# content is the feed's own elements, an XHTML ``div`` a feed reader renders as HTML. The
-# element may carry a prefix bound to the Atom namespace (``atom:content``).
-_ATOM_XHTML = re.compile(
-    rb"<((?:[A-Za-z_][\w.-]*:)?(?:content|summary|title|subtitle|rights))"
-    rb"\s[^<>]*?\btype\s*=\s*([\"'])xhtml\2[^<>]*+>"
-)
-# Distinct element names (a prefix and one of the five constructs) whose end tags are searched
-# for. A feed writes one or two; each is at most one search to the end of the feed.
-_MAX_ATOM_XHTML_NAMES = 32
 # A tag's prefix (``<xhtml:p>``, ``</xhtml:p>``), so the HTML reader sees ``<p>``.
 _TAG_PREFIX = re.compile(r"<(/?)[A-Za-z_][\w.-]*:(?=[A-Za-z_])")
 # The root element of an XML document after its prolog, for ``xml_texts``.
@@ -3768,27 +3775,36 @@ def _odf_root(text: str, root: re.Match[str]) -> bool:
     return _ODF_TEXT_NAMESPACE.decode() in tag
 
 
-def _is_feed(text: str) -> bool:
-    head = text[:8192]
-    prolog = _FEED_PROLOG.match(head)
-    root = _FEED_ROOT.match(head, prolog.end() if prolog else 0)
-    return root is not None and (not root.group(1).endswith("RDF") or _RSS1_NAMESPACE in head)
+def _feed_kind(text: str) -> str | None:
+    root = _xml_root(text)
+    if root is None:
+        return None
+    # Only inspect the bounded prolog window used to identify the root.
+    tag = _XML_ROOT.match(text[root.start() : 8192].encode("utf-8", "surrogatepass"))
+    if tag is None:
+        return None
+    prefix, name, attributes = tag.groups()
+    bindings = _declared(attributes)
+    uri = bindings.get(prefix or b"", b"")
+    if name in (b"feed", b"entry") and uri == _ATOM_NAMESPACE:
+        return "atom"
+    if name == b"rss" and not prefix and not uri:
+        return "rss"
+    if name == b"RDF" and uri == _RDF_NAMESPACE and _RSS1_NAMESPACE in bindings.values():
+        return "rss1"
+    return None
 
 
-class _Pieces:
-    """Distinct pieces in the order found, capped at ``MAX_TEXT_PIECES``."""
-
-    def __init__(self) -> None:
-        self.items: list[str] = []
-        self._seen: set[str] = set()
-
-    def add(self, piece: str) -> None:
-        if piece in self._seen:
-            return
-        if len(self.items) >= MAX_TEXT_PIECES:
+def _distinct_pieces(pieces: Iterable[str]) -> Iterator[str]:
+    """Yield distinct pieces in order, with a bounded set for deduplication."""
+    seen: set[str] = set()
+    for piece in pieces:
+        if piece in seen:
+            continue
+        if len(seen) >= MAX_TEXT_PIECES:
             raise ContentLimit("text pieces exceed 100000")
-        self._seen.add(piece)
-        self.items.append(piece)
+        seen.add(piece)
+        yield piece
 
 
 def _loose_plain_xml(data: bytes, budget: Budget, *, keep_used: bool = False) -> bytes:
@@ -3832,59 +3848,91 @@ def _xml_nodes(plain: bytes, budget: Budget) -> Iterator[tuple[str, bool]]:
             yield html.unescape(node.decode("utf-8", "replace")), joined
 
 
-def _html_pieces(markup: str, pieces: _Pieces, budget: Budget) -> None:
-    for whatwg in (False, True):
-        for block in _html_blocks(markup, budget, whatwg=whatwg):
-            pieces.add(block)
+def _feed_html_type(kind: str, namespace: bytes, name: bytes, attributes: bytes) -> bytes:
+    if kind == "atom":
+        if namespace != _ATOM_NAMESPACE or name not in _ATOM_TEXT_FIELDS:
+            return b""
+        for attribute in _XML_ATTRIBUTE_PAIR.finditer(attributes):
+            if attribute.group(1) == b"type":
+                value = _namespace(attribute.group(2) or attribute.group(3) or b"")
+                if name == b"content" and value.partition(b";")[0].strip().lower() == b"text/html":
+                    return b"html"
+                return value
+        return b""
+    if name == b"description" and namespace == (_RSS1_NAMESPACE if kind == "rss1" else b""):
+        return b"html"
+    if name == b"encoded" and namespace == _RSS_CONTENT_NAMESPACE:
+        return b"html"
+    return b""
 
 
-def feed_texts(text: str, budget: Budget) -> list[str]:
-    """The text a feed reader shows that markup splits, one piece per text node or HTML block.
-
-    For an RSS or Atom feed only (``_FEED_ROOT``). A text node that a comment, a CDATA
-    boundary, or one of the feed's own entities split is one piece, joined as an XML parser
-    joins it (``plain_xml``). A node whose text is escaped HTML (``&lt;b&gt;``, or HTML in a
-    CDATA section, as an RSS ``description``, ``content:encoded``, or an Atom ``content`` of
-    type ``html`` carries it) is read as HTML, one piece per block that inline markup splits,
-    with both of ``html_text_blocks``'s readings: a feed reader renders it. An Atom text
-    construct of type ``xhtml`` holds the feed's own elements, an XHTML ``div``; its markup is
-    read as HTML the same way, with element prefixes (``xhtml:p``) removed. Two nodes are never
-    joined, so a title and a description stay apart.
-    """
-    if not _is_feed(text):
-        return []
-    plain = _loose_plain_xml(text.encode("utf-8", "surrogatepass"), budget, keep_used=True)
-    pieces = _Pieces()
-    for decoded, joined in _xml_nodes(plain, budget):
-        if joined:
-            pieces.add(decoded)
-        if _ESCAPED_MARKUP.search(decoded) is not None:
-            _html_pieces(decoded, pieces, budget)
-    position = 0
-    # An end tag may hold white space before its > (XML 1.0, production 42). A name with no end
-    # tag after one opener has none after any later one either, so it is not searched again.
-    ends: dict[bytes, re.Pattern[bytes] | None] = {}
-    while (opened := _ATOM_XHTML.search(plain, position)) is not None:
+def _feed_pieces(plain: bytes, kind: str, budget: Budget) -> Iterator[str]:
+    """Walk tags forward, tracking field ownership and scoped namespace declarations."""
+    previous = 0
+    html_type = b""
+    depth = 0
+    bindings: dict[bytes, bytes] = {}
+    scopes: list[tuple[int, dict[bytes, bytes | None]]] = []
+    xhtml: tuple[bytes, bytes, int, int] | None = None
+    xhtml_spans: list[tuple[int, int]] = []
+    for count, tag in enumerate(_XML_TAG.finditer(plain)):
+        if count % 4096 == 0:
+            budget.check()
+        if previous < tag.start():
+            node, joined = xml_text(plain[previous : tag.start()])
+            if (joined or (html_type == b"html" and b"&" in node)) and node.strip():
+                decoded = html.unescape(node.decode("utf-8", "replace"))
+                if joined:
+                    yield decoded
+                if html_type == b"html" and _ESCAPED_MARKUP.search(decoded):
+                    yield from _html_blocks(decoded, budget, whatwg=False)
+                    yield from _html_blocks(decoded, budget, whatwg=True)
+        previous = tag.end()
+        html_type = b""
+        closing, prefix, name, attributes = tag.groups()
+        prefix = prefix or b""
+        if closing:
+            if xhtml is not None and (prefix, name, depth) == xhtml[:3]:
+                if len(xhtml_spans) >= MAX_TEXT_PIECES:
+                    raise ContentLimit("text pieces exceed 100000")
+                xhtml_spans.append((xhtml[3], tag.start()))
+                xhtml = None
+            depth = max(0, depth - 1)
+            while scopes and scopes[-1][0] >= depth:
+                for key, old in scopes.pop()[1].items():
+                    if old is None:
+                        bindings.pop(key, None)
+                    else:
+                        bindings[key] = old
+        elif not attributes.endswith(b"/"):
+            declared = _declared(attributes) if b"xmlns" in attributes else {}
+            if declared:
+                if len(scopes) >= _MAX_NAMESPACE_SCOPES:
+                    raise ContentLimit("feed namespace scopes exceed 256")
+                scopes.append((depth, {key: bindings.get(key) for key in declared}))
+                bindings.update(declared)
+            depth += 1
+            html_type = _feed_html_type(kind, bindings.get(prefix, b""), name, attributes)
+            if html_type == b"xhtml":
+                xhtml = (prefix, name, depth, previous)
+    # Keep the XML and escaped HTML findings ahead of XHTML, as in the original reader.
+    for start, end in xhtml_spans:
         budget.check()
-        element = opened.group(1)
-        if element not in ends:
-            if len(ends) >= _MAX_ATOM_XHTML_NAMES:
-                # Each new name is a search to the end of the feed; past the cap the rest of
-                # the feed's xhtml constructs are not read.
-                break
-            ends[element] = re.compile(rb"</" + re.escape(element) + rb"\s*+>")
-        end = ends[element]
-        closed = end.search(plain, opened.end()) if end is not None else None
-        if closed is None:
-            # No end tag: this construct is not read, the ones after it still are.
-            ends[element] = None
-            position = opened.end()
-            continue
-        close = closed.start()
-        position = closed.end()
-        markup = plain[opened.end() : close].replace(_XML_JOIN, b"").decode("utf-8", "replace")
-        _html_pieces(_TAG_PREFIX.sub(r"<\1", markup), pieces, budget)
-    return pieces.items
+        markup = plain[start:end].replace(_XML_JOIN, b"").decode("utf-8", "replace")
+        markup = _TAG_PREFIX.sub(r"<\1", markup)
+        yield from _html_blocks(markup, budget, whatwg=False)
+        yield from _html_blocks(markup, budget, whatwg=True)
+
+
+def feed_texts(text: str, budget: Budget) -> Iterator[str]:
+    """Read RSS descriptions/content and Atom text constructs under their declared type.
+
+    XML comments, CDATA and internal entities can split a text node. Only HTML fields
+    are read as escaped HTML. Atom XHTML is read by block from its inline elements.
+    """
+    if (kind := _feed_kind(text)) is not None:
+        plain = _loose_plain_xml(text.encode("utf-8", "surrogatepass"), budget, keep_used=True)
+        yield from _distinct_pieces(_feed_pieces(plain, kind, budget))
 
 
 def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
@@ -3904,7 +3952,7 @@ def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
     if suffix not in _XML_DOCUMENT_SUFFIXES and not text.lstrip("\ufeff").startswith("<?xml"):
         return []
     root = _xml_root(text)
-    if root is None or _is_feed(text):
+    if root is None or _feed_kind(text) is not None:
         return []
     data = text.encode("utf-8", "surrogatepass")
     # A part the Office or OpenDocument readers read is theirs: they join its runs already.
@@ -3913,11 +3961,9 @@ def xml_texts(name: str, text: str, budget: Budget) -> list[str]:
     plain = _loose_plain_xml(data, budget, keep_used=True)
     if plain is data:
         return []
-    pieces = _Pieces()
-    for decoded, joined in _xml_nodes(plain, budget):
-        if joined:
-            pieces.add(decoded)
-    return pieces.items
+    return list(
+        _distinct_pieces(decoded for decoded, joined in _xml_nodes(plain, budget) if joined)
+    )
 
 
 def config_unescaped_texts(name: str, text: str, budget: Budget) -> list[str]:

@@ -44,11 +44,14 @@ from typing import NamedTuple
 
 from yara_gate.content import (
     _HTML_BLOCKS,
+    _HTML_CDATA_END,
     _HTML_SPACE,
     _HTML_SUFFIXES,
     MAX_TEXT_PIECES,
     Budget,
     ContentLimit,
+    _html_comment,
+    _html_delimiter,
     _opens_as_html,
 )
 
@@ -1552,27 +1555,15 @@ def html_hidden_texts(name: str, text: str, budget: Budget) -> HtmlHidden:
         if start > position:
             tree.text(text[position:start])
         if text.startswith("<!--", start):
-            # An empty comment closes at once; any other runs to --> or --!>, or to the end.
-            if text.startswith(">", start + 4):
-                position = start + 5
-                continue
-            if text.startswith("->", start + 4):
-                position = start + 6
-                continue
-            close = text.find("-->", start + 4)
-            stop = size if close < 0 else close
-            bang = text.find("--!>", start + 4, stop + 3)
-            if bang >= 0:
-                stop, position = bang, bang + 4
-            else:
-                position = size if close < 0 else close + 3
-            body = text[start + 4 : stop]
-            out.keep(_HTML_SPACE.sub(" ", html.unescape(body) if "&" in body else body))
+            stop, position = _html_comment(text, start + 4, budget, whatwg=True)
+            if stop > start + 4:
+                body = text[start + 4 : stop]
+                out.keep(_HTML_SPACE.sub(" ", html.unescape(body) if "&" in body else body))
             continue
         if (tree.foreign or as_xml) and text.startswith("<![CDATA[", start):
-            close = text.find("]]>", start + 9)
-            tree.text(text[start + 9 : size if close < 0 else close], entities=False)
-            position = size if close < 0 else close + 3
+            cdata_end = _html_delimiter(text, start + 9, _HTML_CDATA_END, budget)
+            tree.text(text[start + 9 : size if cdata_end is None else cdata_end[0]], entities=False)
+            position = size if cdata_end is None else cdata_end[1]
             continue
         tag_match = _TAG.match(text, start)
         if tag_match is None:
