@@ -37,6 +37,7 @@ from yara_gate.heuristics import (
     PdfRawObjects,
     _decode_pdf_name,
 )
+from yara_gate.jsonbounds import JsonLimit, check_json_structure
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_EXTRACT_BYTES = 500 * 1024 * 1024
@@ -4149,14 +4150,17 @@ def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int,
     it is named ``.ipynb`` or holds both ``"cells"`` and ``"nbformat"``, and parses as a JSON
     object with a ``cells`` list. A cell's ``source``, a stream output's ``text``, and each
     ``text/*`` entry of an output's ``data`` is one item; two items are never joined. Malformed
-    or deeply nested JSON gives no items.
+    JSON gives no items; a structure budget stops allocation before decoding.
     """
     if not name.lower().endswith(_NOTEBOOK_SUFFIX) and (
         '"cells"' not in text or '"nbformat"' not in text
     ):
         return []
     try:
+        check_json_structure(text, budget.check)
         document = json.loads(text)
+    except JsonLimit:
+        raise ContentLimit("notebook json exceeds structure limit") from None
     except (ValueError, RecursionError):
         return []
     cells = document.get("cells") if isinstance(document, dict) else None

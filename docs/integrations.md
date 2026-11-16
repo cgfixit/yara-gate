@@ -15,6 +15,10 @@ admission. Use the event files to inspect older scan contexts. If a deployment
 requires a particular reviewed vendor inventory, also require its expected
 `ruleset_sha256` and review the reported skip count before admitting files.
 
+Dense or deeply nested JSON/notebooks can be incomplete before an object tree is
+allocated. Treat the [JSON parsing limits](rules.md#json-parsing-limits) like other
+coverage limits: exit 2 is a hold even when the findings list is empty.
+
 The default human-readable output is unchanged when `--json` is absent.
 Diagnostics for failures before a file can be scanned go to stderr and return
 exit 2. A missing path therefore produces no JSON record. An empty directory
