@@ -239,3 +239,48 @@ def test_pending_intake_and_slot_link_refused(tmp_path: Path, rules_copy: Path) 
         pytest.skip("directory symlinks unavailable")
     assert command(home, rules_copy).returncode == 2
     assert (moved / "sample.txt").read_bytes() == b"Ordinary notes."
+
+
+def test_path_and_descriptor_timestamp_precision(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import yara_gate.rescan as module
+
+    home = GatePaths(tmp_path / "gate")
+    digest = admit(home, rules_copy, injection_markdown(), "note.md")
+    original = os.fstat
+
+    class RoundedTimes:
+        def __init__(self, info):
+            self.info = info
+            self.st_mtime_ns = info.st_mtime_ns // 1_000_000_000 * 1_000_000_000
+            self.st_ctime_ns = info.st_ctime_ns // 1_000_000_000 * 1_000_000_000
+
+        def __getattr__(self, name):
+            return getattr(self.info, name)
+
+    monkeypatch.setattr(module.os, "fstat", lambda fd: RoundedTimes(original(fd)))
+    results = list(rescan_clean(home, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest))
+    assert results[0].verdict is Verdict.block
+    assert (home.blocked / digest).exists()
+
+
+def test_mutation_during_scan_is_incomplete(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import yara_gate.rescan as module
+
+    home = GatePaths(tmp_path / "gate")
+    digest = admit(home, rules_copy, injection_markdown(), "note.md")
+    original = module.scan_bytes
+
+    def scan(data, **kwargs):
+        result = original(data, **kwargs)
+        if data:
+            (home.clean / digest / "note.md").write_bytes(b"Changed during scan.")
+        return result
+
+    monkeypatch.setattr(module, "scan_bytes", scan)
+    results = list(rescan_clean(home, rules_dir=rules_copy))
+    assert results[0].verdict is Verdict.incomplete
+    assert (home.quarantine / digest).exists()

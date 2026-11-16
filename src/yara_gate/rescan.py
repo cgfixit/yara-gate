@@ -80,6 +80,9 @@ def _rescan_slot(
         fd = _open_regular(target)
         try:
             opened = os.fstat(fd)
+            named = target.lstat()
+            if _reject_reason(named) is not None or not os.path.samestat(opened, named):
+                raise IntakeRejected("admitted copy changed during rescan")
             payload = b"".join(_bounded_chunks(fd))
             if hashlib.sha256(payload).hexdigest() != digest:
                 raise IntakeRejected("admitted copy no longer matches its digest")
@@ -98,7 +101,8 @@ def _rescan_slot(
             entry = target.lstat()
             if (
                 _reject_reason(entry) is not None
-                or _source_stamp(entry) != _source_stamp(opened)
+                # Windows path and descriptor timestamps can have different precision.
+                or _source_stamp(entry) != _source_stamp(named)
                 or _source_stamp(os.fstat(fd)) != _source_stamp(opened)
             ):
                 raise IntakeRejected("admitted copy changed during rescan")
