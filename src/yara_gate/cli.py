@@ -212,6 +212,36 @@ def rescan(
 
 
 @app.command()
+def held(
+    home: Path = typer.Option(..., "--home", help="Gate home whose held entries are listed."),
+    json_output: bool = typer.Option(False, "--json", help="Emit the versioned held-item index."),
+    since: str | None = typer.Option(
+        None, "--since", help="Report age limit, for example 7d or 24h."
+    ),
+) -> None:
+    """List present holds from metadata and reports, without opening held bytes."""
+    from yara_gate.held import held_items, since_seconds
+    from yara_gate.quarantine import GatePaths
+
+    try:
+        items = held_items(
+            GatePaths(home.expanduser().absolute()),
+            since=since_seconds(since) if since is not None else None,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"held index unavailable: {_incomplete_text(exc)}", err=True)
+        raise typer.Exit(2) from exc
+    if json_output:
+        typer.echo(json.dumps({"schema_version": 1, "items": items}, ensure_ascii=True))
+    elif not items:
+        typer.echo("No held items.")
+    else:
+        for item in items:
+            # JSON quoting prevents file names and report text from controlling the terminal.
+            typer.echo(json.dumps(item, ensure_ascii=True))
+
+
+@app.command()
 def release(
     sha256: str = typer.Argument(..., metavar="SHA256"),
     home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),

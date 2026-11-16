@@ -680,6 +680,52 @@ rule would be defeated by filler. A document that asks the reader to forward a
 one-time code, or that carries an instruction in hidden text, is still held. An
 encoded override phrase is a note, recorded like the plain phrase.
 
+## Listing held items
+
+`yara-gate held --home GATE --json` is a read-only queue index for an operator or
+consumer UI. It enumerates current entries under `blocked/`, `quarantine/`, and
+`quarantine/_rejected/`, then associates their reports. It does not read held bytes,
+compile rules, scan, download, create a home, acquire a write lock, or move anything.
+Historical reports alone, released copies in `clean/`, and files scanned in place
+are not current held entries. The caller must use a private gate home.
+
+The JSON object has `schema_version: 1` and `items`, an array with these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `disposition` | `blocked`, `incomplete` (still quarantined), or `rejected`, from the entry's current directory; not a new scanner verdict |
+| `identifier` | Digest slot name, or rejection identifier from an associated report; `null` when unknown |
+| `sha256` | Content digest recorded by the scan, or `null` for a rejection, unknown digest, or unreadable report; bytes are not rehashed |
+| `path` | Current held entry's path, with the usual user-home prefix replaced by `~`; this is not filename anonymization |
+| `age_seconds` | Nonnegative integer seconds since the associated report's modification time, or `null` when no readable report is associated; not the original file age or a verified admission timestamp |
+| `policy`, `policy_reason`, `incomplete_reason` | Stored report fields, or `null` without a readable report |
+| `findings` | Array of `{ "rule_id": string, "severity": "note" \| "advisory" \| "block" }`; empty without a readable report; no matched bytes |
+| `report_status` | `readable` or `unreadable`; the latter also covers a missing, invalid, oversized, or unassociated report |
+| `release_eligible` | Boolean stored-report preview using `release_refusal`; only a single regular blocked copy with an eligible `agent-document` report can be true |
+| `release_refusal` | Reason the preview is false, or `null`; never permission to release |
+
+The scan/report schema and verdict semantics are unchanged. `--since 7d` filters on
+`age_seconds`; supported units are seconds (`s`), minutes (`m`), hours (`h`), days
+(`d`), and weeks (`w`), with a nonnegative integer amount. Unknown ages stay visible.
+Without `--json`, the command prints one JSON-escaped row per item, or `No held items.`
+Both empty and nonempty indexes exit 0. Invalid arguments, an unavailable home, or a
+held/report directory that cannot be safely enumerated exit 2 without a partial index.
+Individual corrupt reports remain rows marked unreadable and do not fail the command.
+
+The reader accepts regular, single-link reports up to 8 MiB; linked reports and
+linked slot directories are not followed. Rejected directories are listed as single
+entries, never traversed. A rejection's identifier cannot be recovered reliably from
+its filename when its report is missing or corrupt, so it is `null` rather than a
+guessed hash. Multiple reports claiming the same rejected path are also unassociated.
+
+This is a best-effort snapshot during concurrent intake or release, not a transaction
+or a content-integrity check. Poll again when entries move. Report paths must match
+the held name and digest slot (including its prior quarantine/clean location after a
+move). A stale report can still describe older rules or a previous same-name copy.
+Never use `release_eligible`, an empty index, or the absence of a finding as admission
+authority. The release command below freshly verifies the bytes, rules, findings,
+and audit trail before authorizing a release.
+
 ## Reviewed document releases
 
 Review the document's exact bytes and the JSON report from a completed

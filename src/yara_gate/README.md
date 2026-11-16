@@ -16,6 +16,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`models.py`](models.py) defines scan results, findings, policies, verdicts, and exit mapping.
 - [`quarantine.py`](quarantine.py) handles inbox intake, watcher events, disposition, and in-place scanning.
 - [`report.py`](report.py) writes compact JSON and SARIF without matched bytes.
+- [`held.py`](held.py) indexes present held entries from directory metadata and stored reports. Its release eligibility is provisional; it never opens held bytes or authorizes a release.
 - [`rules.py`](rules.py) discovers, compiles, caches, installs, updates, and promotes rules under the applicable controls.
 - [`hunt.py`](hunt.py) creates candidate rules from confirmed blocked files and checks them against benign examples.
 - [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page, which scans a pair side by side or the whole catalog and tabulates a run by how each attack was caught.

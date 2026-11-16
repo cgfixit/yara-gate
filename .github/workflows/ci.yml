@@ -176,5 +176,5 @@ jobs:
       - name: Reviewed release and Windows audit identity
         run: uv run pytest -q tests/test_release.py::test_release_cli_binds_review_and_resubmission
 
-      - name: Admitted-copy rescan
-        run: uv run pytest -q tests/test_rescan.py
+      - name: Admitted-copy rescan and held index
+        run: uv run pytest -q tests/test_rescan.py tests/test_held.py
