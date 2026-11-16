@@ -1,8 +1,8 @@
 # Detection backlog
 
-Last reviewed: November 15, 2026, on `main` at `62ceb1c` plus the
-[named ActualText, split worksheet values, and worksheet headers](../verification/2026-11-15-actualtext-properties-sheet-values-headers.md)
-change. Python 3.12.3, YARA-X 1.23.0, 88 local rules, no vendor packs.
+Last reviewed: November 15, 2026, on `main` at `3341576` plus the
+[model-addressed instruction rule](../verification/2026-11-15-model-addressed-instructions.md).
+Python 3.12.12, YARA-X 1.23.0, 89 local rules, no vendor packs.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
 tried or weighed and turned down. Read it before drafting a detection change. The dated
@@ -28,7 +28,8 @@ corpora, is in [measuring recall](#keeping-the-detector-current).
 4. **Prefer a spelling of an existing rule over a new rule.** A new rule id changes the
    counts in four documents and needs its own pair, precision row, and policy decision.
 5. **In a generated rule file, edit the source.** `agent_prompt_injection_phrases.yar`,
-   `agent_override_imperative.yar`, and `agent_hidden_html.yar` are rendered from
+   `agent_override_imperative.yar`, `agent_hidden_html.yar`, and
+   `agent_model_addressed_instruction.yar` are rendered from
    [`rules/templates/`](../../rules/templates/). A word goes in `fragments.toml` and reaches
    every string that names its list; run `scripts/generate_rules.py`, read
    `git diff rules/local` for the strings it reached, and give each one a near-miss. A list
@@ -178,6 +179,7 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 
 | Candidate | Evidence | Why it is not built yet |
 | --- | --- | --- |
+| Instructions and promotional claims addressed to an AI reader ([#254](https://github.com/cgfixit/yara-gate/issues/254)) | **Built.** `agent_model_addressed_instruction` is advisory and holds under both agent policies. Plain text and extracted HTML reproduced the holds. [Verification](../verification/2026-11-15-model-addressed-instructions.md) records the benign boundaries and timing | Coverage is limited to the tested English constructions |
 | A sentence split over the streams of one PDF page `/Contents` array | **Built** on November 13 ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)): the streams of a direct array, an array object, or an array in a page in an object stream are read as one stream; an empty member is passed over | Still read stream by stream: a member reused at another place, one not decoded, one the page map gives other fonts, and an array in a raw page dictionary past its 4 KB window |
 | A PDF page stream that fails the 4 KB text sniff is not read: an inline image (`BI ... ID ... EI`) or raw binary string literals before the text | **Built** on November 13 ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)): a stream a `/Contents` entry names, whose dictionary is not an image, form, or font program, is read whatever its bytes | A content stream named only from an object stream's page dictionary still has to pass the sniff |
 | JSON that opens with a UTF-8 byte order mark or a `//` or `/* */` comment | **Built** on November 13 ([record](../verification/2026-11-13-pdf-streams-and-jsonc.md)): `json-unescaped` opens after a mark, white space, and comments; the MCP walk reads a mark, and comments and trailing commas when strict JSON fails | A file over 1 MiB is read as strict JSON only; a `.jsonc` name is not an MCP config |
@@ -248,11 +250,11 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
 
 ## Considered and not planned
 
-Each of these was weighed on November 10, 2026 or earlier. The reason is the thing to
-overturn.
+Revisit these proposals when new evidence addresses the reason in the table.
 
 | Idea | Reason |
 | --- | --- |
+| Report an AI audience label, an answer hook, or a request for confidentiality on its own | Crawler policies address AI readers, style guides instruct readers to give citations, and ordinary text may request confidentiality. The model-addressed rule requires a paired directive or claim |
 | Make a PDF information string or form value that does not decode incomplete, as an annotation's is | Nearly every PDF has an information dictionary, and pypdf decodes a PDFDocEncoding byte it does not define rather than refusing the string. A strict decoder would turn a producer's stray byte into exit 2 on benign files; an undefined byte is read as its Latin-1 character instead ([record](../verification/2026-11-14-pdf-text-strings.md)) |
 | Read only the information dictionary the trailer's `/Info` names, and only fields `/AcroForm` lists | Annotations are found by what a dictionary holds, in every definition, and a reader may take another revision or an orphaned field. Following references would leave the strings in an inactive revision or an unlisted widget unread (same record) |
 | Make PDF page content the gate cannot decode incomplete | Incomplete exits 2 under every policy and keeps an inbox copy quarantined. The note holds the file under `agent-ingest`, is recorded under `agent-document`, and the report names the filter, so a consumer with that decoder can route the file to its own extractor ([record](../verification/2026-11-15-pdf-unread-page-content.md)) |

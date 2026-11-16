@@ -510,6 +510,13 @@ read as `feed-text`: one piece per text node a comment or CDATA boundary split, 
 per block of the escaped HTML a `description` or `content` element carries or of an Atom
 `xhtml` construct. Other XML (a `pom.xml`, a `.csproj`, a `.plist`) is read as `xml-text`:
 one piece per text node a comment, a CDATA boundary, or the document's own entity split.
+
+A model address or summary hook paired with a directive can trigger
+`agent_model_addressed_instruction`. A matching page holds under both agent policies.
+The scanner can report the rule from either contiguous markup or an extracted block.
+If the browser hides the matching block and does not also display it, the hidden-text
+check can add `heuristic_hidden_text`. See the [rule table](rules.md#agent-ingestion-rules).
+
 A Markdown paragraph or list item split by emphasis, a code span, or a link is read
 as one `markdown-text` piece, a word hyphenated at a line end is rejoined in every
 folded view, a sentence wrapped over two `//`, `#`, `--`, `;`, `'`, or block-comment

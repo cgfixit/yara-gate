@@ -87,3 +87,6 @@ hidden_phrases = [
     "exfiltrate",
     "do not tell the user",
 ]
+
+# Single-run HTML text stays in the raw view. Include common text tags without changing the reader.
+model_reader_boundary = '''(^|[\r\n]|[.!?][ \t]+|<(p|div|li|td|th|h[1-6]|section|article|body|dd|dt|figcaption|b|strong|i|em|span|a)([ \t][^<>\r\n]{1,128})?>)[ \t]{0,8}'''
