@@ -36,8 +36,10 @@ finding was fixed in [#191](https://github.com/cgfixit/yara-gate/pull/191), its 
 findings in [#190](https://github.com/cgfixit/yara-gate/pull/190), and the reader gaps it
 listed in [#182](https://github.com/cgfixit/yara-gate/pull/182),
 [#186](https://github.com/cgfixit/yara-gate/pull/186), and
-[#187](https://github.com/cgfixit/yara-gate/pull/187). Evidence for a shipped change goes
-under [`docs/verification/`](../verification/), not here.
+[#187](https://github.com/cgfixit/yara-gate/pull/187). For present-day queue and admission behavior, see [held items](../integrations.md#listing-held-items)
+and [revalidation](../integrations.md#revalidating-admitted-files). The dated
+readiness reviews describe the versions they evaluated. Evidence for a shipped
+change goes under [`docs/verification/`](../verification/), not here.
 
 ## Data the probes read
 
