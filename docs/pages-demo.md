@@ -1,24 +1,11 @@
 # Public recorded demo
 
-GitHub Pages can host the presentation, but it cannot run yara-gate's Python and
-YARA-X backend. This site therefore replays **real recorded results** for 82
-inert examples under `agent-ingest`, `agent-document`, and `default`: 40
-attacks, each with a benign near-twin, and two scans that could not finish. Selecting
-an example does not start a scan. These are detected examples at their recorded
-revision, not current bypasses. The vendor feed demonstrates model-directed ranking in an RSS description. Other pairs include a PDF line in plain Helvetica,
-spaced by kerning, whose neighbour object is another font's map; a workbook written the
-Open XML SDK way, every element under `x:`; and a quoted-printable email behind 26 relay
-and ARC headers. Before them come an OpenDocument file with one bold word, a Word sentence
-with an XML comment inside it, and a slide deck whose only text is on its master, beside
-an SVG button whose link is a
-`javascript:` URL, a diagram whose `foreignObject` label frames another page, and a
-message carrying zero-width characters, beside white text on its own white
-background, an instruction in an HTML `data-*` attribute, an override on the last
-page of an eight-source merged PDF, invisible PDF text, hidden Word text, a
-poisoned MCP tool description deep in a list, a script inside an inline SVG logo, the
-earlier encoded PDF annotation strings, RTF formatting,
-uppercase Russian, and glyph-encoded PDF spelling. The UI labels
-every result as recorded and shows the scanner revision, capture time, rule coverage,
+GitHub Pages replays real scanner results for 84 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 41 attacks, their 41 benign
+near-twins, and two unfinished scans. The default workflow demonstrates a
+model-directed ranking request reconstructed from an RSS description. Other pairs
+cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
+descriptions. The page shows the scanner revision, capture time, rule coverage,
 and engine version.
 
 The page opens with a fictional procurement task and its recorded policy comparison.
