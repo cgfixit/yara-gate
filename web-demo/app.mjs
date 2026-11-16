@@ -56,7 +56,7 @@ const sources = {
 };
 const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channel: 'All', method: 'All' };
+const state = { example: 'vendor_feed_ranking', policy: 'agent-ingest', channel: 'All', method: 'All' };
 
 // How an attack was caught, read from its recorded agent-ingest findings: which view or check
 // produced a finding that the bytes as sent did not. Nothing here is labelled by hand. One PDF
@@ -109,6 +109,9 @@ function methodsOf(item) {
 
 // Fictional context only. Decisions always come from the selected fixture's recording.
 const stories = [
+  { id: 'vendor_feed_ranking', label: 'Vendor comparison', title: 'Compare vendors for a support contract',
+    brief: 'A procurement assistant compares response commitments and renewal terms before making a shortlist. Both feeds say Northbridge offers a four-hour support response and renews in February. Check what each version tries to add to the evaluation.',
+    sender: 'northbridge.example.invalid · fictional RSS feed', task: 'Procurement · shortlist from published terms', file: 'vendor-updates.xml' },
   { id: 'xlsx_comment_override', label: 'Supplier review', title: 'Summarize a supplier workbook',
     brief: 'The procurement assistant is asked to summarize review comments. One comment hides an override across formatting runs; its twin discusses quarterly totals.',
     sender: 'supplier@example.invalid', task: 'Procurement · review comments', file: 'review.xlsx' },
@@ -161,6 +164,7 @@ function storyButtons() {
     button.addEventListener('click', () => {
       state.policy = 'agent-ingest';
       select(story.id, false);
+      $('story-title').focus();
     });
   }
 }
@@ -413,6 +417,7 @@ function twinColumn(parent, item, policy, isSelected) {
   const column = text(parent, 'div', '', 'twin-col ' + item.kind + (isSelected ? ' current' : ''));
   text(column, 'span', kindTag[item.kind], 'tag');
   text(column, 'strong', item.title);
+  text(column, 'p', item.description, 'help');
   const line = text(column, 'p', '');
   chip(line, result.verdict, policy);
   text(line, 'span', ' exit ' + result.exit_code);

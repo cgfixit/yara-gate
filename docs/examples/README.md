@@ -6,3 +6,8 @@ These are reference integrations, not a substitute for consumer authorization an
 - [`yara_gate_pre_read_hook.py`](yara_gate_pre_read_hook.py) scans a captured buffer and hands off those exact bytes or a private snapshot; consumers must not reopen the original as a substitute.
 - [`yara_gate_pre_read_hook.sh`](yara_gate_pre_read_hook.sh) is the shell entry point for that hook and fails closed if Python is unavailable.
 - [`sms_gate_bridge.py`](sms_gate_bridge.py) illustrates signature-checked Twilio SMS intake, scans text, holds MMS for review, and recovers JSONL queue writes using `MessageSid` and a SQLite transaction. Media URLs are left unopened.
+
+These examples manage consumer staging and handoff. For a gate-owned `clean/`
+folder, use [`yara-gate rescan`](../integrations.md#revalidating-admitted-files)
+after a detector, rule, or policy change. Use [`yara-gate held`](../integrations.md#listing-held-items)
+to inspect the current gate-owned queue.
