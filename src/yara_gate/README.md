@@ -4,6 +4,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 
 - [`__init__.py`](__init__.py) exposes the version, result type, and lazy `scan_file` / `scan_bytes` library API.
 - [`cli.py`](cli.py) defines the Typer commands, selects policy and paths, and aggregates scan exits.
+- [`jsonbounds.py`](jsonbounds.py) checks JSON structure before the MCP, notebook, and Keras decoders allocate an object tree.
 - [`scanner.py`](scanner.py) coordinates rules, original bytes, derived views, heuristics, budgets, and results.
 - [`content.py`](content.py) constructs bounded in-memory archive and text views without extracting members to disk. Its Office readers know a part by its name or its root element and a run by its namespace; its mail reader opens a message when a mail reader shows something other than its bytes. The two HTML text passes are lexical readers. They share deadline-aware comment and CDATA scanning with the hidden-text reader. The feed reader (`feed_texts`) keeps joined XML text literal, reads escaped markup in HTML fields, and reads Atom XHTML by block. `xml_texts` reads the text nodes of other XML that a comment, CDATA section, or entity split.
 - [`pdftext.py`](pdftext.py) reconstructs supported PDF text operators and fonts, without rendering the page. A font is read in each way a reader could take its own dictionary (a repeated or escaped `/ToUnicode` key, no map at all), and the map found in the 4 KB after its header is dropped only where every reader agrees it is not the font's. It also collects the `/ActualText` strings of marked content (`pdf-actual-text`), which poppler and PDFium show in place of the glyphs.
@@ -15,6 +16,7 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`models.py`](models.py) defines scan results, findings, policies, verdicts, and exit mapping.
 - [`quarantine.py`](quarantine.py) handles inbox intake, watcher events, disposition, and in-place scanning.
 - [`report.py`](report.py) writes compact JSON and SARIF without matched bytes.
+- [`held.py`](held.py) indexes present held entries from directory metadata and stored reports. Its release eligibility is provisional; it never opens held bytes or authorizes a release.
 - [`rules.py`](rules.py) discovers, compiles, caches, installs, updates, and promotes rules under the applicable controls.
 - [`hunt.py`](hunt.py) creates candidate rules from confirmed blocked files and checks them against benign examples.
 - [`demo.py`](demo.py) serves the bounded loopback scanner interface and embeds the catalog's titles and expectations (never a payload) in the page; [`demo_page.html`](demo_page.html) is its bundled page, which scans a pair side by side or the whole catalog and tabulates a run by how each attack was caught.

@@ -153,6 +153,28 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 
 ## 5. Read a report
 
+Start with the current held queue:
+
+```sh
+yara-gate held --home ~/YaraGate
+yara-gate held --home ~/YaraGate --since 7d --json
+```
+
+This lists entries still in `blocked/`, `quarantine/`, or `quarantine/_rejected/`.
+It reads directory metadata and reports, never held bytes, and makes no changes.
+Each line gives the current path, identifier, disposition, report age, policy,
+reasons, finding IDs/severities, and provisional release eligibility. Strings are
+JSON-escaped so a filename or report cannot send control sequences to the terminal.
+`--json` wraps the rows in the [versioned index](docs/integrations.md#listing-held-items).
+Unreadable or missing reports remain visible; a rejection without an associated
+readable report has an unknown identifier. Unknown ages remain visible with `--since`.
+An empty queue exits 0, as does a nonempty queue; an unavailable home or invalid option
+exits 2. In-place scans are not held copies and are not included.
+
+An eligible row is a review candidate, not permission to read or move its bytes.
+Use the [reviewed release command](docs/integrations.md#reviewed-document-releases)
+after review; it performs the fresh scan and audit checks.
+
 The latest report for a digest is `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. The JSON includes the verdict, exit code, and findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It omits matched bytes.
 
 Use `reports/events/<scan-id>.json` to compare individual scans of the same bytes under different names or policies. Each event contains the compact report plus `schema_version`, `scan_id`, and a UTC `recorded_at` timestamp. A record describes the scan, and can be present before its file moves. Release actions are recorded in `releases.jsonl`. Event files accumulate until the operator archives or removes them.
@@ -168,6 +190,8 @@ descriptions, and neighboring entries separate. It checks the scan deadline duri
 long HTML comment reads and treats more than 256 nested feed namespace scopes as incomplete.
 
 For any finding, start with the [detection-method map](rules/README.md) or look up its `rule_id` in [docs/rules.md](docs/rules.md), which gives the indicators each rule needs and its known benign collisions. Most rules are advisory. After a complete scan with advisory findings and no block finding, default policy moves inbox files to `clean/`; `agent-ingest` holds them in `blocked/`. Files outside the inbox stay in place. A legitimate administration script or security example can contain the same indicators, so the rule ID alone does not establish that the file is malicious.
+
+MCP, notebook, and Keras readers also enforce a [JSON structure budget](docs/rules.md#json-parsing-limits) before allocating their object trees. Dense or deeply nested candidates are incomplete even when they have no findings.
 
 If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `archive members exceed 1000`, `archive unreadable or encrypted`, `encrypted pdf`, `encrypted office file`, `pickle exceeds walk limit`, `mcp json exceeds walk limit` (MCP-shaped JSON too large or deep to walk whole), `pdf cmap entries exceed 524288`, `pdf cmap tokens exceed 1572864`, `timeout`, `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 

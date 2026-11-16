@@ -46,8 +46,9 @@ class ReleaseKey:
 def release_refusal(result: ScanResult) -> str | None:
     """Return why ``result`` may not be released, or None when it is a releasable hold.
 
-    ``result`` must come from a scan run now with the current rules: a stored report can
-    predate a rule change.
+    For authorization, ``result`` must come from a scan run now with the current rules.
+    The held index also uses this for a provisional preview of a stored report, which can
+    predate a rule change and must never authorize a release.
     """
     if result.verdict is Verdict.incomplete or result.incomplete_reason:
         return "incomplete scan"
