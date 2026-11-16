@@ -309,6 +309,9 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     server, thread = serve_in_thread(rules_copy)
     port = int(server.server_address[1])
     expected = {
+        "account_recovery": ("account_notice", "agent_message_code_relay", {"raw"}),
+        "tool_handoff": ("tool_refusal", "agent_tool_hijack_directive", {"raw"}),
+        "future_bypass": ("future_approval", "agent_persistent_instruction", {"raw"}),
         "vendor_feed_ranking": (
             "vendor_feed_comparison",
             "agent_model_addressed_instruction",

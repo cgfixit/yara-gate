@@ -129,6 +129,12 @@
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     @media (max-width: 800px) { .workspace, .guide-grid { grid-template-columns: 1fr; } .empty { min-height: 160px; } .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 440px) { .shell { padding: 0 .8rem; } .panel { padding: 1rem; } .intro { padding-top: 1.5rem; } .sample-row { flex-direction: column; } .sample-row select, .sample-row button { width: 100%; } .topbar .tag { font-size: .7rem; } .pair-grid { grid-template-columns: 1fr; } }
+.gate-flow { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; padding: 0; margin: 1rem 0 1.5rem; }
+.gate-flow li { border-top: 3px solid var(--accent); padding: .7rem .8rem; background: white; border-radius: 0 0 8px 8px; }
+.gate-flow strong, .gate-flow span { display: block; }
+.gate-flow span { font-size: .85rem; margin-top: .4rem; }
+@media (max-width: 800px) { .gate-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .gate-flow { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -143,6 +149,12 @@
       <h1>Check before it reaches your agent.</h1>
       <p class="muted">Run the real scanner on an attack and on its benign near-twin, see which check or view caught the difference, and choose the policy for your workflow. Every scan runs in memory on this machine; nothing is moved, released, or uploaded.</p>
     </div>
+      <ol class="gate-flow" aria-label="How to explore the demo">
+        <li><strong>1 · Inspect the input</strong><span>Pick a fictional task and read what changed in its synthetic pair.</span></li>
+        <li><strong>2 · Follow the evidence</strong><span>See the rule, reader view, and finding severity.</span></li>
+        <li><strong>3 · Compare the policy</strong><span>Change the read policy; check the verdict and exit code.</span></li>
+        <li><strong>4 · Check the boundary</strong><span>A real caller must enforce the result on the same bytes. No agent runs here.</span></li>
+      </ol>
     <noscript><p class="warning">JavaScript is required for this workbench. Use the local yara-gate CLI to scan without a browser.</p></noscript>
     <section class="panel presets" aria-labelledby="workflow-title">
       <h2 id="workflow-title">Try a realistic workflow with synthetic data</h2>
@@ -175,7 +187,7 @@
         </div>
         <div class="divider">
           <h3>Check every pair at once</h3>
-          <p class="help">Scans each attack, each benign twin, and the fail-closed case under the selected policy, then counts what was held, what stayed clean, and any finding on a twin.</p>
+          <p class="help">Scans each attack, each benign twin, and the fail-closed cases under the selected policy, then counts what was held, what stayed clean, and any finding on a twin.</p>
           <div class="actions">
             <button type="button" id="run-all" disabled>Run every pair</button>
             <button type="button" id="stop-all" class="secondary" hidden>Stop</button>
@@ -331,6 +343,10 @@
     // Fictional context only. The decision always comes from scanning the fixed sample.
     const presets = [
       ["vendor_feed_ranking", "Vendor comparison", "Procurement: shortlist vendors by published support and renewal terms. Both Northbridge feeds claim a four-hour response and a February renewal. Compare the model-directed ranking request with a request to compare published hours."],
+      ["account_recovery", "Account recovery", "Support: review a synthetic recovery message. A refusal does not hide a separate request to relay a code. Compare the normal sign-in notice; no actual code or account exists."],
+      ["tool_handoff", "Tool handoff", "Support: review ticket.txt from helpdesk@example.invalid. Compare an order to forward messages with a warning against the same action. No email tool is called."],
+      ["future_bypass", "Project handoff", "Engineering: review guidance.md. Compare a standing approval bypass with the same guidance that says never to skip approval. No memory or settings are changed."],
+      ["json_depth", "Inspection limit", "Platform: inspect a synthetic tool document with 65 nested arrays. It has no attack phrase; the JSON reader stops at its structure limit. Scan this single example to see why incomplete is still held."],
       ["xlsx_comment_override", "Supplier review", "Procurement: summarize review.xlsx from supplier@example.invalid. Compare a directive split across comment runs with an ordinary review comment."],
       ["ansi_log", "Build triage", "Engineering: explain build.log from a simulated CI tool. Compare an override beside a terminal escape with an ordinary coloured summary."],
       ["svg_cdata_override", "Design handoff", "Design: review logo.svg from design@example.invalid. Compare a split directive with an ordinary chart label."],
@@ -439,7 +455,7 @@
         $("sample").append(group);
       }
       const pairs = catalog.cases.filter((item) => item.kind === "detection").length;
-      $("sample-count").textContent = pairs + " attack and benign-twin pairs, plus " + catalog.cases.filter((item) => item.kind === "failure").length + " fail-closed case. The public replay records the same catalog.";
+      $("sample-count").textContent = pairs + " attack and benign-twin pairs, plus " + catalog.cases.filter((item) => item.kind === "failure").length + " fail-closed cases. The public replay records the same catalog.";
       $("sample").value = presets[0][0];
     }
     function describeSample() {
