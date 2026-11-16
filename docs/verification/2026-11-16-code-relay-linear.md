@@ -85,9 +85,11 @@ refusal whose end comes before an earlier refusal's end would break the property
 | Check | Result |
 | --- | --- |
 | Rule diff against `main` | None; the rule is #270's |
-| `lint_rules.py`, `check_rule_pairs.py`, `check_added_rules.py` | See the pull request for the run on its head |
-| `probe_detection_gaps.py --verify` | See the pull request for the run on its head |
-| `check_worst_case_timing.py` | See the pull request; #270's `code-relay-refusals.txt` is the 4 MiB input, and #271's duplicate was dropped |
+| `lint_rules.py`, `check_rule_pairs.py`, `check_added_rules.py` | 89 rules; 120 rules; 246 plus 4 vendor-override cases |
+| `probe_detection_gaps.py --verify` | 738 ok, with the eight `relay` cases; B3 and B5 open, as on `main` |
+| `check_worst_case_timing.py` | PASS, 95 inputs; #270's `code-relay-refusals.txt` clean in 0.69 s. #271's duplicate input was dropped |
+| `record_pages_demo.py --baseline` | Outcomes match for 84 scenarios × 3 policies |
+| `ruff check .`, `ruff format --check .`, `check_doc_links.py`, `check_text_controls.py` | Clean |
 | `probe_code_relay_refusals.py` | 0 differ, as above |
 
 ## Not established
