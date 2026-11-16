@@ -4,7 +4,7 @@
 emits one compact JSON object per scanned file on stdout (JSON Lines). Each
 object uses the same schema as the JSON report on disk: verdict, exit code,
 policy, rule IDs, severity, member/view provenance, engine/ruleset identity,
-compiled rule count, tool version, scan time, and scan-completeness fields. No matched content is included. Paths abbreviate
+compiled rule count, detector digest, tool version, scan time, and completeness fields. No matched content is included. Paths abbreviate
 the user's home prefix; other path components remain visible.
 
 The digest-named JSON and SARIF are latest-report views. Each saved scan also
@@ -13,7 +13,8 @@ writes `reports/events/<scan-id>.json` before relocation, with `schema_version`,
 before a pending move completes. Use the returned record and verify the bytes for
 admission. Use the event files to inspect older scan contexts. If a deployment
 requires a particular reviewed vendor inventory, also require its expected
-`ruleset_sha256` and review the reported skip count before admitting files.
+`ruleset_sha256` and review the reported skip count before admitting files. Use
+`detector_sha256` separately when caching admission across scanner builds.
 
 Dense or deeply nested JSON/notebooks can be incomplete before an object tree is
 allocated. Treat the [JSON parsing limits](rules.md#json-parsing-limits) like other
@@ -83,10 +84,12 @@ Several files in one process cost one startup instead of one per file:
 `--null` for NUL-separated names). Each path is handled exactly as a single
 path is, in argument order; the exit code is the worst one; a missing path
 writes no record and does not stop the rest; an exact duplicate path is
-scanned once; an empty list exits 0 with no records. In a batch, every record must pass its policy's read rule, the record count must
-equal the number of distinct paths you passed, and the process exit must be 0.
-Correlate records with inputs by their `path` field, which is the scan-time
-location (the quarantine slot for an inbox file).
+scanned once. An empty list exits 0 with no records. For all-or-nothing
+admission of explicit file paths, require process exit 0 and exactly one valid,
+policy-allowed record for each expected file. Directory inputs can expand to
+multiple records. Correlate records with scanned paths and digests. For inbox
+inputs the reported path is the quarantine slot, so use the disposition and
+digest to find the admitted copy.
 
 Inbox inputs still pass through quarantine, receive reports, and move only
 after scanning. The reported `path` is the scan-time quarantine location,
@@ -139,7 +142,7 @@ Pick the row by where the content lives when the caller first sees it.
 | --- | --- | --- |
 | A document on disk that the caller owns (corpus file, repository file, staged copy) | `yara-gate scan PATH --json --policy agent-document` | The same path, after the SHA-256 in the record matches the bytes you read |
 | A message-like file (an attachment from an unknown sender, a saved tool result, a fetched web page) | `yara-gate scan PATH --json --policy agent-ingest` | The same path, after the SHA-256 in the record matches the bytes you read |
-| Several files at once | `scan A B C` or `--paths-from FILE`, same flags | Each path whose record is a complete `clean`, matched by `path` |
+| Several files at once | `scan A B C` or `--paths-from FILE`, same flags | The verified copies after the batch passes the checks above |
 | A file the gate should take over | Drop it in the gate `inbox/`; `scan` or `watch` quarantines it | `clean/<sha256>/` only |
 | A message, webhook body, or tool result in memory | `scan_bytes(body, name=..., policy="agent-ingest")` or `scan - --name ...` | The same `body` bytes, never a re-read or re-encode |
 | A file in a sync client's folder | Copy it out first ([Synced folders](#synced-folders-dropbox-onedrive-icloud-drive)) | `allowed/<sha256>/` only |
@@ -148,14 +151,15 @@ Pick the row by where the content lives when the caller first sees it.
 The two read rules from the top of this guide cover every row: a message needs
 exactly one complete `clean` record and no exit 2; a document needs that or the
 exact notes-only `agent-document` record. A file consumer can also check the
-separate [reviewed release branch](#reviewed-document-releases). A batch exits with its worst result, so
-exit 1 still lets a path with its own complete `clean` record through, while exit
-2 means read nothing from that batch. No record, a malformed line, a crash, or a
-timeout all mean "not scanned, do not read".
+separate [reviewed release branch](#reviewed-document-releases). For the batch
+recipe above, exit 1 or 2 withholds the batch, even if it contains individual
+clean records. Withhold access if records are missing or malformed, or if the
+process crashes or times out.
 
 Two things the gate does not decide for the caller: whether a clean file's
 instructions may be followed (they may not; keep content fenced as data), and who
-reviews a held file. The operator records that decision with `yara-gate release`.
+reviews a held file. Use [the held index](#listing-held-items) to review the queue. Only eligible
+`agent-document` holds can be cleared by [a reviewed release](#reviewed-document-releases).
 
 ## Revalidating admitted files
 
