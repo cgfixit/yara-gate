@@ -110,6 +110,8 @@ class ScanTimeout(Exception):
 # Each list YARA-X keeps costs about 25 bytes a match, and a matching rule's list about 107
 # bytes once the binding builds its Python objects: four lists at 4,000,000 is about 1.7 GB.
 RESCAN_MAX_FULL = 4
+# The rescan runs only when the time left is this many times what the first scan took.
+RESCAN_TIME_FACTOR = 1.25
 MATCH_CAP_REASON = "match cap reached"
 
 
@@ -1028,13 +1030,18 @@ def _yara_findings(
     if guarded is not None and len(data) >= MATCH_LIMIT:
         # A list holds one match per start offset, so none can fill in a shorter view.
         logs: list[str] = []
+        begun = time.monotonic()
         result = _invoke_scan(guarded, data, timeout_s, ext, samples=samples, name=name, log=logs)
-        if logs and len(logs) <= RESCAN_MAX_FULL:
+        took = time.monotonic() - begun
+        # A rescan reads more matches than the first scan; one that cannot finish in the time
+        # left would only end as a timeout, so the full list is reported instead.
+        left = timeout_s - took
+        if logs and len(logs) <= RESCAN_MAX_FULL and left > took * RESCAN_TIME_FACTOR:
             logs = []
             result = _invoke_scan(
                 guarded,
                 data,
-                timeout_s,
+                max(1, math.ceil(left)),
                 ext,
                 samples=samples,
                 name=name,

@@ -63,7 +63,7 @@ RESCAN_LIMIT = 4_000_000
 GUARD_LOG_PREFIX = "yara-gate match cap: "
 # Names the guard format in the cache file names: a change to how guards are built must not
 # load guards built the old way for the same rules.
-_GUARD_FORMAT = "1"
+_GUARD_FORMAT = "2"
 _GUARD_HEAD = re.compile(r"(?:(?:private|global)\s+)*rule\s+(\w+)")
 # The start of a rule, and the name it gives.
 _RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
@@ -568,19 +568,21 @@ def guard_source(text: str) -> str | None:
     name: str | None = None
     section: str | None = None
     body: list[str] = []
+    condition: list[str] = []
     for line in formatted.split("\n"):
         head = _GUARD_HEAD.match(line)
         if head is not None:
             if name is not None:
                 return None
             headers += 1
-            name, section, body = head.group(1), None, []
+            name, section, body, condition = head.group(1), None, [], []
             continue
         if name is None:
             continue
         if line.rstrip() == "}":
-            if body:
-                found.append((name, body))
+            strings = _counted_strings(body, "\n".join(condition))
+            if strings:
+                found.append((name, strings))
             name = None
             continue
         if line.rstrip() in ("  meta:", "  strings:", "  condition:"):
@@ -588,6 +590,8 @@ def guard_source(text: str) -> str | None:
             continue
         if section == "strings":
             body.append(line)
+        elif section == "condition":
+            condition.append(line)
     # Every rule the formatted text names must have been read as one.
     if name is not None or headers != len(_RULE_NAME.findall(formatted)):
         return None
@@ -604,6 +608,43 @@ def guard_source(text: str) -> str | None:
             "    )\n}\n"
         )
     return "".join(parts)
+
+
+# A string definition as the formatter writes it; the lines after it, to the next one, are its
+# continuation (a hex string can span lines).
+_STRING_DEFINITION = re.compile(r"^    \$(\w*)\s*=")
+# A count, offset, or length of a named string: #x, @x[i], !x[i]. Not != or a bare $x.
+_NAMED_READ = re.compile(r"(?<![\w$#@!])[#@!]([A-Za-z0-9_]+)")
+# A named string placed by `at` or `in`.
+_NAMED_PLACED = re.compile(r"\$([A-Za-z0-9_]+)\s+(?:at|in)\b")
+# Reads that do not name one string: # or @ or ! of the string a `for ... of` binds, `$ at`,
+# `$ in`, and `N of (...) in` or `at`. Each guards every string of the rule.
+_ANONYMOUS_READ = re.compile(
+    r"(?<![\w$#@!])[#@!](?![A-Za-z0-9_=])|\$\s+(?:at|in)\b|\bof\b[^:]*?\)\s*(?:at|in)\b"
+    r"|\bof\s+them\s+(?:at|in)\b"
+)
+
+
+def _counted_strings(body: list[str], condition: str) -> list[str]:
+    """The definitions in ``body`` whose count or place ``condition`` reads.
+
+    A list YARA-X stops filling still holds the first match, so ``$x`` and ``any of them``
+    keep their value; only a count, an offset, or a length can change. Guarding only those
+    strings keeps a guard from making YARA-X verify every match of a string the rule tests for
+    presence alone, which cost 40% more on a flooded file. A read the patterns above do not
+    name a string for guards them all.
+    """
+    everything = _ANONYMOUS_READ.search(condition) is not None
+    wanted = set(_NAMED_READ.findall(condition)) | set(_NAMED_PLACED.findall(condition))
+    kept: list[str] = []
+    keep = False
+    for line in body:
+        start = _STRING_DEFINITION.match(line)
+        if start is not None:
+            keep = everything or start.group(1) in wanted
+        if keep:
+            kept.append(line)
+    return kept
 
 
 def _blank_comments(text: str) -> str:

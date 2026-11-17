@@ -1698,7 +1698,9 @@ def main() -> None:
 def _scan(root: Path, rules: Path, name: str, payload: bytes) -> set[str]:
     path = root / name
     path.write_bytes(payload)
-    result = scan_file(path, rules_dir=rules)
+    # A fixture of a megabyte or more can fill a match list, and the scanner then reads it again
+    # with a larger limit; the default 30 s is less than that takes for the 26.7 MiB one.
+    result = scan_file(path, rules_dir=rules, timeout_s=120 if len(payload) >= 1_000_000 else 30)
     if result.incomplete_reason:
         return {f"incomplete:{result.incomplete_reason}"}
     return {item.rule_id for item in result.findings}

@@ -27,7 +27,7 @@ private rule zz_letters {
     $e = "e"
     $f = "f"
   condition:
-    any of them
+    for all of them : ( # > 2000000 )
 }
 """
 
@@ -87,7 +87,7 @@ def test_every_bundled_rule_file_is_guarded(rules_copy: Path) -> None:
 
 
 def test_guard_copies_strings_and_skips_rules_without_them() -> None:
-    source = 'rule s { strings: $x = "a//b" condition: $x }\nrule n { condition: true }\n'
+    source = 'rule s { strings: $x = "a//b" condition: #x > 2 }\nrule n { condition: true }\n'
     guard = guard_source(source)
     assert guard is not None
     assert "private rule s__match_cap" in guard
@@ -96,12 +96,34 @@ def test_guard_copies_strings_and_skips_rules_without_them() -> None:
     assert guard_source("rule n { condition: true }") == ""
 
 
+def test_guard_holds_only_strings_whose_count_or_place_is_read() -> None:
+    # A full list keeps its first match, so a string tested only for presence cannot hide one.
+    presence = 'rule p { strings: $a = "a" $b = "b" condition: $a and any of them }'
+    assert guard_source(presence) == ""
+    named = (
+        'rule q { strings: $a = "a" $b = "b" $c = "c" $d = "d" $e = "e"\n'
+        "condition: $a and #b > 1 and @c[2] > 0 and $d in (0..9) and $e }"
+    )
+    guard = guard_source(named)
+    assert guard is not None
+    kept = {name for name in "abcde" if f'${name} = "{name}"' in guard}
+    assert kept == {"b", "c", "d"}
+    for anonymous in (
+        "for any of ($a, $b) : ( # > 1 )",
+        "for any of them : ( @[1] > 0 )",
+        "for any of them : ( $ at 0 )",
+        "any of ($a, $b) in (0..9)",
+    ):
+        guard = guard_source(f'rule r {{ strings: $a = "a" $b = "b" condition: {anonymous} }}')
+        assert guard is not None and '$a = "a"' in guard and '$b = "b"' in guard, anonymous
+
+
 def test_guard_skips_commented_rules_and_reads_past_trailing_comments() -> None:
     # Shapes from signature-base: a rule kept inside a block comment, and a comment after `}`.
     source = (
-        'rule kept { strings: $k = "k" condition: $k }  /* end of kept\n*/\n'
-        '/*\nrule gone { strings: $g = "g" condition: $g }\n*/\n'
-        "rule also { strings: $r = /a\\/\\*b/ condition: $r }\n"
+        'rule kept { strings: $k = "k" condition: #k > 1 }  /* end of kept\n*/\n'
+        '/*\nrule gone { strings: $g = "g" condition: #g > 1 }\n*/\n'
+        "rule also { strings: $r = /a\\/\\*b/ condition: #r > 1 }\n"
     )
     guard = guard_source(source)
     assert guard is not None
