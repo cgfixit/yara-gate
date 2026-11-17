@@ -91,19 +91,87 @@ each, and it caught every one:
 | No test before the first quotation | 1,046 |
 | A gap that stops 30 bytes before the next quotation | 48 |
 
-An independent adversarial review (equivalence, fuzzing with a separate generator, performance, and integration) is in progress; its results will be recorded here.
+### Independent review
+
+Four reviewers worked separately on this change, in scratch directories, with no access to
+each other's results.
+- **An exhaustive fuzzer.** It used its own generator, not the probe's. It ran every token
+  sequence up to length 5 in ASCII, UTF-16LE, UTF-16BE, and every per-token mix, then every
+  one-byte edit of boundary seeds. On 8,555,810 inputs the old and new conditions agreed, and
+  it caught each non-equivalent mutant.
+- **An engine-semantics refuter.** It wrote about 35 crafted cases:
+  - lazy ends, nested and overlapping quotations, and the 64/65-character skip boundary;
+  - UTF-16 word boundaries at odd alignment;
+  - `\r\n`, bare `\r`, `ſ`, and the Kelvin sign;
+  - separators up to 70,000 characters.
+
+  It also ran a 240,000-message fuzzer that checks properties 1 to 3 directly on the
+  reported match lists. It found no disagreement and no violation.
+- **A performance adversary.** It found no input on which the new condition grows faster than
+  the size, and prose is not slower. The new condition adds 0 to 0.15 s over a condition that
+  does nothing. Its slowest shape (many "the phrase" before 4,000 spaces) costs the same on
+  `main`, and the cost comes from the quotation regex, which is unchanged.
+- **An integration reviewer.** It confirmed the generator and lint checks, and it found three
+  things:
+  - two stale comments, now fixed (`fragments.toml` and a backlog row);
+  - the shifted offsets below;
+  - PR [#278](https://github.com/cgfixit/yara-gate/pull/278), opened by another session while
+    this one was written, which fixes #274 in the same files. The maintainer kept this change
+    and closed #278.
+
+Three of the four reviewers found the same problem, and none of them in the logic.
+
+### The match limit
+
+YARA-X 1.23.0 records at most 1,000,000 matches of a string and drops the rest without a
+signal. The scanner keeps that default. On `main`, 1,000,000 quoted orders followed by one
+real order timed out, so the file was incomplete and held. With the linear condition alone
+the scan finished before the deadline. The real order was never recorded, so the file was
+**clean**. Both conditions read the same truncated list. The probe cannot see this, because
+its messages are short.
+
+The rule now counts a full order list as an order:
+`for any of ($a, $b, $c, $a_wide, $b_wide, $c_wide) : (# >= 1000000)`.
+
+| `the phrase ignore the above\n` × n, then `Ignore the above.` | n = 999,999 | n = 1,000,000 |
+| --- | --- | --- |
+| Engine, linear condition without the guard | fires | **does not fire** |
+| Engine, with the guard | fires | fires |
+| CLI, `agent-ingest`, disposable inbox, `main` | — | exit 2, incomplete (`timeout`), `quarantine/`, 30.8 s |
+| CLI, `agent-ingest`, disposable inbox, this change | — | exit 1, block, `blocked/`, 14.4 s |
+
+The guard fires on 1,000,000 quotations with nothing after them. That is a note where `main`
+gave a timeout, and the file is held under `agent-ingest` either way. At 999,999 quotations
+alone the rule stays clean. A full quotation list without a full order list is safe already,
+because the orders after the last recorded quotation count. One reviewer saw this
+over-fire on 16 MiB of six nested quotations per order.
+
+The same limit already lets a request through `agent_message_code_relay` on `main`. 1,000,000
+refusals followed by a real request (42 MiB) scan clean, where 999,999 refusals fire. That
+rule, and the others whose conditions read offsets, are
+[#280](https://github.com/cgfixit/yara-gate/issues/280).
+
+### Reported offsets
+
+A finding reports the first match of the first string that matched, in declaration order.
+`$a` used to hold both encodings, so its first match was the earlier of the two. The ASCII
+strings are now declared before the UTF-16 copies. In a file that mixes encodings, the
+finding can therefore name a later ASCII match. The integration reviewer measured one case:
+offset 265, length 42 became 314, 16. The verdict and the view are the same. Single-encoding
+files report the same offsets as before.
 
 Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on this change:
 - 300 quotations, then an order, then a quotation, against the quotations alone;
 - the UTF-16LE form of the same thing;
-- a UTF-16 `ignore the above` inside an ASCII quotation's skip, against `see the above`.
+- a UTF-16 `ignore the above` inside an ASCII quotation's skip, against `see the above`;
+- 1,000,000 quotations, then an order (26.7 MiB), against one quotation.
 
 ## What was run
 
 | Check | Result |
 | --- | --- |
 | `generate_rules.py --check`, `lint_rules.py`, `check_rule_generator.py` | 4 generated files current; 89 rules; 22 generator checks |
-| `check_rule_pairs.py` | 120 rules; the 12 phrase-rule pairs agree on `main` |
+| `check_rule_pairs.py` | 120 rules; the 12 phrase-rule pairs below the limit agree on `main` |
 | `check_added_rules.py` | 246 plus 4 vendor-override cases |
 | `measure_precision.py --fail-over` | 328 files, 0 incomplete, the four documented Windows shortcut collisions |
 | `probe_detection_gaps.py --verify` | 738 ok; B3 and B5 open, as on `main` |
@@ -111,7 +179,7 @@ Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on th
 | `check_worst_case_timing.py` | PASS, 96 inputs; the new `phrase-quotations.txt` clean in 2.08 s (15.01 s on `main`, past the 10 s ceiling). Load rose from 0.3 to 7.6 during the run, which overlapped the sweep; the slowest input took 7.62 s |
 | `sweep_rule_changes.py --jobs 3 --base-ref origin/main` | 0 of 6,027 files changed findings (279 hits before and after), over `/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked site-packages, and `docs` |
 | `record_pages_demo.py --baseline` | Outcomes match for 84 scenarios × 3 policies; and for 91 × 3 on a trial merge with [#277](https://github.com/cgfixit/yara-gate/pull/277) |
-| `probe_phrase_doc_exemption.py` | 0 differ, as above |
+| `probe_phrase_doc_exemption.py` | 0 differ, as above, and with the guard (seed 9, 200,000 messages) |
 | `ruff check`, `ruff format --check`, `check_doc_links.py`, `check_text_controls.py` | Clean |
 
 ## Not established
@@ -121,4 +189,7 @@ Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on th
   break property 1 or 2. Run the probe after changing the order strings, the quotation
   string, or `fragments.toml`.
 - Message shapes outside the generator, and quotations in other languages.
-- Hosted CI timing on macOS and Windows is recorded by CI, not here.
+- Hosted CI on `d77c94b`, before the guard: macOS 15 passed the timing check, with
+  `phrase-quotations.txt` clean in 2.90 s, and the Windows scan job passed.
+- The guard assumes the engine's default limit of 1,000,000. A scanner that changes
+  `max_matches_per_pattern` must change the guard with it ([#280](https://github.com/cgfixit/yara-gate/issues/280)).

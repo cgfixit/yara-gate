@@ -256,7 +256,10 @@ offset, as the code-relay rule does
 quotations scans in linear time and stays clean. It used to time out at 16 MiB. The
 answer is the same as before for every input the differential probe tried. That
 includes UTF-16LE text, and a UTF-16 override inside an ASCII quotation, which still
-counts. An override that counts is a note, which `agent-ingest` holds.
+counts. An override that counts is a note, which `agent-ingest` holds. YARA-X records at most
+1,000,000 matches of a string, so a full list of an override string counts as an
+override. An override after a million quoted ones is never recorded, and without that
+rule the file would pass ([#280](https://github.com/cgfixit/yara-gate/issues/280)).
 
 ### JSON parsing limits
 

@@ -59,6 +59,10 @@ rule agent_prompt_injection_phrases {
         // Each lookup is a range test on the ordered match lists, so the work stays linear; the
         // pairing this replaced counted quotations from the start of the unit for every order.
         // The two give the same answer: docs/research/probe_phrase_doc_exemption.py checks it.
+        // YARA-X stops recording a string at 1,000,000 matches and says nothing. Past that, an
+        // order after a million quoted ones is never seen and the file would pass, so a full
+        // list counts as an order. The scanner leaves the engine's default in place.
+        for any of ($a, $b, $c, $a_wide, $b_wide, $c_wide) : (# >= 1000000) or
         for any of ($a, $b, $c) : (
             $ and (
                 not $doc_phrase or $ in (0..@doc_phrase[1] - 1) or

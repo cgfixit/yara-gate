@@ -36,8 +36,9 @@ all_of = '(all{{sep}}(of{{sep}})?)?'
 any_of = '(all|any){{sep}}(of{{sep}})?'
 owner = '(the|your|my){{sep}}'
 
-# What follows the verb in the three strings that share the documentary exemption. The
-# exemption is built from these same fragments, so it ends where each string ends.
+# What follows the verb in the three orders (each written in ASCII and UTF-16) that share the
+# documentary exemption. The exemption is built from these same fragments, so it ends where
+# each string ends.
 earlier_order = '(the{{sep}}|your{{sep}}|any{{sep}}|my{{sep}})?({{earlier}}){{sep}}({{order_nouns}})'
 the_above = 'the{{sep}}above'
 everything_told = '(everything|all){{sep}}(you{{sep}}(were|have{{sep}}been){{sep}}told|(said|stated|written){{sep}}(above|before|earlier))'
