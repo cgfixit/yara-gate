@@ -110,6 +110,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             None,
         ),
         ("code-entry.txt", b"", b"We just sent you a code, enter it on the sign-in page.\n", None),
+        # Every override is a quotation, and the shortest kind, so there are as many as 4 MiB
+        # holds: the documentary exemption once counted every quotation from offset 0 for
+        # each override, 15 s here on 1426e7f (#274).
+        ("doc-quotations.txt", b"", b"the phrase ignore the above\n", None),
     )
     for name, prefix, token, reason in patterns:
         count, rest = divmod(SIZE - len(prefix), len(token))
@@ -874,7 +878,10 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         raise RuntimeError(f"{name}: {seconds:.3f}s exceeds {SCAN_SECONDS}s")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
-    if name == "code-relay-refusals.txt" and result.verdict.value != "clean":
+    if (
+        name in {"code-relay-refusals.txt", "doc-quotations.txt"}
+        and result.verdict.value != "clean"
+    ):
         raise RuntimeError(f"{name}: expected clean, got {result.verdict.value}")
     view = {
         "comment-block.py": "comment-text",

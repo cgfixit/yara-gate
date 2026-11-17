@@ -18,7 +18,13 @@ rule agent_prompt_injection_phrases {
         // Name the first phrase after the prefix, not a later separate directive.
         // YARA-X forbids mixing greedy and non-greedy quantifiers, so every quantifier here is lazy.
         // The match still ends at the word boundary after the noun, where $a, $b, and $c end.
-        $doc_phrase = /the phrase[\s\S]{0,64}?\b(ignore|disregard|forget)([ \t]+?|[ \t]*?\r??\n[ \t]*?)((all([ \t]+?|[ \t]*?\r??\n[ \t]*?)(of([ \t]+?|[ \t]*?\r??\n[ \t]*?))??)??((the([ \t]+?|[ \t]*?\r??\n[ \t]*?)|your([ \t]+?|[ \t]*?\r??\n[ \t]*?)|any([ \t]+?|[ \t]*?\r??\n[ \t]*?)|my([ \t]+?|[ \t]*?\r??\n[ \t]*?))??(previous|prior|preceding|earlier|initial|original)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(instructions??|directions|prompts??|rules)|the([ \t]+?|[ \t]*?\r??\n[ \t]*?)above)|(everything|all)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(you([ \t]+?|[ \t]*?\r??\n[ \t]*?)(were|have([ \t]+?|[ \t]*?\r??\n[ \t]*?)been)([ \t]+?|[ \t]*?\r??\n[ \t]*?)told|(said|stated|written)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(above|before|earlier)))\b/ nocase ascii wide
+        // One copy per encoding: a documentary match only ends at an override in its own encoding.
+        $doc_phrase = /the phrase[\s\S]{0,64}?\b(ignore|disregard|forget)([ \t]+?|[ \t]*?\r??\n[ \t]*?)((all([ \t]+?|[ \t]*?\r??\n[ \t]*?)(of([ \t]+?|[ \t]*?\r??\n[ \t]*?))??)??((the([ \t]+?|[ \t]*?\r??\n[ \t]*?)|your([ \t]+?|[ \t]*?\r??\n[ \t]*?)|any([ \t]+?|[ \t]*?\r??\n[ \t]*?)|my([ \t]+?|[ \t]*?\r??\n[ \t]*?))??(previous|prior|preceding|earlier|initial|original)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(instructions??|directions|prompts??|rules)|the([ \t]+?|[ \t]*?\r??\n[ \t]*?)above)|(everything|all)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(you([ \t]+?|[ \t]*?\r??\n[ \t]*?)(were|have([ \t]+?|[ \t]*?\r??\n[ \t]*?)been)([ \t]+?|[ \t]*?\r??\n[ \t]*?)told|(said|stated|written)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(above|before|earlier)))\b/ nocase ascii
+        $doc_phrase_wide = /the phrase[\s\S]{0,64}?\b(ignore|disregard|forget)([ \t]+?|[ \t]*?\r??\n[ \t]*?)((all([ \t]+?|[ \t]*?\r??\n[ \t]*?)(of([ \t]+?|[ \t]*?\r??\n[ \t]*?))??)??((the([ \t]+?|[ \t]*?\r??\n[ \t]*?)|your([ \t]+?|[ \t]*?\r??\n[ \t]*?)|any([ \t]+?|[ \t]*?\r??\n[ \t]*?)|my([ \t]+?|[ \t]*?\r??\n[ \t]*?))??(previous|prior|preceding|earlier|initial|original)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(instructions??|directions|prompts??|rules)|the([ \t]+?|[ \t]*?\r??\n[ \t]*?)above)|(everything|all)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(you([ \t]+?|[ \t]*?\r??\n[ \t]*?)(were|have([ \t]+?|[ \t]*?\r??\n[ \t]*?)been)([ \t]+?|[ \t]*?\r??\n[ \t]*?)told|(said|stated|written)([ \t]+?|[ \t]*?\r??\n[ \t]*?)(above|before|earlier)))\b/ nocase wide
+        // $a, $b, and $c as one string, read only by the exemption below: the start of every
+        // override of those three shapes, in offset order. Findings still report $a, $b, or $c.
+        $o = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)((all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?((the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)|the([ \t]+|[ \t]*\r?\n[ \t]*)above)|(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier)))\b/ nocase ascii
+        $o_wide = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)((all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?((the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)|the([ \t]+|[ \t]*\r?\n[ \t]*)above)|(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier)))\b/ nocase wide
         // The same order with the words in another place, or without an adjective. None of these has
         // the documentary exemption: it is written for the $a, $b, and $c grammar only.
         // "Ignore all instructions above", "disregard the rules above", "ignore above instructions".
@@ -47,13 +53,32 @@ rule agent_prompt_injection_phrases {
     condition:
         $d or $d_dan or $e or $e_verbatim or $e_disclose or $new_instr or
         $a_post or $a_above or $a_your or $a_follow or $a_replace or
-        for any of ($a, $b, $c) : (
-            for any i in (1..#) : (
-                // Exempt only the occurrence ending at the nearest documentary match.
-                with quote_index = #doc_phrase in (0..@[i]) : (
-                    not defined @doc_phrase[quote_index] or
-                    @doc_phrase[quote_index] + !doc_phrase[quote_index] != @[i] + ![i]
-                )
+        ($a or $b or $c) and (
+            // A documentary match stops at the first override after its prefix, and no override
+            // starts inside another one's words, so it ends where that override ends. An
+            // override is therefore exempt when a documentary match in its encoding starts after
+            // the override before it. The nearest documentary match is the one that must end
+            // there, so a match in the other encoding closer to the override cancels the
+            // exemption: it is looked for in the reach of a match, "the phrase" and a 64
+            // character gap (74 bytes, or 148 in UTF-16). Each stretch between overrides is
+            // searched once; counting every documentary match from offset 0 for each override
+            // was quadratic (#274). docs/research/probe_documentary_exemption.py compares the
+            // two; run it after changing the verbs, the words after them, or this condition.
+            ($o and (
+                not $doc_phrase in (0..@o[1] - 1) or
+                $doc_phrase_wide in (@o[1] - 74..@o[1] - 1)
+            )) or
+            for any j in (2..#o) : (
+                not $doc_phrase in (@o[j - 1] + 1..@o[j] - 1) or
+                $doc_phrase_wide in (@o[j] - 74..@o[j] - 1)
+            ) or
+            ($o_wide and (
+                not $doc_phrase_wide in (0..@o_wide[1] - 1) or
+                $doc_phrase in (@o_wide[1] - 148..@o_wide[1] - 1)
+            )) or
+            for any j in (2..#o_wide) : (
+                not $doc_phrase_wide in (@o_wide[j - 1] + 1..@o_wide[j] - 1) or
+                $doc_phrase in (@o_wide[j] - 148..@o_wide[j] - 1)
             )
         )
 }
