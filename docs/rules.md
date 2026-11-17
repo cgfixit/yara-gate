@@ -265,6 +265,26 @@ when every quotation is benign: `agent-ingest` holds it, and `agent-document` pa
 it with the finding recorded. At the 67-byte line in the record that is about 64 MiB,
 under the 100 MiB intake limit.
 
+### Reported offsets
+
+A finding's `offset` and `length` name one match of its rule within the finding's view.
+For most rules that is the first match of the first string that matched, in the order
+the rule declares its strings. Some rules decide by where matches lie: an exemption
+(a quotation of an override, a refusal of a code request) or a placement (a fetch
+beside an execute, a script inside an SVG). In such a rule, the first match can be
+one the condition exempted while another match made the rule fire.
+
+For these rules the scanner checks whether the rule still fires with the first match's
+first byte blanked. If it does not, the first match was needed and is reported as before.
+If it does, the scanner finds the shortest prefix of the view on which the rule fires and
+reports the match that ends there. It skips the first match if another match ends at the
+same byte. The search re-scans prefixes with that rule's file alone and the same global
+values. It runs only in views of up to 1 MiB (`WITNESS_MAX_BYTES`). A larger view, a
+timeout during the search, or a rule that no longer fires on a prefix keeps the first
+match. Verdicts never change; only which match a finding names
+([#284](https://github.com/cgfixit/yara-gate/issues/284),
+[record](verification/2026-11-17-finding-witness.md)).
+
 ### JSON parsing limits
 
 MCP, notebook, and Keras readers check structure before the standard JSON decoder

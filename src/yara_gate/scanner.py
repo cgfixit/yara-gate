@@ -88,7 +88,9 @@ from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
     compile_ruleset,
+    compile_source,
     default_rules_dir,
+    placed_rule_sources,
     vendor_namespace_dirs,
     vendor_overrides,
     yara_x_version,
@@ -241,6 +243,8 @@ def _scan_file(
                 overrides=overrides,
                 vendor_dirs=vendor_dirs,
                 name=name,
+                placed=placed,
+                digest=ruleset,
             )
         finally:
             scanned_bytes += len(payload)
@@ -301,6 +305,7 @@ def _scan_file(
         return finish("invalid vendor-overrides.json")
     # An override applies only to a match from the pack directory its entry names.
     vendor_dirs = vendor_namespace_dirs(ruleset)
+    placed = placed_rule_sources(ruleset)
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
     read_paths: set[tuple[str, ...]] = set()
@@ -982,9 +987,12 @@ def _yara_findings(
     overrides: Mapping[tuple[str, str], str] | None = None,
     vendor_dirs: Mapping[str, str] | None = None,
     name: str = "",
+    placed: Mapping[str, tuple[str, frozenset[str]]] | None = None,
+    digest: str | None = None,
 ) -> list[Finding]:
     result = _invoke_scan(rules, data, timeout_s, ext, samples=samples, name=name)
     findings: list[Finding] = []
+    scan_globals: list[tuple[str, object]] | None = None
     for rule in getattr(result, "matching_rules", ()):
         meta = {str(key): value for key, value in getattr(rule, "metadata", ())}
         rule_id = str(getattr(rule, "identifier", "rule"))
@@ -1004,6 +1012,23 @@ def _yara_findings(
         if located is None:
             # Every match of a control rule sits in bytes that are not UTF-8 text.
             continue
+        source, placed_ids = (placed or {}).get(namespace or "", ("", frozenset()))
+        if (
+            rule_id in placed_ids
+            and rule_id not in _CONTROL_BYTES_RULES
+            and len(data) <= WITNESS_MAX_BYTES
+        ):
+            if scan_globals is None:
+                scan_globals = _scan_globals(data, ext, name, samples)
+            located = _deciding_match(
+                rule,
+                rule_id,
+                data,
+                located,
+                _witness_rules(digest, namespace or "", source),
+                scan_globals,
+                timeout_s,
+            )
         offset, length = located
         findings.append(
             Finding(
@@ -1037,6 +1062,108 @@ def _first_match(
     return None if matched else (None, None)
 
 
+# A view larger than this reports a placed rule's first match: the deciding match is found by
+# scanning prefixes of the view again, about twenty times at most (#284).
+WITNESS_MAX_BYTES = 1 << 20
+# Placed rule files compiled one at a time, for the prefix scans: (ruleset digest, namespace).
+_WITNESS_RULES: dict[tuple[str, str], Any] = {}
+
+
+def _witness_rules(digest: str | None, namespace: str, source: str) -> Any:
+    key = (digest or "", namespace)
+    rules = _WITNESS_RULES.get(key)
+    if rules is None:
+        if any(cached != key[0] for cached, _ in list(_WITNESS_RULES)):
+            _WITNESS_RULES.clear()
+        rules = _WITNESS_RULES[key] = compile_source(source)
+    return rules
+
+
+def _deciding_match(
+    rule: object,
+    rule_id: str,
+    data: bytes,
+    located: tuple[int | None, int | None],
+    rules: Any,
+    scan_globals: list[tuple[str, object]],
+    timeout_s: int,
+) -> tuple[int | None, int | None]:
+    """The match that made a placed rule fire, where its first match did not.
+
+    A rule that reads where its matches lie can fire on a match its first one is not: a
+    quotation exempts the order it names and a later order fires; a refusal covers its
+    request and a separate request fires. The first match stays the answer when the rule
+    no longer fires with that match's first byte blanked out, so a rule that needs it reports it as
+    before. Otherwise the answer is the match that ends where the rule first fires on a
+    prefix of ``data``, found by bisecting the ends of its matches. YARA-X reads the same
+    rule file alone, with the globals of the whole view. Any timeout keeps the first match.
+    """
+    import yara_x
+
+    offset, length = located
+    if offset is None or length is None:
+        return located
+    ends = sorted(
+        {
+            int(match.offset) + int(match.length)
+            for pattern in getattr(rule, "patterns", ())
+            for match in getattr(pattern, "matches", ())
+        }
+    )
+    try:
+        # One byte: a later match that overlaps this one keeps its bytes.
+        blanked = data[:offset] + b" " + data[offset + 1 :]
+        if not ends or not _fires(rules, rule_id, blanked, scan_globals, timeout_s):
+            return located
+        if not _fires(rules, rule_id, data[: ends[-1]], scan_globals, timeout_s):
+            return located
+        low, high = 0, len(ends) - 1
+        while low < high:
+            middle = (low + high) // 2
+            if _fires(rules, rule_id, data[: ends[middle]], scan_globals, timeout_s):
+                high = middle
+            else:
+                low = middle + 1
+    except yara_x.TimeoutError:
+        return located
+    # The first match is not needed, so another match ending at the same byte is the answer.
+    for pattern in getattr(rule, "patterns", ()):
+        for match in getattr(pattern, "matches", ()):
+            found = int(match.offset), int(match.length)
+            if found[0] + found[1] == ends[low] and found != (offset, length):
+                return found
+    return located
+
+
+def _fires(
+    rules: Any, rule_id: str, data: bytes, scan_globals: list[tuple[str, object]], timeout_s: int
+) -> bool:
+    import yara_x
+
+    scanner = yara_x.Scanner(rules)
+    scanner.set_timeout(timeout_s)
+    for global_name, value in scan_globals:
+        try:
+            scanner.set_global(global_name, value)
+        except (TypeError, ValueError):
+            pass
+    result = scanner.scan(data)
+    return any(str(rule.identifier) == rule_id for rule in result.matching_rules)
+
+
+def _scan_globals(data: bytes, ext: str, name: str, samples: bool) -> list[tuple[str, object]]:
+    """The values the scanner gives each global for one buffer."""
+    blob, exe = base64_run_signals(data, samples=samples)
+    return [
+        ("yara_gate_ext", ext),
+        ("yara_gate_name", name),
+        ("yara_gate_text", sniff(data) == "text"),
+        ("yara_gate_b64_blob", blob),
+        ("yara_gate_b64_exe", exe),
+        ("yara_gate_svg_scope_proven", svg_scope_proven(data)),
+    ]
+
+
 def _invoke_scan(
     rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False, name: str = ""
 ) -> object:
@@ -1054,15 +1181,7 @@ def _invoke_scan(
         if getattr(_SCANNERS, "reuse", False):
             _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
-    blob, exe = base64_run_signals(data, samples=samples)
-    for global_name, value in (
-        ("yara_gate_ext", ext),
-        ("yara_gate_name", name),
-        ("yara_gate_text", sniff(data) == "text"),
-        ("yara_gate_b64_blob", blob),
-        ("yara_gate_b64_exe", exe),
-        ("yara_gate_svg_scope_proven", svg_scope_proven(data)),
-    ):
+    for global_name, value in _scan_globals(data, ext, name, samples):
         try:
             scanner.set_global(global_name, value)
         except (TypeError, ValueError):

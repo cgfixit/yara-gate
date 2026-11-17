@@ -47,6 +47,14 @@ Transport = Callable[[str], bytes]
 _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
 # Per compiled ruleset digest: namespace (gate_<index>) -> vendor pack directory for vendor files.
 _VENDOR_NAMESPACES: dict[str, dict[str, str]] = {}
+# Per compiled ruleset digest: namespace -> the source of each non-vendor file and the rules in it
+# whose condition reads where a match lies (an offset, a length, a range). The scanner reports
+# the deciding match of such a rule rather than its first match (#284).
+_PLACED_SOURCES: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
+# The start of a rule, and the name it gives.
+_RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
+# A condition that reads a match's place: @x[i], !x[i], @[i], $x in (..), #x in (..), $x at n.
+_PLACEMENT = re.compile(r"[@!][A-Za-z0-9_]*\[|\bin\s*\(|\bat\b")
 # Content hash of one rules directory. Later files in the same run stat instead of rereading.
 _DIGEST_STAMP: dict[str, tuple[object, ...]] = {}
 _DIGEST_VALUE: dict[str, str] = {}
@@ -429,7 +437,14 @@ def compile_ruleset(
     if cached is not None:
         rules, skipped = cached
         good = _files_except(files, rules_dir, skipped)
-        _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
+        _remember(
+            digest,
+            rules,
+            skipped,
+            _count_rules(good),
+            _vendor_dirs(good, rules_dir),
+            _placed_sources(good, rules_dir),
+        )
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
     shipped_root = _readable_shipped_local() if use_overlay else None
@@ -463,17 +478,62 @@ def compile_ruleset(
         compiler.add_source(text, origin=path.name)
     rules = compiler.build()
     _write_cache(digest, rules, skipped)
-    _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
+    _remember(
+        digest,
+        rules,
+        skipped,
+        _count_rules(good),
+        _vendor_dirs(good, rules_dir),
+        _placed_sources(good, rules_dir),
+    )
     return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
 
 def _remember(
-    digest: str, rules: object, skipped: list[str], compiled: int, vendor_dirs: dict[str, str]
+    digest: str,
+    rules: object,
+    skipped: list[str],
+    compiled: int,
+    vendor_dirs: dict[str, str],
+    placed: dict[str, tuple[str, frozenset[str]]],
 ) -> None:
     _MEMO.clear()
     _VENDOR_NAMESPACES.clear()
+    _PLACED_SOURCES.clear()
     _MEMO[digest] = (rules, list(skipped), compiled, _count_skipped(skipped))
     _VENDOR_NAMESPACES[digest] = vendor_dirs
+    _PLACED_SOURCES[digest] = placed
+
+
+def _placed_sources(
+    good: list[tuple[Path, str]], rules_dir: Path
+) -> dict[str, tuple[str, frozenset[str]]]:
+    """Each non-vendor file with a rule whose condition reads a match's place, by namespace."""
+    placed: dict[str, tuple[str, frozenset[str]]] = {}
+    for index, (path, text) in enumerate(good):
+        if _rule_key(path, rules_dir).startswith("vendor/"):
+            continue
+        source = _strip_comments(text)
+        starts = list(_RULE_START.finditer(source))
+        names = set()
+        for number, start in enumerate(starts):
+            end = starts[number + 1].start() if number + 1 < len(starts) else len(source)
+            body = source[start.end() : end]
+            if "condition:" in body and _PLACEMENT.search(body.split("condition:", 1)[1]):
+                names.add(start.group(1))
+        if names:
+            placed[f"gate_{index}"] = (text, frozenset(names))
+    return placed
+
+
+def _strip_comments(text: str) -> str:
+    """YARA source with // line comments removed, so a comment's words are not read as code."""
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def placed_rule_sources(digest: str | None) -> dict[str, tuple[str, frozenset[str]]]:
+    """The placement-reading files of the ruleset ``compile_ruleset`` just returned."""
+    return dict(_PLACED_SOURCES.get(digest or "", {}))
 
 
 def _vendor_dirs(good: list[tuple[Path, str]], rules_dir: Path) -> dict[str, str]:
@@ -1053,6 +1113,15 @@ def define_scan_globals(compiler: Any) -> None:
     compiler.define_global("yara_gate_svg_scope_proven", False)
 
 
+def compile_source(text: str) -> Any:
+    """One rule file compiled alone, with the scan globals declared, as the loader checks it."""
+    import yara_x
+
+    compiler = _rule_compiler(yara_x)
+    compiler.add_source(text)
+    return compiler.build()
+
+
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
     compiler = _rule_compiler(yara_x)
     compiler.add_source(text, origin=path.name)
@@ -1209,6 +1278,7 @@ def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
 def _clear_cache(rules_dir: Path) -> None:
     _MEMO.clear()
     _VENDOR_NAMESPACES.clear()
+    _PLACED_SOURCES.clear()
     _DIGEST_STAMP.clear()
     _DIGEST_VALUE.clear()
     _LISTING.clear()

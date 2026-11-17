@@ -175,7 +175,7 @@ An eligible row is a review candidate, not permission to read or move its bytes.
 Use the [reviewed release command](docs/integrations.md#reviewed-document-releases)
 after review; it performs the fresh scan and audit checks.
 
-The latest report for a digest is `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. The JSON includes the verdict, exit code, and findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. It omits matched bytes.
+The latest report for a digest is `~/YaraGate/reports/<sha256>.json` and the matching `.sarif` file. The JSON includes the verdict, exit code, and findings. Each finding has `rule_id`, `offset`, `length`, `severity`, and `source`. The offset names a match that made the rule fire, not one an exemption covered ([reported offsets](docs/rules.md#reported-offsets)). It omits matched bytes.
 
 Use `reports/events/<scan-id>.json` to compare individual scans of the same bytes under different names or policies. Each event contains the compact report plus `schema_version`, `scan_id`, and a UTC `recorded_at` timestamp. A record describes the scan, and can be present before its file moves. Release actions are recorded in `releases.jsonl`. Event files accumulate until the operator archives or removes them.
 
