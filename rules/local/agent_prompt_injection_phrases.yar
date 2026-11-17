@@ -12,9 +12,14 @@ rule agent_prompt_injection_phrases {
     strings:
         // Verb, optional quantifier and determiner, adjective, noun: "ignore all of your prior directions".
         // Words may be split by one line break (hard-wrapped Markdown, an SMS body); a blank line still splits them.
-        $a = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?(the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)\b/ nocase ascii wide
-        $b = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?the([ \t]+|[ \t]*\r?\n[ \t]*)above\b/ nocase ascii wide
-        $c = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier))\b/ nocase ascii wide
+        // Each order is written twice, once per encoding, because the exemption treats a UTF-16
+        // order inside an ASCII quotation differently (see the condition).
+        $a = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?(the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)\b/ nocase ascii
+        $b = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?the([ \t]+|[ \t]*\r?\n[ \t]*)above\b/ nocase ascii
+        $c = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier))\b/ nocase ascii
+        $a_wide = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?(the([ \t]+|[ \t]*\r?\n[ \t]*)|your([ \t]+|[ \t]*\r?\n[ \t]*)|any([ \t]+|[ \t]*\r?\n[ \t]*)|my([ \t]+|[ \t]*\r?\n[ \t]*))?(previous|prior|preceding|earlier|initial|original)([ \t]+|[ \t]*\r?\n[ \t]*)(instructions?|directions|prompts?|rules)\b/ nocase wide
+        $b_wide = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(all([ \t]+|[ \t]*\r?\n[ \t]*)(of([ \t]+|[ \t]*\r?\n[ \t]*))?)?the([ \t]+|[ \t]*\r?\n[ \t]*)above\b/ nocase wide
+        $c_wide = /\b(ignore|disregard|forget)([ \t]+|[ \t]*\r?\n[ \t]*)(everything|all)([ \t]+|[ \t]*\r?\n[ \t]*)(you([ \t]+|[ \t]*\r?\n[ \t]*)(were|have([ \t]+|[ \t]*\r?\n[ \t]*)been)([ \t]+|[ \t]*\r?\n[ \t]*)told|(said|stated|written)([ \t]+|[ \t]*\r?\n[ \t]*)(above|before|earlier))\b/ nocase wide
         // Name the first phrase after the prefix, not a later separate directive.
         // YARA-X forbids mixing greedy and non-greedy quantifiers, so every quantifier here is lazy.
         // The match still ends at the word boundary after the noun, where $a, $b, and $c end.
@@ -47,12 +52,38 @@ rule agent_prompt_injection_phrases {
     condition:
         $d or $d_dan or $e or $e_verbatim or $e_disclose or $new_instr or
         $a_post or $a_above or $a_your or $a_follow or $a_replace or
+        // A quotation exempts only the order it ends with. That order is the only one in the
+        // quotation's own encoding that starts inside the quotation: no listed verb begins inside
+        // an order, and the lazy skip stops at the first order. So an order fires when it starts
+        // before the first quotation, or between where one quotation ends and the next begins.
+        // Each lookup is a range test on the ordered match lists, so the work stays linear; the
+        // pairing this replaced counted quotations from the start of the unit for every order.
+        // The two give the same answer: docs/research/probe_phrase_doc_exemption.py checks it.
         for any of ($a, $b, $c) : (
-            for any i in (1..#) : (
-                // Exempt only the occurrence ending at the nearest documentary match.
-                with quote_index = #doc_phrase in (0..@[i]) : (
-                    not defined @doc_phrase[quote_index] or
-                    @doc_phrase[quote_index] + !doc_phrase[quote_index] != @[i] + ![i]
+            $ and (
+                not $doc_phrase or $ in (0..@doc_phrase[1] - 1) or
+                $ in (@doc_phrase[#doc_phrase] + !doc_phrase[#doc_phrase]..filesize) or
+                for any j in (1..#doc_phrase - 1) : (
+                    $ in (@doc_phrase[j] + !doc_phrase[j]..@doc_phrase[j + 1] - 1)
+                )
+            )
+        ) or
+        // A UTF-16 order inside an ASCII quotation (whose second byte is not zero) is not the
+        // order it quotes, so from an ASCII quotation the whole gap counts.
+        for any of ($a_wide, $b_wide, $c_wide) : (
+            $ and (
+                not $doc_phrase or $ in (0..@doc_phrase[1] - 1) or
+                $ in (@doc_phrase[#doc_phrase] + !doc_phrase[#doc_phrase]..filesize) or
+                (
+                    uint8(@doc_phrase[#doc_phrase] + 1) != 0 and
+                    $ in (@doc_phrase[#doc_phrase]..filesize)
+                ) or
+                for any j in (1..#doc_phrase - 1) : (
+                    $ in (@doc_phrase[j] + !doc_phrase[j]..@doc_phrase[j + 1] - 1) or
+                    (
+                        uint8(@doc_phrase[j] + 1) != 0 and
+                        $ in (@doc_phrase[j]..@doc_phrase[j + 1] - 1)
+                    )
                 )
             )
         )
