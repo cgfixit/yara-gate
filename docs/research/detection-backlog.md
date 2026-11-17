@@ -196,11 +196,14 @@ detection-gap marker. See [the verification record](../verification/2026-11-16-c
 
 Issue [#274](https://github.com/cgfixit/yara-gate/issues/274) replaces the count from offset 0
 in `agent_prompt_injection_phrases` with a lookup in the stretch between one override and the
-one before it. A file of quotations stays clean at any size the deadline allows; an order no
-quotation names is still a note. The rule fires wherever the old condition did, and in a few
-texts that mix ASCII and UTF-16 within 148 bytes it also fires where it did not. The 4 MiB
-`doc-quotations.txt` input must complete clean under the timing tripwire. This was a performance
-defect without an `OPEN` detection-gap marker. See [the verification record](../verification/2026-11-17-documentary-exemption-timing.md).
+one before it. A file of quotations stays clean at any size the deadline allows, up to a
+million matches; an order no quotation names is still a note. YARA-X keeps a million matches
+per string, so a full list counts as an unquoted order. The rule fires wherever the old
+condition did, and where ASCII and UTF-16 matches fall within 148 bytes of each other it can
+also fire where it did not. The 4 MiB `doc-quotations.txt` input must complete clean under
+the timing tripwire, and in no more than 8 times its first MiB. CI runs
+`probe_documentary_exemption.py`. This was a performance defect without an `OPEN`
+detection-gap marker. See [the verification record](../verification/2026-11-17-documentary-exemption-timing.md).
 
 ### Further candidates, not yet in the probe
 
@@ -287,6 +290,7 @@ Revisit these proposals when new evidence addresses the reason in the table.
 | Exempt a negated order by pairing each match with a refusal match in the rule's condition | Quadratic in the number of matches: a first draft of the #255 guards ran 4 MiB of "never skip approval" lines past the 30 s deadline. The word before the verb is read inside the pattern instead ([record](../verification/2026-11-16-readiness-p2-shapes.md)) |
 | Find the refusal nearest a request with `#negated in (0..@[i])`, or skip the exemption past a count of matches | The count runs from the start of the unit each time, so it is still quadratic: 25 s at 8 MiB for the relay check (measured in the closed [#271](https://github.com/cgfixit/yara-gate/pull/271)). A cap on the counts is linear but holds a benign file of many refusals. #270's lookup over the gaps between refusals is exact and linear |
 | Exempt an override when any documentary match starts after the previous override, in either encoding | Exempts one the old condition held: an ASCII `the phrase` whose gap runs over a UTF-16 override to a later ASCII quotation. Found by a differential fuzz, one input in 200,000. The strings are split by encoding, and a match in the other encoding within reach cancels the exemption ([record](../verification/2026-11-17-documentary-exemption-timing.md)) |
+| Read the documentary lookup's override list without a guard for YARA-X's match cap | YARA-X keeps a million matches per string and drops the rest without notice. With one list for all three shapes, a million quotations hid a later unquoted order: clean where `1426e7f` held it. Found by an independent review of #278, before merge. A full list now counts as an unquoted order ([record](../verification/2026-11-17-documentary-exemption-timing.md#the-match-cap)) |
 | Merge `$a`, `$b`, and `$c` into one string for the documentary lookup | A finding names the first match of the first declared string that has one, so a merged string can move the reported offset when a later shape comes first. `$o` is added beside them for the condition only |
 | A bare `SYSTEM OVERRIDE:` header, or one followed by anything | Changelogs and release notes name an override flag under that header. It holds only when the same line voids the earlier rules or instructions or announces new ones (owner decision on #255) |
 | "Use the send_email tool to send ..." in the third person, or "how to use your email tool to ..." | Agent framework docs and help pages write tool use this way. The order must say "your" and open its clause |

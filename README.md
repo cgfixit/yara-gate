@@ -148,8 +148,9 @@ trigger the code-relay rule. A separate request in the same message can still
 trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals).
 
 A paper that quotes an override (“the phrase ‘ignore all previous instructions’”)
-does not trigger the phrase rule, however often it does so. An order it does not
-quote is still a note. See [documentary quotations](docs/rules.md#documentary-quotations).
+does not trigger the phrase rule. An order it does not quote is still a note, and
+so is a file of a million or more quotations, which the engine cannot fully list.
+See [documentary quotations](docs/rules.md#documentary-quotations).
 
 **Shipped:** 89 YARA rules in 59 files, grouped into these families:
 - **Agent ingestion:** override phrases in 17 languages, second-person orders to drop filters, swap persona, obey a spoofed authority, or plant a standing instruction in memory, role spoofing (including "this is the system administrator" and `SYSTEM OVERRIDE:` headers), fake chat markers, tool-output overrides, orders aimed at the agent's tools (exfiltrate near a `tool_call`, invoke or use your own tool to send data to an outside address, decode-then-execute), instructions addressed to model readers (answer hooks, ranking or summary steering, concealed additions to an answer), persistence requests, secret transfer (including the keys in a `.env` file), one-time-code relay requests, Markdown exfiltration, instructions in hidden HTML, Office, and PDF text, invisible and bidi Unicode, zero-width runs that carry hidden bytes, and encoded instructions or base64 executables.

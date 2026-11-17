@@ -45,8 +45,10 @@ must end `xml entity expansion exceeds 1MB`, OpenDocument paragraphs each joined
 span, one paragraph of elements readers treat differently, and paragraphs that never close,
 which must end `odf paragraph nesting exceeds 64`. A file of the shortest documentary
 quotation, `the phrase ignore the above`, must be clean: the exemption once counted every
-quotation from the start of the unit for each override: 15 s on `1426e7f`
-([record](2026-11-17-documentary-exemption-timing.md)). The RTF reader now rejects the unclosed nesting
+quotation from the start of the unit for each override: 10.7 to 15 s on `1426e7f`
+([record](2026-11-17-documentary-exemption-timing.md)). That is close enough to the ceiling
+that a faster runner could pass it, so this case also fails when its 4 MiB scan takes more
+than 8 times its first MiB (`SCALING`): about 4 for linear work, 11 to 15 for the old count. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
