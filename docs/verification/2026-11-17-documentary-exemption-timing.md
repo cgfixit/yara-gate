@@ -200,6 +200,7 @@ while the installed-file sweeps ran:
 | Roots | Files | Changed | Hits before and after |
 | --- | ---: | ---: | ---: |
 | This checkout: `docs`, `src`, `tests`, `web-demo`, `rules`, `scripts` | 251 | 0 | 322 (53 of this rule) |
+| The same with the root Markdown files, after this record and the README text were written, against `1426e7f` | 257 | 0 | 329 (57 of this rule) |
 | `/usr/lib/python3.12`, `/usr/share/doc` | 573 | 0 | 0 |
 | `/opt/node-tools`, `/opt/google-cloud-sdk`, the locked `.venv` (thinned to the cap) | 20,000 | 0 | 41 |
 
@@ -230,7 +231,7 @@ Hosted CI is recorded on the pull request.
   about 0.12 s per MiB of this line in this container. Any text dense with these phrases pays
   it, quoted or not, and this change did not alter it. Such a file is held as incomplete,
   which fails closed.
-- **Mixed encodings are held more often.** About 0.1 to 0.6% of the probe's mixed texts are
+- **Mixed encodings are held more often.** About 0.3 to 0.6% of the fuzzed mixed texts are
   held by the candidate and not by the old rule. Real files are rarely ASCII and UTF-16 within
   148 bytes of each other.
 - **The reported offset can name a quotation.** A finding names the first `$a` match, which may
