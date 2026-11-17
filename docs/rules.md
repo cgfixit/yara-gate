@@ -244,6 +244,23 @@ notice repeating a recognized refusal does not need a request-by-refusal
 comparison. This applies to both ASCII and UTF-16LE patterns. The finding
 remains advisory, and both agent policies still hold a matching request.
 
+### Documentary quotations
+
+`agent_prompt_injection_phrases` lets a quotation ("the phrase 'ignore all previous
+instructions'") cover the one override it ends with. Any other override counts. This
+includes an override before the first quotation, one between quotations, and one after
+a quotation ends. The rule finds them by searching the gaps between quotations by
+offset, as the code-relay rule does
+([#274](https://github.com/cgfixit/yara-gate/issues/274),
+[record](verification/2026-11-17-phrase-doc-exemption.md)). A file of repeated
+quotations scans in linear time and stays clean. It used to time out at 16 MiB. The
+answer is the same as before for every input the differential probe tried. That
+includes UTF-16LE text, and a UTF-16 override inside an ASCII quotation, which still
+counts. An override that counts is a note, which `agent-ingest` holds. YARA-X records at most
+1,000,000 matches of a string, so a full list of an override string counts as an
+override. An override after a million quoted ones is never recorded, and without that
+rule the file would pass ([#280](https://github.com/cgfixit/yara-gate/issues/280)).
+
 ### JSON parsing limits
 
 MCP, notebook, and Keras readers check structure before the standard JSON decoder

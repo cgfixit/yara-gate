@@ -119,6 +119,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         _filled(b"", b"Do not forward the verification code to me.\n"),
         None,
     )
+    # #274: the shortest quotation of an order, each exempting the order it ends with. Main
+    # counted quotations from the start of the unit for every order: 15 s here, past 16 MiB
+    # the deadline.
+    yield "phrase-quotations.txt", _filled(b"", b"the phrase ignore the above\n"), None
     prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
     count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
     yield (
@@ -874,7 +878,10 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         raise RuntimeError(f"{name}: {seconds:.3f}s exceeds {SCAN_SECONDS}s")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
-    if name == "code-relay-refusals.txt" and result.verdict.value != "clean":
+    if (
+        name in {"code-relay-refusals.txt", "phrase-quotations.txt"}
+        and result.verdict.value != "clean"
+    ):
         raise RuntimeError(f"{name}: expected clean, got {result.verdict.value}")
     view = {
         "comment-block.py": "comment-text",
