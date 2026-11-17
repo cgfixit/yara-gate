@@ -72,7 +72,7 @@ strings as present or absent, and a capped list is not empty when an uncapped on
 | `script_regsvr32_remote_scriptlet` | Blind | A flood of `regsvr32 scrobj.dll` | A full list of any of its strings, with all three present, holds |
 | `web_clickfix_lure` | Blind | A flood of clipboard writes, or of lure sentences, far from the real lure | A full list of any of its strings, with all of them present, holds |
 | `web_html_smuggling` | Blind | A flood of `download=` or `new Blob(` far from the rest | A full list of any of its strings, with all four present, holds |
-| `agent_prompt_injection_phrases` | Blind | #274: a flood of quotations | Fixed by #278. The probe reports it as open while the file has no guard, and fails it once the file has one |
+| `agent_prompt_injection_phrases` | Blind | #274: a flood of quotations | Fixed by #279's guard (#278 closed unmerged). The probe fails it if the guard is removed |
 | `doc_svg_active`, `doc_svg_event_handler` | Not blind | Every list a placement reads has a `> 1024` flood guard, and a full list is longer than 1,024 | None |
 | `agent_hidden_html` | Not blind | `#comment > 1024` and `#comment_dan > 1024` hold a full list. A full `$close` list only makes more comments count as open | None |
 | `doc_svg_active_link` foreignObject test | Not blind | A full `$foreign` list sets `#foreign > 1024` for scope. Every match that has a close inside it brings one, and one close sits in at most about 300 matches, since each match ends within 4 KB, so the closes also pass 1,024 | None |
@@ -103,6 +103,12 @@ and skips any fixture flood over 16 MiB. A hand-written case still fails if its 
 too large. On `0dea163` with that change: 2,585 flooded texts over 84 rules, no blind spot,
 one fixture left out, one flood skipped. It took 35 s and peaked at 380 MiB. The phrase
 rule is guarded by #279.
+
+`PENDING`, which reported the phrase rule as open instead of failing it while #278 was
+open, is now empty. With it still naming #278, removing #279's guard left the probe
+green (`open agent_prompt_injection_phrases: fixed by #278`, exit 0). Emptied, the same
+removal fails it (`cap blind spot: agent_prompt_injection_phrases`, exit 1), and the
+shipped rule still passes: 2,585 texts, 0 blind spots, 30 s under an 8 GB memory limit.
 
 Real cap, through the CLI. Each run used `--policy agent-ingest --json`, a disposable
 `--home`, and a disposable `--rules` copy of each tree. Files were written to a scratch

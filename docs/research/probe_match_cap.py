@@ -53,7 +53,8 @@ LARGEST_FIXTURE = 64 * 1024
 # The most bytes one flooded text may hold; a larger one means a cap far above a few matches.
 LARGEST_TEXT = 16 * 1024 * 1024
 # Fixed by another open pull request; reported, not failed, while the file has no guard.
-PENDING = {"agent_prompt_injection_phrases": "#278"}
+# Empty: #278 closed and #279 merged the phrase rule's guard, so a blind spot there fails.
+PENDING: dict[str, str] = {}
 GLOBALS = {
     "yara_gate_ext": "bin",
     "yara_gate_name": "",
