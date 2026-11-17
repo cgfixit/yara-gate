@@ -98,6 +98,9 @@ jobs:
       - name: Rule fire and near-miss pairs
         run: uv run python docs/verification/check_rule_pairs.py
 
+      - name: Rules under a small match cap
+        run: uv run python docs/research/probe_match_cap.py
+
       - name: Added-rule checks
         run: uv run python docs/verification/check_added_rules.py
 

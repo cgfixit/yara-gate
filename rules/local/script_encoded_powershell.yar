@@ -28,4 +28,12 @@ rule script_encoded_powershell {
             any of ($encoded*) in (@command[i]..@command[i] + !command[i] - 1) and
             any of ($hidden*, $bypass*) in (@command[i]..@command[i] + !command[i] - 1)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            for any of ($command, $encoded*, $hidden*, $bypass*) : ( # >= 1000000 )
+            and $command and any of ($encoded*) and any of ($hidden*, $bypass*)
+        )
 }

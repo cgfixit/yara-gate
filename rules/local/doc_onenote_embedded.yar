@@ -19,5 +19,13 @@ rule doc_onenote_embedded_launcher {
             uint16(@store[i] + 36) == 0x5A4D or
             uint32(@store[i] + 36) == 0x0000004C or
             $script in (@store[i] + 36..@store[i] + 100)
+        ) or
+        (
+            // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+            // notice. A full list of either string counts as a store header with a launcher
+            // after it, so a flood ahead of one cannot hide it
+            // (docs/verification/2026-11-17-match-cap-rules.md).
+            uint32(0) == 0x7B5C52E4 and uint32(4) == 0x4DA7D88C and $store and
+            (#store >= 1000000 or #script >= 1000000)
         )
 }

@@ -18,4 +18,12 @@ rule dev_vscode_autorun_task {
             $fetch in (@open[i] - 2048..@open[i] + 2048) or
             $hidden in (@open[i] - 1024..@open[i] + 1024)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#open >= 1000000 or #fetch >= 1000000 or #hidden >= 1000000)
+            and $open and ($fetch or $hidden)
+        )
 }

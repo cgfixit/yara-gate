@@ -56,5 +56,13 @@ rule script_download_execute {
             $py_fetch in (@py[i]..@py[i] + !py[i] - 1) and
             $py_exec in (@py[i]..@py[i] + !py[i] - 1) and
             not for any j in (1..#doc) : (@doc[j] <= @py[i] and @py[i] < @doc[j] + !doc[j])
-        )
+        ) or
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of a command string counts as a command no phrase documents, and
+        // a full Python list as a fetch and an exec inside one command, so a flood of
+        // documented commands cannot hide a later one
+        // (docs/verification/2026-11-17-match-cap-rules.md). Full $doc or $shell_data lists
+        // need nothing: a dropped exemption leaves the command counted.
+        for any of ($shell, $shell_node, $subst*, $powershell, $powershell_reverse) : ( # >= 1000000 ) or
+        ($py and $py_fetch and $py_exec and (#py >= 1000000 or #py_fetch >= 1000000 or #py_exec >= 1000000))
 }
