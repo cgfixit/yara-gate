@@ -46,7 +46,11 @@ span, one paragraph of elements readers treat differently, and paragraphs that n
 which must end `odf paragraph nesting exceeds 64`. Two inputs repeat text that a rule condition once
 paired with every match: a code-relay refusal ([#270](2026-11-16-code-relay-timing.md)) and
 the shortest quotation of an override, `the phrase ignore the above`
-([#274](2026-11-17-phrase-doc-exemption.md), 15 s on the base). Both must be clean. The RTF reader now rejects the unclosed nesting
+([#274](2026-11-17-phrase-doc-exemption.md), 10.7 to 15 s on the base). Both must be clean.
+The base is close enough to the ceiling that a faster runner could pass it, so the quotation
+input also fails when its 4 MiB scan takes more than 8 times its first MiB (`SCALING`,
+[#283](https://github.com/cgfixit/yara-gate/issues/283)). That ratio does not depend on the
+runner's speed: 4.0 on `7143d93`, 16.9 to 18.2 for the old count. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 

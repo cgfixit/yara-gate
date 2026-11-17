@@ -26,6 +26,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SIZE = 4 * 1024 * 1024
 SCAN_SECONDS = 10
 PROCESS_SECONDS = 20
+# Cases whose cost must grow with size, not faster: the most the 4 MiB scan may take as a
+# multiple of its first MiB, cut at a line. Linear work gives about 4; work that walks every
+# earlier match per match gives 11 to 18, whatever the runner's speed (#283).
+SCALING = {"phrase-quotations.txt": 8}
 
 
 def cases() -> Iterator[tuple[str, bytes, str | None]]:
@@ -873,9 +877,20 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         "engine": result.engine_version,
         "ruleset_sha256": result.ruleset_sha256,
     }
+    growth = SCALING.get(name)
+    first_seconds = 0.0
+    if growth is not None:
+        first = data[: data.rindex(b"\n", 0, SIZE // 4) + 1]
+        started = time.perf_counter()
+        scan_bytes(first, name=name, rules_dir=rules)
+        first_seconds = time.perf_counter() - started
+        row["first_mib_seconds"] = round(first_seconds, 6)
     print(json.dumps(row), flush=True)
     if seconds > SCAN_SECONDS:
         raise RuntimeError(f"{name}: {seconds:.3f}s exceeds {SCAN_SECONDS}s")
+    if growth is not None and seconds > growth * first_seconds:
+        ratio = seconds / first_seconds
+        raise RuntimeError(f"{name}: 4 MiB took {ratio:.1f} times its first MiB, over {growth}")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
     if (
