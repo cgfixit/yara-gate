@@ -196,6 +196,8 @@ def _forced_timeout(root: Path, rules: Path) -> bool:
         *,
         samples: bool = False,
         name: str = "",
+        limit: int = 0,
+        log: list[str] | None = None,
     ) -> object:
         raise ScanTimeout
 
