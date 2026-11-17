@@ -91,7 +91,7 @@ each, and it caught every one:
 | No test before the first quotation | 1,046 |
 | A gap that stops 30 bytes before the next quotation | 48 |
 
-ADVERSARIAL
+An independent adversarial review (equivalence, fuzzing with a separate generator, performance, and integration) is in progress; its results will be recorded here.
 
 Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on this change:
 - 300 quotations, then an order, then a quotation, against the quotations alone;
@@ -108,11 +108,11 @@ Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on th
 | `measure_precision.py --fail-over` | 328 files, 0 incomplete, the four documented Windows shortcut collisions |
 | `probe_detection_gaps.py --verify` | 738 ok; B3 and B5 open, as on `main` |
 | `probe_rule_coverage.py --verify` | passed |
-| `check_worst_case_timing.py` | TIMING |
-| `sweep_rule_changes.py --base-ref origin/main` | SWEEP |
-| `record_pages_demo.py --baseline` | PAGES |
+| `check_worst_case_timing.py` | PASS, 96 inputs; the new `phrase-quotations.txt` clean in 2.08 s (15.01 s on `main`, past the 10 s ceiling). Load rose from 0.3 to 7.6 during the run, which overlapped the sweep; the slowest input took 7.62 s |
+| `sweep_rule_changes.py --base-ref origin/main` | In progress over `/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked site-packages, and `docs` |
+| `record_pages_demo.py --baseline` | Outcomes match for 84 scenarios × 3 policies |
 | `probe_phrase_doc_exemption.py` | 0 differ, as above |
-| `ruff check`, `ruff format --check`, `check_doc_links.py`, `check_text_controls.py` | LINT |
+| `ruff check`, `ruff format --check`, `check_doc_links.py`, `check_text_controls.py` | Clean |
 
 ## Not established
 
