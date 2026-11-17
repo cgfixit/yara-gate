@@ -112,7 +112,27 @@ not exist. `tests/test_match_cap.py` keeps those shapes.
 
 ## Vendor sweep of large benign files
 
-SWEEP_RESULTS
+The guarded set runs only on large views, so the sweep scanned large files with the locked
+packs: every installed file on this container between 1,000 KiB and 100 MiB under `/usr`,
+`/opt`, `/etc`, `/var/lib`, the project's `.venv`, and `/root/.cache` (593 files), up to 25
+of each suffix, picked with a fixed seed, plus three built text files a common short string
+would fill first: 21.6 MB of `.venv` Python source, 25.2 MB of concatenated JSON, and
+6.9 MB of logs and documentation. 381 files, 1,831 MiB, each scanned in place with
+`scan_file(..., timeout_s=120)` on `523855d` and on this branch, with the same rules root.
+
+- **0 of 381 files changed verdict, reason, or findings.** No view filled a list, so no file
+  was rescanned and none was held for the cap. `unguarded_rule_files` was 0 for every file.
+- Incomplete on both trees, for reasons that predate this change: 24 `archive members exceed
+  1000` (jars, wheels), 2 `keras config exceeds structure limit`, 2 `archive contains
+  unsupported member`.
+- Time: 502 s on `523855d` and 583 s here (+16%), without the first file, which carries the
+  cold compile (22 s and 65 s). Per file, among the 140 that took over 0.5 s on the base: median
+  1.12 times, largest 2.95 times (`libicudata.so.74.2`, 1.55 s to 3.11 s). The largest
+  absolute increase after the first file: `/usr/bin/docker`, 3.45 s to 5.32 s.
+
+This is a sample of what is installed here, not a false-hold rate. The likely false hold is a
+very large text file that repeats one short vendor string a million times, such as a HAR file
+or a memory dump; none of these did.
 
 ## Rejected designs
 
