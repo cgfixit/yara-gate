@@ -41,7 +41,7 @@ For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between stagi
 ## Why it's worth running
 
 **For the business**
-- **It closes the cheapest attack path.** Anyone who can text a number, email an address, or share a folder is the attacker you meet first. A deterministic local gate holds known shapes with no cloud classifier, no per-scan fee, or scanner-side content upload.
+- **It screens common entry points.** A public number, email address, or shared folder lets an untrusted sender place content in an agent's path. A deterministic local gate holds known shapes with no cloud classifier, no per-scan fee, or scanner-side content upload.
 - **Saved scans leave a record.** CLI scans save JSON and SARIF 2.1.0. The JSON includes policy, finding severity and view, rule and detector fingerprints, engine version, and coverage counters. Reports omit matched bytes. Library callers decide whether to persist the result.
 - **No lock-in.** MIT-licensed, the rules are YARA you can read, and candidate rules block only once you promote them.
 
@@ -161,7 +161,7 @@ trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals)
 
 **Vendor packs**, downloaded once by `yara-gate setup`: YARA Forge core, signature-base, and Elastic protections-artifacts. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them. See the [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) for measured coverage and skips.
 
-**Precision:** on the [documented 328-file synthetic benign corpus](docs/rules.md#measured-precision), 85 of the 89 rules hit nothing; the other four are documented Windows shortcut-family collisions, one file each (0.30%), and no structural check reports anything. Each new reader has a dated record of finding changes on thousands of installed and generated files in [docs/verification/](docs/verification/). These corpora do not establish production precision or recall.
+**Benign-corpus findings:** on the [328-file synthetic corpus at `1426e7f`](docs/rules.md#measured-precision), all scans completed. Four distinct files had findings (4/328, 1.22%): four documented Windows shortcut-family collisions, one file per rule (0.30% each). The other 85 of 89 rules and all structural checks had no hits. This measures a benign hit rate, not statistical precision. Each new reader has a dated record of finding changes on thousands of installed and generated files in [docs/verification/](docs/verification/). These corpora do not establish production precision or recall.
 
 **What it does not do:**
 - **It cannot guarantee detection of novel or targeted payloads.** YARA matches patterns someone has already written down, and the gate never builds a rule from the file it is judging.

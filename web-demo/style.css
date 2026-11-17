@@ -179,3 +179,10 @@ footer { color: var(--muted); font-size: .8rem; padding-bottom: 2rem !important;
 .seen-shown { margin: 0 0 .6rem; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 8px; background: white; font-size: .95rem; }
 .seen-grid .help { flex: 1; margin-bottom: 0; }
 @media (max-width: 960px) { .seen-grid { grid-template-columns: minmax(0, 1fr); } .seen-grid h3 { min-height: 0; } }
+
+.gate-flow { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; padding: 0; margin: 1rem 0 1.5rem; }
+.gate-flow li { border-top: 3px solid var(--accent); padding: .7rem .8rem; background: white; border-radius: 0 0 8px 8px; }
+.gate-flow strong, .gate-flow span { display: block; }
+.gate-flow span { font-size: .85rem; margin-top: .4rem; }
+@media (max-width: 800px) { .gate-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .gate-flow { grid-template-columns: 1fr; } }

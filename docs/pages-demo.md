@@ -1,8 +1,8 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 84 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 41 attacks, their 41 benign
-near-twins, and two unfinished scans. The default workflow demonstrates a
+GitHub Pages replays real scanner results for 91 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 44 attacks, their 44 benign
+near-twins, and three unfinished scans. The default workflow demonstrates a
 model-directed ranking request reconstructed from an RSS description. Other pairs
 cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
 descriptions. The page shows the scanner revision, capture time, rule coverage,
@@ -18,13 +18,13 @@ recording of that pair. The panel says which readers each was checked against (L
 pandoc, poppler, pypdf, pdfminer.six, openpyxl, and Python's `email`) and that Microsoft
 Office was not run.
 
-The page is built to show precision as well as detection. A scoreboard counts,
+The page compares detections with curated benign controls. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
 were clean under every policy, the findings on twins across every policy recording
 (zero in the committed baseline), and the unfinished scans that stayed incomplete.
 The limits section separately gives an example of coverage the PDF reader does
 not provide: page streams under a filter it cannot decode, which it reports as the
-note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases.
+note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases selected for the showcase, not a representative benchmark. Zero findings on these controls is not a production false-positive rate or evidence of broad recall.
 A strip under the scoreboard shows every pair at once, the attack above its twin,
 marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without
@@ -44,7 +44,8 @@ either member sets the two side by side under the chosen policy. Each finding sa
 member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
 folded for look-alikes and digits). A static section summarizes the
-measured false-positive evidence and links to its records.
+benign-corpus evidence and links to its records. Per-rule hit rates and the
+number of distinct benign files held are different measures.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
 deployment ran on November 1, 2026
@@ -61,7 +62,7 @@ checks.
 
 ## Guided workflows
 
-Fifteen fictional tasks open directly beside their recorded outcome: vendor comparison
+Nineteen fictional tasks open directly beside their recorded outcome: vendor comparison
 (a ranking directive rebuilt from escaped HTML in an RSS description), supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
@@ -71,13 +72,20 @@ white background), diagram review (a diagram label that frames another page),
 chat intake (zero-width characters in a message), proposal review (a bold word
 in an OpenDocument file), inbox triage (an email behind long relay headers), and data
 export (a workbook written with the `x:` prefix).
+The additional tasks cover account recovery (a relay request after a refusal), tool
+handoff (forwarding versus refusing to forward), project handoff (a persistent approval
+bypass versus preserving approval), and an inspection limit (65 nested JSON arrays).
+The last is a single incomplete case without an attack phrase or benign twin. It shows
+that a legitimate input can also exceed the scanner's budget.
+A four-step guide connects the fictional input to evidence, policy, and the caller's
+same-byte enforcement responsibility; no downstream agent or disposition is simulated.
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 41-pair catalog and the two unfinished scans remain under an expandable section.
+The full 44-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same fifteen shortcuts and the same catalog: both read
+The local workbench offers the same nineteen shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Both demos open with the vendor feed. The paired outcomes show the exact synthetic directives,
 and the ranking request produces an advisory finding in `feed-text` under all three policies.
@@ -206,7 +214,7 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 84 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 91 inert
 examples, recorded with 89 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
@@ -252,9 +260,15 @@ its benign twin.
 | Document | A workbook written with the Open XML SDK's `x:` prefix, an override cell in two rich-text runs | The same prefix and runs around an ordinary revision note |
 | Message | A quoted-printable email with a soft line break inside one word, behind 12 relay and 14 ARC headers that run past 8 KiB | The same headers and soft break around an ordinary revision note |
 
-The two unfinished scans are an ordinary note scanned with a deliberately broken
-rule in a disposable tree, and a 7z header, a container the scanner does not open
-(`unsupported archive`). Both are incomplete under every policy.
+| Web page | An RSS description addresses an AI and asks it to rank a vendor first | The same escaped HTML asks for a factual comparison of published support hours |
+| Message | A code-relay request follows a warning against forwarding codes | The same warning followed by a normal sign-in notice |
+| Message | A ticket tells the reader to use its email tool to forward messages | The same wording preceded by a refusal |
+| Message | A project handoff asks to skip approval in all future sessions | The same handoff says never to skip approval |
+
+The three unfinished scans are an ordinary note scanned with a deliberately broken
+rule in a disposable tree, a 7z header (`unsupported archive`), and a synthetic tool
+document beyond the JSON depth budget (`mcp json exceeds structure limit`). All
+three are incomplete under every policy; no finding is required for a completeness hold.
 
 The four pairs added on November 10 show changes merged after the previous baseline.
 Scanned with the scanner as it was at `7d505f9`, before the scope and budget change,
@@ -312,7 +326,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 84 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 91 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
