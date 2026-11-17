@@ -17,7 +17,9 @@ condition, which already stops reading at N.
 
 Two passes, both over every rule in `rules/local`:
 - the near-miss and the hit of `docs/verification/check_rule_pairs.py`, and each string's
-  own matched bytes from them, repeated ahead of the hit;
+  own matched bytes from them, repeated ahead of the hit. A fixture over 64 KiB is already a
+  real-cap test and is left to that script, and a flood over 16 MiB is not built: a cap of
+  hundreds of matches times a long fixture would not fit in memory;
 - CASES: a flood written for each rule that places a match, ahead of its hit.
 
 It fails on any text that a rule holds without the cap and clears with it. A rule in
@@ -44,6 +46,12 @@ REPO = Path(__file__).resolve().parents[2]
 LOCAL = REPO / "rules/local"
 CAP = "1000000"
 GAPS = (b"\n", b"\n\n" + b"." * 9000 + b"\n\n")
+# A pair fixture longer than this is already a real-cap test (a million matches, written out),
+# which check_rule_pairs.py runs at full size. Repeating it a million times would not fit in
+# memory, so the fixture pass leaves it out.
+LARGEST_FIXTURE = 64 * 1024
+# The most bytes one flooded text may hold; a larger one means a cap far above a few matches.
+LARGEST_TEXT = 16 * 1024 * 1024
 # Fixed by another open pull request; reported, not failed, while the file has no guard.
 PENDING = {"agent_prompt_injection_phrases": "#278"}
 GLOBALS = {
@@ -362,12 +370,18 @@ def most_matches(rule_file: RuleFile, data: bytes, ext: str) -> int:
     return max(counts, default=1)
 
 
+class TooLarge(Exception):
+    """A flood that would not fit in memory: the text already holds hundreds of matches."""
+
+
 def blind(
     rule_file: RuleFile, rule_id: str, ext: str, head: bytes, flood: bytes, tail: bytes
 ) -> list[int]:
     """The caps at which the rule holds the flooded text uncapped and clears it capped."""
     least = max(most_matches(rule_file, tail, ext), rule_file.floor)
     caps = []
+    if len(head) + len(flood) * (least + 3) + len(tail) > LARGEST_TEXT:
+        raise TooLarge(f"{rule_id}: a cap of {least} makes a flood too large to build")
     for cap in (least, least + 1, least + 2):
         data = head + flood * (cap + 1) + tail
         if fires(rule_file.plain, rule_id, data, ext) and not fires(
@@ -386,18 +400,30 @@ def main() -> None:
                 owner[name] = rule_file
     found: dict[str, set[str]] = {}
     tried: dict[str, int] = {}
+    too_large: list[str] = []
 
     def check(rule_id: str, ext: str, head: bytes, flood: bytes, tail: bytes, label: str) -> None:
         rule_file = owner[rule_id]
         for gap in GAPS:
+            try:
+                caps = blind(rule_file, rule_id, ext, head, flood + gap, tail)
+            except TooLarge:
+                # Only a fixture's text may be too large to flood; a case must fit.
+                if label.startswith("case"):
+                    raise
+                too_large.append(rule_id)
+                continue
             tried[rule_id] = tried.get(rule_id, 0) + 1
-            caps = blind(rule_file, rule_id, ext, head, flood + gap, tail)
             if caps:
                 found.setdefault(rule_id, set()).add(f"{label}, gap {len(gap)}, cap {caps[0]}")
 
     pairs = _load(REPO / "docs/verification/check_rule_pairs.py").pairs()
+    skipped = 0
     for rule_id, hit, miss in pairs:
         if rule_id not in owner:
+            continue
+        if max(len(hit), len(miss)) > LARGEST_FIXTURE:
+            skipped += 1
             continue
         plain, helper = owner[rule_id].plain, owner[rule_id].helper
         ext = next(
@@ -436,7 +462,9 @@ def main() -> None:
         for line in sorted(found[rule_id])[:4]:
             print(f"    {line}")
     print(
-        f"{sum(tried.values())} flooded texts over {len(tried)} rules; "
+        f"{sum(tried.values())} flooded texts over {len(tried)} rules "
+        f"({skipped} real-cap fixtures left to check_rule_pairs.py, "
+        f"{len(too_large)} fixture floods too large to build); "
         f"{len(found)} with a cap blind spot, {len(failures)} fail"
     )
     if failures:

@@ -95,6 +95,15 @@ rules):
   `agent_prompt_injection_phrases` reported open (#278);
 - this branch: 1 with a blind spot (`agent_prompt_injection_phrases`, open), 0 failed.
 
+After #279 and #281 merged (`0dea163`), the probe ran out of memory. #279 added a pair
+fixture of 1,000,000 quotations (26.7 MiB). The probe sets the cap at the most matches a
+string has in a fixture, so it tried to repeat that fixture a million times. The probe now
+leaves a fixture over 64 KiB to `check_rule_pairs.py`, which already scans it at full size,
+and skips any fixture flood over 16 MiB. A hand-written case still fails if its flood is
+too large. On `0dea163` with that change: 2,585 flooded texts over 84 rules, no blind spot,
+one fixture left out, one flood skipped. It took 35 s and peaked at 380 MiB. The phrase
+rule is guarded by #279.
+
 Real cap, through the CLI. Each run used `--policy agent-ingest --json`, a disposable
 `--home`, and a disposable `--rules` copy of each tree. Files were written to a scratch
 directory and scanned in place:
