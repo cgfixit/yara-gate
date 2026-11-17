@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 82 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 96 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -43,7 +43,10 @@ inside one Word run until the part is full, a run tag whose quoted value never c
 ran past 100 s before the run pattern was bounded), an internal entity referenced until it
 must end `xml entity expansion exceeds 1MB`, OpenDocument paragraphs each joined across a
 span, one paragraph of elements readers treat differently, and paragraphs that never close,
-which must end `odf paragraph nesting exceeds 64`. The RTF reader now rejects the unclosed nesting
+which must end `odf paragraph nesting exceeds 64`. A file of the shortest documentary
+quotation, `the phrase ignore the above`, must be clean: the exemption once counted every
+quotation from the start of the unit for each override: 15 s on `1426e7f`
+([record](2026-11-17-documentary-exemption-timing.md)). The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 

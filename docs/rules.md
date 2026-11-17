@@ -244,6 +244,26 @@ notice repeating a recognized refusal does not need a request-by-refusal
 comparison. This applies to both ASCII and UTF-16LE patterns. The finding
 remains advisory, and both agent policies still hold a matching request.
 
+### Documentary quotations
+
+`agent_prompt_injection_phrases` does not report "ignore all previous
+instructions", "ignore the above", or "forget everything you were told" when
+"the phrase" comes before it within 64 characters, as a paper or a threat
+model quotes it. The exemption covers only the first such order after "the
+phrase". A later order on the same line, or one with no quotation before it,
+is still a note, however many quotations the file holds. The other spellings
+of the rule have no exemption.
+
+The rule looks for the quotation in the stretch since the order before it, so
+each stretch is read once. A file that quotes the phrase on every line scans
+in time proportional to its size: 16 MiB of one quoted line is clean in about
+5 s, where it used to run past the 30 s deadline
+([record](verification/2026-11-17-documentary-exemption-timing.md)). A quotation
+exempts an order in its own encoding, ASCII or UTF-16LE. Text that mixes the
+two within 148 bytes can be held where it once was not. Like any text dense
+with these orders, about 99 MiB of quotations still exceeds the deadline and is
+held as incomplete.
+
 ### JSON parsing limits
 
 MCP, notebook, and Keras readers check structure before the standard JSON decoder
