@@ -5,11 +5,11 @@ Run from the repository root in the locked environment:
     uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 
 Every input is a fixed, inert byte string from ``yara_gate.showcase``, the catalog the
-loopback workbench also scans: detections, the benign near-twins paired with them, and one
-failure. Each is scanned in memory with ``scan_bytes`` against a disposable
+loopback workbench also scans: detections, the benign near-twins paired with them, and failure
+cases. Each is scanned in memory with ``scan_bytes`` against a disposable
 copy of ``rules/local`` and ``rules/rules.lock`` (bundled rules only, no vendor packs, no
-network). The failure case uses its own copy with one deliberately invalid rule file. Each
-expected verdict is asserted before anything is written, and only the fields the
+network). The compilation-failure case uses its own copy with one deliberately invalid
+rule file. Each expected verdict is asserted before anything is written, and only the fields the
 Pages builder allowlists are kept: no input text, matched bytes, paths, namespaces, or
 timings. The scanner sources must match ``HEAD`` so the recorded revision is the code that
 ran.
