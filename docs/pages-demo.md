@@ -18,13 +18,13 @@ recording of that pair. The panel says which readers each was checked against (L
 pandoc, poppler, pypdf, pdfminer.six, openpyxl, and Python's `email`) and that Microsoft
 Office was not run.
 
-The page is built to show precision as well as detection. A scoreboard counts,
+The page compares detections with curated benign controls. A scoreboard counts,
 from the recordings themselves, the attacks `agent-ingest` held, the twins that
 were clean under every policy, the findings on twins across every policy recording
 (zero in the committed baseline), and the unfinished scans that stayed incomplete.
 The limits section separately gives an example of coverage the PDF reader does
 not provide: page streams under a filter it cannot decode, which it reports as the
-note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases.
+note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases selected for the showcase, not a representative benchmark. Zero findings on these controls is not a production false-positive rate or evidence of broad recall.
 A strip under the scoreboard shows every pair at once, the attack above its twin,
 marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without
@@ -44,7 +44,8 @@ either member sets the two side by side under the chosen policy. Each finding sa
 member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
 folded for look-alikes and digits). A static section summarizes the
-measured false-positive evidence and links to its records.
+benign-corpus evidence and links to its records. Per-rule hit rates and the
+number of distinct benign files held are different measures.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
 deployment ran on November 1, 2026

@@ -391,7 +391,7 @@ triggered the defended tool, 2.4%. NotInject's 339 benign prompts give one note 
 
 A lexical gate's recall on paraphrase corpora is a floor to report, not a target to tune.
 
-**Engine.** YARA-X 1.23.0 (November 5, 2026) is the newest release and the locked version.
+**Engine.** This checkout locks YARA-X 1.23.0 in `uv.lock`. Check upstream releases when planning an upgrade; the lock does not establish which release is newest.
 Its regular expressions have no lookahead, lookbehind, or backreference, and an alternation
 holds at most 255 branches; write an exemption as a second string and an offset test, as
 `script_download_execute` does. A pattern cannot mix greedy and non-greedy quantifiers, so a
