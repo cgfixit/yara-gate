@@ -109,8 +109,8 @@ Each new pair in `check_rule_pairs.py` gives the same answer on `main` and on th
 | `probe_detection_gaps.py --verify` | 738 ok; B3 and B5 open, as on `main` |
 | `probe_rule_coverage.py --verify` | passed |
 | `check_worst_case_timing.py` | PASS, 96 inputs; the new `phrase-quotations.txt` clean in 2.08 s (15.01 s on `main`, past the 10 s ceiling). Load rose from 0.3 to 7.6 during the run, which overlapped the sweep; the slowest input took 7.62 s |
-| `sweep_rule_changes.py --base-ref origin/main` | In progress over `/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked site-packages, and `docs` |
-| `record_pages_demo.py --baseline` | Outcomes match for 84 scenarios × 3 policies |
+| `sweep_rule_changes.py --jobs 3 --base-ref origin/main` | 0 of 6,027 files changed findings (279 hits before and after), over `/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked site-packages, and `docs` |
+| `record_pages_demo.py --baseline` | Outcomes match for 84 scenarios × 3 policies; and for 91 × 3 on a trial merge with [#277](https://github.com/cgfixit/yara-gate/pull/277) |
 | `probe_phrase_doc_exemption.py` | 0 differ, as above |
 | `ruff check`, `ruff format --check`, `check_doc_links.py`, `check_text_controls.py` | Clean |
 
