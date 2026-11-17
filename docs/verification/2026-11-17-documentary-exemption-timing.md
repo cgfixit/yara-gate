@@ -276,6 +276,22 @@ performance. What came of it:
 - **The wording:** a "64 characters" claim where the gap is 64 bytes, miscounted table rows,
   and an overstated share. Each is corrected here and in `docs/rules.md`.
 
+The run was cut short by a container restart. The skeptics had confirmed every finding of the
+correctness, semantics, and checks lenses. The claims reviewer's findings were reproduced here
+instead, and the performance reviewer did not report. In its place, these 4 MiB shapes were
+timed with this rule alone on `442f748` against `1426e7f`, on an idle machine:
+
+| 4 MiB shape | `1426e7f` | `442f748` |
+| --- | ---: | ---: |
+| `the phrase ` repeated, with no order | 0.64 s, clean | 0.66 s, clean |
+| Five prefixes per quotation line | 12.74 s, clean | 0.83 s, clean |
+| ASCII and UTF-16 quotation lines in turn | 5.10 s, clean | 0.59 s, note |
+| Orders only | 0.73 s, note | 1.02 s, note |
+| 200 spaces before the line break inside each quotation | 2.18 s, clean | 2.92 s, clean |
+
+The third row is the cross-encoding cancel described under Encodings: each UTF-16 quotation
+sits within 148 bytes of an ASCII one. The last two rows are the cost of `$o` and `$o_wide`.
+
 ## Installed files and precision
 
 `sweep_rule_changes.py`, base rules against the candidate's:
