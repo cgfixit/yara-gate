@@ -260,6 +260,10 @@ counts. An override that counts is a note, which `agent-ingest` holds. YARA-X re
 1,000,000 matches of a string, so a full list of an override string counts as an
 override. An override after a million quoted ones is never recorded, and without that
 rule the file would pass ([#280](https://github.com/cgfixit/yara-gate/issues/280)).
+So documentation that quotes an override a million times or more gets the note even
+when every quotation is benign: `agent-ingest` holds it, and `agent-document` passes
+it with the finding recorded. At the 67-byte line in the record that is about 64 MiB,
+under the 100 MiB intake limit.
 
 ### JSON parsing limits
 

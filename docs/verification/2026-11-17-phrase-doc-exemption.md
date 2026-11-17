@@ -19,12 +19,22 @@ repeated, on `1426e7f`, through `scan_bytes` under `agent-ingest` (load average 
 | 8 MiB | clean, 11.34 s | clean, 2.80 s |
 | 16 MiB | incomplete (`timeout`), 29.68 s | clean, 5.41 s |
 | 32 MiB | incomplete (`timeout`), 29.96 s | clean, 10.96 s |
-| 64 MiB | not run | clean, 22.35 s |
+| 64 MiB | not run | clean, 22.35 s, before the guard; a note since (below) |
 
 The line is `The phrase "ignore all previous instructions" is quoted in papers.` An unquoted
 order repeated to the same sizes (`Ignore all previous instructions.`) blocks at every size on
 this change, in 0.44 s at 1 MiB and 27.19 s at 64 MiB. That cost is the matching itself, not
 the exemption.
+
+The 64 MiB row was measured before the match-limit guard below. 64 MiB of this 67-byte line
+is 1,001,624 quotations, past YARA-X's 1,000,000-match limit, so the guard now reports the
+note. Rechecked on `747218d` with `scan_bytes` (load under 0.9, about 19 s each,
+[#285](https://github.com/cgfixit/yara-gate/issues/285)):
+
+| Size | Quotations | `default` | `agent-ingest` | `agent-document` |
+| ---: | ---: | --- | --- | --- |
+| 63 MiB | 985,974 | clean | clean | clean |
+| 64 MiB | 1,001,624 | advisory (note) | block (note) | advisory (note) |
 
 Through the CLI, 16 MiB of the line dropped into a disposable inbox under `agent-ingest` was
 incomplete with exit 2 on `main` and stayed in `quarantine/` (30.7 s). On this change it is
