@@ -61,6 +61,9 @@ MATCH_LIMIT = 1_000_000
 RESCAN_LIMIT = 4_000_000
 # Every match-cap guard logs this, then its rule's name and the count of the full list.
 GUARD_LOG_PREFIX = "yara-gate match cap: "
+# Names the guard format in the cache file names: a change to how guards are built must not
+# load guards built the old way for the same rules.
+_GUARD_FORMAT = "1"
 _GUARD_HEAD = re.compile(r"(?:(?:private|global)\s+)*rule\s+(\w+)")
 # The start of a rule, and the name it gives.
 _RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
@@ -536,19 +539,27 @@ def guarded_ruleset(digest: str | None) -> tuple[object | None, list[str]]:
     return _GUARDED.get(digest or "", (None, []))
 
 
+def last_unguarded() -> list[str]:
+    """The unguarded files of the ruleset ``compile_ruleset`` compiled last in this process."""
+    for _rules, unguarded in _GUARDED.values():
+        return list(unguarded)
+    return []
+
+
 def guard_source(text: str) -> str | None:
     """The guard rules for one rule file, "" when no rule has strings, None when not built.
 
     The file is formatted by YARA-X's own formatter, which writes a rule header at column 0,
-    ``  strings:`` and ``  condition:`` on their own lines, and the closing brace alone at
-    column 0. Each rule's strings section is copied as written there.
+    ``  strings:`` and ``  condition:`` on their own lines, and the closing brace at column 0.
+    Comments are blanked first (a pack can hold whole rules inside ``/* */``), and each rule's
+    strings section is copied from what is left.
     """
     import yara_x
 
     out = io.StringIO()
     try:
         yara_x.Formatter().format(io.StringIO(text), out)
-        formatted = out.getvalue()
+        formatted = _blank_comments(out.getvalue())
     except Exception:
         # Any formatter failure leaves the file unguarded.
         return None
@@ -567,12 +578,12 @@ def guard_source(text: str) -> str | None:
             continue
         if name is None:
             continue
-        if line == "}":
+        if line.rstrip() == "}":
             if body:
                 found.append((name, body))
             name = None
             continue
-        if line in ("  meta:", "  strings:", "  condition:"):
+        if line.rstrip() in ("  meta:", "  strings:", "  condition:"):
             section = line.strip().rstrip(":")
             continue
         if section == "strings":
@@ -593,6 +604,51 @@ def guard_source(text: str) -> str | None:
             "    )\n}\n"
         )
     return "".join(parts)
+
+
+def _blank_comments(text: str) -> str:
+    """YARA source with every comment replaced by spaces, newlines kept.
+
+    Text and regex literals are left as they are, so a ``//`` in a URL or a ``/*`` in a regex
+    stays. A regex starts only after ``=`` (a string definition) or ``matches``; any other
+    ``/`` is division.
+    """
+    out = list(text)
+    index, size = 0, len(text)
+    previous = ""
+    while index < size:
+        char = text[index]
+        pair = text[index : index + 2]
+        if pair == "//":
+            end = text.find("\n", index)
+            end = size if end < 0 else end
+            out[index:end] = " " * (end - index)
+            index = end
+            continue
+        if pair == "/*":
+            end = text.find("*/", index + 2)
+            end = size if end < 0 else end + 2
+            out[index:end] = [c if c == "\n" else " " for c in text[index:end]]
+            index = end
+            continue
+        if char == '"' or (char == "/" and previous in ("=", "matches")):
+            index += 1
+            while index < size and text[index] not in (char, "\n"):
+                index += 2 if text[index] == "\\" else 1
+            index += 1
+            previous = char
+            continue
+        if char.isalnum() or char == "_":
+            end = index
+            while end < size and (text[end].isalnum() or text[end] == "_"):
+                end += 1
+            previous = text[index:end]
+            index = end
+            continue
+        if not char.isspace():
+            previous = char
+        index += 1
+    return "".join(out)
 
 
 def _build_guarded(
@@ -646,8 +702,8 @@ def _read_guard_cache(digest: str) -> tuple[object, list[str]] | None:
 
     cache = _user_cache_dir()
     try:
-        text = (cache / f"{digest}.unguarded").read_text(encoding="utf-8")
-        with (cache / f"{digest}.guard.yarc").open("rb") as handle:
+        text = (cache / f"{digest}.unguarded{_GUARD_FORMAT}").read_text(encoding="utf-8")
+        with (cache / f"{digest}.guard{_GUARD_FORMAT}.yarc").open("rb") as handle:
             rules = yara_x.Rules.deserialize_from(handle)
     except (OSError, ValueError):
         return None
@@ -659,14 +715,14 @@ def _write_guard_cache(digest: str, rules: Any, unguarded: list[str]) -> None:
         cache = _user_cache_dir()
         cache.mkdir(parents=True, exist_ok=True)
         token = secrets.token_hex(4)
-        list_tmp = cache / f".{digest}.{token}.unguarded.tmp"
+        list_tmp = cache / f".{digest}.{token}.unguarded{_GUARD_FORMAT}.tmp"
         list_tmp.write_text("\n".join(unguarded) + "\n", encoding="utf-8")
-        os.replace(list_tmp, cache / f"{digest}.unguarded")
-        rules_tmp = cache / f".{digest}.{token}.guard.yarc.tmp"
+        os.replace(list_tmp, cache / f"{digest}.unguarded{_GUARD_FORMAT}")
+        rules_tmp = cache / f".{digest}.{token}.guard{_GUARD_FORMAT}.yarc.tmp"
         with rules_tmp.open("wb") as handle:
             serialize = rules.serialize_into
             serialize(handle)
-        os.replace(rules_tmp, cache / f"{digest}.guard.yarc")
+        os.replace(rules_tmp, cache / f"{digest}.guard{_GUARD_FORMAT}.yarc")
     except OSError:
         return
 

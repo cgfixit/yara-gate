@@ -94,3 +94,16 @@ def test_guard_copies_strings_and_skips_rules_without_them() -> None:
     assert '$x = "a//b"' in guard
     assert "n__match_cap" not in guard
     assert guard_source("rule n { condition: true }") == ""
+
+
+def test_guard_skips_commented_rules_and_reads_past_trailing_comments() -> None:
+    # Shapes from signature-base: a rule kept inside a block comment, and a comment after `}`.
+    source = (
+        'rule kept { strings: $k = "k" condition: $k }  /* end of kept\n*/\n'
+        '/*\nrule gone { strings: $g = "g" condition: $g }\n*/\n'
+        "rule also { strings: $r = /a\\/\\*b/ condition: $r }\n"
+    )
+    guard = guard_source(source)
+    assert guard is not None
+    assert "kept__match_cap" in guard and "also__match_cap" in guard
+    assert "gone" not in guard
