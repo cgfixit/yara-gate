@@ -85,6 +85,12 @@ rule doc_svg_active_link {
                 or for any of ($link_first, $link_last) : (
                     for any i in (1..#) : ( not $void at (@[i] + ![i] - 11) )
                 )
+                // YARA-X keeps the first 1,000,000 matches of a string and drops the rest
+                // without notice. A full link list counts as a link that is not a no-op, so a
+                // flood of void(0) links cannot hide a later javascript: target
+                // (docs/verification/2026-11-17-match-cap-rules.md). The scope test above
+                // already holds a full list through its flood guard.
+                or #link_first >= 1000000 or #link_last >= 1000000
             )
             // In another document the match must sit inside an svg element: more svg start tags
             // than end tags precede it.

@@ -41,5 +41,11 @@ rule agent_message_code_relay {
                     $ in (@negated[j] + !negated[j]..@negated[j + 1] - 1)
                 )
             )
-        )
+        ) or
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of a request counts as a request no refusal covers, so a flood
+        // of refused requests cannot hide a later one
+        // (docs/verification/2026-11-17-match-cap-rules.md). A full $negated list needs
+        // nothing: the gap after its last kept match runs to the end of the file.
+        for any of ($relay, $received_me, $received_to, $reply, $link) : ( # >= 1000000 )
 }

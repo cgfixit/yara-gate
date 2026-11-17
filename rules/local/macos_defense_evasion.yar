@@ -30,4 +30,12 @@ rule macos_archive_upload {
         $upload = /\bcurl\b[^\r\n]{0,256}([ \t](-F|--form)[ \t]+["']?[A-Za-z0-9_-]{1,32}=@|[ \t]--data-binary[ \t]+["']?@[^\s"']|[ \t](-T|--upload-file)[ \t]+["']?[^\s"'-])/ nocase ascii wide
     condition:
         for any i in (1..#ditto) : ($upload in (@ditto[i]..@ditto[i] + 4096))
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#ditto >= 1000000 or #upload >= 1000000)
+            and $ditto and $upload
+        )
 }

@@ -17,4 +17,12 @@ rule script_regsvr32_remote_scriptlet {
             $remote in (@command[i]..@command[i] + !command[i] - 1) and
             $scriptlet in (@command[i]..@command[i] + !command[i] - 1)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#command >= 1000000 or #remote >= 1000000 or #scriptlet >= 1000000)
+            and $command and $remote and $scriptlet
+        )
 }

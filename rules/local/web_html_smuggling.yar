@@ -17,4 +17,12 @@ rule web_html_smuggling {
             $blob in (@download[i] - 4096..@download[i] + 4096) and
             $url in (@download[i] - 4096..@download[i] + 4096)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#download >= 1000000 or #decode >= 1000000 or #blob >= 1000000 or #url >= 1000000)
+            and $download and $decode and $blob and $url
+        )
 }

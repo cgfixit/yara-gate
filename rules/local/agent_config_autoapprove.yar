@@ -51,4 +51,12 @@ rule agent_cli_secret_sweep {
             $cli in (@bypass[i] - 256..@bypass[i]) and
             $hunt in (@bypass[i] - 2048..@bypass[i] + 2048)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#bypass >= 1000000 or #cli >= 1000000 or #hunt >= 1000000)
+            and $bypass and $cli and $hunt
+        )
 }
