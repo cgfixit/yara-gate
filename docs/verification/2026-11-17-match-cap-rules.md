@@ -126,8 +126,14 @@ took 7 to 8 s, and the timed-out one 31 s.
 - 4 MiB timing, each changed file alone on 4 MiB of `/usr/lib/python3.12` source, best of
   5, base and branch: 0 to 29 ms each, with no change beyond 2 ms. The guards are counts
   and add no strings.
-- `docs/verification/check_worst_case_timing.py` and
-  `docs/research/probe_detection_gaps.py --verify`: see the pull request.
+- `docs/verification/check_worst_case_timing.py`: 95 inputs of 4 MiB passed, the slowest
+  6.3 s, with no timeout.
+- `docs/research/probe_detection_gaps.py --verify`: passed.
+- `docs/verification/measure_precision.py --fail-over`: passed.
+- Trial merges with #276, #277, #278, and #279 on `1426e7f` are clean. On the #278 merge,
+  `probe_match_cap.py` shows no blind spot, so #278's guard holds under this probe too.
+  On the #279 merge, `agent_prompt_injection_phrases` is still blind: #279 rewrites the
+  lookup without a guard.
 
 ## Scanner-level option, for a maintainer decision
 
