@@ -64,6 +64,12 @@ rule agent_prompt_injection_phrases {
             // searched once; counting every documentary match from offset 0 for each override
             // was quadratic (#274). docs/research/probe_documentary_exemption.py compares the
             // two; run it after changing the verbs, the words after them, or this condition.
+            // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+            // notice, and yara-gate keeps that default. Once a list is full, an override past
+            // its end is never looked at, so a full override list, or documentary lists that
+            // hold that many between them, count as an override no quotation names.
+            #o >= 1000000 or #o_wide >= 1000000 or
+            #doc_phrase + #doc_phrase_wide >= 1000000 or
             ($o and (
                 not $doc_phrase in (0..@o[1] - 1) or
                 $doc_phrase_wide in (@o[1] - 74..@o[1] - 1)
