@@ -70,6 +70,30 @@ def test_list_full_on_the_rescan_is_incomplete_with_findings(cap_rules: Path) ->
     assert "zz_letter_then_marker" not in _rules_of(result)
 
 
+def test_vendor_rule_is_held_when_its_list_stays_full(rules_copy: Path) -> None:
+    # A vendor rule has no guard of its own and no verdict_on_match; only the scanner's hold
+    # stands between a full list and a clean scan (#280).
+    pack = rules_copy / "vendor" / "pack"
+    pack.mkdir()
+    (pack / "zz_vendor.yar").write_text(
+        'rule zz_vendor_letter_then_marker {\n  strings:\n    $a = "a"\n    $m = "MARKER"\n'
+        "  condition:\n    for any i in (1..#a) : ( $m at @a[i] + 1 )\n}\n",
+        encoding="utf-8",
+    )
+    (rules_copy / "vendor.installed.json").write_text(
+        '{"installed_vendor_files": ["pack/zz_vendor.yar"]}\n', encoding="utf-8"
+    )
+    read = scan_bytes(b"a" * 1_500_000 + b"aMARKER", name="t.txt", rules_dir=rules_copy)
+    assert read.verdict is Verdict.block
+    assert "zz_vendor_letter_then_marker" in _rules_of(read)
+    held = scan_bytes(
+        b"a" * (RESCAN_LIMIT + 100_000) + b"aMARKER", name="t.txt", rules_dir=rules_copy
+    )
+    assert held.verdict is Verdict.incomplete
+    assert held.incomplete_reason == MATCH_CAP_REASON
+    assert exit_code(held) == 2
+
+
 def test_more_full_lists_than_a_rescan_reads_are_incomplete(cap_rules: Path) -> None:
     # Five strings of a private rule, each with 1,100,000 matches.
     result = scan_bytes(b"bcdef" * 1_100_000, name="t.txt", rules_dir=cap_rules)
