@@ -58,7 +58,9 @@ clean in 1.3 s with no extra member.
   on this branch: 0 changed verdict, reason, or findings. 3 changed their unit count, from 1 to
   3: copies of Go's own `archive/tar/testdata/v7.tar` in two toolchains and the module cache,
   now read as the V7 tar they are. All stay clean.
-- BROAD_RESULTS
+- **5,000 installed files picked at random** (fixed seed) under `/usr`, `/etc`, `/opt`,
+  `/var/lib`, and the project's `.venv`, each under 4 MiB, on `669d618` and on this branch: 0
+  changed verdict, reason, findings, or unit count. No ordinary file was taken for a V7 tar.
 
 ## LibreOffice's PrinterSetup item
 
@@ -132,4 +134,14 @@ a LibreOffice file).
 
 ## Checks
 
-CHECK_RESULTS
+On `44990e4`, this container: `lint_rules.py` (89 rules), `check_rule_generator.py`,
+`check_rules_lock.py`, `check_rule_pairs.py` (120), `probe_match_cap.py` (0 blind spots),
+`check_added_rules.py`, `measure_precision.py --fail-over`, `check_scan_only.py`,
+`probe_rule_coverage.py --verify`, `probe_detection_gaps.py --verify`, `check_intake.py`,
+`check_text_controls.py`, `selftest`, full `pytest` (1,261 passed, 5 skipped), ruff, and
+`mypy --strict src scripts` all pass. `sweep_rule_changes.py --base-ref origin/main` over
+`/usr`, `/etc`, and `/opt`: 20,000 files, 0 changed (98 hits before and after); it compares rule
+trees under one scanner, so it reaches only the rule's metadata here, and the sweeps above are
+the ones that test this change. `check_worst_case_timing.py` on both trees: no verdict or reason
+changed in 96 inputs; total 242.9 s before and 241.5 s after, slowest 7.80 s and 8.36 s. The
+demo re-records with outcomes matching `web-demo/recordings.json`.
