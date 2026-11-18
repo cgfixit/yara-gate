@@ -19,6 +19,7 @@ from yara_gate.samples import (
     hidden_html,
     injection_markdown,
     mini_pe,
+    printer_setup_settings,
     text_with_embedded_pe,
 )
 from yara_gate.scanner import scan_file
@@ -170,6 +171,13 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b'<img src="data:image/png;base64,'
             + base64.b64encode(b"\x89PNG\r\n\x1a\n" + bytes(400))
             + b'">\n',
+        ),
+        # LibreOffice's own printer job setup is not a payload; the same item with an executable
+        # in its driver data is.
+        (
+            "agent_base64_blob",
+            printer_setup_settings(bytes(8) + mini_pe() + bytes(64)),
+            printer_setup_settings(),
         ),
         (
             "agent_base64_executable",
