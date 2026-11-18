@@ -7,6 +7,7 @@ import math
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -87,9 +88,13 @@ from yara_gate.pdfannotations import PdfStrings, pdf_string_texts, shown_string
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
 from yara_gate.rules import (
+    GUARD_LOG_PREFIX,
+    MATCH_LIMIT,
+    RESCAN_LIMIT,
     compile_ruleset,
     compile_source,
     default_rules_dir,
+    guarded_ruleset,
     placed_rule_sources,
     vendor_namespace_dirs,
     vendor_overrides,
@@ -99,6 +104,25 @@ from yara_gate.rules import (
 
 class ScanTimeout(Exception):
     pass
+
+
+# A view whose first scan fills at most this many lists is read again at ``RESCAN_LIMIT``.
+# Each list YARA-X keeps costs about 25 bytes a match, and a matching rule's list about 107
+# bytes once the binding builds its Python objects: four lists at 4,000,000 is about 1.7 GB.
+RESCAN_MAX_FULL = 4
+# The rescan runs only when the time left is this many times what the first scan took.
+RESCAN_TIME_FACTOR = 1.25
+MATCH_CAP_REASON = "match cap reached"
+
+
+@dataclass(slots=True)
+class MatchCap:
+    """What the match-cap guards saw across one scan's views."""
+
+    # The limit of the rescan, when any view needed one.
+    rescan_limit: int | None = None
+    # A list was full on a view's final scan: the scan is incomplete.
+    full: bool = False
 
 
 def scan_file(
@@ -215,6 +239,9 @@ def _scan_file(
     unread: dict[str, int] = {}
     scanned_bytes = 0
     yara_time = 0.0
+    cap = MatchCap()
+    guarded: object | None = None
+    unguarded: list[str] = []
 
     def yara(
         rules: object,
@@ -245,6 +272,8 @@ def _scan_file(
                 name=name,
                 placed=placed,
                 digest=ruleset,
+                guarded=guarded,
+                cap=cap,
             )
         finally:
             scanned_bytes += len(payload)
@@ -253,6 +282,9 @@ def _scan_file(
     def finish(reason: str | None = None) -> ScanResult:
         from yara_gate import __version__
 
+        if reason is None and cap.full:
+            # A string's list was full on the final scan: a match past it was never read.
+            reason = MATCH_CAP_REASON
         result = result_from_findings(
             sha256=digest, path=str(file_path), findings=findings, incomplete_reason=reason
         )
@@ -266,6 +298,8 @@ def _scan_file(
         result.units_scanned = units
         result.views_scanned = dict(sorted(views.items()))
         result.pdf_content_unread = dict(sorted(unread.items()))
+        result.match_rescan_limit = cap.rescan_limit
+        result.unguarded_rule_files = len(unguarded)
         result.bytes_scanned = scanned_bytes
         result.yara_seconds = round(yara_time, 3) if units else None
         result.policy = policy
@@ -306,6 +340,7 @@ def _scan_file(
     # An override applies only to a match from the pack directory its entry names.
     vendor_dirs = vendor_namespace_dirs(ruleset)
     placed = placed_rule_sources(ruleset)
+    guarded, unguarded = guarded_ruleset(ruleset)
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
     read_paths: set[tuple[str, ...]] = set()
@@ -989,8 +1024,36 @@ def _yara_findings(
     name: str = "",
     placed: Mapping[str, tuple[str, frozenset[str]]] | None = None,
     digest: str | None = None,
+    guarded: object | None = None,
+    cap: MatchCap | None = None,
 ) -> list[Finding]:
-    result = _invoke_scan(rules, data, timeout_s, ext, samples=samples, name=name)
+    if guarded is not None and len(data) >= MATCH_LIMIT:
+        # A list holds one match per start offset, so none can fill in a shorter view.
+        logs: list[str] = []
+        begun = time.monotonic()
+        result = _invoke_scan(guarded, data, timeout_s, ext, samples=samples, name=name, log=logs)
+        took = time.monotonic() - begun
+        # A rescan reads more matches than the first scan; one that cannot finish in the time
+        # left would only end as a timeout, so the full list is reported instead.
+        left = timeout_s - took
+        if logs and len(logs) <= RESCAN_MAX_FULL and left > took * RESCAN_TIME_FACTOR:
+            logs = []
+            result = _invoke_scan(
+                guarded,
+                data,
+                max(1, math.ceil(left)),
+                ext,
+                samples=samples,
+                name=name,
+                limit=RESCAN_LIMIT,
+                log=logs,
+            )
+            if cap is not None:
+                cap.rescan_limit = RESCAN_LIMIT
+        if logs and cap is not None:
+            cap.full = True
+    else:
+        result = _invoke_scan(rules, data, timeout_s, ext, samples=samples, name=name)
     findings: list[Finding] = []
     scan_globals: list[tuple[str, object]] | None = None
     for rule in getattr(result, "matching_rules", ()):
@@ -1151,6 +1214,16 @@ def _fires(
     return any(str(rule.identifier) == rule_id for rule in result.matching_rules)
 
 
+def _guard_sink(log: list[str] | None) -> Callable[[str], None]:
+    """A console callback that keeps the match-cap guards' lines; a rule's own logs are dropped."""
+
+    def sink(line: str) -> None:
+        if log is not None and line.startswith(GUARD_LOG_PREFIX):
+            log.append(line)
+
+    return sink
+
+
 def _scan_globals(data: bytes, ext: str, name: str, samples: bool) -> list[tuple[str, object]]:
     """The values the scanner gives each global for one buffer."""
     blob, exe = base64_run_signals(data, samples=samples)
@@ -1165,8 +1238,17 @@ def _scan_globals(data: bytes, ext: str, name: str, samples: bool) -> list[tuple
 
 
 def _invoke_scan(
-    rules: Any, data: bytes, timeout_s: int, ext: str, *, samples: bool = False, name: str = ""
+    rules: Any,
+    data: bytes,
+    timeout_s: int,
+    ext: str,
+    *,
+    samples: bool = False,
+    name: str = "",
+    limit: int = MATCH_LIMIT,
+    log: list[str] | None = None,
 ) -> object:
+    """Scan ``data``. With ``log``, each list a match-cap guard found full is appended to it."""
     import yara_x
 
     # A Scanner costs about 0.6 ms to build, more than scanning a PDF paragraph, so the
@@ -1181,7 +1263,13 @@ def _invoke_scan(
         if getattr(_SCANNERS, "reuse", False):
             _SCANNERS.pair = (rules, scanner)
     scanner.set_timeout(timeout_s)
-    for global_name, value in _scan_globals(data, ext, name, samples):
+    # A reused Scanner keeps its limit and log callback, so both are set on every call.
+    scanner.max_matches_per_pattern(limit)
+    scanner.console_log(_guard_sink(log))
+    for global_name, value in [
+        *_scan_globals(data, ext, name, samples),
+        ("yara_gate_match_limit", limit),
+    ]:
         try:
             scanner.set_global(global_name, value)
         except (TypeError, ValueError):

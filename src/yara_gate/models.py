@@ -111,6 +111,13 @@ class ScanResult(_Dumpable):
     # (``LZWDecode``, ``DCTDecode``, ... or ``other``; never a name taken from the file).
     # Each one is also the note ``heuristic_pdf_content_unread``. Counts only.
     pdf_content_unread: dict[str, int] = field(default_factory=dict)
+    # YARA-X keeps the first 1,000,000 matches of each string. A view that filled a list was
+    # scanned again with this limit; null when none did. A list full on that rescan, or more
+    # lists full than are read again, makes the scan incomplete (``match cap reached``).
+    match_rescan_limit: int | None = None
+    # Rule files loaded without a match-cap guard (their source did not format or the guard
+    # did not compile). A full list in one of their rules is not seen.
+    unguarded_rule_files: int = 0
 
     def __post_init__(self) -> None:
         self.verdict = Verdict(self.verdict)

@@ -626,7 +626,13 @@ def test_cache_without_skip_list_recompiles(
     assert error is None
     assert skip_count == 1
     assert skipped == ["vendor/bad.yar: CompileError"]
-    assert sorted(path.suffix for path in cache.iterdir()) == [".skipped", ".yarc"]
+    # The plain set and its skip list, and the set with match-cap guards and its unguarded list.
+    assert sorted(path.name.split(".", 1)[1] for path in cache.iterdir()) == [
+        "guard2.yarc",
+        "skipped",
+        "unguarded2",
+        "yarc",
+    ]
 
 
 def test_user_file_cannot_shadow_bundled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

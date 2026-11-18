@@ -393,6 +393,7 @@ def rules_install(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -419,6 +420,7 @@ def rules_update(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -451,6 +453,7 @@ def setup(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -529,6 +532,14 @@ def _echo_incomplete(exc: Exception) -> NoReturn:
     else:
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
     raise typer.Exit(code=2) from exc
+
+
+def _echo_unguarded() -> None:
+    """Name each rule file of the set just compiled that has no match-cap guard."""
+    from yara_gate.rules import last_unguarded
+
+    for key in last_unguarded():
+        typer.echo(f"{key}: unguarded")
 
 
 def _echo_shadows(skipped: list[str]) -> None:

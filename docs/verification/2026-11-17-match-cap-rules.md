@@ -152,6 +152,12 @@ took 7 to 8 s, and the timed-out one 31 s.
 
 ## Scanner-level option, for a maintainer decision
 
+**Decided and built on November 17:** option 4 with the size gate, for every rule, with one
+rescan at 4,000,000 before a scan is held. See the
+[scanner record](2026-11-17-match-cap-scanner.md). The guard rules are private copies of
+each rule's strings rather than rewritten conditions, so a finding still means the rule's own
+condition held. The text below is the option list as it stood before that decision.
+
 The guards fix the bundled rules one at a time. Vendor rules, and any later bundled rule
 that reads where a match lies, stay exposed. A scan could instead report incomplete when a
 list may have filled. This would change the contract: a file that scans clean today would
