@@ -17,6 +17,7 @@ import json
 import lzma
 import re
 import stat
+import struct
 import tarfile
 import time
 import unicodedata
@@ -27,7 +28,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 from yara_gate.filetype import sniff, utf16_encoding
 from yara_gate.heuristics import (
@@ -421,6 +422,8 @@ def archive_kind(data: bytes) -> str | None:
         return "cpio"
     if len(data) >= 262 and data[257:262] == b"ustar":
         return "tar"
+    if _v7_tar(data):
+        return "tar"
     # A unit has one kind. A message that names its parts in its first 8 KiB is mail even with
     # a zip archive appended. A message opened for longer headers or for its one body is the
     # archive when one ends it: an unzip tool opens that archive whatever precedes it, and its
@@ -439,6 +442,22 @@ _ZIP_END_SIZE = 22
 _ZIP_LOCAL_SIZE = 30
 MAX_ZIP_ARCHIVES = 16
 MAX_ZIP_END_RECORDS = 64
+
+
+def _v7_tar(data: bytes) -> bool:
+    """True when ``data`` starts with a tar header that has no ``ustar`` magic (Unix V7 tar).
+
+    GNU tar and Python's ``tarfile`` extract such an archive; it carries no magic, so the test
+    is the one ``tarfile`` itself makes: the first block parses as a header, with a name, and
+    its checksum matches. Data that passes is read as the tar those unpackers take it for.
+    """
+    if len(data) < tarfile.BLOCKSIZE or not any(data[: tarfile.BLOCKSIZE]):
+        return False
+    try:
+        info = tarfile.TarInfo.frombuf(data[: tarfile.BLOCKSIZE], "utf-8", "surrogateescape")
+    except tarfile.HeaderError:
+        return False
+    return bool(info.name)
 
 
 def _trailing_zip(data: bytes) -> bool:
@@ -500,6 +519,119 @@ def _zip_archives(data: bytes, budget: Budget) -> Iterator[zipfile.ZipFile]:
             starts.add(earlier.start_dir)
             covered.extend(_zip_spans(data, earlier))
             yield earlier
+
+
+_ZIP_LOCAL = b"PK\x03\x04"
+_ZIP_LOCAL_HEADER = struct.Struct("<4sHHHHHIIIHH")
+
+
+def _unlisted_zip_entries(
+    data: bytes, covered: list[tuple[int, int]], base: int, budget: Budget
+) -> Iterator[tuple[int, str, bytes]]:
+    """Entries whose local header no directory record lists, as a streaming unzipper reads them.
+
+    ``zipfile`` and Info-ZIP read the members the central directory names. Java's
+    ``ZipInputStream``, stream-unzip, and other streaming readers walk local headers from the
+    start, so an entry placed before a valid archive, or between its members, is extracted by
+    them and was never read here. The bytes no listed member or directory covers are searched
+    for local headers. A header counts only when it is a stored or deflated entry whose name
+    and data fit in the file and whose data inflates; anything else is ordinary bytes. Each
+    entry is a member like a listed one: same budget, count, name, size, and encryption checks.
+    """
+    spans = sorted(covered)
+    position = 0
+    for start, stop in [*spans, (len(data), len(data))]:
+        while position < start:
+            budget.check()
+            found = data.find(_ZIP_LOCAL, position, start)
+            if found < 0:
+                break
+            entry = _local_entry(data, found)
+            if entry is None:
+                position = found + 1
+                continue
+            name, flags, method, data_start, size = entry
+            budget.member()
+            _check_member_name(name)
+            if flags & 1:
+                raise ContentLimit("archive unreadable or encrypted")
+            inflate: _Inflate | None = None
+            stream: IO[bytes]
+            if method == 0:
+                stream = io.BytesIO(data[data_start : data_start + size])
+            else:
+                inflate = _Inflate(data, data_start, None if flags & 8 else data_start + size)
+                stream = io.BufferedReader(inflate)
+            try:
+                body = budget.read(stream)
+            except zlib.error:
+                position = found + 1
+                continue
+            end = data_start + size if inflate is None or not flags & 8 else inflate.tell_input()
+            position = max(end, found + 1)
+            if not name.endswith("/"):
+                yield base, name, body
+                base += 1
+        position = max(position, stop)
+
+
+def _local_entry(data: bytes, offset: int) -> tuple[str, int, int, int, int] | None:
+    """(name, flags, method, data start, compressed size) of a local header, or None."""
+    if offset + _ZIP_LOCAL_HEADER.size > len(data):
+        return None
+    (_, _, flags, method, _, _, _, size, _, name_len, extra_len) = _ZIP_LOCAL_HEADER.unpack_from(
+        data, offset
+    )
+    if method not in (0, 8) or not 0 < name_len <= 1024:
+        return None
+    # A stored entry with a data descriptor has no size to read it by; streaming readers refuse it.
+    if method == 0 and flags & 8:
+        return None
+    name_start = offset + _ZIP_LOCAL_HEADER.size
+    data_start = name_start + name_len + extra_len
+    if data_start > len(data) or (not flags & 8 and data_start + size > len(data)):
+        return None
+    raw = data[name_start : name_start + name_len]
+    name = raw.decode("utf-8" if flags & 0x800 else "cp437", "replace")
+    return name, flags, method, data_start, size
+
+
+class _Inflate(io.RawIOBase):
+    """Raw deflate data from ``data[start:stop]``, or to the stream's end when ``stop`` is None."""
+
+    def __init__(self, data: bytes, start: int, stop: int | None) -> None:
+        self._data = data
+        self._position = start
+        self._stop = len(data) if stop is None else stop
+        self._inflater = zlib.decompressobj(-zlib.MAX_WBITS)
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        size = size if size > 0 else 64 * 1024
+        while not self._inflater.eof:
+            source = self._inflater.unconsumed_tail
+            if not source:
+                if self._position >= self._stop:
+                    raise zlib.error("deflate data ends early")
+                source = self._data[self._position : min(self._stop, self._position + 64 * 1024)]
+                self._position += len(source)
+            out = self._inflater.decompress(source, size)
+            if out:
+                return out
+        return b""
+
+    def readinto(self, buffer: Any) -> int:
+        chunk = self.read(len(buffer))
+        buffer[: len(chunk)] = chunk
+        return len(chunk)
+
+    def tell_input(self) -> int:
+        """The offset just past the deflate data read so far."""
+        return (
+            self._position - len(self._inflater.unused_data) - len(self._inflater.unconsumed_tail)
+        )
 
 
 def _open_zip(data: bytes) -> zipfile.ZipFile | None:
@@ -784,7 +916,9 @@ def content_units(
 def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int, str, bytes]]:
     if kind == "zip":
         base = 0
+        covered: list[tuple[int, int]] = []
         for opened in _zip_archives(unit.data, budget):
+            covered.extend(_zip_spans(unit.data, opened))
             entries = opened.infolist()
             if len(entries) + budget.members > MAX_MEMBERS:
                 raise ContentLimit("archive members exceed 1000")
@@ -803,6 +937,7 @@ def _members(unit: ContentUnit, kind: str, budget: Budget) -> Iterator[tuple[int
                 with opened.open(info) as stream:
                     yield index, info.filename, budget.read(stream)
             base += len(entries)
+        yield from _unlisted_zip_entries(unit.data, covered, base, budget)
     elif kind == "mime":
         yield from _mime_members(unit, budget)
     elif kind == "tar":

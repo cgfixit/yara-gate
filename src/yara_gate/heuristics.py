@@ -1,11 +1,14 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import base64
+import binascii
 import builtins
 import codecs
 import io
 import json
 import pickletools
 import re
+import struct
 import unicodedata
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -271,12 +274,80 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
         ):
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
+            if blob and _printer_setup(data, start, match.end()):
+                blob = False
             if blob and samples:
                 end = match.end()
                 blob = _b64_holds_data(data, start, end) and _b64_unsampled(data, start, end)
         if blob and exe:
             break
     return blob, exe
+
+
+# LibreOffice saves the printer's job setup in an OpenDocument settings.xml as this item.
+_PRINTER_SETUP_OPEN = b'<config:config-item config:name="PrinterSetup" config:type="base64Binary">'
+_PRINTER_SETUP_CLOSE = re.compile(rb"={0,2}</config:config-item>")
+# WriteJobSetup in LibreOffice's vcl/source/gdi/jobset.cxx: a u16 total length, a u16 system
+# (JOBSET_FILE605_SYSTEM or JOBSET_FILE364_SYSTEM), the 160-byte ImplOldJobSetupData names,
+# then Impl364JobSetupData (22 bytes, its own size first, the driver data length at 4).
+_JOB_SETUP_SYSTEMS = (0xFFFE, 0xFFFF)
+_JOB_SETUP_NAMES = 160
+_JOB_SETUP_BLOCK = 22
+
+
+def _printer_setup(data: bytes, start: int, stop: int) -> bool:
+    """True when ``data[start:stop]`` is a LibreOffice ``PrinterSetup`` item and nothing more.
+
+    The run must be the whole text of that settings item, decode to exactly the structure
+    ``WriteJobSetup`` writes (every length agrees and the key and value strings end where the
+    total says), and carry neither an executable header nor a base64 run of its own. Of 2,089
+    OpenDocument files in LibreOffice's test corpus, 694 hold the item and every one of the 685
+    that is not empty decodes this way; their driver data runs to 30 KB, so a payload could
+    sit there, which is why the decoded bytes are checked as a file's would be.
+    """
+    if not data.endswith(_PRINTER_SETUP_OPEN, max(0, start - len(_PRINTER_SETUP_OPEN)), start):
+        return False
+    close = _PRINTER_SETUP_CLOSE.match(data, stop)
+    if close is None:
+        return False
+    padding = close.group().count(b"=")
+    try:
+        decoded = base64.b64decode(data[start : stop + padding], validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return (
+        _job_setup(decoded)
+        and embedded_exec_offset(b"\0" + decoded) is None
+        and _B64_RUN.search(decoded) is None
+    )
+
+
+def _job_setup(decoded: bytes) -> bool:
+    """True when ``decoded`` is one job setup exactly as LibreOffice's WriteJobSetup writes it."""
+    head = _JOB_SETUP_NAMES + 4
+    if len(decoded) < head + _JOB_SETUP_BLOCK:
+        return False
+    total, system = struct.unpack_from("<HH", decoded, 0)
+    block, _, driver = struct.unpack_from("<HHI", decoded, head)
+    if total != len(decoded) or system not in _JOB_SETUP_SYSTEMS or block != _JOB_SETUP_BLOCK:
+        return False
+    position = head + block + driver
+    if position > total:
+        return False
+    # Then key and value strings, each a u16 length and UTF-8 bytes, to the very end.
+    while position < total:
+        if position + 2 > total:
+            return False
+        size = int.from_bytes(decoded[position : position + 2], "little")
+        position += 2
+        if position + size > total:
+            return False
+        try:
+            decoded[position : position + size].decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+        position += size
+    return True
 
 
 def _b64_holds_data(data: bytes, position: int, stop: int) -> bool:

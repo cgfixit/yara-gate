@@ -1339,3 +1339,44 @@ def mail_relayed_benign() -> bytes:
 def seven_zip_header() -> bytes:
     """The 7z signature and an empty header: a container the scanner does not open."""
     return b"7z\xbc\xaf\x27\x1c\x00\x04" + bytes(24)
+
+
+def _kv(text: bytes) -> bytes:
+    return struct.pack("<H", len(text)) + text
+
+
+def printer_setup_settings(driver: bytes | None = None) -> bytes:
+    """An OpenDocument settings.xml item holding a printer job setup, as LibreOffice saves it.
+
+    The layout is WriteJobSetup's in LibreOffice's vcl/source/gdi/jobset.cxx: a u16 total, the
+    system 0xFFFE, 160 bytes of printer and driver names, a 22-byte block with the driver data
+    length, the driver data, then length-prefixed key and value strings. ``driver`` defaults to
+    the CUPS ``JobData`` text LibreOffice on Linux writes.
+    """
+    if driver is None:
+        driver = (
+            b"JobData 1\norientation=Portrait\nmargindajustment=0,0,0,0\ncolordepth=24\n"
+            b"pslevel=0\npdfdevice=1\ncolordevice=0\nPPDContexData\nPageSize:A4\x00\n"
+        ) * 2
+    names = (
+        b"Generic Printer".ljust(64, b"\0") + bytes(32) + bytes(32) + b"SGENPRT".ljust(32, b"\0")
+    )
+    block = struct.pack("<HHIHHHII", 22, 0, len(driver), 0, 0, 9, 21000, 29700)
+    pairs = b"".join(
+        _kv(text)
+        for text in (
+            b"COMPAT_DUPLEX_MODE",
+            b"DuplexMode::Unknown",
+            b"PRINTER_NAME",
+            b"Generic Printer",
+            b"DRIVER_NAME",
+            b"SGENPRT",
+        )
+    )
+    body = struct.pack("<H", 0xFFFE) + names + block + driver + pairs
+    setup = struct.pack("<H", len(body) + 2) + body
+    return (
+        b'<config:config-item config:name="PrinterSetup" config:type="base64Binary">'
+        + base64.b64encode(setup)
+        + b"</config:config-item>\n"
+    )
