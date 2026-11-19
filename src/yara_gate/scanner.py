@@ -106,9 +106,10 @@ class ScanTimeout(Exception):
     pass
 
 
-# A view whose first scan fills at most this many lists is read again at ``RESCAN_LIMIT``.
-# Each list YARA-X keeps costs about 25 bytes a match, and a matching rule's list about 107
-# bytes once the binding builds its Python objects: four lists at 4,000,000 is about 1.7 GB.
+# A view whose first scan fills at most this many counted lists is read again at
+# ``RESCAN_LIMIT``. Four full lists of matching public rules peaked at 2.2 GB measured; a
+# string read only for presence logs nothing and grows on the rescan too, so this bounds the
+# counted lists, not the memory (docs/verification/2026-11-19-rescan-memory.md).
 RESCAN_MAX_FULL = 4
 # The rescan runs only when the time left is this many times what the first scan took.
 RESCAN_TIME_FACTOR = 1.25
@@ -1038,6 +1039,9 @@ def _yara_findings(
         left = timeout_s - took
         if logs and len(logs) <= RESCAN_MAX_FULL and left > took * RESCAN_TIME_FACTOR:
             logs = []
+            # The first result holds a Python object for every match of every matching public
+            # rule; kept alive through the rescan it added 11 to 14 percent to the peak.
+            result = None
             result = _invoke_scan(
                 guarded,
                 data,
