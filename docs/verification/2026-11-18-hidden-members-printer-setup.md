@@ -130,7 +130,8 @@ a LibreOffice file).
 - The test reads the bytes around the run, not the member name, so the same element in any
   file is exempt under the same three conditions.
 - The 120 bundled templates and this corpus are LibreOffice's own; documents saved by other
-  ODF writers were not counted.
+  ODF writers were not counted. They were on November 19, with no item stored another way
+  ([other writers](2026-11-19-printer-setup-other-writers.md)).
 
 ## Checks
 
