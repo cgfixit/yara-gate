@@ -107,7 +107,7 @@ class ScanTimeout(Exception):
 
 
 # A view whose first scan fills at most this many counted lists is read again at
-# ``RESCAN_LIMIT``. Four full lists of matching public rules peaked at 2.2 GB measured; a
+# ``RESCAN_LIMIT``. Four full lists of matching public rules peaked at 2.3 GB (2,171 MiB); a
 # string read only for presence logs nothing and grows on the rescan too, so this bounds the
 # counted lists, not the memory (docs/verification/2026-11-19-rescan-memory.md).
 RESCAN_MAX_FULL = 4

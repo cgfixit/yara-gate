@@ -37,7 +37,7 @@ Two things the estimate left out:
   every pattern. A string a rule tests only for presence gets no guard, by design, because a full
   list still holds its first match and so cannot hide one. It therefore logs nothing, yet on the
   rescan it grows from 1,000,000 to 4,000,000 matches like the others. Eight such lists beside four
-  guarded ones took the peak from 2.2 to 5.4 GB. Nothing bounds how many there are except the
+  guarded ones took the peak from 2.3 to 5.6 GB. Nothing bounds how many there are except the
   rules.
 
 Per match, the 4-guarded case is about 130 bytes at the peak, against about 100 for the presence
@@ -67,7 +67,7 @@ would be held as `incomplete`, `timeout` (not measured here).
 ## What this leaves
 
 - The measured bound for the case `RESCAN_MAX_FULL` was written for, four guarded lists, is
-  2.2 GB, not 1.7.
+  2.3 GB (2,171 MiB), not 1.7.
 - Presence-only lists that fill are not counted. The backlog row
   ([detection backlog](../research/detection-backlog.md#further-candidates-not-yet-in-the-probe))
   describes a guard that would count them. It would make some views `incomplete` that a rescan

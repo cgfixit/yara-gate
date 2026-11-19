@@ -71,7 +71,7 @@ Read in the published `yara-x` 1.23.0 crate and the Python binding, and run:
   found later takes precedence, as any incomplete reason does.
 - `RESCAN_MAX_FULL = 4` bounds the rescan's memory: four lists of 4,000,000 at the measured
   107 bytes a match is about 1.7 GB in the worst case, where every one is a matching public
-  rule's. Measured on November 19, it is 2.2 GB, and lists read only for presence are not
+  rule's. Measured on November 19, it is 2.3 GB, and lists read only for presence are not
   counted and grow too ([rescan memory](2026-11-19-rescan-memory.md)).
 
 ## Runs
