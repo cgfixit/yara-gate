@@ -741,8 +741,8 @@ Each item becomes one envelope on stdout, and a summary follows the last one:
   - `truncated`: the gate returned an incomplete record (a limit, its own deadline, the match
     cap, rules that did not load). `status_reason` is its `incomplete_reason`.
   - `failed`: no usable record. The child was killed at the hard deadline, crashed, printed
-    something other than one valid record, answered for other bytes or another policy, or the
-    capture line was malformed.
+    something other than one valid record, answered for other bytes or another policy, the
+    scanner itself raised (`scan failed`), or the capture line was malformed.
 - `proposed_decision` applies the policy's read rule from the top of this guide: `admit` for
   a complete `clean` record, and under `agent-document` also for the exact
   [notes-only record](#documents-that-quote-attacks). Everything else is `hold`, including
@@ -766,7 +766,10 @@ compiled rules are cached.
 rules and detector print the same bytes.
 
 The exit code is 0 when every item got a gate record and 2 when one did not. It is never
-1: a proposed hold is an observation here, not a verdict. Do not use this command to admit
+1: a proposed hold is an observation here, not a verdict. Exit 0 does not mean every item
+was fully scanned: a missing rules directory makes every item `truncated` and still exits
+0, so read `status` in the summary before using a run. Like any scan, a replay fills the
+compiled-rule cache under the user cache directory; it writes nothing else. Do not use this command to admit
 content. An envelope describes a capture; admission uses a fresh `scan` or `scan_bytes`
 record for the bytes being read.
 
@@ -775,7 +778,8 @@ A caller that already holds bytes in Python can use the same core:
 ```python
 from yara_gate.replay import proposed_decision, shadow_scan
 
-scan = shadow_scan(text, name="page.txt", policy="agent-ingest", rules_dir=rules_root)
+data = text.encode("utf-8")  # bytes, as handed to the model
+scan = shadow_scan(data, name="page.txt", policy="agent-ingest", rules_dir=rules_root)
 observed = {"status": scan.status, "would": proposed_decision(scan, "agent-ingest")}
 ```
 

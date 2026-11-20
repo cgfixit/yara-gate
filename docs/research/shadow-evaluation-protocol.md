@@ -115,6 +115,8 @@ yara-gate replay capture.jsonl --rules RULES > gate-only.run1.jsonl
   run is reproducible; use a timed run for the latency budget.
 - Exit 0 means every item got a gate record. Exit 2 means one did not: fix the capture or the
   environment and run again, because a failed item is missing from every rate.
+- Exit 0 is not enough. A run counts only when the summary shows no `truncated` item either:
+  rules that did not load make every item `truncated` and still exit 0.
 
 ## Decision report
 

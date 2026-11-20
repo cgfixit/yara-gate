@@ -185,16 +185,23 @@ def test_an_incomplete_record_is_truncated_not_clean(rules_copy: Path) -> None:
         (line(text="t", actual_decision="allowed"), "actual_decision must be admitted or held"),
         (line(text="t", schema_version=2), "schema_version must be 1"),
         (line(text="t", text_sha256="AB" * 32), "text_sha256 must be 64 lowercase hex digits"),
-        (line(text="t", classifier={"score": [1]}), "classifier values are strings, numbers"),
+        (
+            line(text="t", classifier={"score": [1]}),
+            "classifier values are strings, numbers, booleans, or null",
+        ),
+        (line(text="t", policy=["agent-ingest"]), "policy is not one the scanner has"),
+        (line(text="t", label=["attack"]), "label must be attack or benign"),
     ],
 )
 def test_a_malformed_line_is_a_failed_item_and_names_no_value(
     rules_copy: Path, raw: bytes, reason: str
 ) -> None:
-    with pytest.raises(CaptureError, match=reason):
+    with pytest.raises(CaptureError) as caught:
         parse_item(raw)
+    # The whole message is fixed text: nothing from the line is appended to it.
+    assert str(caught.value) == reason
     bad, good = envelopes(raw + line(text=BENIGN), rules_copy)
-    assert bad["status"] == "failed" and bad["status_reason"].startswith("malformed capture: ")
+    assert (bad["status"], bad["status_reason"]) == ("failed", f"malformed capture: {reason}")
     assert bad["proposed_decision"] == "hold" and bad["source_id"] is None
     assert (good["line"], good["status"]) == (2, "complete")
 
@@ -204,6 +211,11 @@ def test_an_identifier_cannot_carry_control_characters() -> None:
         parse_item(line(source_id="a\x1b[31m", text="t"))
     with pytest.raises(CaptureError, match="name"):
         parse_item(line(name="a\nb.txt", text="t"))
+    # A lone surrogate cannot be written as UTF-8 or passed to the child.
+    with pytest.raises(CaptureError, match="name"):
+        parse_item(line(name="\ud800.txt", text="t"))
+    with pytest.raises(CaptureError, match="classifier strings"):
+        parse_item(line(text="t", classifier={"model": "a\x1b[31m"}))
 
 
 def test_a_line_over_the_limit_is_skipped_whole(
@@ -241,3 +253,153 @@ def test_cli_prints_envelopes_then_a_summary_and_never_exits_1(
     assert json.loads(failed.stdout.splitlines()[-1])["status"]["failed"] == 1
     missing = runner.invoke(app, ["replay", str(tmp_path / "absent.jsonl")])
     assert missing.exit_code == 2 and "capture unreadable" in missing.output
+
+
+def test_the_default_deadline_and_the_child_command(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[Sequence[str], float]] = []
+
+    def record(
+        command: Sequence[str], data: bytes, seconds: float
+    ) -> subprocess.CompletedProcess[bytes]:
+        seen.append((command, seconds))
+        return subprocess.CompletedProcess(command, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(replay, "_run", record)
+    shadow_scan(BENIGN.encode(), rules_dir=rules_copy, timeout_s=7, name="--rules")
+    ((command, seconds),) = seen
+    # The path the CLI takes: no kill time given, so the scan timeout plus the grace.
+    assert seconds == 7 + replay.KILL_GRACE
+    # -P keeps the working directory off the child's import path.
+    assert command[1:5] == ["-P", "-m", "yara_gate.replay", "--worker"]
+    # A name is one argv element behind its own option, so it cannot become another.
+    assert "--name=--rules" in command
+    assert command.count(f"--rules={rules_copy.absolute()}") == 1
+
+
+def test_a_deadline_the_clock_cannot_hold_is_failed_not_a_crash(rules_copy: Path) -> None:
+    result = shadow_scan(BENIGN.encode(), rules_dir=rules_copy, timeout_s=10**12)
+    assert (result.status, result.status_reason) == ("failed", "worker did not start")
+
+
+def test_an_interpreter_that_is_not_there_is_failed(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for missing in ("", None):
+        monkeypatch.setattr(sys, "executable", missing)
+        result = shadow_scan(BENIGN.encode(), rules_dir=rules_copy)
+        assert (result.status, result.status_reason) == ("failed", "worker did not start")
+
+
+@pytest.mark.parametrize("value", [5, [73, 103], "text", None])
+def test_only_bytes_are_scanned(value: Any) -> None:
+    with pytest.raises(TypeError, match="needs bytes"):
+        shadow_scan(value)
+
+
+def test_inconsistent_child_records_are_malformed(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clean = shadow_scan(BENIGN.encode(), rules_dir=rules_copy).record
+    assert clean is not None
+    finding = {"rule_id": "x", "severity": "block"}
+    for change in (
+        {"findings": [{"rule_id": "x", "severity": []}]},
+        {"findings": [{"rule_id": "x", "severity": {}}]},
+        {"findings": [finding]},  # clean, with a finding
+        {"exit_code": False},
+        {"exit_code": 0.0},
+    ):
+        monkeypatch.setattr(replay, "_run", answering(json.dumps({**clean, **change}).encode(), 0))
+        result = shadow_scan(BENIGN.encode(), rules_dir=rules_copy)
+        assert (result.status, result.status_reason) == ("failed", "malformed output"), change
+        assert result.record is None
+
+
+def test_a_scan_that_raised_keeps_no_record_under_any_policy(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = hashlib.sha256(BENIGN.encode()).hexdigest()
+    # What scan_bytes returns when the scanner raises: incomplete, and policy "default".
+    raised = {
+        "sha256": digest,
+        "verdict": "incomplete",
+        "exit_code": 2,
+        "incomplete_reason": "scan failed",
+        "policy": "default",
+        "findings": [],
+    }
+    monkeypatch.setattr(replay, "_run", answering(json.dumps(raised).encode(), 2))
+    for policy in ("default", "agent-ingest", "agent-document"):
+        result = shadow_scan(BENIGN.encode(), rules_dir=rules_copy, policy=policy)
+        assert (result.status, result.status_reason, result.record) == (
+            "failed",
+            "scan failed",
+            None,
+        )
+
+
+def test_an_oversized_input_is_truncated_with_the_unknown_digest(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    oversized = {
+        "sha256": "0" * 64,
+        "verdict": "incomplete",
+        "exit_code": 2,
+        "incomplete_reason": "file exceeds 100MB",
+        "policy": "agent-ingest",
+        "findings": [],
+    }
+    monkeypatch.setattr(replay, "_run", answering(json.dumps(oversized).encode(), 2))
+    result = shadow_scan(BENIGN.encode(), rules_dir=rules_copy)
+    assert (result.status, result.status_reason) == ("truncated", "file exceeds 100MB")
+    assert proposed_decision(result, "agent-ingest") == "hold"
+    # The zero digest is accepted only on an incomplete record.
+    forged = {**oversized, "verdict": "clean", "exit_code": 0, "incomplete_reason": None}
+    monkeypatch.setattr(replay, "_run", answering(json.dumps(forged).encode(), 0))
+    assert shadow_scan(BENIGN.encode(), rules_dir=rules_copy).status == "failed"
+
+
+def test_a_document_record_that_is_not_notes_only_is_held() -> None:
+    digest = "ab" * 32
+    record: dict[str, Any] = {
+        "sha256": digest,
+        "verdict": "advisory",
+        "exit_code": 0,
+        "incomplete_reason": None,
+        "policy": "agent-document",
+        "policy_reason": "agent-document records note findings",
+        "note": True,
+        "advisory": False,
+        "findings": [{"rule_id": "x", "severity": "note"}],
+    }
+
+    def decide(**change: Any) -> str:
+        scan = replay.ShadowScan(
+            status="complete",
+            status_reason=None,
+            sha256=digest,
+            record={**record, **change},
+            wall_seconds=0.0,
+        )
+        return proposed_decision(scan, "agent-document")
+
+    assert decide() == "admit"
+    assert decide(findings=[{"rule_id": "x", "severity": "advisory"}]) == "hold"
+    assert decide(findings=[]) == "hold"
+    assert decide(advisory=True) == "hold"
+    assert decide(note=False) == "hold"
+    assert decide(policy_reason=None) == "hold"
+    assert decide(sha256="cd" * 32) == "hold"
+
+
+def test_cli_bounds_the_timeout_and_never_exits_1(tmp_path: Path, rules_copy: Path) -> None:
+    capture = tmp_path / "capture.jsonl"
+    capture.write_bytes(line(text=BENIGN))
+    runner = CliRunner()
+    for value in ("0", "-100", "2147454", "100000000"):
+        refused = runner.invoke(
+            app, ["replay", str(capture), "--rules", str(rules_copy), "--timeout", value]
+        )
+        assert refused.exit_code == 2, value

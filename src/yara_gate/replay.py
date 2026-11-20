@@ -49,7 +49,8 @@ _ZERO = "0" * 64
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _CHANNEL = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _CLASSIFIER_KEY = re.compile(r"[a-z0-9_]{1,64}")
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# C0 and C1 controls, and lone surrogates, which cannot be written as UTF-8 or passed in argv.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\ud800-\udfff]")
 _EXIT = {"clean": 0, "advisory": 0, "block": 1, "incomplete": 2}
 _SEVERITIES = frozenset(item.value for item in Severity)
 _LABELS = ("attack", "benign")
@@ -241,22 +242,29 @@ def _checked(
         return None, "malformed output"
     verdict, reason = record.get("verdict"), record.get("incomplete_reason")
     findings = record.get("findings")
+    code = record.get("exit_code")
     if (
         not isinstance(verdict, str)
         or verdict not in _EXIT
-        or record.get("exit_code") != _EXIT[verdict]
+        or type(code) is not int
+        or code != _EXIT[verdict]
         or returncode != _EXIT[verdict]
         or (verdict == "incomplete") != isinstance(reason, str)
         or (reason is not None and not isinstance(reason, str))
         or not isinstance(findings, list)
+        or (verdict == "clean" and findings)
         or not all(
             isinstance(item, dict)
             and isinstance(item.get("rule_id"), str)
-            and item.get("severity") in _SEVERITIES
+            and isinstance(item.get("severity"), str)
+            and item["severity"] in _SEVERITIES
             for item in findings
         )
     ):
         return None, "malformed output"
+    if reason == "scan failed":
+        # The scanner raised. Its record names no policy and no rules, so it is not kept.
+        return None, "scan failed"
     if record.get("policy") != policy.value:
         return None, "record is for another policy"
     # An input over the scanner's size limit is incomplete with the unknown (zero) digest.
@@ -294,6 +302,9 @@ def shadow_scan(
     ``KILL_GRACE`` when not given). The digest is taken here, before the child runs, so a
     record is accepted only for the bytes this caller holds.
     """
+    # bytes(5) would build five NUL bytes, and bytes([73]) one byte nobody handed over.
+    if not isinstance(data, bytes | bytearray | memoryview):
+        raise TypeError("shadow_scan needs bytes")
     payload = bytes(data)
     digest = hashlib.sha256(payload).hexdigest()
     chosen = ScanPolicy(policy)
@@ -307,10 +318,13 @@ def shadow_scan(
     started = time.monotonic()
     record: dict[str, Any] | None = None
     try:
+        if not sys.executable:
+            raise OSError("no interpreter")
         completed = _run(command, payload, deadline)
     except subprocess.TimeoutExpired:
         reason: str | None = "hard deadline"
-    except (OSError, ValueError):
+    except (OSError, ValueError, OverflowError):
+        # OverflowError: a deadline too large for the platform's clock.
         reason = "worker did not start"
     else:
         record, reason = _checked(completed.stdout, completed.returncode, digest, chosen)
@@ -319,7 +333,7 @@ def shadow_scan(
         status = FAILED
     elif record["verdict"] == "incomplete":
         reason = record["incomplete_reason"]
-        status = FAILED if reason == "scan failed" else TRUNCATED
+        status = TRUNCATED
     else:
         status = COMPLETE
     return ShadowScan(

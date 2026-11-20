@@ -96,8 +96,30 @@ A capture with any failed item exits 2. No case produced exit 1.
 - `docs/research/probe_rule_coverage.py --verify`: exit 0, no failures.
 - `ruff check .`, `ruff format --check .`, `mypy --strict src scripts`: clean.
 - `check_doc_links.py`, `check_text_controls.py`: pass.
-- `pytest -m "not slow"`, the whole suite on Linux: 1285 passed, 5 skipped. The 24 replay
+- `pytest -m "not slow"`, the whole suite on Linux: 1299 passed, 5 skipped. The 38 replay
   tests are in `tests/test_replay.py`.
+
+### Independent review
+
+A second reader, given the diff and not this record, tried to break the stated guarantees.
+No capture line it tried (a 60,000-case fuzz of keys and value types included) produced a
+wrong admit, a miscount, or a crash. It found these, all fixed in this change:
+
+| Finding | Fix |
+| --- | --- |
+| `--timeout 2147454` or larger raised `OverflowError` and exited 1 | `--timeout` is bounded to 1 through 86,400; `shadow_scan` reports a deadline the clock cannot hold as `failed` |
+| A child record whose `severity` was a list raised `TypeError` | A non-string severity is `malformed output` |
+| A scan that raised (`scan failed`) was reported as `record is for another policy`, or kept a record without identity under `default` | It is `failed` with `scan failed` and no record, under every policy |
+| `shadow_scan(5)` scanned five NUL bytes | Anything but bytes raises `TypeError` |
+| A lone surrogate in `name` reached the child's argv | It is a malformed capture line |
+| A `clean` record with a finding, or a non-integer exit code, was accepted | Both are `malformed output` |
+| A closed stdout was reported as an unreadable capture | It exits 2 without that message |
+| Tests passed with the default hard deadline, the notes-only rule, and the error text each broken | Each now has a test that fails on that mutation |
+
+It also noted that a run whose rules do not load exits 0 with every item `truncated`. That
+is the documented exit rule; the integration guide and the protocol now say to read `status`
+before using a run. Not changed: with an ASCII-only filesystem encoding, a non-ASCII `name`
+is `failed` with `worker did not start`.
 
 ## Cost
 

@@ -29,5 +29,5 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`htmlhidden.py`](htmlhidden.py) reads the HTML text a browser does not show (comments, `data-*` values, and elements hidden by one exact inline declaration), without rendering; it follows the HTML parser's tree and claims nothing that depends on layout or on a stylesheet.
 - [`py.typed`](py.typed) marks the package as providing type information.
 
-- [`replay.py`](replay.py) scans captured model input in a child process under a hard deadline and builds one observe-only envelope per item: the gate's record, the decision its read rule gives, and the consumer's own decision. It writes nothing and admits nothing; `yara-gate replay` is its runner.
+- [`replay.py`](replay.py) scans captured model input in a child process under a hard deadline and builds one observe-only envelope per item: the gate's record, the decision its read rule gives, and the consumer's own decision. It writes no report and admits nothing (a scan still fills the compiled-rule cache); `yara-gate replay` is its runner.
 - [`rescan.py`](rescan.py) revalidates admitted copies under the watch and intake locks, writes reports, and withdraws new holds without releasing existing ones.
