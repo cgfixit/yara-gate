@@ -60,7 +60,7 @@ from yara_gate.filetype import (
     sniff,
 )
 from yara_gate.heuristics import (
-    UNICODE_CONTROL_RULES,
+    CONTROL_BYTES_RULES,
     base64_run_signals,
     control_conjunction,
     control_in_text,
@@ -95,6 +95,7 @@ from yara_gate.rules import (
     compile_source,
     default_rules_dir,
     guarded_ruleset,
+    locating_source,
     placed_rule_sources,
     vendor_namespace_dirs,
     vendor_overrides,
@@ -670,7 +671,7 @@ def _pdf_text_findings(
 # Rules that match invisible characters by their UTF-8 bytes: the Unicode-control notes and the
 # zero-width run, which is advisory and so not one of the notes the conjunction reads. In a
 # decoded PDF stream their bytes can be image samples, so a match needs UTF-8 text beside it.
-_CONTROL_BYTES_RULES = UNICODE_CONTROL_RULES | {"agent_invisible_run"}
+_CONTROL_BYTES_RULES = CONTROL_BYTES_RULES
 
 # Rules whose match is not an instruction to the reader: the invisible-character rules (the
 # notes' own conjunction covers them) and the base64 rules, which are left to the raw bytes.
@@ -1080,6 +1081,17 @@ def _yara_findings(
             # Every match of a control rule sits in bytes that are not UTF-8 text.
             continue
         source, placed_ids = (placed or {}).get(namespace or "", ("", frozenset()))
+        if located == (None, None) and rule_id in placed_ids:
+            # The guarded ruleset keeps this rule's strings in a private rule, so the result
+            # holds no match for it.
+            if scan_globals is None:
+                scan_globals = _scan_globals(data, ext, name, samples)
+            shown = _located_rule(
+                rule_id, data, digest, namespace or "", source, scan_globals, timeout_s
+            )
+            if shown is not None:
+                rule = shown
+                located = _first_match(rule, data, text_only=False) or (None, None)
         if (
             rule_id in placed_ids
             and rule_id not in _CONTROL_BYTES_RULES
@@ -1200,6 +1212,60 @@ def _deciding_match(
             if found[0] + found[1] == ends[low] and found != (offset, length):
                 return found
     return located
+
+
+# The most matches of one string the locating scan keeps: the first match is all it reads.
+LOCATE_LIMIT = 1024
+# Rule files compiled for the locating scan: (ruleset digest, namespace).
+_LOCATE_RULES: dict[tuple[str, str], Any] = {}
+
+
+def _located_rule(
+    rule_id: str,
+    data: bytes,
+    digest: str | None,
+    namespace: str,
+    source: str,
+    scan_globals: list[tuple[str, object]],
+    timeout_s: int,
+) -> object | None:
+    """The matches of a rule the guarded ruleset reports without its strings.
+
+    The rule's file is scanned alone with every condition replaced by ``any of them``. A view
+    the deciding match is looked for in gets every match, as the rule's own list held; a
+    larger one keeps each string to its first ``LOCATE_LIMIT`` matches, since only the first
+    match is read there, so the cost does not grow with a flood. None when the file cannot be
+    rewritten or the scan times out.
+    """
+    import yara_x
+
+    key = (digest or "", namespace)
+    try:
+        rules = _LOCATE_RULES.get(key)
+        if rules is None:
+            text = locating_source(source)
+            if text is None:
+                return None
+            if any(cached != key[0] for cached, _ in list(_LOCATE_RULES)):
+                _LOCATE_RULES.clear()
+            rules = _LOCATE_RULES[key] = compile_source(text)
+        scanner = yara_x.Scanner(rules)
+        scanner.set_timeout(timeout_s)
+        scanner.max_matches_per_pattern(
+            MATCH_LIMIT if len(data) <= WITNESS_MAX_BYTES else LOCATE_LIMIT
+        )
+        for global_name, value in scan_globals:
+            try:
+                scanner.set_global(global_name, value)
+            except (TypeError, ValueError):
+                pass
+        result = scanner.scan(data)
+    except (yara_x.CompileError, yara_x.TimeoutError):
+        return None
+    for rule in result.matching_rules:
+        if str(rule.identifier) == rule_id:
+            return rule
+    return None
 
 
 def _fires(

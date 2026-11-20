@@ -628,9 +628,9 @@ def test_cache_without_skip_list_recompiles(
     assert skipped == ["vendor/bad.yar: CompileError"]
     # The plain set and its skip list, and the set with match-cap guards and its unguarded list.
     assert sorted(path.name.split(".", 1)[1] for path in cache.iterdir()) == [
-        "guard2.yarc",
+        "guard3.yarc",
         "skipped",
-        "unguarded2",
+        "unguarded3",
         "yarc",
     ]
 
