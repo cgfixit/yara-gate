@@ -182,7 +182,7 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 
 ## Rules and hunting
 
-- `setup`, `rules install --allow-network`, and `rules update --allow-network` are the only commands that use the network. Each checks the SHA-256 pins in `rules/rules.lock` and swaps the vendor tree only after the new rules compile. Extraction refuses duplicate rule names, more than 20,000 rule files, or more than 300 MiB expanded, and keeps the previous tree. A scan never downloads.
+- `setup`, `rules install --allow-network`, and `rules update --allow-network` are the only commands that use the network. Each checks the SHA-256 pins in `rules/rules.lock` and swaps the vendor tree only after the new rules compile. Extraction refuses two archive members that would land on the same file, more than 20,000 rule files, or more than 300 MiB expanded, and keeps the previous tree. A scan never downloads.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. A shipped rule that fails to compile, or a recorded vendor file that is missing, makes the scan exit 2.
 - Rule files must be self-contained: YARA `include` is disabled so the fingerprint covers every compiled source. The phrase, hidden-HTML, and model-addressed rules are generated from `rules/templates/`, and lint fails a hand edit.
 
