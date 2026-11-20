@@ -63,7 +63,13 @@ RESCAN_LIMIT = 4_000_000
 GUARD_LOG_PREFIX = "yara-gate match cap: "
 # Names the guard format in the cache file names: a change to how guards are built must not
 # load guards built the old way for the same rules.
-_GUARD_FORMAT = "2"
+_GUARD_FORMAT = "3"
+# In the guarded ruleset a bundled rule that reads where its matches lie is compiled as a
+# private rule of this suffix, behind a public rule of its own name (see ``hidden_source``).
+HIDDEN_SUFFIX = "__placed"
+# The meta section of a rule body: from the brace to its strings or condition.
+_RULE_SECTION = re.compile(r"^[ \t]*(strings|condition):[ \t]*$", re.MULTILINE)
+_RULE_OPEN = re.compile(r"[ \t]+rule[ \t]+\w+[ \t]*\{|rule[ \t]+\w+[ \t]*\{")
 _GUARD_HEAD = re.compile(r"(?:(?:private|global)\s+)*rule\s+(\w+)")
 # The start of a rule, and the name it gives.
 _RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
@@ -535,6 +541,10 @@ def guarded_ruleset(digest: str | None) -> tuple[object | None, list[str]]:
     builds no match objects for it, and an identical string is searched once for both rules.
     Second, the files that have no guard: their source did not format or the copy did not
     compile. Those load as before and are counted in the report.
+
+    In this ruleset a bundled rule that reads where its matches lie is private too, behind a
+    public rule of its name without strings (``hidden_source``), so a file that repeats one of
+    its strings a million times costs no match objects either.
     """
     return _GUARDED.get(digest or "", (None, []))
 
@@ -699,7 +709,8 @@ def _build_guarded(
     import yara_x
 
     guards = [guard_source(text) for _path, text in good]
-    rules = _compile_guarded(yara_x, good, guards)
+    hidden = _hidden_sources(yara_x, good, rules_dir)
+    rules = _compile_guarded(yara_x, good, guards, hidden)
     if rules is None:
         # One guard does not compile: find which, alone, and build without them.
         for index, (path, _text) in enumerate(good):
@@ -709,7 +720,7 @@ def _build_guarded(
                     _validate_one(yara_x, path, guard)
                 except yara_x.CompileError:
                     guards[index] = None
-        rules = _compile_guarded(yara_x, good, guards)
+        rules = _compile_guarded(yara_x, good, guards, hidden)
     if rules is None:
         return None, [_rule_key(path, rules_dir) for path, _text in good]
     unguarded = [
@@ -721,14 +732,113 @@ def _build_guarded(
     return rules, unguarded
 
 
+def _rule_blocks(text: str) -> list[tuple[str, int, int, int]] | None:
+    """Each rule of a bundled file: its name, where it starts, its opening brace, its end.
+
+    Bundled rules are written with the header at column 0 and the closing brace alone at
+    column 0. None when a rule is not written that way, a tagged rule included.
+    """
+    blocks: list[tuple[str, int, int, int]] = []
+    for start in _RULE_START.finditer(text):
+        line_end = text.find("\n", start.start())
+        brace = text.find("{", start.end(), line_end if line_end >= 0 else len(text))
+        end = text.find("\n}", start.end())
+        if brace < 0 or end < 0 or text[start.end() : brace].strip():
+            return None
+        blocks.append((start.group(1), start.start(), brace, end + 2))
+    return blocks
+
+
+def hidden_source(text: str, names: frozenset[str]) -> str | None:
+    """``text`` with each rule in ``names`` made private behind a public rule of its name.
+
+    YARA-X's Python binding builds an object for every match of every string of a public
+    rule that matched. A rule that places one string after another has strings a file can
+    repeat a million times, and those objects were two thirds of the scan's memory on such a
+    file. The private copy keeps the strings and the condition; the public rule keeps the
+    name and the metadata and has no strings, so the scanner locates its match with
+    ``locating_source`` instead. Another rule's reference to the name still resolves. None
+    when the file is not written the way bundled rules are.
+    """
+    blocks = _rule_blocks(text)
+    if blocks is None:
+        return None
+    out: list[str] = []
+    last = 0
+    for name, start, brace, end in blocks:
+        head = text[start:brace]
+        if name not in names or head.split("rule", 1)[0].strip():
+            # Not placed, or already private or global.
+            continue
+        body = text[brace + 1 : end - 1]
+        section = _RULE_SECTION.search(body)
+        if section is None:
+            return None
+        out.append(text[last:start])
+        out.append(f"private rule {name}{HIDDEN_SUFFIX} {{{body}}}\n")
+        out.append(
+            f"{head}{{{body[: section.start()]}    condition:\n        {name}{HIDDEN_SUFFIX}\n}}"
+        )
+        last = end
+    out.append(text[last:])
+    return "".join(out)
+
+
+def locating_source(text: str) -> str | None:
+    """``text`` with the condition of every rule that has strings replaced by ``any of them``.
+
+    Scanned with a small match limit it gives the first matches of each string of a rule
+    that ``hidden_source`` left without strings, at a bounded cost.
+    """
+    blocks = _rule_blocks(text)
+    if blocks is None:
+        return None
+    out: list[str] = []
+    last = 0
+    for _name, _start, brace, end in blocks:
+        body = text[brace + 1 : end - 1]
+        sections = [m for m in _RULE_SECTION.finditer(body)]
+        if not any(m.group(1) == "strings" for m in sections):
+            continue
+        condition = next((m for m in sections if m.group(1) == "condition"), None)
+        if condition is None:
+            return None
+        out.append(text[last : brace + 1 + condition.end()])
+        out.append("\n        any of them\n")
+        last = end - 1
+    out.append(text[last:])
+    return "".join(out)
+
+
+def _hidden_sources(yara_x: Any, good: list[tuple[Path, str]], rules_dir: Path) -> dict[int, str]:
+    """The bundled files of ``good`` that compile with their placed rules hidden, by index."""
+    from .heuristics import CONTROL_BYTES_RULES
+
+    hidden: dict[int, str] = {}
+    for namespace, (text, names) in _placed_sources(good, rules_dir).items():
+        index = int(namespace.removeprefix("gate_"))
+        changed = hidden_source(text, names - CONTROL_BYTES_RULES)
+        if changed is None or changed == text:
+            continue
+        try:
+            _validate_one(yara_x, good[index][0], changed)
+        except yara_x.CompileError:
+            continue
+        hidden[index] = changed
+    return hidden
+
+
 def _compile_guarded(
-    yara_x: Any, good: list[tuple[Path, str]], guards: list[str | None]
+    yara_x: Any,
+    good: list[tuple[Path, str]],
+    guards: list[str | None],
+    hidden: dict[int, str] | None = None,
 ) -> object | None:
     compiler = _rule_compiler(yara_x)
     try:
         for index, ((path, text), guard) in enumerate(zip(good, guards, strict=True)):
             compiler.new_namespace(f"gate_{index}")
-            compiler.add_source(text, origin=path.name)
+            compiler.add_source((hidden or {}).get(index, text), origin=path.name)
             if guard:
                 compiler.new_namespace(f"gate_{index}_cap")
                 compiler.add_source(guard, origin=path.name)

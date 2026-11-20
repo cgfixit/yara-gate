@@ -16,27 +16,104 @@ rule agent_hidden_html {
         // em. A bare "font-size:0" prefix also read 0.9em and 0.875rem, which are ordinary small
         // text. The unit is a list, not any letters: text-folded spells 0.5em as 0.sem. Digit
         // runs are bounded: an open-ended 0+ cost 30 times more on a file of long zero runs.
-        $hidden = /(display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)?)|developer mode|do anything now|(without|no)( any)? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
-        // Same DAN carve-out as agent_prompt_injection_phrases: case-sensitive, so "Dan" stays clean.
-        $hidden_dan = /(?i:display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])[\s\S]{0,256}(?i:you are now)\b[\s\S]{0,96}\bDAN\b/ ascii wide
-        // A comment opener and the nearest phrase after it. The gaps are lazy, so each opener is
-        // paired with the first phrase that follows; a greedy gap would reach a later, shown
-        // phrase and the test below would then drop the hidden one. The pattern keeps the shape
-        // "cue, any 256 bytes, phrase" so the engine searches for the two ends apart; whether
-        // the comment is still open is decided in the condition, on offsets. YARA-X does not
-        // mix greedy and lazy quantifiers in one pattern, so the optional parts are lazy too.
-        $comment = /<!--[\s\S]{0,256}?(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}?\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)??)|developer mode|do anything now|(without|no)( any)?? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii wide
-        $comment_dan = /<!--[\s\S]{0,256}?(?i:you are now)\b[\s\S]{0,96}?\bDAN\b/ ascii wide
+        // A cue, and separately the phrases; the condition looks for a phrase that starts within
+        // 256 bytes after a cue ends. One pattern with [\s\S]{0,256} between the two is split by
+        // YARA-X at a gap over 200 bytes and paired match by match, so a file of cues that each
+        // carry a phrase reached the scan deadline
+        // (docs/verification/2026-11-20-any-byte-gap-timing.md). Keep the gap out of the patterns.
+        // Each string has an ascii and a wide copy so a UTF-16 cue is paired only with a UTF-16
+        // phrase; the window is 256 bytes for both, 128 characters of UTF-16, as the one pattern
+        // read it: [\s\S] matches one byte in a wide pattern too.
+        $cue = /(display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])/ nocase ascii
+        $cue_wide = /(display\s*:\s*none|font-size\s*:\s*((0{1,3}(\.0{0,8})?|\.0{1,8})(px|pt|pc|r?em|ex|ch|vw|vh|vmin|vmax|in|cm|mm|%)?[\s;"'!}>\/]|0{0,3}\.[0-9]{1,8}p[xt]|1p[xt]|0{0,3}\.0[0-9]{0,8}r?em)|visibility\s*:\s*hidden|(left|top|text-indent|margin-left|margin-top)\s*:\s*-([0-9]{4,6}(px|pt)?|[0-9]{3,6}r?em)|class\s*=\s*["'][^"'<>]{0,80}\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}\s([^<>]{0,200}\s)?hidden[\s>\/=]|\[(\/\/|comment)\]:[ \t]*[#<])/ nocase wide
+        // A class list can name two hiding classes and a tag can write hidden twice, with a
+        // phrase between them. $cue ends at the last one; this copy ends at the first.
+        $cue_first = /(class\s*?=\s*?["'][^"'<>]{0,80}?\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}?\s([^<>]{0,200}?\s)??hidden[\s>\/=])/ nocase ascii
+        $cue_first_wide = /(class\s*?=\s*?["'][^"'<>]{0,80}?\b(sr-only|visually-hidden|screen-reader-text)\b|<[a-z][a-z0-9]{0,15}?\s([^<>]{0,200}?\s)??hidden[\s>\/=])/ nocase wide
+        // A comment opener. $open_any counts openers of both encodings together for the flood
+        // test below, and tells them apart by length.
+        $open = "<!--" ascii
+        $open_wide = "<!--" wide
+        $open_any = "<!--" ascii wide
         $close = "-->" ascii wide
+        // The phrases, declared last so a finding reports a cue or an opener where one decides.
+        // The gaps are lazy, so a phrase ends at its first verb and the comment test below reads
+        // the shortest phrase; YARA-X does not mix greedy and lazy quantifiers in one pattern,
+        // so the optional parts are lazy too.
+        $phrase = /(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}?\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)??)|developer mode|do anything now|(without|no)( any)?? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase ascii
+        $phrase_wide = /(ignore previous instructions|ignore all previous instructions|disregard the above|you are now\b[\s\S]{0,96}?\b(ignore|override|bypass|reveal|execute|unrestricted|unfiltered|uncensored|jailbr(oken|eak(ing|s)??)|developer mode|do anything now|(without|no)( any)?? (restrictions|rules|limits|limitations|filters|guardrails))\b|system prompt:|exfiltrate|do not tell the user)/ nocase wide
+        // Same DAN carve-out as agent_prompt_injection_phrases: case-sensitive, so "Dan" stays clean.
+        $dan = /(?i:you are now)\b[\s\S]{0,96}?\bDAN\b/ ascii
+        $dan_wide = /(?i:you are now)\b[\s\S]{0,96}?\bDAN\b/ wide
     condition:
-        $hidden or $hidden_dan
-        // The phrase is inside the comment when no --> lies between the opener and the phrase's
-        // end. Text after a closed comment is shown, so it stays with the phrase rules. One
-        // range count per match; past 1,024 matches the comment is not required to be open,
-        // which is the test this rule had before, so a flood cannot make the condition slow.
-        or #comment > 1024 or #comment_dan > 1024
-        or for any i in (1..#comment): ( #close in (@comment[i]..@comment[i] + !comment[i]) == 0 )
-        or for any i in (1..#comment_dan): (
-            #close in (@comment_dan[i]..@comment_dan[i] + !comment_dan[i]) == 0
+        for any i in (1..#cue) : (
+            $phrase in (@cue[i] + !cue[i]..@cue[i] + !cue[i] + 256)
+            or $dan in (@cue[i] + !cue[i]..@cue[i] + !cue[i] + 256)
+        )
+        or for any i in (1..#cue_wide) : (
+            $phrase_wide in (@cue_wide[i] + !cue_wide[i]..@cue_wide[i] + !cue_wide[i] + 256)
+            or $dan_wide in (@cue_wide[i] + !cue_wide[i]..@cue_wide[i] + !cue_wide[i] + 256)
+        )
+        or for any i in (1..#cue_first) : (
+            $phrase in (@cue_first[i] + !cue_first[i]..@cue_first[i] + !cue_first[i] + 256)
+            or $dan in (@cue_first[i] + !cue_first[i]..@cue_first[i] + !cue_first[i] + 256)
+        )
+        or for any i in (1..#cue_first_wide) : (
+            $phrase_wide in (@cue_first_wide[i] + !cue_first_wide[i]..@cue_first_wide[i] + !cue_first_wide[i] + 256)
+            or $dan_wide in (@cue_first_wide[i] + !cue_first_wide[i]..@cue_first_wide[i] + !cue_first_wide[i] + 256)
+        )
+        // More than 1,024 comment openers that each have a phrase starting within 256 bytes
+        // after them: the comment is not required to be open, which is the test this rule had
+        // first, so a flood cannot make the test below slow.
+        or for 1025 i in (1..#open_any) : (
+            (!open_any[i] == 4 and $phrase in (@open_any[i] + 4..@open_any[i] + 260))
+            or (!open_any[i] == 8 and $phrase_wide in (@open_any[i] + 8..@open_any[i] + 264))
+        )
+        or for 1025 i in (1..#open_any) : (
+            (!open_any[i] == 4 and $dan in (@open_any[i] + 4..@open_any[i] + 260))
+            or (!open_any[i] == 8 and $dan_wide in (@open_any[i] + 8..@open_any[i] + 264))
+        )
+        // A phrase is inside a comment when an opener ends within 256 bytes before the phrase
+        // starts and no --> lies between that opener and the phrase's end. Text after a closed
+        // comment is shown, so it stays with the phrase rules. Each phrase with an opener in
+        // reach tries the 257 places the opener can start; the test above bounds how many do.
+        or for any j in (1..#phrase) : (
+            $open in (@phrase[j] - 260..@phrase[j] - 4)
+            and for any d in (4..260) : (
+                $open at (@phrase[j] - d) and #close in (@phrase[j] - d..@phrase[j] + !phrase[j]) == 0
+            )
+        )
+        or for any j in (1..#phrase_wide) : (
+            $open_wide in (@phrase_wide[j] - 264..@phrase_wide[j] - 8)
+            and for any d in (8..264) : (
+                $open_wide at (@phrase_wide[j] - d)
+                and #close in (@phrase_wide[j] - d..@phrase_wide[j] + !phrase_wide[j]) == 0
+            )
+        )
+        or for any j in (1..#dan) : (
+            $open in (@dan[j] - 260..@dan[j] - 4)
+            and for any d in (4..260) : (
+                $open at (@dan[j] - d) and #close in (@dan[j] - d..@dan[j] + !dan[j]) == 0
+            )
+        )
+        or for any j in (1..#dan_wide) : (
+            $open_wide in (@dan_wide[j] - 264..@dan_wide[j] - 8)
+            and for any d in (8..264) : (
+                $open_wide at (@dan_wide[j] - d) and #close in (@dan_wide[j] - d..@dan_wide[j] + !dan_wide[j]) == 0
+            )
+        )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of a cue, an opener, or a phrase counts as a phrase in reach of
+        // its cue or inside its comment, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md). A full $close list only
+        // makes more comments count as open.
+        or (
+            (
+                #cue >= 1000000 or #cue_wide >= 1000000 or #cue_first >= 1000000 or #cue_first_wide >= 1000000
+                or #open_any >= 1000000 or #phrase >= 1000000 or #phrase_wide >= 1000000
+                or #dan >= 1000000 or #dan_wide >= 1000000
+            )
+            and ($cue or $cue_wide or $open_any)
+            and ($phrase or $phrase_wide or $dan or $dan_wide)
         )
 }

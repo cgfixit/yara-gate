@@ -33,7 +33,30 @@ rule win_theme_remote_resource {
         // The file must carry a theme section; the same keys in another INI are not a theme.
         $section = /(^|[\r\n])[ \t]*\[(Theme|Control Panel\\Desktop|VisualStyles)\]/ nocase ascii wide
         $image = /(^|[\r\n])[ \t]*(BrandImage|Wallpaper)[ \t]*=[ \t]*["']?(\\\\[^\\\r\n]|file:)/ nocase ascii wide
-        $style = /\[VisualStyles\][\s\S]{0,512}[\r\n][ \t]*Path[ \t]*=[ \t]*["']?(\\\\[^\\\r\n]|file:)/ nocase ascii wide
+        // The [VisualStyles] header and a remote Path line that starts within 512 bytes after it
+        // are two strings paired in the condition. One pattern with [\s\S]{0,512} between them is
+        // split by YARA-X at a gap over 200 bytes and paired match by match, which reached the
+        // scan deadline on a file of them (docs/verification/2026-11-20-any-byte-gap-timing.md).
+        // The ascii and wide copies are separate so a UTF-16 header is paired only with a UTF-16
+        // line; the window is 512 bytes for both, as [\s\S] matches one byte in a wide pattern.
+        $styles = /\[VisualStyles\]/ nocase ascii
+        $styles_wide = /\[VisualStyles\]/ nocase wide
+        $path = /[\r\n][ \t]*Path[ \t]*=[ \t]*["']?(\\\\[^\\\r\n]|file:)/ nocase ascii
+        $path_wide = /[\r\n][ \t]*Path[ \t]*=[ \t]*["']?(\\\\[^\\\r\n]|file:)/ nocase wide
     condition:
-        $section and ($image or $style)
+        $section and (
+            $image
+            or for any i in (1..#styles) : ( $path in (@styles[i] + !styles[i]..@styles[i] + !styles[i] + 512) )
+            or for any i in (1..#styles_wide) : (
+                $path_wide in (@styles_wide[i] + !styles_wide[i]..@styles_wide[i] + !styles_wide[i] + 512)
+            )
+            // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+            // notice. A full list of a header or a Path line counts as a header with its line,
+            // so a flood ahead of a pair cannot hide it
+            // (docs/verification/2026-11-17-match-cap-rules.md).
+            or (
+                (#styles >= 1000000 or #styles_wide >= 1000000 or #path >= 1000000 or #path_wide >= 1000000)
+                and ($styles or $styles_wide) and ($path or $path_wide)
+            )
+        )
 }

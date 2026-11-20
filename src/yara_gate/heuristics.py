@@ -185,6 +185,10 @@ UNICODE_CONTROL_RULES = frozenset(
     }
 )
 
+# Rules whose every match the scanner may read: a control character counts only where the
+# bytes around it are text, so the first match is not enough.
+CONTROL_BYTES_RULES = UNICODE_CONTROL_RULES | {"agent_invisible_run"}
+
 
 def control_in_text(data: bytes, offset: int, length: int) -> bool:
     """True when the bytes on either side of a control match read as UTF-8 text.

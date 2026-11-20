@@ -58,9 +58,16 @@ rule doc_svg_active_link {
         $void = /javascript:(\s*(void(\s*\(\s*0\s*\)|\s+0))?\s*;?\s*["']|(void\(0\))?;?[\s\/>])/ nocase ascii
         // An animation that writes a javascript: value, the scriptless link trigger.
         $animate = /<([A-Za-z][\w.-]{0,32}:)?(set|animate)\s([^<>]{0,1024}\s)?(to|from|values)\s*=\s*["']?[^"'<>]{0,256}javascript:/ nocase ascii
-        // A foreignObject opener and the first embedding element after it; whether the
-        // foreignObject is still open there is decided in the condition, on offsets.
-        $foreign = /<([A-Za-z][\w.-]{0,32}?:)??foreignObject\b[\s\S]{0,4096}?<([A-Za-z][\w.-]{0,32}?:)??(iframe|object|embed|form|meta\s[^<>]{0,256}?http-equiv\s*?=\s*?["']??\s*?refresh)\b/ nocase ascii
+        // A foreignObject opener, and an embedding element. The condition pairs an opener with
+        // an element that starts within 4,096 bytes after it and decides there, on offsets,
+        // whether the foreignObject is still open. One pattern with [\s\S]{0,4096} between the
+        // two is split by YARA-X at a gap over 200 bytes and paired match by match, which reached
+        // the scan deadline on a file of them (docs/verification/2026-11-20-any-byte-gap-timing.md).
+        $foreign = /<([A-Za-z][\w.-]{0,32}?:)??foreignObject\b/ nocase ascii
+        $embed = /<([A-Za-z][\w.-]{0,32}?:)??(iframe|object|embed|form|meta\s[^<>]{0,256}?http-equiv\s*?=\s*?["']??\s*?refresh)\b/ nocase ascii
+        // An element name that runs straight into the close, with no > between
+        // (<iframe</foreignObject>): the one pattern read the foreignObject as closed there.
+        $embed_closed = /<([A-Za-z][\w.-]{0,32}?:)??(iframe|object|embed|form)\b<\/([A-Za-z][\w.-]{0,32}?:)??foreignObject\s*?>/ nocase ascii
         $foreign_close = /<\/([A-Za-z][\w.-]{0,32}:)?foreignObject\s*>/ nocase ascii
         $svg_end = /<\/svg\s*>/ nocase ascii
         $svg_self = /<svg\b[^<>]{0,4096}\/>/ nocase ascii
@@ -71,15 +78,35 @@ rule doc_svg_active_link {
                 yara_gate_ext == "svg" or yara_gate_ext == "svgz" or $root at 0 or not yara_gate_svg_scope_proven
                 // As in doc_svg_event_handler, a flood of more than 1,024 matches keeps the strict test.
                 or #svg > 1024 or #svg_end > 1024 or #svg_self > 1024
-                or #link_first > 1024 or #link_last > 1024 or #animate > 1024 or #foreign > 1024
+                or #link_first > 1024 or #link_last > 1024 or #animate > 1024
+                // More than 1,024 openers that each have an embedding element in reach.
+                or for 1025 i in (1..#foreign) : (
+                    $embed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                )
+                or #foreign >= 1000000 or #embed >= 1000000
             ) and (
                 $animate
-                // A foreignObject match counts while no close lies between its opener and the
-                // embedding element; past 1,024 closes every match counts, so a flood cannot
-                // make the condition slow.
+                // An opener counts when an embedding element starts within 4,096 bytes after it
+                // and before the first close that follows the opener. Past 1,024 closes every
+                // opener with an element in reach counts, so the count that finds the first
+                // close stays small and a flood cannot make the condition slow.
                 or for any i in (1..#foreign) : (
-                    #foreign_close > 1024 or #foreign_close in (@foreign[i]..@foreign[i] + !foreign[i]) == 0
+                    $embed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                    and (
+                        #foreign_close > 1024
+                        or #foreign_close in (0..@foreign[i]) == #foreign_close
+                        or with close = @foreign_close[#foreign_close in (0..@foreign[i]) + 1] : (
+                            close > @foreign[i] + !foreign[i] + 4096
+                            and #embed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                                > #embed_closed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                            or close <= @foreign[i] + !foreign[i] + 4096
+                            and #embed in (@foreign[i] + !foreign[i]..close - 1) > #embed_closed in (@foreign[i] + !foreign[i]..close - 1)
+                        )
+                    )
                 )
+                // A full opener or element list counts as an open foreignObject with its
+                // element (docs/verification/2026-11-17-match-cap-rules.md).
+                or ((#foreign >= 1000000 or #embed >= 1000000) and $foreign and $embed)
                 // A link counts unless its javascript: token, the last 11 bytes of the match,
                 // starts a no-op target.
                 or for any of ($link_first, $link_last) : (
@@ -98,8 +125,19 @@ rule doc_svg_active_link {
                 #svg in (0..@animate[i]) > #svg_end in (0..@animate[i]) + #svg_self in (0..@animate[i] - 1)
             )
             or for any i in (1..#foreign) : (
-                #svg in (0..@foreign[i]) > #svg_end in (0..@foreign[i]) + #svg_self in (0..@foreign[i] - 1)
-                and (#foreign_close > 1024 or #foreign_close in (@foreign[i]..@foreign[i] + !foreign[i]) == 0)
+                $embed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                and (
+                    #foreign_close > 1024
+                    or #foreign_close in (0..@foreign[i]) == #foreign_close
+                    or with close = @foreign_close[#foreign_close in (0..@foreign[i]) + 1] : (
+                        close > @foreign[i] + !foreign[i] + 4096
+                        and #embed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                            > #embed_closed in (@foreign[i] + !foreign[i]..@foreign[i] + !foreign[i] + 4096)
+                        or close <= @foreign[i] + !foreign[i] + 4096
+                        and #embed in (@foreign[i] + !foreign[i]..close - 1) > #embed_closed in (@foreign[i] + !foreign[i]..close - 1)
+                    )
+                )
+                and #svg in (0..@foreign[i]) > #svg_end in (0..@foreign[i]) + #svg_self in (0..@foreign[i] - 1)
             )
             or for any of ($link_first, $link_last) : (
                 for any i in (1..#) : (

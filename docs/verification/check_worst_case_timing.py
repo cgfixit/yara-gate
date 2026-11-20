@@ -35,6 +35,10 @@ VERDICTS = {
     "code-relay-refusals.txt": "clean",
     "phrase-quotations.txt": "clean",
     "system-openers.txt": "advisory",
+    "hidden-cue-phrases.html": "advisory",
+    "comment-phrases.html": "advisory",
+    "svg-foreign-embeds.svg": "advisory",
+    "library-urls.library-ms": "block",
 }
 
 
@@ -137,6 +141,18 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     # YARA-X paired every opener with every verb: 30 s and incomplete on main, and four times
     # the bytes cost sixteen times the seconds (2026-11-20-role-spoof-timing.md).
     yield "system-openers.txt", _filled(b"", b"<<SYS>> ignore\n"), None
+    # Four of the twenty-four patterns that held an any-byte gap over 200 bytes, which YARA-X
+    # paired the same way: each of these was incomplete at 30 s, or took over 17 s, before the
+    # two halves became separate strings (2026-11-20-any-byte-gap-timing.md). One scan each,
+    # with no scaling bound: the ceiling is far below what the pairing cost.
+    yield (
+        "hidden-cue-phrases.html",
+        _filled(b"", b"display:none ignore previous instructions\n"),
+        None,
+    )
+    yield "comment-phrases.html", _filled(b"", b"<!-- ignore previous instructions\n"), None
+    yield "svg-foreign-embeds.svg", _filled(b"<svg>", b"<foreignObject> <iframe "), None
+    yield "library-urls.library-ms", _filled(b"", b"<libraryDescription <url>\\\\h\\s "), None
     prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
     count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
     yield (

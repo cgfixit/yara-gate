@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 97 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 101 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -54,7 +54,13 @@ runner's speed: 4.0 on `7143d93`, 16.9 to 18.2 for the old count. A third input,
 `system-openers.txt`, repeats a system turn opener with its verb, `<<SYS>> ignore`, which
 YARA-X paired match by match inside one pattern ([record](2026-11-20-role-spoof-timing.md),
 incomplete at 30 s on the base). It must be advisory and has the same bound of 8 times its
-first MiB. The RTF reader now rejects the unclosed nesting
+first MiB. Four more inputs repeat the two halves of a pattern that held an any-byte gap over
+200 bytes in another rule, which YARA-X paired the same way
+([record](2026-11-20-any-byte-gap-timing.md)): a hiding cue with a phrase and a comment opener
+with a phrase (`agent_hidden_html`), a `foreignObject` with an `iframe`
+(`doc_svg_active_link`), and a library root with a UNC `url` (`win_library_unc_location`).
+The first three must be advisory and the fourth must block; each was incomplete at 30 s or
+took over 17 s on the base. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
