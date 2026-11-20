@@ -112,10 +112,12 @@ one.
 
 - This is the adapter and the protocol. No consumer capture was replayed: the catalog and
   this repository's documents stand in for one. The pilot's 100 benign and 100 attack tasks
-  are captured in CG-agent-harness, which this change did not touch or inspect.
+  are captured in CG-agent-harness, which this change did not touch or inspect. That work
+  is tracked in [#294](https://github.com/cgfixit/yara-gate/issues/294).
 - The replay measures detector matches, false holds, unfinished scans, and latency. It
   cannot measure whether an attack would have succeeded, or whether a task still completed.
-- The classifier slot is a pass-through. No classifier adapter exists.
+- The classifier slot is a pass-through. No classifier adapter exists; it is tracked in
+  [#295](https://github.com/cgfixit/yara-gate/issues/295).
 - `source_id`, `extractor`, and the classifier record are the caller's and are copied to
   the output. Hashes can identify known content. Review a replay before publishing it.
 - Hosted CI on macOS and Windows had not run when this was written.

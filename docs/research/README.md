@@ -14,7 +14,7 @@ revision; it is a lead to reproduce on the current tree, not a description of it
 | Page | Use it for |
 | --- | --- |
 | [detection-backlog.md](detection-backlog.md) | What to build next, what not to build and why, and how to keep tokens, settings keys, the engine, and vendor pins current |
-| [shadow-evaluation-protocol.md](shadow-evaluation-protocol.md) | How a consumer measures the gate on its own traffic before enforcing it: conditions, pilot size, budgets, and which metric `yara-gate replay` records. Frozen for [#236](https://github.com/cgfixit/yara-gate/issues/236); changes are dated in the page |
+| [shadow-evaluation-protocol.md](shadow-evaluation-protocol.md) | How a consumer measures the gate on its own traffic before enforcing it: conditions, pilot size, budgets, and which metric `yara-gate replay` records. Frozen; the pilot is tracked in [#294](https://github.com/cgfixit/yara-gate/issues/294). Changes are dated in the page |
 
 ## Dated records
 

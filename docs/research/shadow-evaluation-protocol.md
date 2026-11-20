@@ -1,10 +1,11 @@
 # Shadow evaluation protocol
 
-Status: frozen on 2026-11-20 for the pilot in
-[#236](https://github.com/cgfixit/yara-gate/issues/236). The conditions, pilot size, and
-budgets are the owner's decisions of 2026-11-16, recorded on that issue. The capture format,
-the mapping from metrics to records, and the interval method are this document's. Change a frozen value only with
-a dated entry under [Changes](#changes), made before the run it applies to.
+Status: frozen on 2026-11-20. It was written under [#236](https://github.com/cgfixit/yara-gate/issues/236); the pilot it describes
+is tracked in [#294](https://github.com/cgfixit/yara-gate/issues/294) and the classifier adapter in [#295](https://github.com/cgfixit/yara-gate/issues/295). The conditions,
+pilot size, and budgets are the owner's decisions of 2026-11-16, recorded on #236. The
+capture format, the mapping from metrics to records, and the interval method are this
+document's. Change a frozen value only with a dated entry under [Changes](#changes), made
+before the run it applies to.
 
 This protocol exists because the gate's own corpus says little about how it does on a
 consumer's traffic. Of 148,383 LLMail-Inject attack bodies, the bundled rules report a
@@ -32,7 +33,7 @@ that stays inside the budgets below. Until the decision report, every condition 
 | --- | --- |
 | off | Nothing. The baseline for outcomes and completion |
 | gate-only | `yara-gate replay` over the capture |
-| classifier-only | The classifier adapter. Not built; it follows the replay baseline |
+| classifier-only | The classifier adapter. Not built; it follows the replay baseline ([#295](https://github.com/cgfixit/yara-gate/issues/295)) |
 | combined | Both. A low classifier score never clears a gate finding |
 
 Each condition runs **3 times** over the same frozen tasks.
