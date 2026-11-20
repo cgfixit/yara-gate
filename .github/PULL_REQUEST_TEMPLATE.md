@@ -2,8 +2,8 @@
 **Use this format:**  
 `[prefix] - Short descriptive sentence of the change`
 
-**Recommended prefixes (pick the most relevant):**  
-`[invariant]` • `[security]` • `[infra]` • `[fix]` • `[docs]` • `[harness]` • `[agentic]` • `[test]` • `[feat]`
+**Prefixes (the area the change touches most; the list is kept in `AGENTS.md` under "Evidence and delivery"):**  
+`[content]` • `[rules]` • `[views]` • `[demo]` • `[docs]` • `[ci]` • `[security]` • `[fix]`
 
 Example: `[docs] - Retarget PR template for yara-gate`
 
@@ -47,7 +47,7 @@ Check a box only when the diff matches it. A docs or template edit is not a new 
 ---
 
 ## Benefits / why
-- Why make this change? What is the concrete upside for yara-gate / cyclaw / CGagentHarness operators, contributors, or long-term maintainability?
+- Why make this change? What is the concrete upside for yara-gate operators, contributors, or long-term maintainability?
 - How does this improve (or at least not degrade) prompt injection mitigation and or detection abilities, or security posture?
 
 ---
