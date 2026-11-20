@@ -20,6 +20,15 @@ Dense or deeply nested JSON/notebooks can be incomplete before an object tree is
 allocated. Treat the [JSON parsing limits](rules.md#json-parsing-limits) like other
 coverage limits: exit 2 is a hold even when the findings list is empty.
 
+A view of a megabyte or more that fills a string's match list is scanned once
+more at a higher limit when the time left allows, and the scan is incomplete
+(`match cap reached`) when a list is still full. `match_rescan_limit` in the record is non-null when that second scan ran,
+and `unguarded_rule_files` counts the rule files it does not cover
+([match limit](rules.md#limits)). The scanner sets no memory ceiling: a synthetic
+worst case peaked at 2.3 GB ([measured](verification/2026-11-19-rescan-memory.md)).
+A consumer that needs a ceiling sets it on the worker process, beside the hard
+timeout below.
+
 The default human-readable output is unchanged when `--json` is absent.
 Diagnostics for failures before a file can be scanned go to stderr and return
 exit 2. A missing path therefore produces no JSON record. An empty directory
