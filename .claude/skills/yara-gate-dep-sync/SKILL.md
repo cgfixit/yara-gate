@@ -71,6 +71,11 @@ it costs.
 - Leave the bounds in `pyproject.toml` alone unless the code now needs the newer release.
 - Never edit `uv.lock` by hand. Afterwards run `uv sync --frozen --group dev`, `uv lock --check`,
   and `dep_state.py` again.
+- Read `git diff uv.lock` before committing. If `revision` at the top of the lock moved, or a
+  marker changed on a package you did not bump, the local uv is older than the one that wrote
+  the lock. Restore the lock and write it with a newer uv
+  (`uvx uv@<version> lock --upgrade-package <name>`), so the diff holds only the package you
+  meant to move.
 
 For the engine, compare the base and the new release on the same inputs and keep both columns:
 
