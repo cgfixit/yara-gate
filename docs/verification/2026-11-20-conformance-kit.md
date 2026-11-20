@@ -112,6 +112,19 @@ twins", no console errors.
 - `pytest tests/test_conform.py tests/test_cli.py`: 22 passed, 1 skipped. The 14 kit tests
   are in `tests/test_conform.py`.
 
+## What the first hosted run found
+
+The first Windows run of the new step stopped with `incomplete: fixture changed: word_split`
+(head `6ad2048`). `samples._stored_zip` built each entry with `zipfile.ZipInfo`, which
+records the system that wrote it from `sys.platform`: 0 on Windows, 3 elsewhere. Every
+fixture made from a zip (the Office files, the checkpoints, the archives) therefore had
+another SHA-256 on Windows, although a comment beside the builder said the bytes were the
+same on every machine. The builder now pins that field to 3, which is what Linux and macOS
+already wrote, so no recorded hash moved and the manifest is unchanged. A test builds two
+zip fixtures with `sys.platform` set to `win32` and fails on the old builder. This is the
+drift the owner named on #227 as the main risk of generating fixtures, and the step caught
+it on its first run.
+
 ## Limits
 
 - **Linux is covered by this run only.** Hosted CI has macOS and Windows jobs and no Linux

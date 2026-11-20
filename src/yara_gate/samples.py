@@ -199,7 +199,11 @@ def _stored_zip(entries: tuple[tuple[str, bytes], ...]) -> bytes:
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
         for name, data in entries:
-            archive.writestr(zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0)), data)
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            # ZipInfo records the system that wrote the entry: 0 on Windows, 3 elsewhere.
+            # Pin it, or every fixture built from a zip has another SHA-256 on Windows.
+            info.create_system = 3
+            archive.writestr(info, data)
     return out.getvalue()
 
 

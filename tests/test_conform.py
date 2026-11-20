@@ -49,6 +49,16 @@ def test_packaged_manifest_is_what_this_tree_builds(tmp_path: Path) -> None:
     assert conform.MANIFEST.read_bytes() == built.encode()
 
 
+def test_zip_fixtures_build_the_same_bytes_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from yara_gate import samples
+
+    # zipfile stamps each entry with the writing system, which it reads from sys.platform.
+    # The catalog is built at import, so build again under the other platform.
+    here = samples.concatenated_zip_benign(), samples.pickle_checkpoint_benign()
+    monkeypatch.setattr("sys.platform", "win32")
+    assert (samples.concatenated_zip_benign(), samples.pickle_checkpoint_benign()) == here
+
+
 def test_manifest_change_needs_a_changelog_row() -> None:
     digest = hashlib.sha256(conform.MANIFEST.read_bytes()).hexdigest()
     changes = (ROOT / "docs" / "conformance.md").read_text(encoding="utf-8")
