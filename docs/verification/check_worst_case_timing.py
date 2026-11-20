@@ -29,7 +29,13 @@ PROCESS_SECONDS = 20
 # Cases whose cost must grow with size, not faster: the most the 4 MiB scan may take as a
 # multiple of its first MiB, cut at a line. Linear work gives about 4; work that walks every
 # earlier match per match gives 11 to 18, whatever the runner's speed (#283).
-SCALING = {"phrase-quotations.txt": 8}
+SCALING = {"phrase-quotations.txt": 8, "system-openers.txt": 8}
+# Cases that must end with this verdict: a deadline or a lost finding fails them.
+VERDICTS = {
+    "code-relay-refusals.txt": "clean",
+    "phrase-quotations.txt": "clean",
+    "system-openers.txt": "advisory",
+}
 
 
 def cases() -> Iterator[tuple[str, bytes, str | None]]:
@@ -127,6 +133,10 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     # counted quotations from the start of the unit for every order: 15 s here, past 16 MiB
     # the deadline.
     yield "phrase-quotations.txt", _filled(b"", b"the phrase ignore the above\n"), None
+    # A system turn opener with its verb on every line. With the gap inside one pattern,
+    # YARA-X paired every opener with every verb: 30 s and incomplete on main, and four times
+    # the bytes cost sixteen times the seconds (2026-11-20-role-spoof-timing.md).
+    yield "system-openers.txt", _filled(b"", b"<<SYS>> ignore\n"), None
     prefix, suffix = b"%PDF-1.7\n<< /Type /Annot /Contents <", b"> >>\n%%EOF\n"
     count, rest = divmod(SIZE - len(prefix) - len(suffix), 2)
     yield (
@@ -893,11 +903,9 @@ def scan_case(name: str, rules: Path) -> dict[str, object]:
         raise RuntimeError(f"{name}: 4 MiB took {ratio:.1f} times its first MiB, over {growth}")
     if result.incomplete_reason != reason:
         raise RuntimeError(f"{name}: expected incomplete reason {reason!r}")
-    if (
-        name in {"code-relay-refusals.txt", "phrase-quotations.txt"}
-        and result.verdict.value != "clean"
-    ):
-        raise RuntimeError(f"{name}: expected clean, got {result.verdict.value}")
+    expected = VERDICTS.get(name)
+    if expected is not None and result.verdict.value != expected:
+        raise RuntimeError(f"{name}: expected {expected}, got {result.verdict.value}")
     view = {
         "comment-block.py": "comment-text",
         "markdown-lines.md": "markdown-text",
