@@ -88,4 +88,4 @@ Before choosing what to change, list the open pull requests and read their file 
 
 Counts in prose are kept by hand: rules and rule files, demo pairs and examples, corpus and timing inputs. When a change alters one, search `README.md`, `user-guide.md`, `docs/`, `rules/README.md`, and `web-demo/` for the old number. Do not add a second hand-kept copy of a catalog, a count, or a page; link to the source.
 
-Title commits and pull requests `[area] - summary`, with the area a change touches most (`[content]`, `[rules]`, `[views]`, `[demo]`, `[docs]`, `[ci]`). Dependabot uses `[deps]` and `[ci]`. Do not post a comment that asks Codex, Copilot, or another review bot for a review unless the maintainer asked for it.
+Title commits and pull requests `[area] - summary`, with the area a change touches most (`[content]`, `[rules]`, `[views]`, `[demo]`, `[docs]`, `[ci]`), or `[security]` or `[fix]` for a security change or a bug fix that no one area describes. Dependabot uses `[deps]` and `[ci]`. Do not post a comment that asks Codex, Copilot, or another review bot for a review unless the maintainer asked for it.

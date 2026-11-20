@@ -2,8 +2,8 @@
 **Use this format:**  
 `[prefix] - Short descriptive sentence of the change`
 
-**Recommended prefixes (pick the most relevant):**  
-`[invariant]` • `[security]` • `[infra]` • `[fix]` • `[docs]` • `[harness]` • `[agentic]` • `[test]` • `[feat]`
+**Prefixes (the area the change touches most; the list is kept in `AGENTS.md` under "Evidence and delivery"):**  
+`[content]` • `[rules]` • `[views]` • `[demo]` • `[docs]` • `[ci]` • `[security]` • `[fix]`
 
 Example: `[docs] - Retarget PR template for yara-gate`
 
@@ -15,11 +15,11 @@ The prefix classifies the diff. It is not a feature claim. Put commands, exit co
 Describe the big picture of your changes here. Explain **why** maintainers should accept this PR.  
 If it fixes a bug or resolves a feature request, link the issue.
 
-**Invariant / Governance Impact** (required for any change touching core paths):
-- Which guarantee in `INVARIANTS.md` does this change affect (or confirm none)? Call out I6 (process isolation) and the write gates when relevant.
+**Invariant / Governance Impact** (required for any change touching the scan path, rules, intake, or the CLI):
+- Which contract in `AGENTS.md` under "Contracts to preserve" does this change affect (or confirm none)? They cover exit codes 0/1/2, intake and quarantine, original-byte scanning and member ordinals, no execution or URL fetch, report privacy, rule loading, network scope, and the loopback demo.
 - Provide evidence it is preserved 
 - any false positive or reduced detection for convenience risks? 
-- If you are intentionally relaxing or evolving an invariant, explain the justification and compensating controls.
+- If you are intentionally relaxing or evolving a contract, explain the justification and compensating controls.
 
 ---
 
@@ -31,7 +31,7 @@ _Put an `x` in the boxes that apply_
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Security (auth, encryption, certs, rbac,  privacy, injection, egress, redaction, or secrets)
-- [ ] Invariant / Governance refinement (use this for changes that strengthen or evolve I6 isolation, write gates, or harness phases)
+- [ ] Invariant / Governance refinement (use this for changes that strengthen or evolve a contract in `AGENTS.md` "Contracts to preserve")
 - [ ] Dependencies (updated, aligned between install methods, new deps added, removed, or bumped)
 - [ ] CI / Skills / AI infrastructure (skills, workflows, hooks, lint tools, ci/cd and tests/ additions or updates/trims, templates, checkers, etc)
 - [ ] Refactor or clean-up (behavior-preserving, no new capability)
@@ -40,25 +40,25 @@ _Put an `x` in the boxes that apply_
 
 
 **Optional free-text scope note** (recommended):  
-Core isolation / write-gate path (`src/shim`, guards, writer, sandbox, workspace, shipped config) | Agentic pipeline | Console / server | Docs + audits | Infrastructure / CI only
+Scanner and readers | Rules | Intake and quarantine | CLI | Demo and Pages | Docs | CI
 
-Check a box only when the diff matches it. A docs or template edit is not a new feature. If a quality-bar command was skipped, leave the checklist row open and explain it under Risks, with the head SHA those boxes describe.
+Check a box only when the diff matches it. A docs or template edit is not a new feature. If a command from `AGENTS.md` "Local verification" was skipped, leave the checklist row open and explain it under Risks, with the head SHA those boxes describe.
 
 ---
 
 ## Benefits / why
-- Why make this change? What is the concrete upside for yara-gate / cyclaw / CGagentHarness operators, contributors, or long-term maintainability?
+- Why make this change? What is the concrete upside for yara-gate operators, contributors, or long-term maintainability?
 - How does this improve (or at least not degrade) prompt injection mitigation and or detection abilities, or security posture?
 
 ---
 
 ## Risks to monitor
 - What are the potential regressions, negative side-effects, or things that need extra attention after merge?
-- Could this introduce an in-process server→agentic call, default `confirm` on, weaken a write gate, create a non-loopback bind, or add a network assumption?
-- For write-enablement changes: what failure modes exist if a gate is skipped or `reason` becomes optional?
+- Could this make a scan pass that used to be held, reduce detection, add a network call to a scan, bind the demo beyond loopback, or put matched bytes in a report?
+- For intake, quarantine, or policy changes: what happens to an identical-byte resubmission, and does an incomplete scan still stay quarantined?
 - How will you (or future maintainers) detect drift from the intended behavior?
 
-Name residual risk after the checks you actually ran. Include failed or skipped commands, their exit codes, and why you skipped them. Say which invariants the diff touches. Detect drift by re-running `scripts/check-pr-template.sh` on the body and the quality bar on the same head SHA.
+Name residual risk after the checks you actually ran. Include failed or skipped commands, their exit codes, and why you skipped them. Say which contracts the diff touches. Detect drift by re-running the same commands on the same head SHA.
 
 ---
 
@@ -80,14 +80,14 @@ Action: Merge first. Trial merge clean vs main.
 Impact: Context injection; depends on #45's schema.  
 Action: After #45 → rebase onto `origin/main` → `--force-with-lease` → re-verify.
 
-Status: **Safe** applies clean to current `main`; **Dirty** conflicts; **Blocked** waits on another PR or red CI. Verify each with `git merge --no-commit --no-ff origin/<branch>` on a fresh `origin/main` checkout, then `git merge --abort`, and say so. Fix Dirty with a local rebase, not GitHub "Update branch"; on a branch someone else pushes to, merge `main` in instead. When a parent squash-merges, rebase a child with `git rebase --onto origin/main <old-parent-tip>`. A clean merge can still break: when two PRs touch one file or a `DOCS_BUDGET` cap, build and lint the merged tree. Merge a PR only when its checks are green on that head; wait for green `main` CI, then re-check the rest.
+Status: **Safe** applies clean to current `main`; **Dirty** conflicts; **Blocked** waits on another PR or red CI. Verify each with `git merge --no-commit --no-ff origin/<branch>` on a fresh `origin/main` checkout, then `git merge --abort`, and say so. Fix Dirty with a local rebase, not GitHub "Update branch"; on a branch someone else pushes to, merge `main` in instead. When a parent squash-merges, rebase a child with `git rebase --onto origin/main <old-parent-tip>`. A clean merge can still break: when two PRs touch one file or one hand-kept count, build and lint the merged tree. Merge a PR only when its checks are green on that head; wait for green `main` CI, then re-check the rest.
 
 ## ELI5: Merge Order
 Merge the foundation first. If a later PR was written against an older base, rebase it onto the new one so it drops in clean instead of creating a merge commit. We already tested the fit with a trial merge.
 ```
 
 ## McLuhan tetrad
-_Required on every PR and goes directly above ELI5. `pr-template-check.yml` enforces the heading, your own answer on each of the four label lines, and your own text under ELI5. Four short answers about the whole diff against `main`, later commits included. Tie each to something literal: a file, setting or command. Write N/A instead of inventing an effect._
+_Required on every PR and goes directly above ELI5. No workflow checks the body, so keep the heading, your own answer on each of the four label lines, and your own text under ELI5 by hand. Four short answers about the whole diff against `main`, later commits included. Tie each to something literal: a file, setting or command. Write N/A instead of inventing an effect._
 
 - **Enhances:** what does this PR make stronger, faster or easier to see?
 - **Obsoletes:** what does it make unnecessary or push aside?
@@ -95,7 +95,7 @@ _Required on every PR and goes directly above ELI5. `pr-template-check.yml` enfo
 - **Reverses into:** what does it flip into when pushed to an extreme? State the actual failure, how bad it is, and the signal that shows it, worst first. List each one under Risks to monitor too.
 
 ## ELI5
-_Required on every PR, and it must stay the **last heading** in the body (`pr-template-check.yml` enforces both). The body's last line you write is the stamp below (e.g. `Last updated: 2026-10-14 15:05 ET`); only a Claude Code attribution footer may follow it, and the checks strip it. Refresh the stamp whenever you edit the body._
+_Required on every PR, and it must stay the **last heading** in the body. No workflow checks either, so check them yourself. The body's last line you write is the stamp below (e.g. `Last updated: 2026-10-14 15:05 ET`); only a Claude Code attribution footer may follow it. Refresh the stamp whenever you edit the body._
 
 Explain the **whole** diff against `main`, not just the first commit. Re-read it whenever a later commit changes what the PR does. Plain words, no jargon you would not say out loud, but keep the specifics:
 Write for the operator: plain but technical, nothing glossed. Cover the whole branch diff against main, later commits included. Say what changed and why, naming files and functions; what could break and where to look; what was run versus only reasoned. Mark guesses. Do not market a feature or soften a gate. No heading after this one. Plain words, no jargon you would not say out loud, but keep the specifics on what is changing, what it touches, what it adds, potential or expected risk, etc. The tetrad above names the four effects; say the same thing here in plain words:
