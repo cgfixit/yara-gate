@@ -48,6 +48,7 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert plain["engine_version"]
         assert plain["tool_version"]
         assert len(plain["ruleset_sha256"]) == 64
+        assert len(plain["detector_sha256"]) == 64
         assert plain["scan_seconds"] >= 0
 
         status, advisory = _post(port, {"sample": "advisory"})
