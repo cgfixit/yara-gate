@@ -194,7 +194,8 @@ def test_shared_piece_fold_stops_at_the_deadline(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(scanner, "folded_text", record)
     with pytest.raises(content.ContentLimit, match="timeout"):
-        scanner._with_folded_pieces(
+        for _, pieces in scanner._with_folded_pieces(
             "pdf-hidden-text", ["И" * 64, "И" * 64], content.Budget(start + 30)
-        )
+        ):
+            list(pieces)
     assert calls == 1

@@ -9,7 +9,8 @@ structural heuristics. The detailed reference is [`docs/rules.md`](../docs/rules
 
 | Path | Purpose |
 | --- | --- |
-| [`local/`](local/) | 85 shipped YARA rules in 58 `.yar`/`.yara` files: 73 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`local/`](local/) | 89 shipped YARA rules in 59 `.yar`/`.yara` files: 77 advisory, 6 block, 6 note. The [rule tables](../docs/rules.md#agent-ingestion-rules) link every rule to its source. |
+| [`templates/`](templates/) | Sources of the generated rule files: a template per file and [`fragments.toml`](templates/fragments.toml), the shared word lists and regular-expression fragments. [`generate_rules.py`](../scripts/generate_rules.py) renders them into `local/`. Not packaged, and not read by a scan. [How to change one](#generated-rule-files). |
 | [`rules.lock`](rules.lock) | Pinned URLs, revisions, and SHA-256 values for YARA Forge core, signature-base, and Elastic protections-artifacts. A lock does not install the bodies. |
 | [`vendor-overrides.json`](vendor-overrides.json) | Reviewed pack-and-rule exceptions to the default blocking severity of vendor matches. [Grading contract](../README.md#how-vendor-matches-are-graded). |
 | `vendor/` (downloaded, untracked) | Rule bodies installed by `setup` or the network-authorized install/update commands; omitted from wheels. |
@@ -24,11 +25,40 @@ loads once. Local compilation errors or missing bundled rules are fatal; vendor
 compile skips remain visible in scan results. The compiled cache is under the
 user cache directory, not this directory.
 
+Rule sources must be self-contained. YARA `include` directives are disabled so
+every compiled rule comes from a file listed in the ruleset fingerprint. Move
+shared rule source into the files that use it before adding them to the tree.
+
 `setup` consents to the first pinned download; `rules install --allow-network`
 installs pinned packs and `rules update --allow-network` resolves new pins. Each
 compiles the staged tree before swapping it into place. Scanning never downloads
 or repairs vendor state. See [installation and operation](../user-guide.md) and
 [network/privacy boundaries](../SECURITY.md).
+
+## Generated rule files
+
+`agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`, and
+`agent_hidden_html.yar`, and `agent_model_addressed_instruction.yar` are rendered from
+[`templates/`](templates/). The model-addressed rule shares a boundary pattern for
+plain text and HTML. The words an order is
+built from, the separator between words, the hiding cues, and the phrases read after a cue
+are each written once, in [`fragments.toml`](templates/fragments.toml). A template is the
+rule file with `{{name}}` where a fragment goes; `{{lazy name}}` gives the non-greedy copy
+that the documentary exemption and the HTML comment strings need, so that copy cannot
+drift from the strings it follows. To change one of these rules, edit the template or the
+fragment and run:
+
+```sh
+uv run python scripts/generate_rules.py
+```
+
+The generated file is the one that is compiled, hashed, packaged, and reviewed; its first
+lines name its sources. [`lint_rules.py`](../docs/verification/lint_rules.py) fails when a
+generated file is not what its template renders, so neither a hand edit nor an unrendered
+template edit merges. An edit to a fragment reaches every string that names it and is a
+rule change like any other: `git diff rules/local` shows the strings, and each needs its
+near-miss. The [record](../docs/verification/2026-11-10-phrase-rule-generator.md) has what was
+measured when the three files moved, and what was left written by hand.
 
 ## All detection layers
 
@@ -37,15 +67,15 @@ or repairs vendor state. See [installation and operation](../user-guide.md) and
 | Local YARA signatures | Agent instructions and obfuscations; Windows delivery, shortcut, script-host and defense-evasion shapes; macOS/Linux commands; developer workspace and GitHub Actions configuration; active documents and disk images. | [`local/`](local/), [all rule families and benign boundaries](../docs/rules.md). |
 | Vendor YARA signatures | Patterns in the installed pinned packs, subject to compile skips and the reviewed severity overrides. | [`rules.py`](../src/yara_gate/rules.py), [dated vendor census](../docs/verification/2026-11-01-ecosystem-rules.md). |
 | Names and file types | Header/extension disagreement, decoy double extensions, filename controls, empty promised documents, validated raster headers. Executable disguises block; other mismatches are advisory. Raster classification also prevents pixel bytes from masquerading as text indicators. | [`filetype.py`](../src/yara_gate/filetype.py), [`scanner.py`](../src/yara_gate/scanner.py), [structural checks](../docs/rules.md#structural-checks-without-yara). |
-| Container coverage | In-memory ZIP (including concatenated/appended ZIPs), tar, gzip, xz, bzip2, ar, cpio, and MIME members. Invalid member paths, links, encryption, unsupported containers, or exhausted budgets produce incomplete scans. | [`content.py`](../src/yara_gate/content.py), [limits](../docs/rules.md#limits). |
-| Decoding and spelling views | UTF-16, HTML entities, JSON escapes, MIME headers, readable base64/percent runs, removed formatting controls, NFKC, mixed-script look-alikes, Latin small capitals, Cyrillic-only word case, leet, letter spacing, terminal escapes, and hyphenated line wraps. These expose text to existing rules; they do not assign a new severity by themselves. | [`content.py`](../src/yara_gate/content.py), [derived views and exclusions](../docs/rules.md#limits). |
-| Reader text | Joined Office runs, worksheet cells and Excel/PowerPoint comments, RTF paragraphs read through formatting and character escapes, SVG text and HTML blocks, Markdown paragraphs/items, adjacent source-comment lines, and Jupyter cell source/output lines. Each supported piece is scanned separately where the reader exposes piece boundaries. | [`content.py`](../src/yara_gate/content.py), [`rtftext.py`](../src/yara_gate/rtftext.py), [`scanner.py`](../src/yara_gate/scanner.py), [reader scope](../docs/rules.md#limits). |
-| PDF streams and text | Bounded stream decoding and object lookup, glyph decoding through font `ToUnicode` maps, text-block and paragraph views with spelling-folded companions, annotation `/Contents` strings found through checked cross-reference offsets, and a note for unreadable font text. No page rendering or OCR. | [`content.py`](../src/yara_gate/content.py), [`pdftext.py`](../src/yara_gate/pdftext.py), [`pdfannotations.py`](../src/yara_gate/pdfannotations.py), [`pdfxref.py`](../src/yara_gate/pdfxref.py), [PDF consumer limits](../docs/integrations.md#pdfs-and-other-compressed-documents). |
-| Hidden text | Text a reader does not show, read on its own: Word runs marked `vanish` or `webHidden`, 1 pt or smaller, or near-white over no shading; PowerPoint 1 pt runs and hidden shapes or slides; Excel rich-text runs at 1 pt or in white; PDF text in render mode 3 or 7, near-white over nothing the stream painted, under 1 pt, or off every `/MediaBox`. An instruction phrase there adds the advisory `heuristic_hidden_text`; hidden text alone is not reported. Styles, layouts, masters, and cell formats are not resolved. | [`content.py`](../src/yara_gate/content.py), [`pdftext.py`](../src/yara_gate/pdftext.py), [`scanner.py`](../src/yara_gate/scanner.py), [hidden-text boundaries](../docs/rules.md#hidden-office-and-pdf-text). |
+| Container coverage | In-memory ZIP (including concatenated/appended ZIPs), tar, gzip, xz, bzip2, ar, cpio, and mail parts (a message with one HTML, encoded, or legacy-charset body included). Invalid member paths, links, encryption, unsupported containers, or exhausted budgets produce incomplete scans. | [`content.py`](../src/yara_gate/content.py), [limits](../docs/rules.md#limits). |
+| Decoding and spelling views | UTF-16, HTML entities, JSON escapes, MIME headers, readable base64/percent runs, removed formatting controls, NFKC, mixed-script look-alikes, Latin small capitals, Cyrillic-only word case, leet, letter spacing, terminal escapes and strings (an OSC hyperlink or title inside a word), zero-width marks, VT, FF, and NEL read as line breaks, and hyphenated line wraps. These expose text to existing rules; they do not assign a new severity by themselves. | [`content.py`](../src/yara_gate/content.py), [derived views and exclusions](../docs/rules.md#limits). |
+| Reader text | Joined Office runs (body parts and the parts a renderer draws from: slide masters and layouts, SmartArt, charts, worksheet text boxes; a part is known by its name or its root element, a run by its namespace), OpenDocument paragraphs, worksheet cells and Excel/PowerPoint comments, RTF paragraphs read through formatting and character escapes, SVG text and HTML blocks (also read as a browser's tokenizer reads markup it discards), RSS and Atom text nodes and the escaped HTML in them, Markdown paragraphs/items, adjacent source-comment lines, and Jupyter cell source/output lines. Office and OpenDocument XML is read as a parser hands it on: through comments, CDATA sections, a part's own internal entities, and UTF-16. Each supported piece is scanned separately where the reader exposes piece boundaries. | [`content.py`](../src/yara_gate/content.py), [`odftext.py`](../src/yara_gate/odftext.py), [`rtftext.py`](../src/yara_gate/rtftext.py), [`scanner.py`](../src/yara_gate/scanner.py), [reader scope](../docs/rules.md#limits). |
+| PDF streams and text | Bounded stream decoding and object lookup, glyph decoding through font `ToUnicode` maps, text-block and paragraph views with spelling-folded companions, annotation `/Contents` strings found through checked cross-reference offsets, a note for unreadable font text, and a note for page content under a filter it cannot decode. No page rendering or OCR. | [`content.py`](../src/yara_gate/content.py), [`pdftext.py`](../src/yara_gate/pdftext.py), [`pdfannotations.py`](../src/yara_gate/pdfannotations.py), [`pdfxref.py`](../src/yara_gate/pdfxref.py), [PDF consumer limits](../docs/integrations.md#pdfs-and-other-compressed-documents). |
+| Hidden text | Text a reader does not show, read on its own: Word runs marked `vanish` or `webHidden`, 1 pt or smaller, or near-white over no shading; PowerPoint 1 pt runs and hidden shapes or slides; Excel rich-text runs at 1 pt or in white; PDF text in render mode 3 or 7, near-white over nothing the stream painted, under 1 pt, or off every `/MediaBox`. HTML text hidden by one exact declaration on its own element (`display:none`, `visibility:hidden`, a font size of zero, settled zero opacity, transparent text, text the colour of its own background), comments, `data-*` values, and `template` content. An instruction phrase there adds the advisory `heuristic_hidden_text`; hidden text alone is not reported. Styles, layouts, masters, cell formats, stylesheets, and page layout are not resolved. | [`content.py`](../src/yara_gate/content.py), [`pdftext.py`](../src/yara_gate/pdftext.py), [`htmlhidden.py`](../src/yara_gate/htmlhidden.py), [`scanner.py`](../src/yara_gate/scanner.py), [hidden-text boundaries](../docs/rules.md#hidden-office-and-pdf-text), [hidden HTML text](../docs/rules.md#hidden-html-text). |
 | PDF active features | Complete decoded action/feature tokens, encryption, and the special note for an OpenAction that only navigates to a page. Other listed active features block, including those resolved in supported compressed object streams. | [`heuristics.py`](../src/yara_gate/heuristics.py), [PDF feature restrictions](../docs/rules.md#how-the-other-checks-work). |
 | Office structure and macros | OOXML VBA/DDE, OLE objects, altChunk, encrypted legacy Office, and extracted VBA auto-exec or command-related keywords. VBA source is inspected without executing it. | [`heuristics.py`](../src/yara_gate/heuristics.py), [Office findings](../docs/rules.md#structural-checks-without-yara). |
 | Embedded executables | Validated PE, ELF, or Mach-O headers inside another file, executable members in documents, or executables nested at least two container levels deep. | [`filetype.py`](../src/yara_gate/filetype.py), [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py). |
-| Unicode and encoding signals | Context-aware joiners, Unicode tags, long variation-selector runs, a control-plus-note conjunction, and base64 run classification with media/key exemptions. | [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py), [Unicode and media boundaries](../docs/rules.md#how-the-other-checks-work). |
+| Unicode and encoding signals | Context-aware joiners, Unicode tags, long variation-selector runs, a control-plus-note conjunction, and base64 run classification with media/key exemptions. A run of 16 or more zero-width characters is the YARA rule [`agent_invisible_run`](local/agent_invisible_unicode.yar). | [`heuristics.py`](../src/yara_gate/heuristics.py), [`scanner.py`](../src/yara_gate/scanner.py), [Unicode and media boundaries](../docs/rules.md#how-the-other-checks-work). |
 | Model files | Bounded pickle opcode inspection for selected dangerous callables, safetensors/GGUF header consistency, and Keras unsafe imports/calls or serialized Lambda code. No model is deserialized or executed. | [`heuristics.py`](../src/yara_gate/heuristics.py), [model-format limits](../docs/rules.md#structural-checks-without-yara). |
 | MCP data | Shell commands in JSON tool configuration and selected hidden-instruction phrases in description fields, at any list position or depth; JSON past the walk's 2,000,000-node or 64-level budget that could hold an entry is incomplete. | [`heuristics.py`](../src/yara_gate/heuristics.py), [MCP boundaries](../docs/rules.md#structural-checks-without-yara). |
 
@@ -78,7 +108,8 @@ blocked file; ordinary scanning does not learn rules from the input it judges.
 
 | Check | What its result establishes |
 | --- | --- |
-| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata and rule fire/near-miss cases. |
+| [`lint_rules.py`](../docs/verification/lint_rules.py) and [`check_rule_pairs.py`](../docs/verification/check_rule_pairs.py) | Compilation/metadata, generated files matching their templates, and rule fire/near-miss cases. |
+| [`check_rule_generator.py`](../docs/verification/check_rule_generator.py) | The generator on disposable copies: a hand edit is found, one word-list edit reaches the order and its exemption and compiles, and what cannot be rendered is refused. |
 | [`check_added_rules.py`](../docs/verification/check_added_rules.py) | Added-rule and vendor-override cases. |
 | [`measure_precision.py`](../docs/verification/measure_precision.py) | Hits in a generated benign corpus; see [measured precision](../docs/rules.md#measured-precision). |
 | [`sweep_rule_changes.py`](../docs/verification/sweep_rule_changes.py) | Files on this machine whose findings differ between the committed rules and the working tree's. Run by hand before a rule change is published; not a CI step. |
@@ -107,4 +138,9 @@ Encoded PDF annotation `/Contents` strings reach the same rules as
 `pdf-annotation` and `pdf-annotation+text-folded`; each annotation/paragraph is
 scanned separately. A phrase retains its note severity and policy behavior.
 See [annotation limits](../docs/rules.md#pdf-annotation-boundaries) and
-[verification](../docs/verification/2026-11-07-pdf-annotations.md).
+[verification](../docs/verification/2026-11-07-pdf-annotations.md). PDF form field
+values, document information strings, and outline titles reach them the same way as
+`pdf-string` ([limits](../docs/rules.md#pdf-text-strings)), and marked-content
+`/ActualText`, inline or named from a page's `/Properties`, as `pdf-actual-text`
+([limits](../docs/rules.md#marked-content-actualtext)). A worksheet's page headers and
+footers reach them one section at a time as `ooxml-header`.

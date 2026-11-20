@@ -1,11 +1,14 @@
 """Office, PDF, and embedded-executable checks that sit beside YARA."""
 
+import base64
+import binascii
 import builtins
 import codecs
 import io
 import json
 import pickletools
 import re
+import struct
 import unicodedata
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -13,6 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
+from yara_gate.jsonbounds import JsonLimit, check_json_structure
 from yara_gate.models import Finding, FindingSource, Severity
 
 
@@ -62,10 +66,10 @@ def heuristic_findings(
     pickled, pickle_error = pickle_reduce_findings(path, data, check)
     findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
-    keras, keras_error = keras_config_findings(path, data)
+    keras, keras_error = keras_config_findings(path, data, check)
     findings.extend(keras)
     findings.extend(ooxml_structure_findings(path, data))
-    mcp, mcp_error = mcp_tool_findings(path, data)
+    mcp, mcp_error = mcp_tool_findings(path, data, check)
     findings.extend(mcp)
     office, error = office_findings(path, data)
     findings.extend(office)
@@ -270,12 +274,80 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
         ):
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
+            if blob and _printer_setup(data, start, match.end()):
+                blob = False
             if blob and samples:
                 end = match.end()
                 blob = _b64_holds_data(data, start, end) and _b64_unsampled(data, start, end)
         if blob and exe:
             break
     return blob, exe
+
+
+# LibreOffice saves the printer's job setup in an OpenDocument settings.xml as this item.
+_PRINTER_SETUP_OPEN = b'<config:config-item config:name="PrinterSetup" config:type="base64Binary">'
+_PRINTER_SETUP_CLOSE = re.compile(rb"={0,2}</config:config-item>")
+# WriteJobSetup in LibreOffice's vcl/source/gdi/jobset.cxx: a u16 total length, a u16 system
+# (JOBSET_FILE605_SYSTEM or JOBSET_FILE364_SYSTEM), the 160-byte ImplOldJobSetupData names,
+# then Impl364JobSetupData (22 bytes, its own size first, the driver data length at 4).
+_JOB_SETUP_SYSTEMS = (0xFFFE, 0xFFFF)
+_JOB_SETUP_NAMES = 160
+_JOB_SETUP_BLOCK = 22
+
+
+def _printer_setup(data: bytes, start: int, stop: int) -> bool:
+    """True when ``data[start:stop]`` is a LibreOffice ``PrinterSetup`` item and nothing more.
+
+    The run must be the whole text of that settings item, decode to exactly the structure
+    ``WriteJobSetup`` writes (every length agrees and the key and value strings end where the
+    total says), and carry neither an executable header nor a base64 run of its own. Of 2,089
+    OpenDocument files in LibreOffice's test corpus, 694 hold the item and every one of the 685
+    that is not empty decodes this way; their driver data runs to 30 KB, so a payload could
+    sit there, which is why the decoded bytes are checked as a file's would be.
+    """
+    if not data.endswith(_PRINTER_SETUP_OPEN, max(0, start - len(_PRINTER_SETUP_OPEN)), start):
+        return False
+    close = _PRINTER_SETUP_CLOSE.match(data, stop)
+    if close is None:
+        return False
+    padding = close.group().count(b"=")
+    try:
+        decoded = base64.b64decode(data[start : stop + padding], validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return (
+        _job_setup(decoded)
+        and embedded_exec_offset(b"\0" + decoded) is None
+        and _B64_RUN.search(decoded) is None
+    )
+
+
+def _job_setup(decoded: bytes) -> bool:
+    """True when ``decoded`` is one job setup exactly as LibreOffice's WriteJobSetup writes it."""
+    head = _JOB_SETUP_NAMES + 4
+    if len(decoded) < head + _JOB_SETUP_BLOCK:
+        return False
+    total, system = struct.unpack_from("<HH", decoded, 0)
+    block, _, driver = struct.unpack_from("<HHI", decoded, head)
+    if total != len(decoded) or system not in _JOB_SETUP_SYSTEMS or block != _JOB_SETUP_BLOCK:
+        return False
+    position = head + block + driver
+    if position > total:
+        return False
+    # Then key and value strings, each a u16 length and UTF-8 bytes, to the very end.
+    while position < total:
+        if position + 2 > total:
+            return False
+        size = int.from_bytes(decoded[position : position + 2], "little")
+        position += 2
+        if position + size > total:
+            return False
+        try:
+            decoded[position : position + size].decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+        position += size
+    return True
 
 
 def _b64_holds_data(data: bytes, position: int, stop: int) -> bool:
@@ -960,19 +1032,34 @@ _MCP_MAX_NODES = 2_000_000
 _MCP_MAX_DEPTH = 64
 _MCP_TOO_LARGE = "mcp json exceeds walk limit"
 # A budget-truncated document holds the scan only when it could carry an MCP entry.
-_MCP_KEYS = (b'"command"', b'"args"', b'"description"', b"\\u")
+_MCP_KEYS = ('"command"', '"args"', '"description"', "\\u")
 _SHELL_COMMAND = re.compile(r"(?i)^(sh|bash|zsh|curl|wget|osascript|powershell|pwsh)(\s|$)")
 _SHELL_ARG = re.compile(r"(?i)\b(sh|bash|curl|wget|osascript|powershell|pwsh)\b")
 # Tool-poisoning text hides in a tool description: a shouted tag, a "do not mention" clause,
 # or a request to read a key or client config and pass it along in another argument.
+# "No need to mention this to the user" and "this tool immediately as the first step" are the
+# wording of the line-jumping proof of concept, and "don't notify the user about it" of the
+# WhatsApp one. "No need to tell the user to wait" directs the user and hides nothing, and a
+# notification tool says "do not notify the user more than once an hour", so "notify" needs
+# the pronoun: the thing kept from the user is this, it, or that.
+#
+# A description is a docstring, hard-wrapped and indented, so the words of a phrase are as
+# often apart by a line break and four spaces as by one space. Each space written in the
+# pattern stands for any run of whitespace, a no-break space included. No alternative starts
+# with one, so a long run is read once for the phrase it follows and the search stays linear.
 _HIDDEN_INSTRUCTION = re.compile(
-    r"(?i)do not (tell|mention|inform|reveal|show)( this| it| that)?( to)? the user"
-    r"|don'?t (tell|mention)( this| it)?( to)? the user"
-    r"|ignore (all )?previous instructions"
-    r"|<\s*important\s*>"
-    r"|before (using|calling|running) this tool,? (read|open|cat)\b"
-    r"|~?/?\.ssh/|\bid_(rsa|ed25519)\b|\bmcp\.json\b"
-    r"|\bpass (its|the|their|this) contents?\b|\b(as|in) an? sidenote\b"
+    (
+        r"(?i)do not (tell|mention|inform|reveal|show)( this| it| that)?( to)? the user"
+        r"|don'?t (tell|mention|inform)( this| it| that)?( to)? the user"
+        r"|no need to (tell|mention|inform)( this| it| that)?( to)? the user(?! to\b)"
+        r"|(do not|don'?t|no need to) notify the user (about|of) (this|it|that)\b"
+        r"|\bthis tool immediately as the (very )?first step\b"
+        r"|ignore (all )?previous instructions"
+        r"|<\s*important\s*>"
+        r"|before (using|calling|running) this tool,? (read|open|cat)\b"
+        r"|~?/?\.ssh/|\bid_(rsa|ed25519)\b|\bmcp\.json\b"
+        r"|\bpass (its|the|their|this) contents?\b|\b(as|in) an? sidenote\b"
+    ).replace(" ", r"\s+")
 )
 
 
@@ -1083,7 +1170,9 @@ _KERAS_H5_SPAN = 16 * 1024 * 1024
 _KERAS_TOO_LARGE = "keras config exceeds walk limit"
 
 
-def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
+def keras_config_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
     """Walk a Keras model config without loading it.
 
     A ``.keras`` archive keeps its graph in ``config.json``; ``model.to_json()`` writes the same
@@ -1094,7 +1183,9 @@ def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str |
     since safe_mode refuses it by default and an operator may still allow it. A config too large
     or too deep to walk completely is incomplete, never clean.
     """
-    for config in _keras_configs(path, data):
+    for config in _keras_configs(path, data, check):
+        if config is _KERAS_END:
+            return [], "keras config exceeds structure limit"
         if not (isinstance(config, dict) and "class_name" in config):
             # load_model needs class_name at the top. Without it this is a JSON document that
             # merely names a module, such as an API index or a label map, not a loadable model.
@@ -1113,7 +1204,9 @@ def keras_config_findings(path: Path, data: bytes) -> tuple[list[Finding], str |
     return [], None
 
 
-def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
+def _keras_configs(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> Iterator[object]:
     suffix = path.suffix.lower()
     if suffix == ".json":
         # Decode as json.loads does for bytes, so a BOM, UTF-16, or UTF-32 file and an escaped key
@@ -1126,7 +1219,10 @@ def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
         if not text.startswith("{") or ('"class_name"' not in text and "\\u" not in text):
             return
         try:
+            check_json_structure(text, check)
             yield json.loads(text)
+        except JsonLimit:
+            yield _KERAS_END
         except (ValueError, RecursionError):
             return
         return
@@ -1141,7 +1237,11 @@ def _keras_configs(path: Path, data: bytes) -> Iterator[object]:
         start = match.start()
         window = data[start : start + _KERAS_H5_SPAN].decode("utf-8", "replace")
         try:
+            check_json_structure(window, check, embedded=True)
             config, end = decoder.raw_decode(window)
+        except JsonLimit:
+            yield _KERAS_END
+            return
         except (json.JSONDecodeError, RecursionError):
             position = start + 1
             continue
@@ -1221,7 +1321,52 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
     return findings
 
 
-def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | None]:
+# A JSON string, a comment opener, or a comma, for ``_jsonc``. A string holds no raw line break.
+_JSONC_TOKEN = re.compile(rb'"(?:[^"\\\n]++|\\.)*+"|//|/\*|,')
+_JSONC_SPACE = re.compile(rb"[ \t\r\n]*+")
+# Configuration files with comments are small; a larger file is left to strict JSON.
+_JSONC_MAX = 1 << 20
+
+
+def _jsonc(data: bytes) -> bytes | None:
+    """``data`` with comments and trailing commas removed outside strings, as jsonc-parser
+    reads it, or None when there is nothing to remove, a comment is not closed, or the file is
+    larger than ``_JSONC_MAX``. One forward pass; each comment is skipped with bytes.find."""
+    if len(data) > _JSONC_MAX:
+        return None
+    out = bytearray()
+    position = 0
+    changed = False
+    while (match := _JSONC_TOKEN.search(data, position)) is not None:
+        token = match.group()
+        out += data[position : match.start()]
+        position = match.end()
+        if token == b"//":
+            close = data.find(b"\n", position)
+            position = len(data) if close < 0 else close
+            changed = True
+        elif token == b"/*":
+            close = data.find(b"*/", position)
+            if close < 0:
+                return None
+            position = close + 2
+            out += b" "
+            changed = True
+        elif token == b",":
+            after = _JSONC_SPACE.match(data, position)
+            if after is not None and data[after.end() : after.end() + 1] in (b"}", b"]"):
+                changed = True
+            else:
+                out += token
+        else:
+            out += token
+    out += data[position:]
+    return bytes(out) if changed else None
+
+
+def mcp_tool_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> tuple[list[Finding], str | None]:
     """Shell launchers and hidden instructions in MCP-style JSON, and an incomplete reason.
 
     The walk visits every element up to a shared node and depth budget, so the position of an
@@ -1229,15 +1374,34 @@ def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | Non
     incomplete when it could hold an MCP entry (it names a command, args, or a description, or
     escapes a key), never clean; other large JSON keeps its result.
     """
-    if path.suffix.lower() != ".json" or not data.lstrip().startswith((b"{", b"[")):
+    if path.suffix.lower() != ".json":
+        return [], None
+    # json.loads reads a UTF-8 byte order mark; a config with comments (VS Code's mcp.json,
+    # .vscode/settings.json) is read as jsonc-parser reads it, only when strict JSON fails.
+    body = data.removeprefix(b"\xef\xbb\xbf")
+    if not body.lstrip().startswith((b"{", b"[", b"//", b"/*")):
         return [], None
     try:
-        parsed = json.loads(data)
+        text = body.decode(json.detect_encoding(body), "surrogatepass")
+        if not any(key in text for key in _MCP_KEYS):
+            return [], None
+        needs_jsonc = check_json_structure(text, check)
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            relaxed = _jsonc(body)
+            if relaxed is None:
+                if needs_jsonc and len(body) > _JSONC_MAX:
+                    return [], "mcp json exceeds comment limit"
+                return [], None
+            parsed = json.loads(relaxed)
+    except JsonLimit:
+        return [], "mcp json exceeds structure limit"
     except json.JSONDecodeError:
         return [], None
     except RecursionError:
         # Nested past what json.loads can parse: unwalked, so the same rule as the budget.
-        return [], _MCP_TOO_LARGE if any(key in data for key in _MCP_KEYS) else None
+        return [], _MCP_TOO_LARGE
     hits: set[str] = set()
     _walk_mcp(parsed, hits)
     findings: list[Finding] = []
@@ -1245,7 +1409,7 @@ def mcp_tool_findings(path: Path, data: bytes) -> tuple[list[Finding], str | Non
         findings.append(_advisory("heuristic_mcp_shell"))
     if "hidden" in hits:
         findings.append(_advisory("heuristic_mcp_hidden_instruction"))
-    if "truncated" in hits and any(key in data for key in _MCP_KEYS):
+    if "truncated" in hits:
         return findings, _MCP_TOO_LARGE
     return findings, None
 

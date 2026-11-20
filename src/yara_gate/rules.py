@@ -28,7 +28,7 @@ HUNT_FILE = re.compile(r"hunt_[0-9a-f]{12}\.yar")
 # private and global rules compile too, so they count.
 _RULE_NAME = re.compile(r"(?m)^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z0-9_]+)")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
-_CACHE_SALT = b"yara-gate-rules-v3"
+_CACHE_SALT = b"yara-gate-rules-v5"
 _ALLOWED_DOWNLOAD_HOSTS = frozenset(
     {
         "github.com",
@@ -47,6 +47,28 @@ Transport = Callable[[str], bytes]
 _MEMO: dict[str, tuple[object, list[str], int, int]] = {}
 # Per compiled ruleset digest: namespace (gate_<index>) -> vendor pack directory for vendor files.
 _VENDOR_NAMESPACES: dict[str, dict[str, str]] = {}
+# Per compiled ruleset digest: namespace -> the source of each non-vendor file and the rules in it
+# whose condition reads where a match lies (an offset, a length, a range). The scanner reports
+# the deciding match of such a rule rather than its first match (#284).
+_PLACED_SOURCES: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
+# Per compiled ruleset digest: the same rules plus a match-cap guard for each rule file, and the
+# files left unguarded (see ``guarded_ruleset``).
+_GUARDED: dict[str, tuple[object | None, list[str]]] = {}
+# YARA-X keeps this many matches of each string and then drops the rest without notice
+# (DEFAULT_MAX_MATCHES_PER_PATTERN in yara-x 1.23.0, lib/src/scanner/matches.rs).
+MATCH_LIMIT = 1_000_000
+# A scan that fills a list is read again once with this limit.
+RESCAN_LIMIT = 4_000_000
+# Every match-cap guard logs this, then its rule's name and the count of the full list.
+GUARD_LOG_PREFIX = "yara-gate match cap: "
+# Names the guard format in the cache file names: a change to how guards are built must not
+# load guards built the old way for the same rules.
+_GUARD_FORMAT = "2"
+_GUARD_HEAD = re.compile(r"(?:(?:private|global)\s+)*rule\s+(\w+)")
+# The start of a rule, and the name it gives.
+_RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
+# A condition that reads a match's place: @x[i], !x[i], @[i], $x in (..), #x in (..), $x at n.
+_PLACEMENT = re.compile(r"[@!][A-Za-z0-9_]*\[|\bin\s*\(|\bat\b")
 # Content hash of one rules directory. Later files in the same run stat instead of rereading.
 _DIGEST_STAMP: dict[str, tuple[object, ...]] = {}
 _DIGEST_VALUE: dict[str, str] = {}
@@ -429,7 +451,15 @@ def compile_ruleset(
     if cached is not None:
         rules, skipped = cached
         good = _files_except(files, rules_dir, skipped)
-        _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
+        _remember(
+            digest,
+            rules,
+            skipped,
+            _count_rules(good),
+            _vendor_dirs(good, rules_dir),
+            _placed_sources(good, rules_dir),
+            _read_guard_cache(digest) or _build_guarded(digest, good, rules_dir),
+        )
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
     shipped_root = _readable_shipped_local() if use_overlay else None
@@ -457,25 +487,316 @@ def compile_ruleset(
     if _local_compile_failed(skipped):
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped), digest
 
-    compiler = yara_x.Compiler(relaxed_re_syntax=True)
-    define_scan_globals(compiler)
-    _add_include_dirs(compiler, rules_dir, overlay=use_overlay)
+    compiler = _rule_compiler(yara_x)
     for index, (path, text) in enumerate(good):
         compiler.new_namespace(f"gate_{index}")
         compiler.add_source(text, origin=path.name)
     rules = compiler.build()
     _write_cache(digest, rules, skipped)
-    _remember(digest, rules, skipped, _count_rules(good), _vendor_dirs(good, rules_dir))
+    _remember(
+        digest,
+        rules,
+        skipped,
+        _count_rules(good),
+        _vendor_dirs(good, rules_dir),
+        _placed_sources(good, rules_dir),
+        _build_guarded(digest, good, rules_dir),
+    )
     return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
 
 def _remember(
-    digest: str, rules: object, skipped: list[str], compiled: int, vendor_dirs: dict[str, str]
+    digest: str,
+    rules: object,
+    skipped: list[str],
+    compiled: int,
+    vendor_dirs: dict[str, str],
+    placed: dict[str, tuple[str, frozenset[str]]],
+    guarded: tuple[object | None, list[str]],
 ) -> None:
     _MEMO.clear()
     _VENDOR_NAMESPACES.clear()
+    _PLACED_SOURCES.clear()
+    _GUARDED.clear()
     _MEMO[digest] = (rules, list(skipped), compiled, _count_skipped(skipped))
     _VENDOR_NAMESPACES[digest] = vendor_dirs
+    _PLACED_SOURCES[digest] = placed
+    _GUARDED[digest] = guarded
+
+
+def guarded_ruleset(digest: str | None) -> tuple[object | None, list[str]]:
+    """The ruleset ``compile_ruleset`` just returned, with a match-cap guard per rule file.
+
+    YARA-X stops recording a string after ``MATCH_LIMIT`` matches and says nothing, so a rule
+    that needs a later match can pass a file it would hold. The Python binding shows strings
+    only for rules that matched, so a full list in a rule that did not match is invisible.
+    Each guard is a private rule with a copy of one rule's strings, in its own namespace, that
+    logs ``GUARD_LOG_PREFIX`` for every one of its lists at the scan's limit. Private, so YARA-X
+    builds no match objects for it, and an identical string is searched once for both rules.
+    Second, the files that have no guard: their source did not format or the copy did not
+    compile. Those load as before and are counted in the report.
+    """
+    return _GUARDED.get(digest or "", (None, []))
+
+
+def last_unguarded() -> list[str]:
+    """The unguarded files of the ruleset ``compile_ruleset`` compiled last in this process."""
+    for _rules, unguarded in _GUARDED.values():
+        return list(unguarded)
+    return []
+
+
+def guard_source(text: str) -> str | None:
+    """The guard rules for one rule file, "" when no rule has strings, None when not built.
+
+    The file is formatted by YARA-X's own formatter, which writes a rule header at column 0,
+    ``  strings:`` and ``  condition:`` on their own lines, and the closing brace at column 0.
+    Comments are blanked first (a pack can hold whole rules inside ``/* */``), and each rule's
+    strings section is copied from what is left.
+    """
+    import yara_x
+
+    out = io.StringIO()
+    try:
+        yara_x.Formatter().format(io.StringIO(text), out)
+        formatted = _blank_comments(out.getvalue())
+    except Exception:
+        # Any formatter failure leaves the file unguarded.
+        return None
+    found: list[tuple[str, list[str]]] = []
+    headers = 0
+    name: str | None = None
+    section: str | None = None
+    body: list[str] = []
+    condition: list[str] = []
+    for line in formatted.split("\n"):
+        head = _GUARD_HEAD.match(line)
+        if head is not None:
+            if name is not None:
+                return None
+            headers += 1
+            name, section, body, condition = head.group(1), None, [], []
+            continue
+        if name is None:
+            continue
+        if line.rstrip() == "}":
+            strings = _counted_strings(body, "\n".join(condition))
+            if strings:
+                found.append((name, strings))
+            name = None
+            continue
+        if line.rstrip() in ("  meta:", "  strings:", "  condition:"):
+            section = line.strip().rstrip(":")
+            continue
+        if section == "strings":
+            body.append(line)
+        elif section == "condition":
+            condition.append(line)
+    # Every rule the formatted text names must have been read as one.
+    if name is not None or headers != len(_RULE_NAME.findall(formatted)):
+        return None
+    if not found:
+        return ""
+    parts = ['import "console"\n']
+    for rule_name, strings in found:
+        joined = "\n".join(strings).rstrip()
+        parts.append(
+            f"private rule {rule_name}__match_cap {{\n  strings:\n{joined}\n  condition:\n"
+            "    for all of them : (\n"
+            "      # < yara_gate_match_limit or\n"
+            f'      console.log("{GUARD_LOG_PREFIX}{rule_name} ", #)\n'
+            "    )\n}\n"
+        )
+    return "".join(parts)
+
+
+# A string definition as the formatter writes it; the lines after it, to the next one, are its
+# continuation (a hex string can span lines).
+_STRING_DEFINITION = re.compile(r"^    \$(\w*)\s*=")
+# A count, offset, or length of a named string: #x, @x[i], !x[i]. Not != or a bare $x.
+_NAMED_READ = re.compile(r"(?<![\w$#@!])[#@!]([A-Za-z0-9_]+)")
+# A named string placed by `at` or `in`.
+_NAMED_PLACED = re.compile(r"\$([A-Za-z0-9_]+)\s+(?:at|in)\b")
+# Reads that do not name one string: # or @ or ! of the string a `for ... of` binds, `$ at`,
+# `$ in`, and `N of (...) in` or `at`. Each guards every string of the rule.
+_ANONYMOUS_READ = re.compile(
+    r"(?<![\w$#@!])[#@!](?![A-Za-z0-9_=])|\$\s+(?:at|in)\b|\bof\b[^:]*?\)\s*(?:at|in)\b"
+    r"|\bof\s+them\s+(?:at|in)\b"
+)
+
+
+def _counted_strings(body: list[str], condition: str) -> list[str]:
+    """The definitions in ``body`` whose count or place ``condition`` reads.
+
+    A list YARA-X stops filling still holds the first match, so ``$x`` and ``any of them``
+    keep their value; only a count, an offset, or a length can change. Guarding only those
+    strings keeps a guard from making YARA-X verify every match of a string the rule tests for
+    presence alone, which cost 40% more on a flooded file. A read the patterns above do not
+    name a string for guards them all.
+    """
+    everything = _ANONYMOUS_READ.search(condition) is not None
+    wanted = set(_NAMED_READ.findall(condition)) | set(_NAMED_PLACED.findall(condition))
+    kept: list[str] = []
+    keep = False
+    for line in body:
+        start = _STRING_DEFINITION.match(line)
+        if start is not None:
+            keep = everything or start.group(1) in wanted
+        if keep:
+            kept.append(line)
+    return kept
+
+
+def _blank_comments(text: str) -> str:
+    """YARA source with every comment replaced by spaces, newlines kept.
+
+    Text and regex literals are left as they are, so a ``//`` in a URL or a ``/*`` in a regex
+    stays. A regex starts only after ``=`` (a string definition) or ``matches``; any other
+    ``/`` is division.
+    """
+    out = list(text)
+    index, size = 0, len(text)
+    previous = ""
+    while index < size:
+        char = text[index]
+        pair = text[index : index + 2]
+        if pair == "//":
+            end = text.find("\n", index)
+            end = size if end < 0 else end
+            out[index:end] = " " * (end - index)
+            index = end
+            continue
+        if pair == "/*":
+            end = text.find("*/", index + 2)
+            end = size if end < 0 else end + 2
+            out[index:end] = [c if c == "\n" else " " for c in text[index:end]]
+            index = end
+            continue
+        if char == '"' or (char == "/" and previous in ("=", "matches")):
+            index += 1
+            while index < size and text[index] not in (char, "\n"):
+                index += 2 if text[index] == "\\" else 1
+            index += 1
+            previous = char
+            continue
+        if char.isalnum() or char == "_":
+            end = index
+            while end < size and (text[end].isalnum() or text[end] == "_"):
+                end += 1
+            previous = text[index:end]
+            index = end
+            continue
+        if not char.isspace():
+            previous = char
+        index += 1
+    return "".join(out)
+
+
+def _build_guarded(
+    digest: str, good: list[tuple[Path, str]], rules_dir: Path
+) -> tuple[object | None, list[str]]:
+    """Compile the rules in ``good`` again, each file followed by its guard (see above)."""
+    import yara_x
+
+    guards = [guard_source(text) for _path, text in good]
+    rules = _compile_guarded(yara_x, good, guards)
+    if rules is None:
+        # One guard does not compile: find which, alone, and build without them.
+        for index, (path, _text) in enumerate(good):
+            guard = guards[index]
+            if guard:
+                try:
+                    _validate_one(yara_x, path, guard)
+                except yara_x.CompileError:
+                    guards[index] = None
+        rules = _compile_guarded(yara_x, good, guards)
+    if rules is None:
+        return None, [_rule_key(path, rules_dir) for path, _text in good]
+    unguarded = [
+        _rule_key(path, rules_dir)
+        for (path, _text), guard in zip(good, guards, strict=True)
+        if guard is None
+    ]
+    _write_guard_cache(digest, rules, unguarded)
+    return rules, unguarded
+
+
+def _compile_guarded(
+    yara_x: Any, good: list[tuple[Path, str]], guards: list[str | None]
+) -> object | None:
+    compiler = _rule_compiler(yara_x)
+    try:
+        for index, ((path, text), guard) in enumerate(zip(good, guards, strict=True)):
+            compiler.new_namespace(f"gate_{index}")
+            compiler.add_source(text, origin=path.name)
+            if guard:
+                compiler.new_namespace(f"gate_{index}_cap")
+                compiler.add_source(guard, origin=path.name)
+        built: object = compiler.build()
+        return built
+    except yara_x.CompileError:
+        return None
+
+
+def _read_guard_cache(digest: str) -> tuple[object, list[str]] | None:
+    import yara_x
+
+    cache = _user_cache_dir()
+    try:
+        text = (cache / f"{digest}.unguarded{_GUARD_FORMAT}").read_text(encoding="utf-8")
+        with (cache / f"{digest}.guard{_GUARD_FORMAT}.yarc").open("rb") as handle:
+            rules = yara_x.Rules.deserialize_from(handle)
+    except (OSError, ValueError):
+        return None
+    return rules, [line for line in text.splitlines() if line]
+
+
+def _write_guard_cache(digest: str, rules: Any, unguarded: list[str]) -> None:
+    try:
+        cache = _user_cache_dir()
+        cache.mkdir(parents=True, exist_ok=True)
+        token = secrets.token_hex(4)
+        list_tmp = cache / f".{digest}.{token}.unguarded{_GUARD_FORMAT}.tmp"
+        list_tmp.write_text("\n".join(unguarded) + "\n", encoding="utf-8")
+        os.replace(list_tmp, cache / f"{digest}.unguarded{_GUARD_FORMAT}")
+        rules_tmp = cache / f".{digest}.{token}.guard{_GUARD_FORMAT}.yarc.tmp"
+        with rules_tmp.open("wb") as handle:
+            serialize = rules.serialize_into
+            serialize(handle)
+        os.replace(rules_tmp, cache / f"{digest}.guard{_GUARD_FORMAT}.yarc")
+    except OSError:
+        return
+
+
+def _placed_sources(
+    good: list[tuple[Path, str]], rules_dir: Path
+) -> dict[str, tuple[str, frozenset[str]]]:
+    """Each non-vendor file with a rule whose condition reads a match's place, by namespace."""
+    placed: dict[str, tuple[str, frozenset[str]]] = {}
+    for index, (path, text) in enumerate(good):
+        if _rule_key(path, rules_dir).startswith("vendor/"):
+            continue
+        source = _strip_comments(text)
+        starts = list(_RULE_START.finditer(source))
+        names = set()
+        for number, start in enumerate(starts):
+            end = starts[number + 1].start() if number + 1 < len(starts) else len(source)
+            body = source[start.end() : end]
+            if "condition:" in body and _PLACEMENT.search(body.split("condition:", 1)[1]):
+                names.add(start.group(1))
+        if names:
+            placed[f"gate_{index}"] = (text, frozenset(names))
+    return placed
+
+
+def _strip_comments(text: str) -> str:
+    """YARA source with // line comments removed, so a comment's words are not read as code."""
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def placed_rule_sources(digest: str | None) -> dict[str, tuple[str, frozenset[str]]]:
+    """The placement-reading files of the ruleset ``compile_ruleset`` just returned."""
+    return dict(_PLACED_SOURCES.get(digest or "", {}))
 
 
 def _vendor_dirs(good: list[tuple[Path, str]], rules_dir: Path) -> dict[str, str]:
@@ -512,7 +833,7 @@ def promote(rule_id: str, rules_dir: Path | None = None) -> Path:
     )
     import yara_x
 
-    yara_x.compile(updated)
+    _validate_one(yara_x, target, updated)
     target.write_text(updated, encoding="utf-8")
     _clear_cache(root)
     return target
@@ -1053,29 +1374,31 @@ def define_scan_globals(compiler: Any) -> None:
     compiler.define_global("yara_gate_b64_blob", False)
     compiler.define_global("yara_gate_b64_exe", False)
     compiler.define_global("yara_gate_svg_scope_proven", False)
+    # The scanner's per-string match limit for this scan, which the match-cap guards read.
+    compiler.define_global("yara_gate_match_limit", MATCH_LIMIT)
+
+
+def compile_source(text: str) -> Any:
+    """One rule file compiled alone, with the scan globals declared, as the loader checks it."""
+    import yara_x
+
+    compiler = _rule_compiler(yara_x)
+    compiler.add_source(text)
+    return compiler.build()
 
 
 def _validate_one(yara_x: Any, path: Path, text: str) -> None:
-    compiler_type = yara_x.Compiler
-    compiler = compiler_type(relaxed_re_syntax=True)
-    define_scan_globals(compiler)
-    include = getattr(compiler, "add_include_dir", None)
-    if callable(include):
-        include(str(path.parent))
+    compiler = _rule_compiler(yara_x)
     compiler.add_source(text, origin=path.name)
     compiler.build()
 
 
-def _add_include_dirs(compiler: object, rules_dir: Path, *, overlay: bool | None = None) -> None:
-    add = getattr(compiler, "add_include_dir", None)
-    if not callable(add):
-        return
-    seen: set[Path] = set()
-    for path in rule_files(rules_dir, overlay=overlay):
-        if path.parent in seen:
-            continue
-        seen.add(path.parent)
-        add(str(path.parent))
+def _rule_compiler(yara_x: Any) -> Any:
+    compiler = yara_x.Compiler(relaxed_re_syntax=True)
+    # Every loaded rule must come from a file the ruleset digest covers.
+    compiler.enable_includes(False)
+    define_scan_globals(compiler)
+    return compiler
 
 
 def _local_compile_failed(skipped: list[str]) -> bool:
@@ -1220,6 +1543,8 @@ def _write_cache(digest: str, rules: Any, skipped: list[str]) -> None:
 def _clear_cache(rules_dir: Path) -> None:
     _MEMO.clear()
     _VENDOR_NAMESPACES.clear()
+    _PLACED_SOURCES.clear()
+    _GUARDED.clear()
     _DIGEST_STAMP.clear()
     _DIGEST_VALUE.clear()
     _LISTING.clear()

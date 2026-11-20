@@ -25,19 +25,28 @@ const viewNames = {
   'percent-decoded': 'the text with percent-encoding decoded',
   'mime-headers-decoded': 'the decoded email headers',
   'decoded-utf16': 'the text decoded from UTF-16',
-  'ooxml-text': 'the joined text of an Office document',
+  'decoded-charset': 'the text decoded from the charset the page declares',
+  'ooxml-text': 'the joined text of an Office document, read as an XML parser hands it on',
+  'odf-text': 'the joined paragraphs of an OpenDocument file',
   'ooxml-cell': 'one spreadsheet cell with its rich-text runs rejoined',
+  'ooxml-header': 'one section of a spreadsheet page header or footer, codes removed',
   'ooxml-comment': 'one Office comment with its text runs rejoined',
   'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
   'pdf-hidden-text': 'PDF text a viewer does not paint (invisible mode, white, tiny, or off the page)',
   'pdf-annotation': 'one PDF annotation with its text string decoded',
+  'pdf-string': 'one PDF form value, document information string, or outline title, decoded',
+  'pdf-actual-text': 'one PDF marked-content ActualText string, decoded',
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
+  'html-hidden-text': 'HTML text a browser does not show (a hidden element, a comment, or a data attribute)',
+  'feed-text': 'one RSS or Atom text node or escaped HTML block with its markup removed',
+  'xml-text': 'one XML text node that a comment, CDATA section, or entity split, rejoined',
   'markdown-text': 'one Markdown paragraph with its inline markup removed',
   'notebook-text': 'one notebook cell with its lines rejoined',
+  'config-unescaped': 'one YAML or TOML string with its escapes decoded',
   'comment-text': 'consecutive source comment lines rejoined',
   'pdf-flate': 'an inflated PDF stream',
-  'pdf-text': 'one PDF text block, read through its font maps',
+  'pdf-text': 'one PDF text block, read through the encoding or map of its own font',
   'pdf-paragraph': 'a PDF paragraph rejoined across text blocks'
 };
 const sources = {
@@ -47,31 +56,48 @@ const sources = {
 };
 const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: 'xlsx_comment_override', policy: 'agent-ingest', channel: 'All', method: 'All' };
+const state = { example: 'vendor_feed_ranking', policy: 'agent-ingest', channel: 'All', method: 'All' };
 
 // How an attack was caught, read from its recorded agent-ingest findings: which view or check
-// produced a finding that the bytes as sent did not. Nothing here is labelled by hand.
+// produced a finding that the bytes as sent did not. Nothing here is labelled by hand. One PDF
+// text block is glyph ids decoded through a font map (encoded); a paragraph is blocks rejoined.
 const methodNames = {
   hidden: 'Hidden from the reader',
+  invisible: 'Invisible characters',
   folded: 'Disguised spelling',
   rebuilt: 'Split across formatting',
   decoded: 'Encoded',
-  container: 'Inside an archive',
+  container: 'Inside an archive or message',
   structure: 'File structure',
   pattern: 'Plain pattern'
 };
-const rebuiltViews = new Set(['ooxml-text', 'ooxml-cell', 'ooxml-comment', 'html-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-text', 'pdf-paragraph', 'rtf-text']);
+// What each technique is and what the gate reads to see through it. The counts beside these
+// lines on the page are computed from the recordings; only the wording is fixed here.
+const methodDetail = {
+  hidden: 'Text a viewer does not paint (invisible PDF text, hidden Word runs, white text on its own white background, a data attribute), and an order to conceal deep in a tool list. Hidden text is read on its own and reported only when an instruction is inside it.',
+  invisible: 'Characters that draw nothing: a run of zero-width characters or variation selectors that carries bytes. The joiners in Persian words and in a family emoji are ordinary and stay clean.',
+  folded: 'Look-alike letters, small capitals, digits for letters, spaced-out words, terminal escapes. The text is folded to its plain spelling before the rules read it.',
+  rebuilt: 'One sentence broken across formatting runs within a paragraph or cell, comments, spans, or PDF text blocks, by markup an XML parser drops, or kept on a slide master instead of a slide. The pieces are rejoined the way a reader shows them.',
+  decoded: 'Base64, HTML character references, PDF text in a font\'s own encoding or through its glyph map, and string escapes. Each is decoded in a bounded view and read by itself.',
+  container: 'Content inside an archive member or one part of an email, read once the part is decoded from its transfer encoding, including a second archive glued after the first.',
+  structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
+  pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
+};
+const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-header', 'ooxml-comment', 'html-text', 'feed-text', 'xml-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
   const findings = item.results['agent-ingest'].findings;
   const tags = new Set();
   // A rule that already matched the bytes as sent needed no derived view.
   const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+  // A folded view that matched only what its unfolded view already matched needed no folding.
+  const unfolded = new Set(findings.filter((finding) => !finding.view.endsWith(folded)).map((finding) => finding.rule_id + ' ' + finding.view));
   for (const finding of findings) {
     const base = finding.view.endsWith(folded) ? finding.view.slice(0, -folded.length) : finding.view;
     if (finding.view.includes('hidden') || finding.rule_id.includes('hidden')) tags.add('hidden');
+    else if (/invisible|variation_selector|unicode_tag/.test(finding.rule_id)) tags.add('invisible');
     else if (finding.source !== 'yara') tags.add('structure');
     else if (!plain.has(finding.rule_id)) {
-      if (finding.view !== base || base === 'text-folded') tags.add('folded');
+      if (base === 'text-folded' || (finding.view !== base && !unfolded.has(finding.rule_id + ' ' + base))) tags.add('folded');
       if (rebuiltViews.has(base)) tags.add('rebuilt');
       else if (base !== 'text-folded') tags.add('decoded');
     }
@@ -83,6 +109,21 @@ function methodsOf(item) {
 
 // Fictional context only. Decisions always come from the selected fixture's recording.
 const stories = [
+  { id: 'vendor_feed_ranking', label: 'Vendor comparison', title: 'Compare vendors for a support contract',
+    brief: 'A procurement assistant compares response commitments and renewal terms before making a shortlist. Both feeds say Northbridge offers a four-hour support response and renews in February. Check what each version tries to add to the evaluation.',
+    sender: 'northbridge.example.invalid · fictional RSS feed', task: 'Procurement · shortlist from published terms', file: 'vendor-updates.xml' },
+  { id: 'account_recovery', label: 'Account recovery', title: 'Review an account-recovery message',
+    brief: 'A support assistant receives a safety warning followed by a request to relay a code. Compare it with the same warning followed by a normal sign-in notice. No actual code or account exists.',
+    sender: 'Example support channel · synthetic message', task: 'Support · recovery intake', file: 'recovery.txt' },
+  { id: 'tool_handoff', label: 'Tool handoff', title: 'Read a ticket without obeying its tool instructions',
+    brief: 'A ticket tells an assistant to forward messages to a fictional archive address. Its twin warns against the very same action. The scanner checks the wording; it never calls an email tool.',
+    sender: 'helpdesk@example.invalid', task: 'Support · ticket triage', file: 'ticket.txt' },
+  { id: 'future_bypass', label: 'Project handoff', title: 'Review guidance for future sessions',
+    brief: 'A coding assistant reads a project handoff that asks it to remember an approval bypass. Compare the near-identical guidance that says never to skip approval. Neither example changes agent memory or settings.',
+    sender: 'Example project · synthetic handoff', task: 'Engineering · guidance review', file: 'guidance.md' },
+  { id: 'json_depth', label: 'Inspection limit', title: 'Hold a tool document that cannot be fully inspected',
+    brief: 'An ordinary synthetic description is wrapped with 65 nested arrays. The JSON reader stops before allocating the full tree. No attack finding is needed for an incomplete scan to hold access; there is no paired attack here.',
+    sender: 'Example tool catalog · synthetic document', task: 'Platform · completeness check', file: 'tools.json' },
   { id: 'xlsx_comment_override', label: 'Supplier review', title: 'Summarize a supplier workbook',
     brief: 'The procurement assistant is asked to summarize review comments. One comment hides an override across formatting runs; its twin discusses quarterly totals.',
     sender: 'supplier@example.invalid', task: 'Procurement · review comments', file: 'review.xlsx' },
@@ -103,7 +144,28 @@ const stories = [
     sender: 'Example tool server · simulated response', task: 'Platform · tool review', file: 'tools.json' },
   { id: 'pdf_invisible_override', label: 'Invoice intake', title: 'Read a supplier invoice',
     brief: 'A finance assistant reads a PDF invoice. One line is drawn as invisible text and carries an instruction; the twin carries an ordinary invisible text layer, as a scanned page does.',
-    sender: 'billing@example.invalid', task: 'Finance · invoice intake', file: 'invoice.pdf' }
+    sender: 'billing@example.invalid', task: 'Finance · invoice intake', file: 'invoice.pdf' },
+  { id: 'merged_pdf_override', label: 'Contract bundle', title: 'Review a merged contract bundle',
+    brief: 'A legal assistant reads eight signed documents merged into one PDF, each keeping its own font named F1. The last page spells an override through its own font; the twin ends with an ordinary signature page and is read clean.',
+    sender: 'contracts@example.invalid', task: 'Legal · contract review', file: 'bundle.pdf' },
+  { id: 'html_white_override', label: 'Web research', title: 'Summarize a vendor web page',
+    brief: 'A browsing agent loads a vendor update. One paragraph is white on its own white background and tells the agent to approve invoices; the twin hides an ordinary footer line the same way.',
+    sender: 'Example vendor portal · simulated page load', task: 'Research · page summary', file: 'update.html' },
+  { id: 'svg_diagram_frame', label: 'Diagram review', title: 'Describe an architecture diagram',
+    brief: 'An assistant is asked to describe a diagram attached to a ticket. One label is not text but a frame that would load another site inside the image; the twin is the same diagram with text labels, as diagram tools export it.',
+    sender: 'architect@example.invalid', task: 'Engineering · diagram review', file: 'diagram.svg' },
+  { id: 'zero_width_run', label: 'Chat intake', title: 'Read a message from a shared channel',
+    brief: 'A support assistant reads a one-line message. Forty zero-width characters sit after one word and carry a hidden payload; the twin is a Persian message with a family emoji, where the same characters are ordinary.',
+    sender: 'Example chat · simulated message', task: 'Support · message intake', file: 'message.txt' },
+  { id: 'odt_span_override', label: 'Proposal review', title: 'Summarize a vendor proposal',
+    brief: 'A procurement assistant summarizes a proposal saved from LibreOffice. One word of an override sentence is bold, which stores it in a span and splits the sentence in the file; the twin has the same bold word in an ordinary revision note.',
+    sender: 'vendor@example.invalid', task: 'Procurement · proposal summary', file: 'review.odt' },
+  { id: 'mail_relayed_override', label: 'Inbox triage', title: 'Summarize a forwarded email',
+    brief: 'An email assistant reads a supplier message that crossed twelve relays. Its headers run past the first 8 KiB, and the body is quoted-printable, with a soft line break inside one word of an override; the twin carries an ordinary revision note the same way.',
+    sender: 'supplier@example.com', task: 'Finance · inbox triage', file: 'totals.eml' },
+  { id: 'xlsx_sdk_prefix_override', label: 'Data export', title: 'Summarize an exported workbook',
+    brief: 'An analytics assistant summarizes a workbook that a reporting service wrote with the Open XML SDK, so every element carries the prefix x:. One cell is an override in two rich-text runs; the twin cell is an ordinary revision note.',
+    sender: 'reports@example.invalid', task: 'Analytics · export summary', file: 'totals.xlsx' }
 ];
 
 function storyButtons() {
@@ -114,6 +176,7 @@ function storyButtons() {
     button.addEventListener('click', () => {
       state.policy = 'agent-ingest';
       select(story.id, false);
+      $('story-title').focus();
     });
   }
 }
@@ -149,12 +212,20 @@ function viewName(view) {
   if (view.endsWith(folded)) return viewName(view.slice(0, -folded.length)) + ', then folded for look-alikes and digits';
   return viewNames[view] || 'the ' + view + ' view';
 }
+const memberKinds = {
+  zip: ['archive member', "the member's own bytes"],
+  mime: ['message part', 'the part as a mail reader decodes it'],
+  other: ['member', "the member's own bytes"]
+};
 function where(finding) {
-  const member = finding.member_path.length
-    ? 'inside archive member ' + finding.member_path.map((step) => Number(step.split(':')[1]) + 1).join(' → ')
+  // Each step is the kind of container and the member's ordinal in it, such as zip:1 or mime:0.
+  const steps = finding.member_path.map((step) => step.split(':'));
+  const last = steps.length ? memberKinds[steps[steps.length - 1][0]] || memberKinds.other : null;
+  const member = steps.length
+    ? 'inside ' + last[0] + ' ' + steps.map(([, index]) => Number(index) + 1).join(' → ')
     : 'in the outer input';
   const offset = finding.offset === null ? '' : ' at offset ' + finding.offset + ' (length ' + finding.length + ')';
-  const view = finding.member_path.length && finding.view === 'raw' ? "the member's own bytes" : viewName(finding.view);
+  const view = steps.length && finding.view === 'raw' ? last[1] : viewName(finding.view);
   return member + ', ' + view + offset;
 }
 function chip(parent, verdict, label) {
@@ -220,6 +291,57 @@ function renderStrip() {
   $('evidence-policy').textContent = policy;
   $('evidence-summary').textContent = 'Under ' + policy + ': ' + held + ' of ' + pairs + ' attacks held, ' + clean + ' of ' + pairs + ' benign twins clean.'
     + (rest ? ' The other ' + rest + ' attack' + (rest === 1 ? ' is' : 's are') + ' reported with findings and exit 0' + (policy === 'agent-document' ? ', because a retrieved document may quote an override phrase.' : ', because this policy is for manual inspection.') : '');
+}
+
+// One card per technique, counted from the recordings: the attacks it caught, whether
+// agent-ingest held them, and whether their twins were clean with no findings under every policy.
+function depth() {
+  const attacks = recording.cases.filter((item) => item.kind === 'detection');
+  let used = 0;
+  for (const key of Object.keys(methodNames)) {
+    const caught = attacks.filter((item) => methodsOf(item).includes(key));
+    if (!caught.length) continue;
+    used += 1;
+    const twins = caught.map((item) => byId.get(item.pair));
+    const held = caught.filter((item) => item.results['agent-ingest'].verdict === 'block').length;
+    const clean = twins.filter((item) => policies.every((policy) => item.results[policy].verdict === 'clean' && !item.results[policy].findings.length)).length;
+    // The views that found what the bytes as sent did not: a rule that already matched the
+    // original bytes, or a view before folding, is not counted again for its folded copy.
+    const views = new Set();
+    for (const item of caught) {
+      const findings = item.results['agent-ingest'].findings;
+      const plain = new Set(findings.filter((finding) => finding.view === 'raw').map((finding) => finding.rule_id));
+      const unfolded = new Set(findings.filter((finding) => !finding.view.endsWith(folded)).map((finding) => finding.rule_id + ' ' + finding.view));
+      for (const finding of findings) {
+        if (finding.view === 'raw' || plain.has(finding.rule_id)) continue;
+        if (finding.view.endsWith(folded) && unfolded.has(finding.rule_id + ' ' + finding.view.slice(0, -folded.length))) continue;
+        views.add(finding.view);
+      }
+    }
+    const card = text($('depth'), 'button', '', 'depth-card');
+    card.type = 'button';
+    card.dataset.method = key;
+    text(card, 'span', methodNames[key], 'depth-name');
+    text(card, 'span', held + ' of ' + caught.length + ' attack' + (caught.length === 1 ? '' : 's') + ' held · ' + clean + ' of ' + twins.length + ' twin' + (twins.length === 1 ? '' : 's') + ' clean', 'depth-count');
+    const marks = text(card, 'span', '', 'mini');
+    marks.setAttribute('aria-hidden', 'true');
+    for (const row of [caught, twins]) {
+      const line = text(marks, 'span', '', 'mini-row');
+      for (const item of row) text(line, 'span', '', 'mark ' + item.results['agent-ingest'].verdict);
+    }
+    text(card, 'span', methodDetail[key], 'depth-text');
+    text(card, 'span', views.size ? 'Read through: ' + Array.from(views).sort().join(', ') : key === 'container' ? 'Read in each archive member or decoded message part' : 'Read in the original bytes', 'depth-views');
+    card.addEventListener('click', () => {
+      state.channel = 'All';
+      state.method = key;
+      applyFilter();
+      $('catalog').open = true;
+      $('catalog').scrollIntoView();
+      $('gallery-count').focus();
+    });
+  }
+  const twinFindings = attacks.reduce((sum, item) => sum + policies.reduce((count, policy) => count + byId.get(item.pair).results[policy].findings.length, 0), 0);
+  $('depth-summary').textContent = attacks.length + ' attacks, caught ' + used + ' ways. Their ' + attacks.length + ' benign twins were recorded under ' + policies.length + ' policies each: ' + twinFindings + ' findings in ' + attacks.length * policies.length + ' recordings.';
 }
 
 function caseButton(parent, item) {
@@ -307,11 +429,12 @@ function twinColumn(parent, item, policy, isSelected) {
   const column = text(parent, 'div', '', 'twin-col ' + item.kind + (isSelected ? ' current' : ''));
   text(column, 'span', kindTag[item.kind], 'tag');
   text(column, 'strong', item.title);
+  text(column, 'p', item.description, 'help');
   const line = text(column, 'p', '');
   chip(line, result.verdict, policy);
   text(line, 'span', ' exit ' + result.exit_code);
   text(column, 'p', result.findings.length
-    ? result.findings.map((finding) => finding.rule_id).join(', ')
+    ? Array.from(new Set(result.findings.map((finding) => finding.rule_id))).join(', ')
     : 'No findings', 'help');
 }
 
@@ -407,7 +530,14 @@ function render() {
 
 scoreboard();
 strip();
+depth();
 storyButtons();
+for (const button of document.querySelectorAll('.seen-open')) {
+  button.addEventListener('click', () => {
+    state.policy = 'agent-ingest';
+    select(button.dataset.example, true);
+  });
+}
 gallery();
 galleryFilters();
 policyButtons();

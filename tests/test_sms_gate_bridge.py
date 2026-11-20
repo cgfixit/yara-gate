@@ -44,11 +44,12 @@ def test_an_existing_queue_is_narrowed_and_keeps_its_entries(tmp_path: Path) -> 
     gate = bridge.Gate(queue, None)
     try:
         for name in bridge.QUEUE_FILES:
-            gate._append(name, {"later": 2})
+            assert gate._commit(name, {"message_sid": "", "later": 2})
+            gate._commit()
             assert _mode(queue / name) == 0o600
             assert (queue / name).read_text(encoding="utf-8").splitlines() == [
                 '{"earlier": 1}',
-                '{"later": 2}',
+                '{"message_sid": "", "later": 2}',
             ]
         assert _mode(queue) == 0o700
     finally:
@@ -113,11 +114,12 @@ def test_macos_acl_grants_are_removed(tmp_path: Path, inherited: bool) -> None:
             path = queue / name
             # A replacement/rotated queue must be secured on append as well as at startup.
             subprocess.run(["/bin/chmod", "+a", "everyone allow read", str(path)], check=True)
-            gate._append(name, {"later": 2})
+            assert gate._commit(name, {"message_sid": "", "later": 2})
+            gate._commit()
             assert " allow " not in subprocess.check_output(
                 ["/bin/ls", "-lde", str(path)], text=True
             )
-            assert path.read_bytes() == b'{"earlier": 1}\n{"later": 2}\n'
+            assert path.read_bytes() == b'{"earlier": 1}\n{"message_sid": "", "later": 2}\n'
     finally:
         os.close(gate.dir_fd)
 
@@ -144,7 +146,7 @@ def test_acl_failure_refuses_startup_and_append(
             path = queue / name
             path.write_bytes(b'{"earlier": 1}\n')
             with pytest.raises(OSError, match="queue ACL"):
-                gate._append(name, {"later": 2})
+                gate._commit(name, {"message_sid": "", "later": 2})
             assert path.read_bytes() == b'{"earlier": 1}\n'
     finally:
         os.close(gate.dir_fd)
@@ -164,3 +166,34 @@ def test_each_message_sid_is_processed_once(tmp_path: Path, rules_copy: Path) ->
     # Without an ID a replay cannot be told apart, so the message is held.
     unnamed = {key: value for key, value in fields.items() if key != "MessageSid"}
     assert bridge.Gate(queue, rules_copy).decide(unnamed) == "held"
+
+
+@pytest.mark.parametrize("write_fraction", [0, 1, 2])
+def test_sms_restart_finishes_a_pending_jsonl_write(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch, write_fraction: int
+) -> None:
+    queue = tmp_path / "queue"
+    fields = {"MessageSid": "SM2", "From": "+15550100", "Body": "See you at 6."}
+    gate = bridge.Gate(queue, rules_copy)
+
+    def interrupt(name: str, device: int, inode: int, offset: int, payload: bytes) -> None:
+        with (queue / name).open("ab") as handle:
+            handle.write(payload[: len(payload) * write_fraction // 2])
+        raise OSError("interrupted queue write")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(gate, "_finish_write", interrupt)
+        with pytest.raises(OSError, match="interrupted queue write"):
+            gate.decide(fields)
+    gate.db.close()
+    os.close(gate.dir_fd)
+
+    resumed = bridge.Gate(queue, rules_copy)
+    try:
+        assert resumed.decide(fields) == "duplicate"
+        lines = (queue / "allowed.jsonl").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1 and '"SM2"' in lines[0]
+        assert resumed.db.execute("SELECT count(*) FROM pending").fetchone() == (0,)
+    finally:
+        resumed.db.close()
+        os.close(resumed.dir_fd)

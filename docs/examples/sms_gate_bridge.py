@@ -12,15 +12,13 @@ Twilio POSTs each inbound message to this server. The bridge:
    seen whole;
 4. appends a message to ``allowed.jsonl`` only when both scans are complete ``clean`` records
    for these exact bytes, and everything else to ``held.jsonl`` with the rule IDs for review;
-5. deduplicates committed ``MessageSid`` values. A signature proves origin but a signed
-   request can be replayed. The bridge reserves the ID in ``processed.sqlite3``, appends
-   the queue line, then commits the reservation. A committed duplicate is acknowledged
-   without scanning. An overlapping uncommitted delivery gets HTTP 503 so it can retry.
-   A message without a ``MessageSid`` is held.
+5. records each ``MessageSid`` and its pending JSONL write together in ``processed.sqlite3``.
+   A restart or retry finishes a pending write at its recorded offset before acknowledging
+   the delivery. A committed duplicate is acknowledged without scanning. An overlapping
+   delivery or a storage failure gets HTTP 503. A message without a ``MessageSid`` is held.
 
-A crash between the queue append and the commit can still write one line twice, so the agent
-side must also skip a ``message_sid`` it has already consumed: no transport check gives
-exactly-once delivery.
+The agent should still skip a ``message_sid`` it has already consumed when it restarts or
+replays a queue. Do not rotate or edit a queue while the bridge has a pending write.
 
 It answers Twilio with an empty TwiML response: no automatic reply, nothing echoed back. The
 agent side reads ``allowed.jsonl`` and must still fence each body as untrusted data and keep
@@ -136,21 +134,31 @@ class Gate:
             self.db = sqlite3.connect(
                 queue / PROCESSED, isolation_level=None, check_same_thread=False
             )
+            self.db.execute("PRAGMA secure_delete = ON")
             self.db.execute(
                 "CREATE TABLE IF NOT EXISTS processed"
                 " (message_sid TEXT PRIMARY KEY, outcome TEXT NOT NULL, received_at INTEGER)"
             )
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS pending ("
+                "id INTEGER PRIMARY KEY CHECK (id = 1), queue TEXT NOT NULL,"
+                " device INTEGER NOT NULL, inode INTEGER NOT NULL,"
+                " offset INTEGER NOT NULL, payload BLOB NOT NULL)"
+            )
+            self.db_lock = threading.Lock()
+            self._commit()
         except BaseException:
+            if hasattr(self, "db"):
+                self.db.close()
             os.close(self.dir_fd)
             raise
-        self.db_lock = threading.Lock()
         self.in_flight: set[str] = set()
 
     def _open(self, name: str) -> int:
-        """Open a queue file to append: ours, regular, one link, mode 0600, contents kept."""
+        """Open an owner-only regular file with one link without following a link."""
         path = self.queue / name
         # O_NONBLOCK keeps a FIFO left in the queue from blocking the open.
-        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
+        flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
         fd = os.open(name, flags, 0o600, dir_fd=self.dir_fd)
         try:
             info = os.fstat(fd)
@@ -163,37 +171,71 @@ class Gate:
             raise
         return fd
 
-    def _append(self, name: str, entry: dict[str, Any]) -> None:
-        fd = self._open(name)
-        with os.fdopen(fd, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
     def _seen(self, sid: str) -> bool:
         with self.db_lock:
             row = self.db.execute("SELECT 1 FROM processed WHERE message_sid = ?", (sid,))
             return row.fetchone() is not None
 
-    def _commit(self, name: str, entry: dict[str, Any]) -> bool:
-        """Reserve the ID, append the line, and commit the ID. False if already recorded."""
+    def _commit(self, name: str | None = None, entry: dict[str, Any] | None = None) -> bool:
+        """Replay a queued write, then optionally commit the next delivery and its bytes."""
         with self.db_lock:
             self.db.execute("BEGIN IMMEDIATE")
             try:
-                self.db.execute(
-                    "INSERT INTO processed VALUES (?, ?, ?)",
-                    (entry["message_sid"], name, entry["received_at"]),
-                )
-                self._append(name, entry)
+                pending = self.db.execute(
+                    "SELECT queue, device, inode, offset, payload FROM pending"
+                ).fetchone()
+                if pending is not None:
+                    self._finish_write(*pending)
+                    self.db.execute("DELETE FROM pending")
+                accepted = True
+                if name is not None and entry is not None:
+                    sid = entry["message_sid"]
+                    if sid:
+                        cursor = self.db.execute(
+                            "INSERT OR IGNORE INTO processed VALUES (?, ?, ?)",
+                            (sid, name, entry["received_at"]),
+                        )
+                        accepted = cursor.rowcount == 1
+                    if accepted:
+                        fd = self._open(name)
+                        try:
+                            info = os.fstat(fd)
+                        finally:
+                            os.close(fd)
+                        payload = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
+                        self.db.execute(
+                            "INSERT INTO pending VALUES (1, ?, ?, ?, ?, ?)",
+                            (name, info.st_dev, info.st_ino, info.st_size, payload),
+                        )
                 self.db.execute("COMMIT")
-            except sqlite3.IntegrityError:
-                self.db.execute("ROLLBACK")
-                return False
             except BaseException:
                 if self.db.in_transaction:
                     self.db.execute("ROLLBACK")
                 raise
-            return True
+            return accepted
+
+    def _finish_write(
+        self, name: str, device: int, inode: int, offset: int, payload: bytes
+    ) -> None:
+        if name not in QUEUE_FILES:
+            raise ValueError("invalid pending queue name")
+        with os.fdopen(self._open(name), "r+b") as handle:
+            info = os.fstat(handle.fileno())
+            if (info.st_dev, info.st_ino) != (device, inode):
+                raise OSError("queue file changed during a pending write")
+            end = handle.seek(0, os.SEEK_END)
+            if not offset <= end <= offset + len(payload):
+                raise OSError("queue size changed during a pending write")
+            handle.seek(offset)
+            written = handle.read(end - offset)
+            if not payload.startswith(written):
+                raise OSError("queue bytes changed during a pending write")
+            handle.write(payload[len(written) :])
+            handle.flush()
+            os.fsync(handle.fileno())
 
     def decide(self, fields: dict[str, str]) -> str:
+        self._commit()
         sid = fields.get("MessageSid", "")
         if sid:
             with self.lock:
@@ -256,10 +298,9 @@ class Gate:
         outcome = "held" if reasons else "allowed"
         if reasons:
             entry["held_because"] = reasons
-        if not sid:
-            self._append("held.jsonl", entry)
-            return outcome
-        return outcome if self._commit(f"{outcome}.jsonl", entry) else "duplicate"
+        accepted = self._commit(f"{outcome}.jsonl", entry)
+        self._commit()
+        return outcome if accepted else "duplicate"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -295,7 +336,10 @@ class Handler(BaseHTTPRequestHandler):
         if len(fields) != len(pairs):
             self._reply(400, b"")  # A repeated field is not something Twilio sends.
             return
-        outcome = self.server.gate.decide(fields)
+        try:
+            outcome = self.server.gate.decide(fields)
+        except (OSError, sqlite3.Error):
+            outcome = "retry"
         print(f"{fields.get('MessageSid', '?')}: {outcome}", flush=True)
         if outcome == "retry":
             self._reply(503, b"")
@@ -334,7 +378,7 @@ def main() -> None:
         raise SystemExit("refusing: --public-url must be the https URL Twilio signs")
     try:
         gate = Gate(args.queue.expanduser(), args.rules)
-    except OSError as exc:
+    except (OSError, sqlite3.Error) as exc:
         raise SystemExit(f"refusing to use the queue: {exc}") from None
     bridge = Bridge(args.port, args.public_url, token, gate)
     print(f"listening on 127.0.0.1:{bridge.server_address[1]} for {args.public_url}", flush=True)

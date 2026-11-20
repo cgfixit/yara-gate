@@ -1,9 +1,13 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 31 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 96 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
-of bundled local rules. The CI step runs on Ubuntu 24.04 and macOS 15, after the
-detection-gap probe. It has a five-minute job-step limit.
+of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
+2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
+2026: a slow hosted runner had stopped the step while every scan was still under its
+ceiling, four times on record ([diagnosis](2026-11-14-macos-timing-flake.md), option 4).
+The step limit does not bound a slow input; the 10-second ceiling and the 20-second
+worker watchdog below do, and neither changed.
 
 ```sh
 uv run python docs/verification/check_worst_case_timing.py
@@ -31,10 +35,22 @@ unclosed `beginbfchar` markers; and one `bfrange` section of `[` tokens, which
 must end `pdf cmap tokens exceed 1572864`
 ([record](2026-11-07-cmap-entry-budget.md)). An HTML page just under the SVG scope
 test's 1,024-match cap runs every scope loop to its end, and a PDF of 64 fonts
-under one resource name covers the per-string font readings. A PDF whose one
-cross-reference table lists 99,000 objects, 1,000 of them empty landed streams, covers
-the offset lookup among stream spans, and a file of `startxref` pointers must end
-`pdf xref malformed` at the 33rd ([record](2026-11-10-pdf-linearized-xref.md)). The RTF reader now rejects the unclosed nesting
+under one resource name covers the per-string font readings. A PDF that defines one
+font object until the file is full, over a ToUnicode map defined 1,900 times, covers the
+font-definition caps ([record](2026-11-10-pdf-font-definitions.md)). Six inputs cover the
+Office XML and OpenDocument readers ([record](2026-11-11-office-xml-readers.md)): a comment
+inside one Word run until the part is full, a run tag whose quoted value never closes (which
+ran past 100 s before the run pattern was bounded), an internal entity referenced until it
+must end `xml entity expansion exceeds 1MB`, OpenDocument paragraphs each joined across a
+span, one paragraph of elements readers treat differently, and paragraphs that never close,
+which must end `odf paragraph nesting exceeds 64`. Two inputs repeat text that a rule condition once
+paired with every match: a code-relay refusal ([#270](2026-11-16-code-relay-timing.md)) and
+the shortest quotation of an override, `the phrase ignore the above`
+([#274](2026-11-17-phrase-doc-exemption.md), 10.7 to 15 s on the base). Both must be clean.
+The base is close enough to the ceiling that a faster runner could pass it, so the quotation
+input also fails when its 4 MiB scan takes more than 8 times its first MiB (`SCALING`,
+[#283](https://github.com/cgfixit/yara-gate/issues/283)). That ratio does not depend on the
+runner's speed: 4.0 on `7143d93`, 16.9 to 18.2 for the old count. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
@@ -83,3 +99,63 @@ respective reader-view counters, so bypassing a reader cannot produce a passing
 fast scan. All 16 completed under the same ceilings locally. Three focused
 regressions cover the scan ceiling, actual worker termination, and rejection of
 a missing required reader. The 13-row table above preserves the original run.
+
+## Reader boundaries, 2026-11-12
+
+Thirty inputs were added with the [reader boundaries](2026-11-12-reader-boundaries.md)
+change, each a shape a reviewer used to reach the 30 s deadline or the nearest one to it:
+six for a PDF font's own dictionary (thousands of fonts with repeated `/ToUnicode` keys, a
+font defined 64 times with keys of its own, `/Subtype` and `/Encoding` 24,000 times each,
+dictionaries that fill the 4 KB window, ones only the lenient lexer reads, and a name that
+means 64 fonts), thirteen for the Office readers (an unusual part name whose root tag never
+closes, a long name run in a root tag, every element under another prefix, a namespace
+declared on every run, DOCTYPE namespace defaults, two vocabularies in one part, nothing but
+`<a:br/>`, padded end tags, megabytes of attribute), and eleven for mail (a header block
+with no blank line, folded lines, a comment that never closes, nested one-body messages, a
+quoted parameter, and a body or part declared `charset=punycode`). All 72 passed on Linux
+x86_64, Python 3.12.3; the slowest new input took 5.9 s (`mail-nested-charset.eml`,
+`pdf-font-readings-winansi.pdf`) and the slowest overall 6.3 s (`pdf-page-fonts.pdf`).
+`mail-punycode-part.eml` must end `archive unreadable or encrypted`; on the base revision
+the same bytes ran 136 s.
+
+## November 13, 2026: PDF page content as one stream, and JSON with comments
+
+Four inputs were added with the [PDF streams and JSON with comments](2026-11-13-pdf-streams-and-jsonc.md)
+change: a `.json` file of unclosed `/*` (0.44 s), a page whose `/Contents` array names 400
+streams joined into one (3.4 s), a binary page content stream named by a page (0.44 s), and
+4 MiB of `/Contents[` after a binary content stream (2.8 s), which drives the pattern that
+collects `/Contents` references. The first form of that pattern made the existing
+`pdf-contents-arrays.pdf` take 10.2 s; it now takes 2.9 s. All 76 passed on Linux x86_64,
+Python 3.12.3; the slowest overall took 5.0 s (`pdf-page-fonts.pdf`).
+
+## November 14, 2026: escapes in YAML and TOML strings
+
+Two inputs were added with the [CJK CMaps and config escapes](2026-11-14-cjk-cmaps-and-config-escapes.md)
+change: 4 MiB of short escaped YAML strings, one piece each, which ends at the piece cap
+(`text pieces exceed 100000`, 1.1 s), and 4 MiB of apostrophes and `#` signs that open
+nothing (0.89 s). The first form of the reader looked for a line feed past each apostrophe
+to the end of the file and took 28 s on the second; it now looks only up to the closing
+quote. All 78 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
+(`pdf-page-fonts.pdf`, 6.3 to 6.5 s on `main` as well).
+
+The scalar-boundary follow-up uses a valid YAML sequence for the first input. On macOS
+arm64, Python 3.12.13, and PyYAML 6.0.3, that input hit the piece cap in 0.61 s. The
+plain-scalar input stayed clean in 0.30 s.
+
+## November 14, 2026: PDF word gaps, LZW, and RunLength
+
+Three inputs were added with the [PDF word gaps and filters](2026-11-14-pdf-word-gaps-and-filters.md)
+change: short `TJ` arrays whose words a -150 gap separates (3.0 s, 2.8 s on `main`), LZW codes
+at the decoder's 2 MiB cap (0.90 s), and one-byte RunLength literal runs (0.59 s). All 81
+passed on Linux x86_64, Python 3.12.3; the slowest took 5.7 s (`pdf-page-fonts.pdf`), and the
+scans summed 150 s. The inputs are built without running an encoder, so `cases()` stays cheap
+in every worker.
+
+## November 14, 2026: PDF text strings
+
+One input was added with the [PDF text strings](2026-11-14-pdf-text-strings.md) change:
+`pdf-string-titles.pdf`, 4 MiB of `<</Title(a)>>`, the cheapest dictionary that yields a
+`pdf-string` piece. It stops at the 100,000-piece cap (`text pieces exceed 100000`) in 2.1 s.
+All 82 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
+(`pdf-font-readings-winansi.pdf`), and the scans summed 169 s on a slower container than the
+entry above.

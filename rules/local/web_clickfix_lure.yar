@@ -27,4 +27,12 @@ rule web_clickfix_lure {
             ($paste in (@clipboard[i] - 4096..@clipboard[i] + 4096) or
              $paste_symbol in (@clipboard[i] - 4096..@clipboard[i] + 4096))
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#clipboard >= 1000000 or #lure >= 1000000 or #run >= 1000000 or #paste >= 1000000 or #paste_symbol >= 1000000)
+            and $clipboard and $lure and $run and ($paste or $paste_symbol)
+        )
 }

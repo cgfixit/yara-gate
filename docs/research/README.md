@@ -1,6 +1,6 @@
 # Research notes and probes
 
-Start with the [detection backlog](detection-backlog.md). It is the one living page: open
+Start with the [detection backlog](detection-backlog.md). It is the living page for detection: open
 candidates with their evidence and false-positive class, ideas that were weighed and turned
 down, and the checks a rule change has to pass. Everything else here is either a dated
 record, a data file a probe reads, or a script.
@@ -14,6 +14,7 @@ revision; it is a lead to reproduce on the current tree, not a description of it
 | Page | Use it for |
 | --- | --- |
 | [detection-backlog.md](detection-backlog.md) | What to build next, what not to build and why, and how to keep tokens, settings keys, the engine, and vendor pins current |
+| [shadow-evaluation-protocol.md](shadow-evaluation-protocol.md) | How a consumer measures the gate on its own traffic before enforcing it: conditions, pilot size, budgets, and which metric `yara-gate replay` records. Frozen; the pilot is tracked in [#294](https://github.com/cgfixit/yara-gate/issues/294). Changes are dated in the page |
 
 ## Dated records
 
@@ -23,7 +24,7 @@ November 10, 2026; a status line at the top of each says so where it applies.
 | Record | Revision | What it holds | Status |
 | --- | --- | --- | --- |
 | [2026-11-07-detection-primary-sources.md](2026-11-07-detection-primary-sources.md) | `05f94ca` | Six directions from primary sources: reader handoff, hidden-text calibration, visual input, action authorization, adaptive evaluation, execution boundaries | Directions 1, 3, 4, and 6 are integration and deployment work and stay open there; 2 and 5 are in the backlog |
-| [detection-roadmap-2026-10-30.md](detection-roadmap-2026-10-30.md) | October 30 batch | Techniques delivered that day and six candidates | Hidden Office and PDF text, the note tier, the `.pth` rule, and the MSBuild and INF rules shipped. Reviewed release ([#39](https://github.com/cgfixit/yara-gate/issues/39)) is open. ClickOnce and `node -e` are in the backlog's not-planned list |
+| [detection-roadmap-2026-10-30.md](detection-roadmap-2026-10-30.md) | October 30 batch | Techniques delivered that day and six candidates | Hidden Office and PDF text, the note tier, the `.pth` rule, and the MSBuild and INF rules shipped. Reviewed release ([#39](https://github.com/cgfixit/yara-gate/issues/39)) shipped for complete `agent-document` holds; use the [current release contract](../integrations.md#reviewed-document-releases), not the original proposal's `agent-ingest` policy. ClickOnce and `node -e` are in the backlog's not-planned list |
 | [optimization-plan-2026-10-25.md](optimization-plan-2026-10-25.md) | `7156e5a` | Reproduced leads, dropped leads, and eight pull requests of one optimization pass | Closed. The dropped leads explain several not-planned entries |
 | [external-content-gating-2026-10-23.md](external-content-gating-2026-10-23.md) | `30d7126` | Where to place the gate in an agent or an ordinary application, the byte-identity contract, and what detection cannot authorize | Current as design guidance; the contract itself is in [integrations](../integrations.md) |
 | [attachment-signatures.md](attachment-signatures.md) | `2e8c85a` | Attachment formats added on October 13, their collision controls, and formats deferred | Shipped. Deferred formats are a lead for new attachment rules |
@@ -36,8 +37,10 @@ finding was fixed in [#191](https://github.com/cgfixit/yara-gate/pull/191), its 
 findings in [#190](https://github.com/cgfixit/yara-gate/pull/190), and the reader gaps it
 listed in [#182](https://github.com/cgfixit/yara-gate/pull/182),
 [#186](https://github.com/cgfixit/yara-gate/pull/186), and
-[#187](https://github.com/cgfixit/yara-gate/pull/187). Evidence for a shipped change goes
-under [`docs/verification/`](../verification/), not here.
+[#187](https://github.com/cgfixit/yara-gate/pull/187). For present-day queue and admission behavior, see [held items](../integrations.md#listing-held-items)
+and [revalidation](../integrations.md#revalidating-admitted-files). The dated
+readiness reviews describe the versions they evaluated. Evidence for a shipped
+change goes under [`docs/verification/`](../verification/), not here.
 
 ## Data the probes read
 
@@ -49,6 +52,7 @@ under [`docs/verification/`](../verification/), not here.
 | [windows-format-signatures.json](windows-format-signatures.json) | `probe_rule_coverage.py` | Windows script-host, shortcut-family, and document formats |
 | [rule-coverage-baseline.json](rule-coverage-baseline.json) | nothing; a record | The first probe run, October 8 |
 | [external-content-boundaries-2026-10-23.json](external-content-boundaries-2026-10-23.json) | nothing; a record | Observations behind the external-content note |
+| [html-hidden-probes.json](html-hidden-probes.json) | `probe_html_hidden_browser.py` | The style and markup vocabulary its random documents draw on, and 347 documents that each exercise one parser or CSS rule |
 
 A row may set `"encoding"` (for example `utf-16le`) or `"container"` (`zip` or `gzip`), so
 one text is checked raw, as UTF-16, and inside an archive. `expected` is the exact set of
@@ -60,8 +64,19 @@ the November 10 spellings.
 | Script | Run by CI | What it does |
 | --- | --- | --- |
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
-| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B1 to B6 are the backlog's open candidates |
+| [probe_detection_gaps.py](probe_detection_gaps.py) | Yes, `--verify` | Known gaps beside caught controls and benign boundaries. A case in `OPEN` must still miss; the run fails when one holds, so a fix removes its marker. B3 and B5 are the probe's open backlog cases; the rest of B8 is in the backlog, not the probe |
+| [probe_html_hidden_browser.py](probe_html_hidden_browser.py), [html_hidden_oracle.js](html_hidden_oracle.js) | No; needs Node, Playwright, and Chromium | Compares the HTML hidden-text reader with what a browser draws, text by text. Run it after any change to `htmlhidden.py`, and when a browser changes its parser. See the [record](../verification/2026-11-10-hidden-html-text.md) |
+| [probe_html_charset_browser.py](probe_html_charset_browser.py), [html_charset_oracle.js](html_charset_oracle.js) | No; needs Node, Playwright, and Chromium | Compares the charset the scanner reads a page that is not UTF-8 through (`content.declared_codec`) with the one Chromium decodes it with, on directed documents and on fuzzed head markup. Run it, with `fuzz`, before changing how a meta or an XML declaration is found or which labels are read. See the [record](../verification/2026-11-14-html-declared-charset.md) |
+| [svg_active_oracle.js](svg_active_oracle.js) | No; needs Node, Playwright, and Chromium | Checks in a browser that each scriptless SVG shape `doc_svg_active_link` reads runs or loads something, and that the `void(0)` target it exempts does not. Run it before changing what the rule reads. See the [record](../verification/2026-11-10-svg-links-and-invisible-runs.md) |
 | [probe_external_content.py](probe_external_content.py) | No | The boundary cases of the external-content note |
+| [probe_odf_reader_agreement.py](probe_odf_reader_agreement.py) | No; it needs LibreOffice or pandoc, which are not in the locked environment | Asks LibreOffice and pandoc whether each of 32 OpenDocument fixtures shows a sentence, and fails when one shows it and the `odf-text` view does not hold it. Run it before changing what `odftext.py` joins or leaves out. See the [record](../verification/2026-11-11-office-xml-readers.md) |
+| [probe_pdf_reader_agreement.py](probe_pdf_reader_agreement.py) | No; it needs PDF readers that are not in the locked environment | Runs pypdf, pdfminer.six, PDFium, MuPDF, poppler, and pdf.js on fixtures and on random spellings of a page beside a decoy page, and fails when a reader shows text the per-page font map narrowed away. Run it before changing what `pdfpages.py` accepts |
+| [probe_pdf_font_reader_agreement.py](probe_pdf_font_reader_agreement.py) | No; it needs the same PDF readers | Asks poppler, pdfminer.six, pypdf, and PDFium whether each of 107 font-dictionary fixtures shows a sentence, and fuzzes font spellings to find a file where the reading through a font's own dictionary holds less than the 4 KB window did and a reader shows the text. Run it, with `fuzz`, before changing how `pdftext.py` reads a font. Its `gap` rows are open backlog items. See the [record](../verification/2026-11-12-reader-boundaries.md) |
+| [probe_ooxml_reader_agreement.py](probe_ooxml_reader_agreement.py) | No; it needs LibreOffice and pandoc, python-docx, or python-pptx | Asks those readers whether each of 82 hand-written `.docx`, `.xlsx`, and `.pptx` fixtures shows a sentence: parts under other names, runs under other prefixes, line breaks, tag spellings. Fails when a reader shows it and no Office view holds it. Run it before changing what the Office readers in `content.py` join or how they choose a part |
+| [probe_match_cap.py](probe_match_cap.py) | Yes | Scans every bundled rule with and without a small match cap, on floods built from the rule pairs and on one written for each rule that places a match, and fails on a text a rule holds uncapped and clears capped. Run it after changing a condition that reads where a match lies. See the [record](../verification/2026-11-17-match-cap-rules.md) |
+| [probe_code_relay_refusals.py](probe_code_relay_refusals.py) | No | Compiles `agent_message_code_relay` and a copy with the request-by-refusal pairing #270 replaced, and fails on any random inert message where the two disagree (nested and repeated refusals, every request string). Run it after changing the rule's refusal or request strings. See the [record](../verification/2026-11-16-code-relay-linear.md) |
+| [probe_phrase_doc_exemption.py](probe_phrase_doc_exemption.py) | No | Compiles the documentary exemption of `agent_prompt_injection_phrases` beside the quotation counting #274 replaced, and fails on any random inert message where the two disagree (ASCII, UTF-16LE, and mixed parts; nested quotations; a UTF-16 order inside an ASCII quotation). Run it after changing the rule's order or quotation strings or the word lists they read. See the [record](../verification/2026-11-17-phrase-doc-exemption.md) |
+| [probe_mail_reader_agreement.py](probe_mail_reader_agreement.py) | No; it needs a second Python for the reference `email` package | Asks Python's `email` package under `policy.default` what each of 65 messages (and fuzzed ones with `--fuzz`) shows: long header blocks, one-body messages, transfer-encoding spellings. Run it before changing when a message is opened or how a part is decoded |
 | [probe_integration_readiness.py](probe_integration_readiness.py) | No | The consumer-contract checks of the [integration review](../reviews/2026-11-02-integration-readiness.md) |
 | [probe_pdf_readers.py](probe_pdf_readers.py) | No | Cross-reference shapes that reach an annotation inside a stream: the gate's verdict beside what pdf.js, PDFium, MuPDF, qpdf, and pypdf show, for whichever of them is installed. `--scan DIR` reports real files |
 | [benchmark_text_scan.py](benchmark_text_scan.py), [benchmark_scan_overhead.py](benchmark_scan_overhead.py) | No | Timings of 4 MiB text scans and of per-file overhead |

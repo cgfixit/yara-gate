@@ -70,7 +70,7 @@ def main(
 def scan(
     # Strings, not Paths: Path("./-") normalizes to "-" and would read stdin.
     paths: list[str] | None = typer.Argument(None, metavar="PATH..."),
-    home: Path = typer.Option(Path.home() / "YaraGate", "--home", help="Gate root."),
+    home: Path | None = typer.Option(None, "--home", help="Gate root (defaults to ~/YaraGate)."),
     timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
     rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
     policy: ScanPolicy = typer.Option(
@@ -106,13 +106,14 @@ def scan(
     Several paths are scanned in order, each exactly as a single path is. The exit code is
     the worst one seen (incomplete 2, then block 1); a missing path does not stop the rest.
     """
-    from yara_gate.quarantine import GatePaths
+    from yara_gate.quarantine import GatePaths, default_home
 
+    gate = GatePaths(home) if home is not None else default_home()
     _setup_hint(rules)
     try:
         targets = _targets(paths or [], paths_from, null)
         if targets == ["-"]:
-            code = _scan_stdin(GatePaths(home), name, timeout_s, rules, policy, json_output)
+            code = _scan_stdin(gate, name, timeout_s, rules, policy, json_output)
         else:
             if "-" in targets:
                 raise ValueError("'-' must be the only PATH")
@@ -122,12 +123,13 @@ def scan(
                     code,
                     _scan_path(
                         Path(target),
-                        GatePaths(home),
+                        gate,
                         timeout_s,
                         rules,
                         policy,
                         follow_symlinks,
                         json_output,
+                        use_releases=home is not None,
                     ),
                 )
     except typer.Exit:
@@ -165,6 +167,161 @@ def _targets(paths: list[str], paths_from: str | None, null: bool) -> list[str]:
             seen.add(item)
             distinct.append(item)
     return distinct
+
+
+@app.command()
+def rescan(
+    home: Path = typer.Option(..., "--home", help="Gate home whose clean copies are revalidated."),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+    policy: ScanPolicy = typer.Option(ScanPolicy.default, "--policy"),
+    timeout_s: int = typer.Option(30, "--timeout", help="Seconds for one file."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Scan and preview; do not write reports or move copies."
+    ),
+) -> None:
+    """Recheck stale or advisory clean copies; withdraw new holds. Stop watch first."""
+    from yara_gate.quarantine import GatePaths
+    from yara_gate.report import compact_report
+    from yara_gate.rescan import rescan_clean
+
+    counts = {"rescanned": 0, "unchanged": 0, "newly_held": 0, "newly_incomplete": 0}
+    code = 0
+    try:
+        for result in rescan_clean(
+            GatePaths(home), rules_dir=rules, timeout_s=timeout_s, policy=policy, dry_run=dry_run
+        ):
+            if result is None:
+                counts["unchanged"] += 1
+                continue
+            counts["rescanned"] += 1
+            code = max(code, exit_code(result))
+            if result.verdict is Verdict.block:
+                counts["newly_held"] += 1
+            elif result.verdict is Verdict.incomplete:
+                counts["newly_incomplete"] += 1
+            else:
+                counts["unchanged"] += 1
+            typer.echo(json.dumps({"dry_run": dry_run, **compact_report(result)}))
+    except Exception as exc:
+        typer.echo(
+            f"incomplete: {_incomplete_text(exc)}; remaining copies are unvalidated", err=True
+        )
+        code = 2
+    typer.echo(json.dumps({"dry_run": dry_run, **counts, "exit_code": code}))
+    raise typer.Exit(code)
+
+
+@app.command()
+def held(
+    home: Path = typer.Option(..., "--home", help="Gate home whose held entries are listed."),
+    json_output: bool = typer.Option(False, "--json", help="Emit the versioned held-item index."),
+    since: str | None = typer.Option(
+        None, "--since", help="Report age limit, for example 7d or 24h."
+    ),
+) -> None:
+    """List present holds from metadata and reports, without opening held bytes."""
+    from yara_gate.held import held_items, since_seconds
+    from yara_gate.quarantine import GatePaths
+
+    try:
+        items = held_items(
+            GatePaths(home.expanduser().absolute()),
+            since=since_seconds(since) if since is not None else None,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"held index unavailable: {_incomplete_text(exc)}", err=True)
+        raise typer.Exit(2) from exc
+    if json_output:
+        typer.echo(json.dumps({"schema_version": 1, "items": items}, ensure_ascii=True))
+    elif not items:
+        typer.echo("No held items.")
+    else:
+        for item in items:
+            # JSON quoting prevents file names and report text from controlling the terminal.
+            typer.echo(json.dumps(item, ensure_ascii=True))
+
+
+@app.command()
+def replay(
+    capture: str = typer.Argument(
+        ..., metavar="CAPTURE", help="JSON Lines capture of model input, or '-' for stdin."
+    ),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+    policy: ScanPolicy = typer.Option(
+        ScanPolicy.agent_ingest, "--policy", help="Policy for an item that names none."
+    ),
+    timeout_s: int = typer.Option(30, "--timeout", min=1, max=86400, help="Seconds for one item."),
+    no_timings: bool = typer.Option(
+        False, "--no-timings", help="Leave seconds out, so two runs print the same bytes."
+    ),
+) -> None:
+    """Scan captured model input and print what the gate would decide. Observe only.
+
+    One JSON envelope per captured item, then a summary. Nothing is admitted, held, or
+    moved, and no report is written. Exit 0 when every item got a gate record and 2 when
+    one did not; never 1.
+    """
+    from yara_gate.replay import FAILED, Tally, replay_capture
+
+    tally = Tally()
+    failed = False
+    try:
+        handle = sys.stdin.buffer if capture == "-" else Path(capture).open("rb")
+        with handle:
+            for envelope in replay_capture(
+                handle,
+                policy=policy,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                timings=not no_timings,
+            ):
+                tally.add(envelope)
+                failed = failed or envelope["status"] == FAILED
+                # ASCII output: a captured identifier cannot control the terminal.
+                typer.echo(json.dumps(envelope, separators=(",", ":"), ensure_ascii=True))
+    except BrokenPipeError as exc:
+        # The reader of stdout went away; that is not a fault in the capture.
+        raise typer.Exit(code=2) from exc
+    except OSError as exc:
+        typer.echo(f"incomplete: capture unreadable ({exc.__class__.__name__})", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(json.dumps(tally.result(), separators=(",", ":"), ensure_ascii=True))
+    raise typer.Exit(code=2 if failed else 0)
+
+
+@app.command()
+def release(
+    sha256: str = typer.Argument(..., metavar="SHA256"),
+    home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),
+    reason: str = typer.Option(
+        ..., "--reason", help="Record why you accept the reviewed findings."
+    ),
+    path: Path | None = typer.Option(None, "--path", help="Approve an in-place scan of this file."),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory used for review."),
+    timeout_s: int = typer.Option(30, "--timeout", help="Seconds for the fresh scan."),
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Allow a reviewed release without a terminal."
+    ),
+) -> None:
+    """Release an exact agent-document policy hold after human review."""
+    from yara_gate.quarantine import GatePaths, IntakeRejected, release_file
+    from yara_gate.release import AuditLogError
+
+    try:
+        if not non_interactive and not sys.stdin.isatty():
+            raise ValueError("release requires a terminal or --non-interactive")
+        result, head = release_file(
+            GatePaths(home),
+            sha256.lower(),
+            path,
+            reason=reason,
+            timeout_s=timeout_s,
+            rules_dir=rules,
+        )
+    except (AuditLogError, IntakeRejected, OSError, ValueError) as exc:
+        typer.echo(f"release refused: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(f"released {result.sha256} under ruleset {result.ruleset_sha256}; audit head {head}")
 
 
 @app.command()
@@ -284,6 +441,7 @@ def rules_install(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -310,6 +468,7 @@ def rules_update(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -342,6 +501,7 @@ def setup(
     for pack in lock.packs:
         typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
     _echo_shadows(skipped)
+    _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
         typer.echo(error, err=True)
@@ -422,6 +582,14 @@ def _echo_incomplete(exc: Exception) -> NoReturn:
     raise typer.Exit(code=2) from exc
 
 
+def _echo_unguarded() -> None:
+    """Name each rule file of the set just compiled that has no match-cap guard."""
+    from yara_gate.rules import last_unguarded
+
+    for key in last_unguarded():
+        typer.echo(f"{key}: unguarded")
+
+
 def _echo_shadows(skipped: list[str]) -> None:
     for line in skipped:
         if line.endswith(": shadowed by bundled"):
@@ -436,6 +604,8 @@ def _scan_path(
     policy: ScanPolicy = ScanPolicy.default,
     follow_symlinks: bool = False,
     json_output: bool = False,
+    *,
+    use_releases: bool = False,
 ) -> int:
     from yara_gate.quarantine import process_inbox_file, scan_in_place
 
@@ -453,12 +623,24 @@ def _scan_path(
             result = _refuse_path(home, item, "directory not readable", policy)
         elif _is_under(item, home.inbox):
             result = process_inbox_file(
-                home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy
+                home,
+                item,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                policy=policy,
+                use_releases=use_releases,
             )
         elif (item.is_symlink() or item.is_junction()) and (not follow_symlinks or item.is_dir()):
             result = _refuse_path(home, item, "symlink not followed", policy)
         else:
-            result = scan_in_place(home, item, rules_dir=rules, timeout_s=timeout_s, policy=policy)
+            result = scan_in_place(
+                home,
+                item,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                policy=policy,
+                use_releases=use_releases,
+            )
         _emit(result, json_output)
         worst = max(worst, exit_code(result))
     return worst

@@ -1,0 +1,17 @@
+rule agent_model_addressed_instruction {
+    meta:
+        author = "yara-gate"
+        description = "Text addressed to an AI reader that attempts to steer its answer, ranking, or tool use"
+        intent = "Require a reader address or an answer hook plus a nearby directive or promotional claim. Require a sentence boundary or an opening text tag so inline prose quotations stay out of the match."
+        severity = "advisory"
+        verdict_on_match = "advisory"
+        reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+    strings:
+        $model_address = /{{model_reader_boundary}}(if you are an? (AI|LLM|language model|assistant)|note to (AIs?|LLMs?)( (agents?|assistants?|models?))?|(AI|LLM) (agents?|assistants?|models?) reading this)[ \t]*[:,][ \t]+(please[ \t]+)?((rate|rank|recommend|prefer|choose|select|score)[ \t]+(this|the)[ \t]+(candidate|applicant|vendor|product|listing|page|company)\b|(say|state|claim|report)[ \t]+that\b|(reply|respond|answer)[ \t]+(only|exactly)\b|(do not mention this to the user|don't tell the user)\b)/ nocase ascii wide
+        $model_claim = /{{model_reader_boundary}}note to (AIs?|LLMs?)( (agents?|assistants?|models?))?[ \t]*:[ \t]+this (vendor|company|product|candidate|applicant) (passed every audit|has no known defects|is the (best|strongest) (choice|applicant|candidate))\b/ nocase ascii wide
+        $answer_hook = /{{model_reader_boundary}}(when summari[sz]ing this (document|page|article)|in your (summary|answer|response))[ \t]*[:,][ \t]+(please[ \t]+)?((say|state|claim|report)[ \t]+that|(reply|respond|answer)[ \t]+(only|exactly)|do not mention this to the user|don't tell the user)\b/ nocase ascii wide
+        $concealed_reply = /{{model_reader_boundary}}(do not mention this to the user|don't tell the user)[ \t]*,[ \t]+(but[ \t]+)?(add|include|insert|put|repeat)\b[^.\r\n!?]{1,64}\b(in|to) your (summary|answer|response)\b/ nocase ascii wide
+        $assistant_tool = /{{model_reader_boundary}}assistant,[ \t]+(please[ \t]+)?(call|invoke|use)[ \t]+(the[ \t]+)?[a-z][a-z0-9_]{0,63}[ \t]+tool[ \t]+(with|to)\b/ nocase ascii wide
+    condition:
+        any of them
+}

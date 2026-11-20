@@ -3,6 +3,7 @@
 import json
 import os
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
 
 from yara_gate import __version__
@@ -10,18 +11,30 @@ from yara_gate.models import Finding, ScanResult, exit_code
 
 
 def write_reports(
-    report_dir: Path, result: ScanResult, *, stem: str | None = None
+    report_dir: Path, result: ScanResult, *, stem: str | None = None, record_event: bool = True
 ) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
     digest = stem or result.sha256 or "0" * 64
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
-    _replace_text(sarif_path, json.dumps(_sarif(result), indent=2) + "\n")
-    _replace_text(json_path, json.dumps(compact_report(result), indent=2) + "\n")
+    compact = compact_report(result)
+    if record_event:
+        events = report_dir / "events"
+        events.mkdir(mode=0o700, exist_ok=True)
+        scan_id = secrets.token_hex(16)
+        event = {
+            "schema_version": 1,
+            "scan_id": scan_id,
+            "recorded_at": datetime.now(UTC).isoformat(),
+            **compact,
+        }
+        atomic_write_text(events / f"{scan_id}.json", json.dumps(event, indent=2) + "\n")
+    atomic_write_text(sarif_path, json.dumps(_sarif(result), indent=2) + "\n")
+    atomic_write_text(json_path, json.dumps(compact, indent=2) + "\n")
     return sarif_path, json_path
 
 
-def _replace_text(path: Path, text: str) -> None:
+def atomic_write_text(path: Path, text: str) -> None:
     # A reader polling the directory sees the previous report or the new one, never part of one.
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
     try:
@@ -67,6 +80,9 @@ def compact_report(result: ScanResult) -> dict[str, object]:
         "views_scanned": result.views_scanned,
         "bytes_scanned": result.bytes_scanned,
         "yara_seconds": result.yara_seconds,
+        "pdf_content_unread": result.pdf_content_unread,
+        "match_rescan_limit": result.match_rescan_limit,
+        "unguarded_rule_files": result.unguarded_rule_files,
         "findings": [_finding(item) for item in result.findings],
     }
 
@@ -141,6 +157,9 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                     "views_scanned": result.views_scanned,
                     "bytes_scanned": result.bytes_scanned,
                     "yara_seconds": result.yara_seconds,
+                    "pdf_content_unread": result.pdf_content_unread,
+                    "match_rescan_limit": result.match_rescan_limit,
+                    "unguarded_rule_files": result.unguarded_rule_files,
                     "verdict": result.verdict.value,
                     "policy": result.policy.value,
                     "policy_reason": result.policy_reason,

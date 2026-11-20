@@ -1,0 +1,91 @@
+rule agent_prompt_injection_phrases {
+    meta:
+        author = "yara-gate"
+        description = "Phrases that try to override an agent prompt"
+        intent = "Note on an instruction to the model, not on a paper that quotes one. Orders aimed at the agent's tools (exfiltrate, a concealed tool call) are agent_tool_hijack_directive and stay advisory"
+        severity = "note"
+        verdict_on_match = "note"
+        reference = "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+    strings:
+        // Verb, optional quantifier and determiner, adjective, noun: "ignore all of your prior directions".
+        // Words may be split by one line break (hard-wrapped Markdown, an SMS body); a blank line still splits them.
+        // Each order is written twice, once per encoding, because the exemption treats a UTF-16
+        // order inside an ASCII quotation differently (see the condition).
+        $a = /\b({{override_verbs}}){{sep}}{{all_of}}{{earlier_order}}\b/ nocase ascii
+        $b = /\b({{override_verbs}}){{sep}}{{all_of}}{{the_above}}\b/ nocase ascii
+        $c = /\b({{override_verbs}}){{sep}}{{everything_told}}\b/ nocase ascii
+        $a_wide = /\b({{override_verbs}}){{sep}}{{all_of}}{{earlier_order}}\b/ nocase wide
+        $b_wide = /\b({{override_verbs}}){{sep}}{{all_of}}{{the_above}}\b/ nocase wide
+        $c_wide = /\b({{override_verbs}}){{sep}}{{everything_told}}\b/ nocase wide
+        // Name the first phrase after the prefix, not a later separate directive.
+        // YARA-X forbids mixing greedy and non-greedy quantifiers, so every quantifier here is lazy.
+        // The match still ends at the word boundary after the noun, where $a, $b, and $c end.
+        $doc_phrase = /the phrase[\s\S]{0,64}?\b({{override_verbs}}){{lazy sep}}({{lazy all_of}}({{lazy earlier_order}}|{{lazy the_above}})|{{lazy everything_told}})\b/ nocase ascii wide
+        // The same order with the words in another place, or without an adjective. None of these has
+        // the documentary exemption: it is written for the $a, $b, and $c grammar only.
+        // "Ignore all instructions above", "disregard the rules above", "ignore above instructions".
+        $a_post = /\b({{override_verbs}}){{sep}}{{all_of}}((the|your|any|my){{sep}})?({{order_nouns}}){{sep}}above\b/ nocase ascii wide
+        $a_above = /\b({{override_verbs}}){{sep}}(all{{sep}})?above{{sep}}({{order_nouns}})\b/ nocase ascii wide
+        // Second person, no adjective: "ignore your instructions", "forget your system prompt".
+        // "The model may ignore the system prompt" names no owner and stays clean, and so does
+        // "don't forget your instructions": forget counts only before the prompt or programming.
+        $a_your = /\b((ignore|disregard){{sep}}{{all_of}}your{{sep}}(instructions|directions)|({{override_verbs}}){{sep}}{{all_of}}your{{sep}}(programming|(system|developer){{sep}}(prompt|message|instructions)))\b/ nocase ascii wide
+        // A negated verb: "do not follow the previous instructions", "stop following your earlier rules".
+        $a_follow = /\b((do{{sep}}not|don't|never){{sep}}(follow|obey)|stop{{sep}}(following|obeying)|no{{sep}}longer{{sep}}(follow|obey)){{sep}}({{any_of}})?({{owner}})?({{earlier_or_above}}){{sep}}({{order_nouns}})\b/ nocase ascii wide
+        // "Override previous instructions". Rules are left out: later rules override earlier
+        // rules in every stylesheet and firewall manual.
+        $a_replace = /\b(override|overrule|bypass){{sep}}({{any_of}})?({{owner}})?({{earlier_or_above}}){{sep}}({{replace_nouns}})\b/ nocase ascii wide
+        $d = /\b{{now_unrestricted}}/ nocase ascii wide
+        // DAN is case-sensitive so the name "Dan" stays clean; only the phrase is nocase.
+        $d_dan = /\b{{dan_persona}}/ ascii wide
+        $e = /system prompt:[\s\S]{0,80}\b(reveal|ignore|override|credentials)\b/ nocase
+        // "Repeat your system prompt verbatim": a disclosure demand, not a mention of the prompt.
+        $e_verbatim = /\b(reveal|leak|repeat|print|output|dump)[ \t]+(me[ \t]+)?(your|the)[ \t]+(system[ \t]+prompt|(initial|hidden|original)[ \t]+instructions)\b[^\r\n]{0,40}\b(verbatim|word[ \t]+for[ \t]+word|in[ \t]+full|exactly)\b/ nocase ascii wide
+        // "Reveal your system prompt" without a qualifier: second person only, so "the debug view can show
+        // the system prompt" stays clean.
+        $e_disclose = /\b(reveal|show|print|output|display|disclose|tell[ \t]+me)[ \t]+(me[ \t]+)?your[ \t]+(system[ \t]+prompt|(hidden|initial|original)[ \t]+instructions)\b/ nocase ascii wide
+        // "New instructions:" followed by standing-order language on the same line.
+        $new_instr = /\bnew[ \t]+instructions?[ \t]*:[^\r\n]{0,80}\b(from[ \t]+now[ \t]+on|respond[ \t]+only|you[ \t]+are[ \t]+now|ignore)\b/ nocase ascii wide
+    condition:
+        $d or $d_dan or $e or $e_verbatim or $e_disclose or $new_instr or
+        $a_post or $a_above or $a_your or $a_follow or $a_replace or
+        // A quotation exempts only the order it ends with. That order is the only one in the
+        // quotation's own encoding that starts inside the quotation: no listed verb begins inside
+        // an order, and the lazy skip stops at the first order. So an order fires when it starts
+        // before the first quotation, or between where one quotation ends and the next begins.
+        // Each lookup is a range test on the ordered match lists, so the work stays linear; the
+        // pairing this replaced counted quotations from the start of the unit for every order.
+        // The two give the same answer: docs/research/probe_phrase_doc_exemption.py checks it.
+        // YARA-X stops recording a string at 1,000,000 matches and says nothing. Past that, an
+        // order after a million quoted ones is never seen and the file would pass, so a full
+        // list counts as an order. The scanner leaves the engine's default in place.
+        for any of ($a, $b, $c, $a_wide, $b_wide, $c_wide) : (# >= 1000000) or
+        for any of ($a, $b, $c) : (
+            $ and (
+                not $doc_phrase or $ in (0..@doc_phrase[1] - 1) or
+                $ in (@doc_phrase[#doc_phrase] + !doc_phrase[#doc_phrase]..filesize) or
+                for any j in (1..#doc_phrase - 1) : (
+                    $ in (@doc_phrase[j] + !doc_phrase[j]..@doc_phrase[j + 1] - 1)
+                )
+            )
+        ) or
+        // A UTF-16 order inside an ASCII quotation (whose second byte is not zero) is not the
+        // order it quotes, so from an ASCII quotation the whole gap counts.
+        for any of ($a_wide, $b_wide, $c_wide) : (
+            $ and (
+                not $doc_phrase or $ in (0..@doc_phrase[1] - 1) or
+                $ in (@doc_phrase[#doc_phrase] + !doc_phrase[#doc_phrase]..filesize) or
+                (
+                    uint8(@doc_phrase[#doc_phrase] + 1) != 0 and
+                    $ in (@doc_phrase[#doc_phrase]..filesize)
+                ) or
+                for any j in (1..#doc_phrase - 1) : (
+                    $ in (@doc_phrase[j] + !doc_phrase[j]..@doc_phrase[j + 1] - 1) or
+                    (
+                        uint8(@doc_phrase[j] + 1) != 0 and
+                        $ in (@doc_phrase[j]..@doc_phrase[j + 1] - 1)
+                    )
+                )
+            )
+        )
+}

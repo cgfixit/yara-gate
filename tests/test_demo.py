@@ -48,6 +48,7 @@ def test_demo_samples_and_rejected_bodies(rules_copy: Path) -> None:
         assert plain["engine_version"]
         assert plain["tool_version"]
         assert len(plain["ruleset_sha256"]) == 64
+        assert len(plain["detector_sha256"]) == 64
         assert plain["scan_seconds"] >= 0
 
         status, advisory = _post(port, {"sample": "advisory"})
@@ -309,6 +310,14 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
     server, thread = serve_in_thread(rules_copy)
     port = int(server.server_address[1])
     expected = {
+        "account_recovery": ("account_notice", "agent_message_code_relay", {"raw"}),
+        "tool_handoff": ("tool_refusal", "agent_tool_hijack_directive", {"raw"}),
+        "future_bypass": ("future_approval", "agent_persistent_instruction", {"raw"}),
+        "vendor_feed_ranking": (
+            "vendor_feed_comparison",
+            "agent_model_addressed_instruction",
+            {"feed-text"},
+        ),
         "pdf_annotation_override": (
             "pdf_annotation_benign",
             "agent_prompt_injection_phrases",
@@ -338,6 +347,8 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             {"ooxml-cell+text-folded"},
         ),
         "svg_handler": ("svg_handler_benign", "doc_svg_event_handler", {"raw", "text-folded"}),
+        "svg_link_script": ("svg_link_benign", "doc_svg_active_link", {"raw", "text-folded"}),
+        "svg_diagram_frame": ("svg_diagram_benign", "doc_svg_active_link", {"raw", "text-folded"}),
         "selector_run": ("selector_run_benign", "heuristic_variation_selector_run", {"raw"}),
         "svg_cdata_override": (
             "svg_cdata_benign",
@@ -356,6 +367,28 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
         ),
         "html_svg_script": ("html_svg_icon_benign", "doc_svg_active", {"raw", "text-folded"}),
         "mcp_tool_poisoned": ("mcp_tool_benign", "heuristic_mcp_hidden_instruction", {"raw"}),
+        "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
+        "word_xml_comment_override": (
+            "word_xml_comment_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text"},
+        ),
+        "pptx_master_override": (
+            "pptx_master_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text"},
+        ),
+        "pdf_neighbour_font_override": (
+            "pdf_neighbour_font_benign",
+            "agent_prompt_injection_phrases",
+            {"pdf-text"},
+        ),
+        "xlsx_sdk_prefix_override": (
+            "xlsx_sdk_prefix_benign",
+            "agent_prompt_injection_phrases",
+            {"ooxml-text", "ooxml-text+text-folded"},
+        ),
+        "mail_relayed_override": ("mail_relayed_benign", "agent_prompt_injection_phrases", {"raw"}),
     }
     try:
         for attack, (benign, rule_id, views) in expected.items():

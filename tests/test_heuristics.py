@@ -354,6 +354,17 @@ def test_a_second_filter_after_flate_leaves_the_object_stream_unread(
     assert "heuristic_pdf_OpenAction_goto" not in ids
 
 
+def test_an_object_stream_with_no_objects_is_empty_not_opaque() -> None:
+    data = _objstm_pdf(b"", b"not a member header").replace(b"/N 1 /First 4", b"/N 0 /First 0")
+    objects = PdfObjects(data, Budget(time.monotonic() + 30))
+    assert objects.opaque is False
+    assert [(table.numbers, table.offsets) for table in objects.object_streams()] == [([], [])]
+    assert list(objects.stream_members()) == []
+    # Nothing in the stream redefines object 5, so the raw definition still settles the open.
+    ids = {f.rule_id for f in pdf_findings(data, objects)}
+    assert "heuristic_pdf_OpenAction_goto" in ids
+
+
 def test_unfiltered_object_stream_with_a_page_open_is_still_a_page_open() -> None:
     data = _objstm_pdf(b"", b"5 0 [3 0 R /Fit]")
     objects = PdfObjects(data, Budget(time.monotonic() + 30))
@@ -497,13 +508,13 @@ def test_mcp_walk_limit_is_incomplete_not_clean() -> None:
     from yara_gate.heuristics import mcp_tool_findings
 
     deep = json.dumps(_nested({"command": "node"}, 80)).encode()
-    assert mcp_tool_findings(Path("mcp.json"), deep) == ([], "mcp json exceeds walk limit")
+    assert mcp_tool_findings(Path("mcp.json"), deep) == ([], "mcp json exceeds structure limit")
     # Without a key an MCP entry needs, the same depth keeps its clean result.
     plain = json.dumps(_nested({"a": 1}, 80)).encode()
     assert mcp_tool_findings(Path("data.json"), plain) == ([], None)
     # Past json.loads' own nesting limit, the same rule applies.
     keyed = b'{"x":' * 100_000 + b'{"command":"bash"}' + b"}" * 100_000
-    assert mcp_tool_findings(Path("mcp.json"), keyed) == ([], "mcp json exceeds walk limit")
+    assert mcp_tool_findings(Path("mcp.json"), keyed) == ([], "mcp json exceeds structure limit")
     assert mcp_tool_findings(Path("data.json"), b"[" * 100_000 + b"]" * 100_000) == ([], None)
 
 
@@ -592,3 +603,51 @@ def test_pickle_walk_calls_the_deadline_check() -> None:
     with pytest.raises(Deadline):
         heuristics.pickle_reduce_findings(Path("m.pkl"), data, check)
     assert len(calls) == 2
+
+
+def _lzw_longest_entry_repeated(repeats: int) -> bytes:
+    """LZW codes that grow each table entry by one byte to a full table, then repeat the
+    longest entry (about 3,800 bytes per 12-bit code)."""
+    out, bits, count = bytearray(), 0, 0
+
+    def emit(code: int, width: int) -> None:
+        nonlocal bits, count
+        bits, count = (bits << width) | code, count + width
+        while count >= 8:
+            count -= 8
+            out.append((bits >> count) & 0xFF)
+
+    width, table = 9, 258
+    emit(256, width)
+    emit(ord("a"), width)
+    while table < 4096:
+        emit(table, width)
+        table += 1
+        if table + 1 >= 1 << width and width < 12:
+            width += 1
+    for _ in range(repeats):
+        emit(4095, 12)
+    emit(257, 12)
+    if count:
+        out.append((bits << (8 - count)) & 0xFF)
+    return bytes(out)
+
+
+def test_lzw_output_is_charged_as_it_grows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A short LZW stream that expands far raises before allocating much past the budget."""
+    from yara_gate import content
+
+    peak = 0
+    charge = content._charge
+
+    def recording(output: bytearray, grown: int, budget: Budget) -> None:
+        nonlocal peak
+        peak = max(peak, len(output))
+        charge(output, grown, budget)
+
+    monkeypatch.setattr(content, "_charge", recording)
+    budget = Budget(time.monotonic() + 30)
+    budget.expanded = content.MAX_EXTRACT_BYTES - 10_000
+    with pytest.raises(ContentLimit, match="extracted size"):
+        content._lzw(_lzw_longest_entry_repeated(2_000), 1, budget)
+    assert peak <= 10_000 + content._CHARGE_BYTES + 4096

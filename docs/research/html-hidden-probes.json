@@ -1,0 +1,1887 @@
+{
+ "about": "Vocabulary and single-rule documents for probe_html_hidden_browser.py. Every text in a document is 'MARKn lorem ipsum'. In a template, {m} is a marked text, {a:tag} the attributes generated for that tag, and {breaker} one of the tags in 'select_breakers'. Nothing here is fetched or run: scripts are type text/plain or point at example.invalid, and the oracle aborts every request.",
+ "hiding": [
+  "display:none",
+  "display: none !important",
+  "DISPLAY:NONE",
+  "visibility:hidden",
+  "visibility:collapse",
+  "visibility:visible",
+  "font-size:0",
+  "font-size:0px",
+  "font-size:1px",
+  "font-size:1pt",
+  "font-size:.5px",
+  "font-size:0.05em",
+  "font-size:0.01rem",
+  "font-size:5%",
+  "font-size:14px",
+  "font-size:1.2em",
+  "font-size:0.9em",
+  "font-size:80%",
+  "font-size:inherit",
+  "font-size:2em",
+  "font-size:16em",
+  "font:0/0 a",
+  "font:12px/1.4 serif",
+  "position:absolute;left:-9999px",
+  "position:absolute;top:-9999px",
+  "text-indent:-9999px",
+  "margin-left:-9999px",
+  "position:absolute;left:-150em",
+  "margin-left:-15px",
+  "position:relative;left:-20px",
+  "height:0;overflow:hidden",
+  "max-height:0;overflow:hidden",
+  "width:0;overflow:hidden",
+  "height:0",
+  "overflow:hidden",
+  "height:40px;overflow:hidden",
+  "opacity:0",
+  "opacity:0.0",
+  "opacity:0%",
+  "opacity:0.5",
+  "opacity:1",
+  "color:#fff",
+  "color:#ffffff",
+  "color:white",
+  "color:rgb(255,255,255)",
+  "color:#fefefe",
+  "color:#f0f0f0",
+  "color:#eee",
+  "color:#000",
+  "color:#222",
+  "color:red",
+  "color:transparent",
+  "color:rgba(0,0,0,0)",
+  "color:inherit",
+  "color:#fff;background:#fff",
+  "color:#000;background:#000",
+  "color:#fff;background-color:#111",
+  "background:#fff",
+  "background:#111",
+  "background-color:#ffffff",
+  "background:#eee",
+  "background:white",
+  "color:#111;background:#121212",
+  "color:#fff;background:url(x.png)",
+  "background-image:linear-gradient(red,blue)",
+  "background:none",
+  "background:transparent",
+  "position:absolute;left:10px",
+  "position:fixed;top:5px;left:400px",
+  "left:-9999px",
+  "top:-9999px",
+  "position:absolute;left:-9999px;width:12000px",
+  "margin-left:-2560px;width:6400px",
+  "margin-left:-2560px",
+  "margin-top:-9999px",
+  "display:block;height:0;overflow:hidden",
+  "display:inline-block;max-height:0;overflow:hidden",
+  "display:block;text-indent:-9999px",
+  "float:left;width:0;overflow:hidden",
+  "display:inline;height:0;overflow:hidden",
+  "display:block",
+  "position:relative",
+  "position:absolute;top:-9999px;height:20000px",
+  "display:block;width:0;overflow:hidden",
+  "font-size:0;font:12px/1.4 serif",
+  "font:12px serif;font-size:0",
+  "font:0/0 a;font-size:14px",
+  "background-color:#fff;background:#111;color:#fff",
+  "background:#111;background-color:#fff;color:#fff",
+  "overflow-y:hidden;overflow:visible;height:0;display:block",
+  "overflow:visible;overflow-y:hidden;height:0;display:block",
+  "display:none;all:unset",
+  "all:unset;display:none",
+  "display:none !important;display:block",
+  "display:block;display:none",
+  "visibility:hidden;visibility:visible",
+  "color:#fff;all:initial",
+  "display:block;height:0;overflow:hidden;padding:20px",
+  "display:block;height:0;overflow:hidden;min-height:30px",
+  "display:block;height:0;overflow:hidden;flex:1",
+  "display:flex;flex-direction:column;height:60px",
+  "display:block;height:0;overflow:hidden;block-size:50px",
+  "display:block;block-size:0;overflow:hidden",
+  "display:block;height:0;overflow:hidden;margin:6px",
+  "display:block;max-width:0;overflow-x:hidden",
+  "position:absolute;left:-9999px;transform:translateX(9999px)",
+  "position:absolute;left:-9999px;right:0;text-align:right",
+  "position:absolute;left:-9999px;padding-left:9999px",
+  "position:absolute;left:-9999px;margin-left:9999px",
+  "position:absolute;left:-9999px;top:-9999px",
+  "position:fixed;top:-9999px",
+  "position:fixed;left:-9999px",
+  "position:absolute;left:-5000px",
+  "position:absolute;left:-4100px",
+  "position:absolute;left:-20000px",
+  "position:absolute;left:-9999",
+  "position:absolute;left:-999em",
+  "position:absolute;left:-9999px;width:50px",
+  "font-size:1px;transform:scale(20);display:inline-block",
+  "transform:scale(20);transform-origin:0 0;display:inline-block",
+  "zoom:20",
+  "font-size:1px;zoom:20",
+  "font-size:xx-large",
+  "font-size:300%",
+  "font-size:0.5px",
+  "transform:translateX(9000px);display:inline-block",
+  "margin-left:9000px",
+  "padding-left:9000px;display:block",
+  "color:#fff;-webkit-text-stroke:1px #000",
+  "color:transparent;text-shadow:0 0 0 #000",
+  "color:#fff;background:#fff;-webkit-background-clip:text",
+  "direction:rtl",
+  "text-align:right",
+  "white-space:nowrap",
+  "display:table",
+  "display:table-cell;height:0;overflow:hidden",
+  "display:contents",
+  "float:right",
+  "clear:both",
+  "position:sticky;top:0"
+ ],
+ "odd": [
+  "font-size:0 px",
+  "font-size:-1px",
+  "font-size:0xyz",
+  "font-size:0.",
+  "font-size:0 0",
+  "font-size:+0px",
+  "font-size:-0px",
+  "font-size:0q",
+  "font-size:0vw",
+  "font-size:1",
+  "font-size:\\30 px",
+  "font-size:0p\\78",
+  "font:0",
+  "font:0 a",
+  "font:a 0",
+  "font:inherit",
+  "font-size:bogus",
+  "font-size:initial",
+  "font-size:revert",
+  "font-size:larger",
+  "font-size:smaller",
+  "font-size:200%",
+  "font-size:0em",
+  "font-size:0%",
+  "font-size:.0px",
+  "font-size:00.00px",
+  "font-size:0rem",
+  "font-size:1e-3px",
+  "font-size:0;font-size:bogus",
+  "font-size:12px;font-size:0 px",
+  "opacity:0px",
+  "opacity:0 0",
+  "opacity:-1",
+  "opacity:0.",
+  "opacity:.0",
+  "opacity:\\30",
+  "opacity:+0",
+  "opacity:0;transition:opacity 1s",
+  "opacity:0;animation:x 1s",
+  "opacity:0;transform:none",
+  "opacity:0;will-change:opacity",
+  "visibility:initial",
+  "visibility:unset",
+  "visibility:revert",
+  "visibility:inherit",
+  "visibility:bogus",
+  "visibility:visible !ie",
+  "visibility:hidden garbage",
+  "visibility:hidden;visibility:bogus",
+  "visibility:visible;visibility:hidden garbage",
+  "visibility:HIDDEN",
+  "visibility:hidden !important;visibility:visible",
+  "visibility:visible !important;visibility:hidden",
+  "visibility:hidden;all:unset",
+  "all:unset",
+  "all:initial",
+  "all:revert",
+  "all:inherit",
+  "display:none garbage",
+  "display:none;display:bogus",
+  "display:block ! important;display:none",
+  "display:none ! important;display:block",
+  "display:none\\9",
+  "d\\69splay:n\\6fne",
+  "color:red\\;display:none",
+  "*display:none",
+  "_display:none",
+  "x:{;display:none;}",
+  "x:(;display:none",
+  "x:((;);display:none",
+  "x:'abc;display:none",
+  "x:'a;b';display:none",
+  "x:[;];display:none",
+  "display:none;x:(",
+  "display:none;x:(;display:block",
+  "background:url(a'b);display:none",
+  "/*display:none*/color:red",
+  "color:red;/*;display:none",
+  "dis/**/play:none",
+  "display:/**/none/**/",
+  "display:none}",
+  "color:red};display:none",
+  "x{} display:none",
+  "x{} visibility:visible",
+  "display:none;;",
+  ";display:none",
+  "display:none;x",
+  "display:\\6e one",
+  "display:none\\ ",
+  "display:no\\ ne",
+  "display:none !important!important",
+  "display:\tnone",
+  "display:\u00a0none",
+  "display:none\u00a0",
+  "DISPLAY\u00a0:none",
+  "displa\u212a:none",
+  "visibility:hidden;x:(;visibility:visible",
+  "visibility:hidden;x:'a;visibility:visible",
+  "color:rgb(255,255,255,1,1)",
+  "color:hsl(0,0,100)",
+  "color:hsl(0 0 100)",
+  "color:hsl(0,0%,100%)",
+  "color:hsl(0deg 0% 100%)",
+  "color:rgb(255, 255 255)",
+  "color:rgb(100%,255,255)",
+  "color:rgb(255 255 255)",
+  "color:rgb(100% 100% 100%)",
+  "color:rgb(0 0 0 / 0)",
+  "color:rgba(0,0,0,0%)",
+  "color:rgba(255,255,255,.5)",
+  "color:#fffff",
+  "color:#fff garbage",
+  "color:white garbage",
+  "color:\\23 fff",
+  "color:initial",
+  "color:revert",
+  "color:bogus",
+  "color:currentcolor",
+  "color:WHITE",
+  "color:#FFF",
+  "color:#ffff",
+  "color:#ffffff00",
+  "color:#fff0",
+  "color:rgb(255,255,255,0)",
+  "color:hsla(0,0%,100%,0)",
+  "color:rgb(300,300,300)",
+  "color:rgb(-5,255,255)",
+  "color:rgb(255.0,255.0,255.0)",
+  "color:rgb( 255 , 255 , 255 )",
+  "color:rgb(255,255,255",
+  "color:blac\u212a",
+  "color:#fff;background:#fff garbage",
+  "color:#fff;background-color:#fff garbage",
+  "color:#fff;background:#000;background-color:none",
+  "color:#000;background:#000;background-image:url(x.png)",
+  "color:#fff;background:#fff no-repeat",
+  "color:#fff;background:#fff #000",
+  "color:#fff;background:inherit",
+  "color:#fff;background-color:currentcolor",
+  "color:#fff;background:#fff;line-height:0",
+  "color:#fff;background:#fff;box-shadow:inset 0 0 0 99px #000",
+  "color:#fff;background:#fff;text-decoration:underline",
+  "color:#fff;background:#fff;display:contents",
+  "color:#fff;background:#fff;display:inline",
+  "color:#fff;background:#fff;display:block",
+  "color:#fff;background:#ffffff80",
+  "color:#fff;background:rgba(255,255,255,.5)",
+  "color:rgba(255,255,255,.5);background:#fff",
+  "color:#fff;background:#fff;filter:invert(1)",
+  "color:#fff;background-color:#fff;background-image:none",
+  "color:#fff;background:#fff;mix-blend-mode:difference",
+  "color:#fff;background:#fff;-webkit-text-fill-color:#000",
+  "color:transparent;-webkit-text-fill-color:#000",
+  "color:#fff;background:#fff;text-shadow:1px 1px #000",
+  "color:#f5f5f5;background:#fff",
+  "color:#eee;background:#fff",
+  "color:#f3f3f3;background:#fff",
+  "color:#fff;background-color:#fff",
+  "color:#000;background-color:#000;margin:2px",
+  "color:#fff;background:#fff;padding:3px;font-weight:bold",
+  "color:#fff;background:#fff;position:absolute;left:10px",
+  "color:#fff;background:#fff;height:2px",
+  "color:#fff;background:#fff;white-space:nowrap",
+  "color:white;background:white;mso-hide:all"
+ ],
+ "ordinary": [
+  "margin:4px",
+  "padding:2px 6px",
+  "border:1px solid #ccc",
+  "font-weight:bold",
+  "text-align:center",
+  "line-height:1.4",
+  "display:block",
+  "display:inline-block",
+  "float:left",
+  "letter-spacing:1px",
+  "text-decoration:underline",
+  "width:300px"
+ ],
+ "blocks": [
+  "div",
+  "p",
+  "section",
+  "article",
+  "ul",
+  "ol",
+  "li",
+  "table",
+  "tr",
+  "td",
+  "h2",
+  "dl",
+  "dt",
+  "dd",
+  "blockquote",
+  "form",
+  "header",
+  "footer",
+  "h1",
+  "h3",
+  "center",
+  "pre",
+  "fieldset",
+  "details",
+  "main",
+  "nav",
+  "aside",
+  "figure"
+ ],
+ "inlines": [
+  "span",
+  "b",
+  "i",
+  "em",
+  "strong",
+  "a",
+  "font",
+  "small",
+  "u",
+  "code",
+  "mark",
+  "label",
+  "nobr",
+  "sub",
+  "big",
+  "s",
+  "tt",
+  "abbr",
+  "q",
+  "bdo",
+  "button"
+ ],
+ "voids": [
+  "br",
+  "hr",
+  "img src=\"x.png\"",
+  "input type=\"text\"",
+  "wbr"
+ ],
+ "omit_end": [
+  "dd",
+  "dt",
+  "li",
+  "p",
+  "td",
+  "tr"
+ ],
+ "older": [
+  "<table{a:table}>{m}<tr{a:tr}>{m}<td>{m}</td></tr></table>",
+  "<td{a:td}>{m}</td><tr{a:tr}>{m}</tr>",
+  "<svg{a:svg} width='200' height='40'><text y='20'>{m}</text><div>{m}</div></svg>{m}",
+  "<h2{a:h2}>{m}<h3>{m}</h3>{m}</h2>",
+  "<button{a:button}>{m}<button>{m}</button></button>",
+  "<form{a:form}>{m}<form{a:form}>{m}</form></form>",
+  "<table{a:table}><caption{a:caption}>{m}</caption><thead{a:thead}><tr><th{a:th}>{m}</th></tr></thead><tbody{a:tbody}><tr{a:tr}><td{a:td}>{m}<table{a:table}><tr><td>{m}</td></tr></table>{m}</td><td>{m}</tr><tr><td>{m}</tbody></table>{m}",
+  "<table{a:table}><tr{a:tr}><div{a:div}>{m}</div><td{a:td}>{m}<p{a:p}>{m}<td>{m}</td></tr>{m}<span{a:span}>{m}</span></table>",
+  "<p{a:p}>{m}<table{a:table}><tr><td>{m}</td></tr></table>{m}</p>{m}",
+  "<form{a:form}><div{a:div}>{m}<header{a:header}>{m}</form>{m}</header>{m}</div>",
+  "<div{a:div}><img src='x.png' width='9000' height='10'>{m}</div><select{a:select}><option>{m}</option></select>{m}",
+  "<details{a:details}><summary>{m}</summary>{m}</details><dialog open{a:dialog}>{m}</dialog><mark{a:mark}>{m}</mark>",
+  "<b{a:b}><div{a:div}>{m}</b>{m}</div>{m}<i{a:i}><p{a:p}>{m}</i>{m}</p>",
+  "<div{a:div}><b{a:b}><i{a:i}>{m}</div>{m}<p>{m}</p></i>{m}</b>{m}",
+  "<math{a:math}><mi>{m}</mi><div>{m}</div></math><svg width='200' height='40'><foreignObject width='200' height='40'><p{a:p}>{m}<p>{m}</foreignObject></svg>{m}",
+  "<h1{a:h1}>{m}<h2{a:h2}>{m}</h1>{m}</h2><ul{a:ul}><li{a:li}>{m}<ul><li>{m}</ul>{m}<li>{m}</ul>"
+ ],
+ "rare": [
+  "<ruby{a:ruby}>{m}<rt{a:rt}>{m}<rt{a:rt}>{m}<rp{a:rp}>{m}</ruby>{m}",
+  "<ruby><rb{a:rb}>{m}<rtc{a:rtc}>{m}<rt>{m}<span>{m}<rt>{m}</ruby>{m}",
+  "<rt{a:rt}>{m}<rt>{m}</rt></rt>{m}",
+  "<noscript><div{a:div}></noscript>{m}</div>{m}",
+  "<div{a:div}><noscript></div></noscript>{m}</div>{m}",
+  "<noscript>{m}</noscript>{m}",
+  "<select{a:select}><option{a:option}>{m}</option><{breaker}>{m}</select>{m}",
+  "<select{a:select}><option>{m}<optgroup label='g'><option>{m}</select>{m}",
+  "<div{a:div}><select{a:select}><{breaker}></div>{m}</select>{m}",
+  "<option{a:option}>{m}<option>{m}</option>{m}",
+  "<option{a:option}><span{a:span}>{m}<option>{m}</option>{m}</span>{m}",
+  "<optgroup{a:optgroup}><option{a:option}>{m}<optgroup>{m}</optgroup>{m}",
+  "{m}<frameset{a:frameset}>{m}</frameset>{m}",
+  "<iframe><div{a:div}></iframe>{m}",
+  "<noembed><div{a:div}></noembed>{m}<noframes><p{a:p}></noframes>{m}",
+  "<xmp><div{a:div}></xmp>{m}",
+  "<div{a:div}><iframe></div></iframe>{m}</div>{m}",
+  "<table{a:table}><caption{a:caption}>{m}<tr><td>{m}</table>{m}",
+  "<table><colgroup{a:colgroup}><col{a:col}>{m}<tr{a:tr}><td>{m}</table>",
+  "<table><col{a:col}>{m}<td{a:td}>{m}</table>{m}",
+  "<table{a:table}><form{a:form}><tr><td>{m}</td></tr></table><form{a:form}>{m}</form>{m}",
+  "<table><tr><td{a:td}>{m}</tbody>{m}</table>{m}",
+  "<table><tbody{a:tbody}><div{a:div}>{m}<tr><td>{m}</table>{m}",
+  "<table><tr><td>{m}<caption{a:caption}>{m}</table>{m}",
+  "<table><tr{a:tr}><b{a:b}>{m}<td>{m}</td>{m}</table>{m}",
+  "<table><tr><td><a{a:a}>{m}<table><tr><td><a>{m}</a></td></tr></table>{m}</a>{m}</table>",
+  "<table><thead{a:thead}><tr><th>{m}<tfoot{a:tfoot}><td>{m}</tfoot></table>{m}",
+  "<table><tr><td><div{a:div}>{m}<td>{m}<tr><td>{m}</table>{m}",
+  "<table><tr><td{a:td}><table><div{a:div}>{m}<table><tr><td>{m}</table>{m}</table>{m}</table>{m}",
+  "<table><tbody><b{a:b}>{m}<tr><td>{m}</td></tr>{m}</table>{m}",
+  "<svg{a:svg}></p>{m}",
+  "<svg{a:svg}><g></br>{m}</g></svg>{m}",
+  "<math{a:math}></p>{m}",
+  "<a{a:a}><svg width='200' height='40'><foreignObject width='200' height='40'><a>{m}</a></foreignObject></svg>{m}</a>{m}",
+  "<svg{a:svg}><mi><p>{m}</p></mi></svg>{m}",
+  "<math><mi{a:mi}>{m}</mi><mtext>{m}<b{a:b}>{m}</mtext>{m}</math>{m}",
+  "<svg><style><div{a:div}></style>{m}</div>{m}",
+  "<div{a:div}><svg><style></div></style>{m}",
+  "<svg><title{a:title}>{m}<p>{m}</p></title><desc>{m}</desc></svg>{m}",
+  "<math><annotation-xml><div{a:div}>{m}</div></annotation-xml></math>{m}",
+  "<svg><![CDATA[ <div style='display:none'> ]]>{m}</svg>{m}",
+  "<svg><font{a:font}>{m}</font></svg>{m}",
+  "<svg width='300' height='40'><a{a:a}><text y='20'{a:text}>{m}</text></a></svg>{m}",
+  "<div{a:div}><li{a:li}><blockquote{a:blockquote}><li>{m}</li></blockquote>{m}</li></div>",
+  "<li{a:li}><div{a:div}><li>{m}</li>{m}",
+  "<dl><dd{a:dd}><section{a:section}><dd>{m}</dd></section>{m}</dl>{m}",
+  "<dd{a:dd}><p{a:p}><dt>{m}</dt>{m}",
+  "<p><b{a:b}><b><b><b>{m}</p>{m}<div>{m}</div>",
+  "<div><nobr{a:nobr}><abbr>{m}</div><nobr>{m}</nobr>{m}",
+  "<p><b{a:b}>{m}</p> <div{a:div}>{m}</div>{m}",
+  "<b{a:b}><div><span{a:span}><div{a:div}>{m}</b>{m}</div>{m}</span>{m}</div>{m}",
+  "<i{a:i}><b><u><s><em><div>{m}</i>{m}</div>{m}",
+  "<b{a:b}><object>{m}</b>{m}</object>{m}",
+  "<marquee{a:marquee}><b{a:b}>{m}</marquee>{m}",
+  "<a{a:a}><div><a{a:a}>{m}</div>{m}</a>{m}",
+  "<p{a:p}>{m}</br>{m}",
+  "<div{a:div}></p>{m}</div>{m}",
+  "<template><div></template>{m}",
+  "<div{a:div}><template></div></template>{m}</div>{m}",
+  "<image{a:image}>{m}",
+  "<body{a:body}>{m}",
+  "<html{a:html}>{m}",
+  "<head{a:head}><title>x</title>{m}",
+  "<DIV{a:div}>{m}</DiV>{m}",
+  "<bloc\u212aquote{a:div}>{m}</bloc\u212aquote>{m}",
+  "<span{a:span}>{m}</span >{m}",
+  "<div{a:div} / >{m}</div>{m}",
+  "<p{a:p}>{m}<br{a:br}/>{m}",
+  "<button{a:button}><p{a:p}>{m}<button>{m}</button>{m}",
+  "<form{a:form}><p>{m}</form>{m}</p>{m}",
+  "<h3{a:h3}><span{a:span}>{m}<h4>{m}</h4>{m}</span></h3>{m}"
+ ],
+ "select_breakers": [
+  "input",
+  "select",
+  "textarea></textarea",
+  "keygen",
+  "div",
+  "button",
+  "hr",
+  "!-- </select> --",
+  "script type=\"text/plain\"></select></script",
+  "p",
+  "option"
+ ],
+ "directed": [
+  {
+   "id": "nobr pending is reconstructed then ended",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div><nobr style=\"color:transparent\"><abbr>MARK1 lorem ipsum</div><nobr>MARK2 lorem ipsum</nobr>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "nobr pending, visibility",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div><nobr style=\"visibility:hidden\"><abbr>MARK1 lorem ipsum</div><nobr>MARK2 lorem ipsum</nobr>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "a not in scope is removed (foreignObject)",
+   "html": "<!doctype html><html><head><title>t</title></head><body><a href=\"#x\" style=\"visibility:hidden\"><svg width=\"300\" height=\"40\"><foreignObject width=\"300\" height=\"40\"><a>MARK1 lorem ipsum</a></foreignObject></svg>MARK2 lorem ipsum</a>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "a not in scope is removed (display)",
+   "html": "<!doctype html><html><head><title>t</title></head><body><a style=\"display:none\"><svg><foreignObject><a></a></foreignObject></svg>MARK1 lorem ipsum</a>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "a through a table cell is kept",
+   "html": "<!doctype html><html><head><title>t</title></head><body><a style=\"display:none\"><table><tr><td><a>MARK1 lorem ipsum</a></td></tr></table>MARK2 lorem ipsum</a>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, input inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><option>MARK1 lorem ipsum</option><input>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, textarea inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><textarea>MARK1 lorem ipsum</textarea>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, select inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><select>MARK1 lorem ipsum</select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, div and p inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><div>MARK1 lorem ipsum</div><p>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, button inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><button>MARK1 lorem ipsum</button>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, hr inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><option>MARK1 lorem ipsum<hr>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, table inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><table><tr><td>MARK1 lorem ipsum</td></tr></table>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, svg inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><svg><text>MARK1 lorem ipsum</text></svg>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, keygen inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><keygen>MARK1 lorem ipsum</select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, plain options",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><option>MARK1 lorem ipsum</option><optgroup label=\"g\"><option>MARK2 lorem ipsum</option></optgroup></select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, datalist inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><datalist><option>MARK1 lorem ipsum</datalist>MARK2 lorem ipsum</select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, span and b inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><option><span>MARK1 lorem ipsum</span><b>MARK2 lorem ipsum</b></option></select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, script inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><script type=\"text/plain\"></select></script>MARK1 lorem ipsum</select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select hidden, comment with end tag",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select style=\"display:none\"><!-- </select> -->MARK1 lorem ipsum</select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select shown, hidden option",
+   "html": "<!doctype html><html><head><title>t</title></head><body><select><option style=\"display:none\">MARK1 lorem ipsum</option><option>MARK2 lorem ipsum</option></select>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "select in hidden div, input breaks out",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div><select style=\"display:none\"><input></div>MARK1 lorem ipsum</select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "iframe body is raw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><iframe><div style=\"display:none\"></iframe>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noembed body is raw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><noembed><div style=\"display:none\"></noembed>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noframes body is raw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><noframes><div style=\"display:none\"></noframes>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "iframe end inside hidden div",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"><iframe></div></iframe>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noscript body, hidden div inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><noscript><div style=\"display:none\"></noscript>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noscript inside hidden div",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"><noscript></div></noscript>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noscript text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><noscript>MARK1 lorem ipsum</noscript>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "noscript in head with img, body colours",
+   "html": "<!doctype html><html><head><noscript><img src=\"x.png\"></noscript><title>t</title></head><body bgcolor=\"#000000\"><font color=\"#ffffff\">MARK1 lorem ipsum</font></body></html>"
+  },
+  {
+   "id": "noscript in head with div, then body",
+   "html": "<!doctype html><html><head><noscript><div style=\"display:none\"></noscript></head><body>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rt ends rt",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby>base<rt style=\"display:none\">MARK1 lorem ipsum<rt>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rb ends rb",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby><rb style=\"display:none\">MARK1 lorem ipsum<rb>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rp ends rt",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby>x<rt style=\"display:none\">MARK1 lorem ipsum<rp>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rtc ends rb",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby><rb style=\"display:none\">MARK1 lorem ipsum<rtc>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rt does not end rtc",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby><rtc style=\"display:none\">MARK1 lorem ipsum<rt>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "rt without ruby nests",
+   "html": "<!doctype html><html><head><title>t</title></head><body><rt style=\"display:none\">MARK1 lorem ipsum<rt>MARK2 lorem ipsum</rt></rt>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "ruby rt through span",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ruby><rt style=\"display:none\"><span>MARK1 lorem ipsum<rt>MARK2 lorem ipsum</ruby>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "svg: p end tag breaks out",
+   "html": "<!doctype html><html><head><title>t</title></head><body><svg style=\"display:none\"></p>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "svg: br end tag breaks out",
+   "html": "<!doctype html><html><head><title>t</title></head><body><svg style=\"display:none\"></br>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "math: p end tag breaks out",
+   "html": "<!doctype html><html><head><title>t</title></head><body><math style=\"display:none\"></p>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "svg g: p end tag breaks out",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div><svg style=\"display:none\"><g></p>MARK1 lorem ipsum</g></svg>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "svg: other end tag stays",
+   "html": "<!doctype html><html><head><title>t</title></head><body><svg style=\"display:none\"></span>MARK1 lorem ipsum</svg>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table form sets the form pointer",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><form></table><form style=\"display:none\">MARK1 lorem ipsum</form>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table form is not an open element",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><form style=\"display:none\"><tr><td>MARK1 lorem ipsum</td></tr></table>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "tr form pointer",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><form></tr></table><form style=\"display:none\">MARK1 lorem ipsum</form>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "frameset after text is ignored",
+   "html": "<!doctype html><html><head><title>t</title></head><body>MARK1 lorem ipsum<frameset style=\"display:none\">MARK2 lorem ipsum</frameset>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "frameset first",
+   "html": "<!doctype html><html><head></head><frameset style=\"display:none\">MARK1 lorem ipsum</frameset>MARK2 lorem ipsum"
+  },
+  {
+   "id": "li inside blockquote does not end outer li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><li><blockquote style=\"visibility:visible\"><li>MARK1 lorem ipsum</li></blockquote></li></div></body></html>"
+  },
+  {
+   "id": "li inside section, colour",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"#ffffff\"><li><section style=\"color:#000\"><li>MARK1 lorem ipsum</li></section></li></font></body></html>"
+  },
+  {
+   "id": "li through div ends outer li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><li><div style=\"display:none\"><li>MARK1 lorem ipsum</li>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "li through p ends outer li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><li><p style=\"display:none\"><li>MARK1 lorem ipsum</li>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "li through address ends outer li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><li><address style=\"display:none\"><li>MARK1 lorem ipsum</li>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "li through span ends outer li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><li><span style=\"display:none\"><li>MARK1 lorem ipsum</li>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "dd inside section does not end outer dd",
+   "html": "<!doctype html><html><head><title>t</title></head><body><dl><dd><section style=\"display:none\"><dd>MARK1 lorem ipsum</dd></section>MARK2 lorem ipsum</dl>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "dt through div ends dd",
+   "html": "<!doctype html><html><head><title>t</title></head><body><dl><dd><div style=\"display:none\"><dt>MARK1 lorem ipsum</dl>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "li inside ul inside li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ul><li style=\"display:none\">MARK1 lorem ipsum<ul><li>MARK2 lorem ipsum</ul><li>MARK3 lorem ipsum</ul>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "option nests in option through b",
+   "html": "<!doctype html><html><head><title>t</title></head><body><option style=\"visibility:hidden\"><b style=\"visibility:visible\"><option>MARK1 lorem ipsum</option></b></option>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "option ends option",
+   "html": "<!doctype html><html><head><title>t</title></head><body><option style=\"display:none\">MARK1 lorem ipsum<option>MARK2 lorem ipsum</option>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "optgroup ends option",
+   "html": "<!doctype html><html><head><title>t</title></head><body><optgroup><option style=\"display:none\">MARK1 lorem ipsum<optgroup>MARK2 lorem ipsum</optgroup>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "option through span",
+   "html": "<!doctype html><html><head><title>t</title></head><body><option style=\"display:none\"><span>MARK1 lorem ipsum<option>MARK2 lorem ipsum</option>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "datalist option",
+   "html": "<!doctype html><html><head><title>t</title></head><body><datalist><option>MARK1 lorem ipsum</datalist>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "text before body tag, body colours",
+   "html": "<!doctype html><html><head></head><font color=\"#ffffff\">MARK1 lorem ipsum</font><body bgcolor=\"#000000\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "text before body tag, body hides",
+   "html": "<!doctype html><html><head></head>MARK1 lorem ipsum<body style=\"display:none\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p before html tag, html colours",
+   "html": "<!doctype html><p style=\"color:#fff\">MARK1 lorem ipsum</p><html style=\"background:#000\">MARK2 lorem ipsum"
+  },
+  {
+   "id": "head tag after body text",
+   "html": "<!doctype html><html><head></head>MARK1 lorem ipsum<head style=\"display:none\"><title>x</title>MARK2 lorem ipsum</html>"
+  },
+  {
+   "id": "div before body tag with class",
+   "html": "<!doctype html><div style=\"color:#ffffff\">MARK1 lorem ipsum</div><body style=\"background:#111\">MARK2 lorem ipsum"
+  },
+  {
+   "id": "p ended by hr",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<hr>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by xmp",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<xmp>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by listing",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<listing>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by pre",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<pre>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by search",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<search>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by summary",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<summary>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by dialog open",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<dialog open>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by details",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<details>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by plaintext",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<plaintext>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by fieldset",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<fieldset>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by main",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<main>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by table",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<table>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by form",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<form>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p ended by h3",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<h3>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by span",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<span>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by b",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<b>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by button",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<button>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by input",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<input>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by img",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<img>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by select",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<select>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by textarea",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<textarea>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by object",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<object>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by svg",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<svg>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by a",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<a>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by label",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<label>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by ruby",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<ruby>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by legend",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<legend>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by caption",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<caption>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p not ended by font",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"display:none\">MARK1 lorem ipsum<font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "p end tag with no p open",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"></p>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "button ends button",
+   "html": "<!doctype html><html><head><title>t</title></head><body><button style=\"display:none\">MARK1 lorem ipsum<button>MARK2 lorem ipsum</button>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "heading ends heading",
+   "html": "<!doctype html><html><head><title>t</title></head><body><h1 style=\"display:none\">MARK1 lorem ipsum<h2>MARK2 lorem ipsum</h2>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "b across object",
+   "html": "<!doctype html><html><head><title>t</title></head><body><b style=\"display:none\"><object>MARK1 lorem ipsum</b>MARK2 lorem ipsum</object>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "template body is raw-ish",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"><template></div></template>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "bogus comment with end tag in quotes",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"><?xml x=\"</div>\"?>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "slash before attribute",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div/style=\"display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "duplicate style attribute",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:red\" style=\"display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden=false still hides",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div hidden=\"false\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "entity in style",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display&colon;none\">MARK1 lorem ipsum</div><div style=\"display&#58;none\">MARK2 lorem ipsum</div><div style=display&#x3a;none>MARK3 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "end tag with attributes",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\">MARK1 lorem ipsum</div style=\"x\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "uppercase and mixed",
+   "html": "<!doctype html><html><head><title>t</title></head><body><DIV STYLE=\"DISPLAY:NONE\">MARK1 lorem ipsum</DiV>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "details closed",
+   "html": "<!doctype html><html><head><title>t</title></head><body><details><summary>MARK1 lorem ipsum</summary>MARK2 lorem ipsum</details></body></html>"
+  },
+  {
+   "id": "dialog closed",
+   "html": "<!doctype html><html><head><title>t</title></head><body><dialog>MARK1 lorem ipsum</dialog>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "popover",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div popover>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "inert",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div inert>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "text after body end",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\">MARK1 lorem ipsum</body>MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "text after html end",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\">MARK1 lorem ipsum</body></html>MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "comment then text after body end",
+   "html": "<!doctype html><html><head><title>t</title></head><body><span style=\"display:none\">MARK1 lorem ipsum</body><!-- c -->MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table text is fostered",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table style=\"display:none\">MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</td></tr></table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table caption col",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><caption style=\"display:none\">MARK1 lorem ipsum</caption><colgroup style=\"display:none\"><col>MARK2 lorem ipsum<tr><td>MARK3 lorem ipsum</table></body></html>"
+  },
+  {
+   "id": "nested table in cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum<td>MARK4 lorem ipsum</table></body></html>"
+  },
+  {
+   "id": "select in table",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td><select style=\"display:none\"><option>MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "li in hidden ol then li",
+   "html": "<!doctype html><html><head><title>t</title></head><body><ol style=\"display:none\"><li>MARK1 lorem ipsum</ol><li>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "marquee",
+   "html": "<!doctype html><html><head><title>t</title></head><body><marquee style=\"display:none\">MARK1 lorem ipsum</marquee>MARK2 lorem ipsum<b style=\"display:none\"><marquee>MARK3 lorem ipsum</b>MARK4 lorem ipsum</marquee>MARK5 lorem ipsum</body></html>"
+  },
+  {
+   "id": "math mi",
+   "html": "<!doctype html><html><head><title>t</title></head><body><math><mi style=\"display:none\">MARK1 lorem ipsum</mi><mi>MARK2 lorem ipsum</mi></math>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "svg desc and title",
+   "html": "<!doctype html><html><head><title>t</title></head><body><svg width=\"300\" height=\"50\"><desc>MARK1 lorem ipsum</desc><title>MARK2 lorem ipsum</title><text y=\"20\">MARK3 lorem ipsum</text></svg></body></html>"
+  },
+  {
+   "id": "svg text display attr",
+   "html": "<!doctype html><html><head><title>t</title></head><body><svg width=\"300\" height=\"50\"><text y=\"20\" display=\"none\">MARK1 lorem ipsum</text><text y=\"40\" visibility=\"hidden\">MARK2 lorem ipsum</text></svg>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "xmp raw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><xmp><div style=\"display:none\"></xmp>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "textarea raw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><textarea><div style=\"display:none\"></textarea>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "title in body",
+   "html": "<!doctype html><html><head><title>t</title></head><body><title><div style=\"display:none\"></title>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "style in body",
+   "html": "<!doctype html><html><head><title>t</title></head><body><style><div style=\"display:none\"></style>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "cdata in html is a comment",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\"><![CDATA[ </div> ]]>MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "unclosed comment variants",
+   "html": "<!doctype html><html><head><title>t</title></head><body><!--> MARK1 lorem ipsum <!---> MARK2 lorem ipsum <!-- a --!> MARK3 lorem ipsum <!-- b -- > MARK4 lorem ipsum -->MARK5 lorem ipsum</body></html>"
+  },
+  {
+   "id": "nested comment opener",
+   "html": "<!doctype html><html><head><title>t</title></head><body><!-- <!-- a --> MARK1 lorem ipsum --> MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0 px (two tokens)",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0 px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size -1px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:-1px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0xyz",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0xyz\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0.",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0.\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0 0",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0 0\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 1e-3px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:1e-3px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size +0px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:+0px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size -0px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:-0px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0vw",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0vw\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 0q",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0q\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size 1 (unitless)",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:1\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size escaped digit",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:\\30 px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size escaped unit",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0p\\78\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand 0 alone",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font:0\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand 0 a",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font:0 a\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand bold 0 serif",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font:bold 0 serif\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand 0/0 a",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font:0/0 a\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand a 0",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font:a 0\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font shorthand inherit under tiny",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><div style=\"font:inherit\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size bogus under tiny",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><div style=\"font-size:bogus\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size initial under tiny",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><div style=\"font-size:initial\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size revert under tiny",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><div style=\"font-size:revert\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size larger under tiny",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:1px\"><div style=\"font-size:larger\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size 0.02em under 200px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:200px\"><div style=\"font-size:0.02em\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: font-size 0.05rem",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0.05rem\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: font-size-adjust on 1px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:1px;font-size-adjust:20\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity 0px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:0px\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity 0 0",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:0 0\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity 0%",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:0%\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity -1",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:-1\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity 0.",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:0.\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: opacity escaped",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"opacity:\\30\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow hiddenfoo",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow:hiddenfoo\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow hidden garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow:hidden garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow hidden visible",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow:hidden visible\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow visible hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow:visible hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow clip",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow:clip\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow-y hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow-y:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: overflow-x hidden only",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0;overflow-x:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height 0%",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0%;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: max-height 0%",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"max-height:0%;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: width 0%",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"width:0%;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height 0foo",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0foo;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height 0 0",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0 0;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height -5px",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:-5px;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height 0em",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0em;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: height 0vh",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"height:0vh;overflow:hidden\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: visibility initial under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:initial\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility unset under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:unset\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility revert under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:revert\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility inherit under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:inherit\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility bogus under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:bogus\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility visible !ie under hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:visible !ie\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: visibility hidden garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: visibility hidden then bogus",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden;visibility:bogus\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: visibility visible then hidden garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><div style=\"visibility:visible;visibility:hidden garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: display none garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display none then bogus",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none;display:bogus\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display block ! important then none",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:block ! important;display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display none ! important then block",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none ! important;display:block\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display none !IMPORTANT then block",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none !IMPORTANT;display:block\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display none\\9 (old IE hack)",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none\\9\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display escaped letters",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"d\\69splay:n\\6fne\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display escaped semicolon",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:red\\;display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display star hack",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"*display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display inside braces",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:{;display:none;}\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after unclosed paren",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:(;display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after nested paren",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:((;);display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after unclosed quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:'abc;display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after closed quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:'a;b';display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after bracket block",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"x:[;];display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display before unclosed paren",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none;x:(\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display none then block in unclosed paren",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:none;x:(;display:block\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after url with quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:url(a'b);display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display in comment",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"/*display:none*/color:red\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display after unclosed comment",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:red;/*;display:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display with comment inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"dis/**/play:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display value comment",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"display:/**/none/**/\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: display uppercase important",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"DISPLAY:NONE!IMPORTANT\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgb five numbers",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgb(255,255,255,1,1)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color hsl legacy without percent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:hsl(0,0,100)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color hsl modern numbers",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:hsl(0 0 100)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color hsl percent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:hsl(0,0%,100%)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgb mixed separators",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgb(255, 255 255)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgb mixed percent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgb(100%,255,255)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgb space",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgb(255 255 255)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgb slash alpha zero",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgb(0 0 0 / 0)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color rgba alpha percent zero",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:rgba(0,0,0,0%)\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color hex five digits",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fffff\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color hex with garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color white garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:white garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color escaped hash",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:\\23 fff\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color transparent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:transparent\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: color initial under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff\"><div style=\"color:initial\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: color revert under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff\"><div style=\"color:revert\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: color bogus under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff\"><div style=\"color:bogus\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: color currentcolor under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff\"><div style=\"color:currentcolor\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg shorthand with garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background:#fff garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg-color with garbage",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background-color:#fff garbage\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg then bg-color none",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#fff;background:#000;background-color:none\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: black on bg then bg-image transparent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:#000;background:#000;background-image:url(x.png);background-image:transparent\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "value: white on bg shorthand colour and no-repeat",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background:#fff no-repeat\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg shorthand two colours",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background:#fff #000\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg inherit",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000 url(x.png)\"><div style=\"color:#fff;background:inherit\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "value: white on bg-color currentcolor",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background-color:currentcolor\">MARK1 lorem ipsum</div>MARK2 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "legacy: font color rgb()",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"rgb(255,255,255)\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color transparent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"transparent\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color inherit under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"#ffffff\"><font color=\"inherit\">MARK1 lorem ipsum</font></font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color fff without hash",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"fff\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color ffffff without hash",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"ffffff\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color #ffffffff",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"#ffffffff\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color #fff",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"#fff\">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color White with spaces",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\" White \">MARK1 lorem ipsum</font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: font color currentcolor under white",
+   "html": "<!doctype html><html><head><title>t</title></head><body><font color=\"#ffffff\"><font color=\"currentcolor\">MARK1 lorem ipsum</font></font>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: body text transparent",
+   "html": "<!doctype html><html><head></head><body text=\"transparent\">MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: body text rgb",
+   "html": "<!doctype html><html><head></head><body text=\"rgb(255,255,255)\">MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "legacy: bgcolor rgb under white text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table bgcolor=\"rgb(255,255,255)\"><tr><td><font color=\"#ffffff\">MARK1 lorem ipsum</font></td></tr></table></body></html>"
+  },
+  {
+   "id": "legacy: bgcolor transparent under white text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table bgcolor=\"#000000\"><tr><td bgcolor=\"transparent\"><font color=\"#ffffff\">MARK1 lorem ipsum</font></td></tr></table></body></html>"
+  },
+  {
+   "id": "legacy: bgcolor fff without hash",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table bgcolor=\"000\"><tr><td><font color=\"#000000\">MARK1 lorem ipsum</font></td></tr></table></body></html>"
+  },
+  {
+   "id": "hidden attr, display:block after an unquoted url with a quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><span hidden style=\"background:url(a'b);display:none;display:block\">MARK1 lorem ipsum</span>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after an unquoted url with a quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:url(a'b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after an unquoted url with a paren",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:url(a(b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after an unquoted url with a space",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:url(a b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after a quoted url with a semicolon",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:url('a;b');visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after an escaped url name",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:u\\72l(a'b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after url with a comment opener",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:url(/*x);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after URL uppercase with a quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"background:URL(a'b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after a function with a quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:foo(a'b);visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after a closed string in a function",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:foo('a;b');visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after a stray closing brace",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"color:red};visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after a brace pair",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x{} visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after an at-rule",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"@x;visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after quot=",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:&quot=;visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after quotx;",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:&quotx;visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after quot space",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:&quot ;visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible after quot;",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"x:&quot;;visibility:visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible with nbsp before the value",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"visibility:\u00a0visible\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "visible with kelvin sign in a name",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><p style=\"visibility:visible;x\u212a:y\">MARK1 lorem ipsum</p></div>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "opacity zero then webkit alias",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"opacity:0;-webkit-opacity:1\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "opacity zero plain",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p style=\"opacity:0\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with nbsp display",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p hidden style=\"display:\u00a0block\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with display in a comment",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p hidden style=\"/*display:block*/\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with display after unclosed quote",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p hidden style=\"x:'a;display:block\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with display in a string",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p hidden style=\"x:'display:block'\">MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with all",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p hidden style=\"all:unset\">MARK1 lorem ipsum</p><p hidden style=\"all:revert\">MARK2 lorem ipsum</p>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "hidden attr with class and stylesheet",
+   "html": "<!doctype html><html><head><title>t</title></head><body><style>.s{display:block}</style><p hidden class=\"s\">MARK1 lorem ipsum</p><p hidden>MARK2 lorem ipsum</p>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "template with unclosed div",
+   "html": "<!doctype html><html><head><title>t</title></head><body><template><div></template>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "template holding a table part",
+   "html": "<!doctype html><html><head><title>t</title></head><body><template><tr><td>MARK1 lorem ipsum</template>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: stray tbody end closes the cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td style=\"display:none\">MARK1 lorem ipsum</tbody>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: fostered div then a row",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tbody><div style=\"display:none\">MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: caption then a row",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><caption style=\"display:none\">MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: col then text then cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><col style=\"display:none\">MARK1 lorem ipsum<td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: colgroup then text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><colgroup style=\"display:none\">MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</table></body></html>"
+  },
+  {
+   "id": "table: table inside a row",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table style=\"display:none\"><tr><table><tr><td>MARK1 lorem ipsum</table>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: table inside a fostered div",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table style=\"display:none\"><div><table><tr><td>MARK1 lorem ipsum</td></tr></table>MARK2 lorem ipsum</div></table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: cell closes through a div",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td><div style=\"display:none\">MARK1 lorem ipsum<td>MARK2 lorem ipsum<tr><td>MARK3 lorem ipsum</table></body></html>"
+  },
+  {
+   "id": "table: tfoot after an open cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><thead style=\"display:none\"><tr><th>MARK1 lorem ipsum<tfoot><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: cell with no row",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><td style=\"display:none\">MARK1 lorem ipsum</td><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: row end with the cell open",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td style=\"display:none\">MARK1 lorem ipsum</tr><tr><td>MARK2 lorem ipsum</table></body></html>"
+  },
+  {
+   "id": "table: td end in a fostered b",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><b style=\"display:none\">MARK1 lorem ipsum<td>MARK2 lorem ipsum</td>MARK3 lorem ipsum</table>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: fostered b is reopened after the cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tbody><b style=\"visibility:hidden\">MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</td></tr>MARK3 lorem ipsum</table>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: form start with a fostered div on top",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><div><form style=\"display:none\">MARK1 lorem ipsum</form></div></table><form style=\"display:none\">MARK2 lorem ipsum</form>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: a around a table with a fostered a",
+   "html": "<!doctype html><html><head><title>t</title></head><body><a style=\"visibility:hidden\"><table><a>MARK1 lorem ipsum</a><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</a>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "table: select in a cell with a row inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td><select style=\"display:none\"><option>MARK1 lorem ipsum<tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "whitespace reopens a formatting element before a block",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p><b style=\"visibility:hidden\">MARK1 lorem ipsum</p> <div style=\"visibility:visible\">MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "no whitespace: block first, then reopened inside",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p><b style=\"visibility:hidden\">MARK1 lorem ipsum</p><div style=\"visibility:visible\">MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "encoded space reopens too",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p><b style=\"visibility:hidden\">MARK1 lorem ipsum</p>&#32;<div style=\"visibility:visible\">MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "nbsp is text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table><tr><td>MARK1 lorem ipsum</td></tr>\u00a0<tr><td style=\"display:none\">MARK2 lorem ipsum</table>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "adoption: span between two blocks",
+   "html": "<!doctype html><html><head><title>t</title></head><body><b><div><span style=\"display:none\"><div>MARK1 lorem ipsum</b>MARK2 lorem ipsum</div>MARK3 lorem ipsum</span>MARK4 lorem ipsum</div>MARK5 lorem ipsum</body></html>"
+  },
+  {
+   "id": "adoption: span between b and block",
+   "html": "<!doctype html><html><head><title>t</title></head><body><b style=\"visibility:hidden\"><span style=\"visibility:visible\"><div>MARK1 lorem ipsum</b>MARK2 lorem ipsum</div>MARK3 lorem ipsum</span>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "adoption: five formatting elements between",
+   "html": "<!doctype html><html><head><title>t</title></head><body><i style=\"visibility:hidden\"><b><u><s><em><tt><div>MARK1 lorem ipsum</i>MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "adoption: three formatting elements between",
+   "html": "<!doctype html><html><head><title>t</title></head><body><i style=\"visibility:hidden\"><b><u><s><div>MARK1 lorem ipsum</i>MARK2 lorem ipsum</div>MARK3 lorem ipsum</body></html>"
+  },
+  {
+   "id": "four copies of one formatting element",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p><b style=\"visibility:hidden\"><b style=\"visibility:hidden\"><b style=\"visibility:hidden\"><b style=\"visibility:hidden\">MARK1 lorem ipsum</p>MARK2 lorem ipsum<div>MARK3 lorem ipsum</div></body></html>"
+  },
+  {
+   "id": "four copies, plain",
+   "html": "<!doctype html><html><head><title>t</title></head><body><p><b style=\"display:none\"><b><b><b>MARK1 lorem ipsum</p>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "a in a table removed in place",
+   "html": "<!doctype html><html><head><title>t</title></head><body><a style=\"visibility:hidden\"><table><div><a>MARK1 lorem ipsum</a></div><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum</a>MARK4 lorem ipsum</body></html>"
+  },
+  {
+   "id": "late body tag with style after hidden body",
+   "html": "<!doctype html><html><head></head><body hidden>MARK1 lorem ipsum<body style=\"display:block\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "late body tag adds display none",
+   "html": "<!doctype html><html><head></head><body>MARK1 lorem ipsum<body style=\"display:none\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "late html tag adds a style",
+   "html": "<!doctype html><html hidden><head></head><body>MARK1 lorem ipsum<html style=\"display:block\">MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "title text under a hidden head",
+   "html": "<!doctype html><html><head hidden><title>MARK1 lorem ipsum</title></head><body>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "meta then head with attributes",
+   "html": "<!doctype html><html><meta charset=\"utf-8\"><head style=\"display:none\"><title>MARK1 lorem ipsum</title></head><body>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "blend: same colours, span",
+   "html": "<!doctype html><html><head><title>t</title></head><body><span style=\"color:#fff;background:#fff\">MARK1 lorem ipsum</span>MARK2 lorem ipsum</body></html>"
+  },
+  {
+   "id": "blend: same colours on a dark parent",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><span style=\"color:#fff;background:#fff\">MARK1 lorem ipsum<b>MARK2 lorem ipsum</b><div>MARK3 lorem ipsum</div><i style=\"color:#000\">MARK4 lorem ipsum</i></span></div></body></html>"
+  },
+  {
+   "id": "blend: block box with children",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background-color:#fff\"><p>MARK1 lorem ipsum</p><ul><li>MARK2 lorem ipsum</ul><mark>MARK3 lorem ipsum</mark><table><tr><td>MARK4 lorem ipsum</table><button>MARK5 lorem ipsum</button></div></div></body></html>"
+  },
+  {
+   "id": "blend: line-height zero",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background:#fff;line-height:0\">MARK1 lorem ipsum</div></div></body></html>"
+  },
+  {
+   "id": "blend: display contents",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><div style=\"color:#fff;background:#fff;display:contents\">MARK1 lorem ipsum</div></div></body></html>"
+  },
+  {
+   "id": "blend: translucent background",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:#000\"><span style=\"color:#fff;background:rgba(255,255,255,.4)\">MARK1 lorem ipsum</span></div></body></html>"
+  },
+  {
+   "id": "blend: longhand colour with a stylesheet image",
+   "html": "<!doctype html><html><head><title>t</title></head><body><style>span{background-image:linear-gradient(#000,#000)}</style><span style=\"color:#fff;background-color:#fff\">MARK1 lorem ipsum</span></body></html>"
+  },
+  {
+   "id": "blend: shorthand colour with a stylesheet image",
+   "html": "<!doctype html><html><head><title>t</title></head><body><style>span{background-image:linear-gradient(#000,#000)}</style><span style=\"color:#fff;background:#fff\">MARK1 lorem ipsum</span></body></html>"
+  },
+  {
+   "id": "blend: inherited text shadow",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"text-shadow:0 0 3px #000\"><span style=\"color:#fff;background:#fff\">MARK1 lorem ipsum</span></div></body></html>"
+  },
+  {
+   "id": "veiled: transparent with children",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"color:transparent\"><p>MARK1 lorem ipsum</p><b>MARK2 lorem ipsum</b><a href=\"#x\">MARK3 lorem ipsum</a><mark>MARK4 lorem ipsum</mark><span title=\"t\">MARK5 lorem ipsum</span><svg width=\"300\" height=\"30\"><text y=\"20\">MARK6 lorem ipsum</text></svg></div></body></html>"
+  },
+  {
+   "id": "veiled: inherited text-fill-color",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"-webkit-text-fill-color:#000\"><span style=\"color:transparent\">MARK1 lorem ipsum</span></div></body></html>"
+  },
+  {
+   "id": "veiled: ancestor background-clip text",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"background:linear-gradient(#000,#000);-webkit-background-clip:text\"><span style=\"color:transparent\">MARK1 lorem ipsum</span></div></body></html>"
+  },
+  {
+   "id": "zero: font-size zero with children",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><p>MARK1 lorem ipsum</p><h1>MARK2 lorem ipsum</h1><big>MARK3 lorem ipsum</big><span style=\"font-size:2em\">MARK4 lorem ipsum</span><span style=\"font-size:12px\">MARK5 lorem ipsum</span><button>MARK6 lorem ipsum</button><font size=\"7\">MARK7 lorem ipsum</font><code>MARK8 lorem ipsum</code><span style=\"font-size:1rem\">MARK9 lorem ipsum</span><span style=\"font:inherit\">MARK10 lorem ipsum</span><table><tr><td>MARK11 lorem ipsum</table><input value=\"x\"><textarea>MARK12 lorem ipsum</textarea></div></body></html>"
+  },
+  {
+   "id": "zero: font-size zero and svg",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"font-size:0\"><svg viewBox=\"0 0 10 10\" width=\"300\" height=\"60\"><text y=\"8\">MARK1 lorem ipsum</text><text y=\"8\" font-size=\"5\">MARK2 lorem ipsum</text></svg><math><mi>MARK3 lorem ipsum</mi><mi mathsize=\"20px\">MARK4 lorem ipsum</mi></math></div></body></html>"
+  },
+  {
+   "id": "visibility hidden with svg attribute",
+   "html": "<!doctype html><html><head><title>t</title></head><body><div style=\"visibility:hidden\"><svg width=\"300\" height=\"30\"><text y=\"20\" visibility=\"visible\">MARK1 lorem ipsum</text><text y=\"20\">MARK2 lorem ipsum</text></svg></div></body></html>"
+  },
+  {
+   "id": "sr-only with a stylesheet",
+   "html": "<!doctype html><html><head><title>t</title></head><body><style>.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><span class=\"sr-only\">MARK1 lorem ipsum<b>MARK2 lorem ipsum</b><i style=\"position:fixed;top:0;left:0\">MARK3 lorem ipsum</i></span><span class=\"SR-ONLY\">MARK4 lorem ipsum</span><span class=\"sr-only\u00a0x\">MARK5 lorem ipsum</span><span class=\"sr-only\" style=\"position:static;width:auto;height:auto;clip:auto\">MARK6 lorem ipsum</span></body></html>"
+  },
+  {
+   "id": "quirks: plain doctype: table ends the p",
+   "html": "<!doctype html><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: no doctype: table stays in the p",
+   "html": "<p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: html 4.01 transitional with url",
+   "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\"><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: html 4.01 transitional, no url",
+   "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\"><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: html 4.0 transitional with url",
+   "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 Transitional//EN\" \"http://www.w3.org/TR/REC-html40/loose.dtd\"><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: xhtml 1.0 transitional",
+   "html": "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\"><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: xml declaration then plain doctype",
+   "html": "<?xml version=\"1.0\"?><!doctype html><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: comment then plain doctype",
+   "html": "<!-- c --><!doctype html><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: text then doctype",
+   "html": "x<!doctype html><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: doctype html system legacy-compat",
+   "html": "<!DOCTYPE html SYSTEM \"about:legacy-compat\"><p style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table>MARK3 lorem ipsum"
+  },
+  {
+   "id": "quirks: older doctype, no p open",
+   "html": "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\"><div style=\"display:none\">MARK1 lorem ipsum<table><tr><td>MARK2 lorem ipsum</table></div>MARK3 lorem ipsum"
+  },
+  {
+   "id": "extra: table hidden, text in a cell",
+   "html": "<!doctype html><html><head><title>t</title></head><body><table hidden><tr><td>MARK1 lorem ipsum</td></tr></table>MARK2 lorem ipsum"
+  },
+  {
+   "id": "extra: body hidden",
+   "html": "<!doctype html><html><head></head><body hidden>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "extra: html hidden",
+   "html": "<!doctype html><html hidden><head></head><body>MARK1 lorem ipsum</body></html>"
+  },
+  {
+   "id": "extra: marquee hidden with display none too",
+   "html": "<!doctype html><html><head><title>t</title></head><body><marquee hidden style=\"display:none\">MARK1 lorem ipsum</marquee>MARK2 lorem ipsum"
+  },
+  {
+   "id": "extra: marquee hidden",
+   "html": "<!doctype html><html><head><title>t</title></head><body><marquee hidden>MARK1 lorem ipsum</marquee>MARK2 lorem ipsum"
+  },
+  {
+   "id": "extra: image under colour set later",
+   "html": "<!doctype html><html><head><title>t</title></head><body><nav style=\"color:#000;background:url(x.png);background-color:#000\">MARK1 lorem ipsum</nav>"
+  },
+  {
+   "id": "extra: colour under colour set later",
+   "html": "<!doctype html><html><head><title>t</title></head><body><nav style=\"color:#000;background:#fff;background-color:#000\">MARK1 lorem ipsum</nav>"
+  },
+  {
+   "id": "extra: none then colour",
+   "html": "<!doctype html><html><head><title>t</title></head><body><nav style=\"color:#000;background:none;background-color:#000\">MARK1 lorem ipsum</nav>"
+  },
+  {
+   "id": "extra: gradient then colour",
+   "html": "<!doctype html><html><head><title>t</title></head><body><span style=\"color:#fff;background:linear-gradient(#000,#000);background-color:#fff\">MARK1 lorem ipsum</span>"
+  },
+  {
+   "id": "extra: colour then image longhand",
+   "html": "<!doctype html><html><head><title>t</title></head><body><span style=\"color:#fff;background:#fff;background-image:linear-gradient(#000,#000)\">MARK1 lorem ipsum</span>"
+  }
+ ]
+}

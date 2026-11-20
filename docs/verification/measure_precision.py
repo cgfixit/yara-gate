@@ -627,8 +627,8 @@ def build_corpus(root: Path) -> dict[str, str]:
         )
     for index in range(12):
         add(f"pdf/notes-{index:02d}.pdf", _pdf(f"Quarterly notes {index}".encode()))
-    # Merged files keep every source's /F1, so one name means one font per source. Past four
-    # fonts the rest are not decoded, a note (docs/verification/2026-11-07-pdf-font-readings.md).
+    # Merged files keep every source's /F1, so one name means one font per source. Each page
+    # is read through its own fonts (docs/verification/2026-11-10-pdf-page-fonts.md).
     for fonts in (4, 5):
         add(f"pdf/merged-{fonts}-fonts.pdf", merged_pdf("Quarterly notes for review.", fonts, 1))
     # Hex text a PDF writer emits: a Chromium glyph-id line and a LibreOffice outline title.

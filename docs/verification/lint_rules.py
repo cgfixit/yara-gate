@@ -1,7 +1,12 @@
-"""Compile the local pack with YARA-X and require each rule's metadata."""
+"""Compile the local pack with YARA-X and require each rule's metadata.
+
+A rule file that ``scripts/generate_rules.py`` renders from ``rules/templates`` must also be
+exactly what its template gives, so a hand edit and an unrendered template edit both fail.
+"""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import shutil
@@ -30,8 +35,23 @@ def _blocks(text: str) -> list[tuple[str, str]]:
     return found
 
 
+def _generated() -> list[str]:
+    """What the generator reports about the rule files it renders; empty when they are current."""
+    spec = importlib.util.spec_from_file_location(
+        "generate_rules", REPO / "scripts/generate_rules.py"
+    )
+    if spec is None or spec.loader is None:
+        return ["scripts/generate_rules.py is missing"]
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return [f"generated rules: {problem}" for problem in module.stale()]
+    except module.TemplateError as exc:
+        return [f"generated rules: {exc}"]
+
+
 def main() -> None:
-    failures: list[str] = []
+    failures: list[str] = _generated()
     with tempfile.TemporaryDirectory(prefix="yara-gate-lint-") as directory:
         rules = Path(directory) / "rules"
         shutil.copytree(REPO / "rules/local", rules / "local")

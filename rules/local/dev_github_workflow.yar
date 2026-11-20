@@ -21,6 +21,14 @@ rule dev_github_workflow_secrets_dump {
             $send in (@dump[i] - 1024..@dump[i] + 1024) and
             not for any k in (1..#with_dump) : ( @with_dump[k] + !with_dump[k] == @dump[i] + !dump[i] )
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            yara_gate_text and $job and $dump and $send
+            and (#dump >= 1000000 or #send >= 1000000)
+        )
 }
 
 rule dev_github_workflow_runner_backdoor {
@@ -78,5 +86,13 @@ rule dev_github_workflow_runner_backdoor {
                     )
                 )
             )
+        )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            yara_gate_text and ($self_hosted or $untracked)
+            and for any of ($run, $block*) : ( # >= 1000000 )
         )
 }

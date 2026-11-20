@@ -20,4 +20,12 @@ rule doc_external_template {
             $mode in (@rel[i]..@rel[i]+!rel[i]-1) and
             $target in (@rel[i]..@rel[i]+!rel[i]-1)
         )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string this condition places counts as every one of them
+        // being near the others, so a flood ahead of a match cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#rel >= 1000000 or #type >= 1000000 or #mode >= 1000000 or #target >= 1000000)
+            and $rel and $type and $mode and $target
+        )
 }

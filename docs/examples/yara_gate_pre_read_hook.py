@@ -75,26 +75,37 @@ def main() -> int:
     payload = _capture(path)
     digest = hashlib.sha256(payload).hexdigest()
     home = Path(os.environ.get("YARA_GATE_HOME", str(Path.home() / "YaraGate-agent")))
-    command = [
-        os.environ.get("YARA_GATE_BIN", "yara-gate"),
-        "scan",
-        "-",
-        "--name",
-        path.name,
-        "--json",
-        "--policy",
-        policy,
-        "--home",
-        str(home),
-        "--timeout",
-        str(timeout),
-    ]
-    rules = os.environ.get("YARA_GATE_RULES_ROOT")
-    if rules:
-        command += ["--rules", rules]
-    completed = subprocess.run(  # noqa: S603 - configured executable, fixed argv, no shell
-        command, input=payload, capture_output=True, check=False, timeout=timeout + 5
-    )
+    # A document release applies to a file scan. Send the private capture, preserving its
+    # basename and never reopening the source. Message scans still use the original buffer.
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="scan-", dir=home) as folder:
+        captured = Path(folder) / path.name
+        if policy == "agent-document":
+            captured.write_bytes(payload)
+        command = [
+            os.environ.get("YARA_GATE_BIN", "yara-gate"),
+            "scan",
+            str(captured) if policy == "agent-document" else "-",
+            "--name",
+            path.name,
+            "--json",
+            "--policy",
+            policy,
+            "--home",
+            str(home),
+            "--timeout",
+            str(timeout),
+        ]
+        rules = os.environ.get("YARA_GATE_RULES_ROOT")
+        if rules:
+            command += ["--rules", rules]
+        completed = subprocess.run(  # noqa: S603 - configured executable, fixed argv, no shell
+            command,
+            input=payload if policy == "agent-ingest" else None,
+            capture_output=True,
+            check=False,
+            timeout=timeout + 5,
+        )
     lines = completed.stdout.splitlines()
     if completed.returncode != 0 or len(lines) != 1:
         raise ValueError(f"scanner exit {completed.returncode}, records {len(lines)}")
@@ -105,7 +116,6 @@ def main() -> int:
         sys.stdout.buffer.write(payload)
         return 0
     # A fresh private directory per read prevents a later scan from replacing an earlier copy.
-    home.mkdir(mode=0o700, parents=True, exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix="read-", dir=home)).resolve()
     try:
         snapshot = folder / path.name
