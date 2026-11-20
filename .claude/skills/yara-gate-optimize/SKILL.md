@@ -38,6 +38,7 @@ not descriptions of the tree.
 | --- | --- |
 | `cli.py`, `models.py`, `quarantine.py` | Exit aggregation over several paths, intake identity, identical-byte resubmission, report-before-relocation order, the watcher lock |
 | `held.py`, `rescan.py`, `release.py` | An index that opens held bytes, a withdrawal before its report, a release that trusts a stored record |
+| `replay.py` | An envelope that carries the scanned text, a `failed` or `truncated` item counted as an admit, an exit of 1, a child that outlives its deadline |
 | `scanner.py`, `content.py`, the readers | Unbounded reads, a loop the deadline never checks, a wrong view label or offset, a reader that disagrees with the software that opens the format, match-cap rescan time and memory |
 | `jsonbounds.py`, `heuristics.py` | A decoder that builds a tree before the structure budget runs |
 | `rules.py`, `hunt.py`, `rules/local/`, `rules/templates/` | Overlay order, candidate exclusion, cache keys, a rule file left `unguarded`, staged installs, token and redirect handling |
