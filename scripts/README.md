@@ -6,6 +6,10 @@ Run these from the repository root.
 
 - [`generate_rules.py`](generate_rules.py) renders the generated rule files in `rules/local/` from [`rules/templates/`](../rules/templates/): a template per file and one `fragments.toml` of word lists and shared regex fragments. `--check` writes nothing and exits 1 when a generated file is stale; [`lint_rules.py`](../docs/verification/lint_rules.py) runs the same check in CI. See [generated rule files](../rules/README.md#generated-rule-files).
 
+## Conformance manifest
+
+- [`build_conformance.py`](build_conformance.py) scans every fixture of the [conformance kit](../docs/conformance.md) with a disposable copy of the bundled rules and writes `src/yara_gate/conformance.json`. It refuses when a scan disagrees with the verdict the catalog lists; `--check` writes nothing and exits 1 when the file is stale. A changed manifest needs a row in the guide's change list.
+
 ## Demo build and deployment
 
 See [Pages demo](../docs/pages-demo.md) for the recording, review, and deployment workflow; the published site replays results and does not scan files.

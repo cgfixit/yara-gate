@@ -825,6 +825,30 @@ def minimal_pdf() -> bytes:
     )
 
 
+def _content_pdf(keys: bytes) -> bytes:
+    body = b"BT /F1 12 Tf 72 700 Td (Quarterly totals) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+        b"<< /Length %d%s >>\nstream\n" % (len(body), keys) + body + b"\nendstream",
+    ]
+    out = bytearray(b"%PDF-1.7\n")
+    for index, obj in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % index + obj + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def pdf_unread_content() -> bytes:
+    """A page whose content names a filter the PDF views cannot decode (CCITTFax)."""
+    return _content_pdf(b" /Filter /CCITTFaxDecode")
+
+
+def pdf_read_content() -> bytes:
+    """The same page with its content written plainly."""
+    return _content_pdf(b"")
+
+
 def svg_cdata_override() -> bytes:
     return (
         b'<svg xmlns="http://www.w3.org/2000/svg"><text>'
