@@ -13,7 +13,7 @@ These rules target content an AI agent is about to read: messages, retrieved doc
 | [`agent_prompt_injection_phrases`](../rules/local/agent_prompt_injection_phrases.yar) | Phrases that try to override an agent's prompt: ignore, disregard, or forget the previous instructions, the instructions above, or your instructions; do not follow, stop following, or override the previous instructions; reveal your system prompt | Note |
 | [`agent_prompt_injection_multilingual`](../rules/local/agent_prompt_injection_multilingual.yar) | Override phrases in Spanish, Portuguese, French, German, Italian, Dutch, Polish, Turkish, Indonesian, Vietnamese, Chinese, Japanese, Korean, Russian (including uppercase Cyrillic through `text-folded`), Arabic, and Hindi | Note |
 | [`agent_role_spoof_action`](../rules/local/agent_role_spoof_action.yar) | A claim of system authority, an all-caps authority header line, or a developer claim, followed by an override, disclosure, or mode-switch request; "this is the system administrator" (or developer, operator) ending its sentence, then at once an order to override, disable, bypass, or ignore your safety, guardrails, content filters, restrictions, or instructions; an `OVERRIDE` header (`SYSTEM OVERRIDE:`, `[ADMIN OVERRIDE]`) that voids the previous rules or instructions or announces new ones on the same line | Advisory |
-| [`agent_fake_chat_marker`](../rules/local/agent_fake_chat_marker.yar) | A fake system or assistant chat marker (ChatML, or the assistant turn opener of Phi, Gemma, Llama, harmony, Cohere, or DeepSeek) with an instruction verb, or a tool-result close tag with no matching open tag | Advisory |
+| [`agent_fake_chat_marker`](../rules/local/agent_fake_chat_marker.yar) | A fake system or assistant chat marker (ChatML, or the assistant turn opener of Phi, Gemma, Llama, harmony, Cohere, DeepSeek, Granite, Kimi, or Inkling) with an instruction verb, or a `</tool_result>` or `</tool_response>` close tag with no open tag of its own kind anywhere in the unit | Advisory |
 | [`agent_tool_output_override`](../rules/local/agent_tool_output_override.yar) | Tool-result text that asks a command tool to bypass controls | Advisory |
 | [`agent_persistent_instruction`](../rules/local/agent_persistent_instruction.yar) | A request to persist an approval or safety bypass in agent guidance or in future (or all future) sessions, tasks, or chats. A bypass that `never`, `not`, or `don't` negates does not count | Advisory |
 | [`agent_secret_transfer_request`](../rules/local/agent_secret_transfer_request.yar) | A request to read sensitive material and send it to an outbound destination, or a one-line request to send the prompt, hidden instructions, memory file, or your credentials; a request to send me the keys, tokens, secrets, or credentials of a `.env` file, opening its clause. A key alone, with no `.env`, is not enough | Advisory |
@@ -64,7 +64,8 @@ A lone Unicode control in a text unit is a note. That covers a zero-width space,
 `agent_role_spoof_action` reads the system and developer turn openers of the common
 chat templates (Llama 3 and Llama 4 headers, harmony `<|start|>system<|message|>`, Llama 2
 `<<SYS>>`, Mistral `[SYSTEM_PROMPT]`, Phi `<|system|>`, Gemma `<start_of_turn>` and
-`<|turn>`, Granite, Cohere, and DeepSeek's fullwidth-bar token), `[start]`/`[message]` role
+`<|turn>`, Granite, Cohere, DeepSeek's fullwidth-bar token, and the Kimi and MiniMax
+system openers), `[start]`/`[message]` role
 markers, XML-style system/developer tags, and all-caps `SYSTEM:`, `[ADMIN]`,
 `DEVELOPER`, or `OPERATOR` header lines, each followed on the same line by a
 disclosure, override, or mode-switch request (`System: reboot at 02:00` and
