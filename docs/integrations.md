@@ -393,11 +393,12 @@ rather than as a file. Scan that buffer directly:
 
 ```python
 import hashlib
+from pathlib import Path
 
 from yara_gate import scan_bytes
 
 body = incoming_message.encode("utf-8")
-result = scan_bytes(body, name="sms.txt", policy="agent-ingest", rules_dir=rules_root)
+result = scan_bytes(body, name="sms.txt", policy="agent-ingest", rules_dir=Path(rules_root))
 allowed = (
     result.verdict == "clean"
     and result.incomplete_reason is None
@@ -417,7 +418,8 @@ that the extension-sensitive checks read, so pass the type the consumer will
 treat it as (`message.txt`, `payload.json`, `attachment.pdf`). Only its final
 component is kept, and it becomes the report `path`, so leave phone numbers and
 other identifiers out of it. Input that is not bytes, `bytearray`, or
-`memoryview` returns incomplete with `scan failed`.
+`memoryview` returns incomplete with `scan failed`. So does a `rules_dir` passed as a
+string: it must be a `pathlib.Path`, or every input is held.
 
 Besides the injection rules, a message body can match `agent_message_code_relay`:
 a request to send or forward a one-time code or a received sign-in link to
@@ -616,7 +618,7 @@ reaches the model.
 
 ```python
 text = extract_text(path).encode("utf-8")  # your extractor
-held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=rules_root)
+held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=Path(rules_root))
 ```
 
 Allow the document only when both verdicts are clean. Name the text `.txt`

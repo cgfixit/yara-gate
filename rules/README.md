@@ -37,7 +37,7 @@ or repairs vendor state. See [installation and operation](../user-guide.md) and
 
 ## Generated rule files
 
-`agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`, and
+`agent_prompt_injection_phrases.yar`, `agent_override_imperative.yar`,
 `agent_hidden_html.yar`, and `agent_model_addressed_instruction.yar` are rendered from
 [`templates/`](templates/). The model-addressed rule shares a boundary pattern for
 plain text and HTML. The words an order is
@@ -58,7 +58,7 @@ generated file is not what its template renders, so neither a hand edit nor an u
 template edit merges. An edit to a fragment reaches every string that names it and is a
 rule change like any other: `git diff rules/local` shows the strings, and each needs its
 near-miss. The [record](../docs/verification/2026-11-10-phrase-rule-generator.md) has what was
-measured when the three files moved, and what was left written by hand.
+measured when the first three files moved, and what was left written by hand.
 
 ## All detection layers
 

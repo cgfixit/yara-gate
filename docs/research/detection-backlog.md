@@ -2,7 +2,9 @@
 
 Last reviewed: November 16, 2026, on `main` at `e6d92bc` plus the
 [readiness review's P2 spellings](../verification/2026-11-16-readiness-p2-shapes.md).
-Python 3.12.3, YARA-X 1.23.0, 89 local rules, no vendor packs.
+Python 3.12.3, YARA-X 1.23.0, 89 local rules, no vendor packs. Rows have been added and
+marked built since then, through November 20 on `353746b`; each names its own record and
+date. The list as a whole has not been reviewed again.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
 tried or weighed and turned down. Read it before drafting a detection change. The dated
