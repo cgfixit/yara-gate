@@ -36,13 +36,62 @@ rule win_amsi_bypass {
     strings:
         // The reflection bypass: the AmsiUtils class plus its amsiInitFailed, amsiContext, or
         // amsiSession field, in either order within one script region.
-        $utils_field = /AmsiUtils[\s\S]{0,400}amsi(InitFailed|Context|Session)\b/ nocase ascii wide
-        $field_utils = /\bamsi(InitFailed|Context|Session)\b[\s\S]{0,400}AmsiUtils/ nocase ascii wide
-        // The memory patch: resolve the export, then make its page writable.
-        $patch = /\b(AmsiScanBuffer|AmsiOpenSession|EtwEventWrite)\b[\s\S]{0,2048}\bVirtualProtect\b/ nocase ascii wide
-        $patch_reverse = /\bVirtualProtect\b[\s\S]{0,2048}\b(AmsiScanBuffer|AmsiOpenSession|EtwEventWrite)\b/ nocase ascii wide
+        // The class and the field are separate strings and the condition looks for one starting
+        // within 400 bytes after the other ends. One pattern with [\s\S]{0,400} between them is
+        // split by YARA-X at a gap over 200 bytes and paired match by match, which reached the
+        // scan deadline on a file of them (docs/verification/2026-11-20-any-byte-gap-timing.md).
+        // The ascii and wide copies are separate so UTF-16 text is paired only with UTF-16 text;
+        // a window is the same number of bytes for both, as [\s\S] matches one byte in a wide
+        // pattern too. The field after the class needs no word boundary before it; the field
+        // before the class does, so it has a string of its own.
+        $utils = /AmsiUtils/ nocase ascii
+        $utils_wide = /AmsiUtils/ nocase wide
+        $field = /amsi(InitFailed|Context|Session)\b/ nocase ascii
+        $field_wide = /amsi(InitFailed|Context|Session)\b/ nocase wide
+        $field_first = /\bamsi(InitFailed|Context|Session)\b/ nocase ascii
+        $field_first_wide = /\bamsi(InitFailed|Context|Session)\b/ nocase wide
+        // The memory patch: resolve the export, then make its page writable, in either order
+        // within 2,048 bytes.
+        $export = /\b(AmsiScanBuffer|AmsiOpenSession|EtwEventWrite)\b/ nocase ascii
+        $export_wide = /\b(AmsiScanBuffer|AmsiOpenSession|EtwEventWrite)\b/ nocase wide
+        $protect = /\bVirtualProtect\b/ nocase ascii
+        $protect_wide = /\bVirtualProtect\b/ nocase wide
     condition:
-        any of them
+        for any i in (1..#utils) : ( $field in (@utils[i] + !utils[i]..@utils[i] + !utils[i] + 400) )
+        or for any i in (1..#utils_wide) : (
+            $field_wide in (@utils_wide[i] + !utils_wide[i]..@utils_wide[i] + !utils_wide[i] + 400)
+        )
+        or for any i in (1..#field_first) : (
+            $utils in (@field_first[i] + !field_first[i]..@field_first[i] + !field_first[i] + 400)
+        )
+        or for any i in (1..#field_first_wide) : (
+            $utils_wide in (@field_first_wide[i] + !field_first_wide[i]..@field_first_wide[i] + !field_first_wide[i] + 400)
+        )
+        or for any i in (1..#export) : (
+            $protect in (@export[i] + !export[i]..@export[i] + !export[i] + 2048)
+        )
+        or for any i in (1..#export_wide) : (
+            $protect_wide in (@export_wide[i] + !export_wide[i]..@export_wide[i] + !export_wide[i] + 2048)
+        )
+        or for any i in (1..#protect) : (
+            $export in (@protect[i] + !protect[i]..@protect[i] + !protect[i] + 2048)
+        )
+        or for any i in (1..#protect_wide) : (
+            $export_wide in (@protect_wide[i] + !protect_wide[i]..@protect_wide[i] + !protect_wide[i] + 2048)
+        )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of any string placed above counts as the pair lying in reach, so
+        // a flood ahead of a pair cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md). $field_first matches are
+        // $field matches.
+        or (
+            (#utils >= 1000000 or #utils_wide >= 1000000 or #field >= 1000000 or #field_wide >= 1000000)
+            and ($utils or $utils_wide) and ($field or $field_wide)
+        )
+        or (
+            (#export >= 1000000 or #export_wide >= 1000000 or #protect >= 1000000 or #protect_wide >= 1000000)
+            and ($export or $export_wide) and ($protect or $protect_wide)
+        )
 }
 
 rule win_recovery_inhibit {

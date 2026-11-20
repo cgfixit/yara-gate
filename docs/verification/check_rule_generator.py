@@ -31,6 +31,8 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts/generate_rules.py"
 PHRASES = "agent_prompt_injection_phrases.yar"
 HIDDEN = "agent_hidden_html.yar.tmpl"
+# The first of the two strings that name the cue list (the ascii copy), up to the plural.
+CUE = "$cue = /({{hiding_cue"
 RULE = "agent_prompt_injection_phrases"
 NOUNS = 'order_nouns = ["instructions?", "directions", "prompts?", "rules"]'
 MADE_UP_NOUN = "zzqxnouns"
@@ -153,12 +155,12 @@ def main() -> None:
             (
                 "an unknown fragment",
                 "no fragment named",
-                lambda t, _l: _edit(t / HIDDEN, "({{hiding_cues}})", "({{hiding_cue}})"),
+                lambda t, _l: _edit(t / HIDDEN, CUE + "s}})", CUE + "}})"),
             ),
             (
                 "a malformed placeholder",
                 "not written as",
-                lambda t, _l: _edit(t / HIDDEN, "({{hiding_cues}})", "({{Hiding-Cues}})"),
+                lambda t, _l: _edit(t / HIDDEN, CUE + "s}})", "$cue = /({{Hiding-Cues}})"),
             ),
             (
                 "a fragment that names itself",

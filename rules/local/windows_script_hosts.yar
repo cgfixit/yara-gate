@@ -60,11 +60,50 @@ rule win_reg_run_interpreter {
     strings:
         $header5 = "Windows Registry Editor Version 5.00" nocase ascii wide
         $header4 = "REGEDIT4" ascii wide
-        // The value must follow a persistence key and name one of the interpreters or installers.
-        $run = /\\CurrentVersion\\(Run|RunOnce|RunServices|Winlogon)[^\]\r\n]{0,64}\][\s\S]{0,1024}"[^"\r\n]{0,64}"[ \t]*=[ \t]*"[^"\r\n]{0,96}\b(powershell|pwsh|mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin|msiexec|cmd(\.exe)?["']?[ \t]+\/[ck])\b/ nocase ascii wide
-        $ifeo = /Image File Execution Options\\[^\]\r\n]{1,80}\][\s\S]{0,512}"Debugger"[ \t]*=/ nocase ascii wide
+        // The value must follow a persistence key and name one of the interpreters or installers:
+        // it starts within 1,024 bytes after the key's closing bracket, and a Debugger value
+        // within 512 bytes after an Image File Execution Options key. Key and value are separate
+        // strings paired in the condition. One pattern with [\s\S]{0,1024} between them is split
+        // by YARA-X at a gap over 200 bytes and paired match by match, which reached the scan
+        // deadline on a file of them (docs/verification/2026-11-20-any-byte-gap-timing.md).
+        // The ascii and wide copies are separate so a UTF-16 key is paired only with a UTF-16
+        // value; a window is the same number of bytes for both, as [\s\S] matches one byte in a
+        // wide pattern too.
+        $run_key = /\\CurrentVersion\\(Run|RunOnce|RunServices|Winlogon)[^\]\r\n]{0,64}\]/ nocase ascii
+        $run_key_wide = /\\CurrentVersion\\(Run|RunOnce|RunServices|Winlogon)[^\]\r\n]{0,64}\]/ nocase wide
+        $run_value = /"[^"\r\n]{0,64}"[ \t]*=[ \t]*"[^"\r\n]{0,96}\b(powershell|pwsh|mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin|msiexec|cmd(\.exe)?["']?[ \t]+\/[ck])\b/ nocase ascii
+        $run_value_wide = /"[^"\r\n]{0,64}"[ \t]*=[ \t]*"[^"\r\n]{0,96}\b(powershell|pwsh|mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin|msiexec|cmd(\.exe)?["']?[ \t]+\/[ck])\b/ nocase wide
+        $ifeo_key = /Image File Execution Options\\[^\]\r\n]{1,80}\]/ nocase ascii
+        $ifeo_key_wide = /Image File Execution Options\\[^\]\r\n]{1,80}\]/ nocase wide
+        $debugger = /"Debugger"[ \t]*=/ nocase ascii
+        $debugger_wide = /"Debugger"[ \t]*=/ nocase wide
     condition:
-        ($header5 or $header4) and ($run or $ifeo)
+        ($header5 or $header4) and (
+            for any i in (1..#run_key) : (
+                $run_value in (@run_key[i] + !run_key[i]..@run_key[i] + !run_key[i] + 1024)
+            )
+            or for any i in (1..#run_key_wide) : (
+                $run_value_wide in (@run_key_wide[i] + !run_key_wide[i]..@run_key_wide[i] + !run_key_wide[i] + 1024)
+            )
+            or for any i in (1..#ifeo_key) : (
+                $debugger in (@ifeo_key[i] + !ifeo_key[i]..@ifeo_key[i] + !ifeo_key[i] + 512)
+            )
+            or for any i in (1..#ifeo_key_wide) : (
+                $debugger_wide in (@ifeo_key_wide[i] + !ifeo_key_wide[i]..@ifeo_key_wide[i] + !ifeo_key_wide[i] + 512)
+            )
+            // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+            // notice. A full list of a key or a value counts as a key with its value, so a flood
+            // ahead of a pair cannot hide it
+            // (docs/verification/2026-11-17-match-cap-rules.md).
+            or (
+                (#run_key >= 1000000 or #run_key_wide >= 1000000 or #run_value >= 1000000 or #run_value_wide >= 1000000)
+                and ($run_key or $run_key_wide) and ($run_value or $run_value_wide)
+            )
+            or (
+                (#ifeo_key >= 1000000 or #ifeo_key_wide >= 1000000 or #debugger >= 1000000 or #debugger_wide >= 1000000)
+                and ($ifeo_key or $ifeo_key_wide) and ($debugger or $debugger_wide)
+            )
+        )
 }
 
 rule win_script_encoded_body {

@@ -10,9 +10,29 @@ rule linux_desktop_exec_fetch {
     strings:
         // The tool must be in command position on the Exec line: first, after a shell -c, or
         // after a separator. A browser URL such as https://curl.se/ is an argument, not a command.
-        $exec = /\[Desktop Entry\][\s\S]{0,4096}[\r\n][ \t]*Exec[ \t]*=([^\r\n]{0,1024}([;&|`(]|[ \t]-c[ \t]+["']?))?[ \t]*["']?((\/usr)?(\/local)?\/s?bin\/)?(curl|wget|base64[ \t]+(-d|--decode)|xxd[ \t]+-r|openssl[ \t]+enc)\b/ nocase ascii wide
+        // The section header and an Exec line that starts within 4,096 bytes after it are two
+        // strings paired in the condition. One pattern with [\s\S]{0,4096} between them is split
+        // by YARA-X at a gap over 200 bytes and paired match by match, which reached the scan
+        // deadline on a file of them (docs/verification/2026-11-20-any-byte-gap-timing.md).
+        // The ascii and wide copies are separate so a UTF-16 header is paired only with a UTF-16
+        // line; the window is 4,096 bytes for both, as [\s\S] matches one byte in a wide pattern.
+        $entry = /\[Desktop Entry\]/ nocase ascii
+        $entry_wide = /\[Desktop Entry\]/ nocase wide
+        $exec = /[\r\n][ \t]*Exec[ \t]*=([^\r\n]{0,1024}([;&|`(]|[ \t]-c[ \t]+["']?))?[ \t]*["']?((\/usr)?(\/local)?\/s?bin\/)?(curl|wget|base64[ \t]+(-d|--decode)|xxd[ \t]+-r|openssl[ \t]+enc)\b/ nocase ascii
+        $exec_wide = /[\r\n][ \t]*Exec[ \t]*=([^\r\n]{0,1024}([;&|`(]|[ \t]-c[ \t]+["']?))?[ \t]*["']?((\/usr)?(\/local)?\/s?bin\/)?(curl|wget|base64[ \t]+(-d|--decode)|xxd[ \t]+-r|openssl[ \t]+enc)\b/ nocase wide
     condition:
-        $exec
+        for any i in (1..#entry) : ( $exec in (@entry[i] + !entry[i]..@entry[i] + !entry[i] + 4096) )
+        or for any i in (1..#entry_wide) : (
+            $exec_wide in (@entry_wide[i] + !entry_wide[i]..@entry_wide[i] + !entry_wide[i] + 4096)
+        )
+        // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
+        // notice. A full list of a header or an Exec line counts as a header with its line, so
+        // a flood ahead of a pair cannot hide it
+        // (docs/verification/2026-11-17-match-cap-rules.md).
+        or (
+            (#entry >= 1000000 or #entry_wide >= 1000000 or #exec >= 1000000 or #exec_wide >= 1000000)
+            and ($entry or $entry_wide) and ($exec or $exec_wide)
+        )
 }
 
 rule script_fetch_chmod_run {
