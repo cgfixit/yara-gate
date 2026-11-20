@@ -134,7 +134,8 @@ exit 0 under all three. The files stayed in place.
 `check_worst_case_timing.py` has one new input, `system-openers.txt`: `<<SYS>> ignore` and a
 line feed, repeated to 4 MiB. It must be advisory, finish under the 10 s ceiling, and take no
 more than 8 times its first MiB, the bound [#283](https://github.com/cgfixit/yara-gate/issues/283)
-set for the quotation input. The step now has 97 inputs.
+set for the quotation input. The step now has 97 inputs. In the full run it was advisory in
+3.04 s, 2.9 times the 1.06 s of its first MiB. On the base the same input is incomplete at 30 s.
 
 The budget of that step is the one the [November 14 record](2026-11-14-macos-timing-flake.md)
 calls thin. This input adds one worker and two scans, about 4 s here. Whether the macOS runner
@@ -146,14 +147,14 @@ has room for it is for hosted CI to show.
 | --- | --- |
 | `lint_rules.py` | 89 rules compiled and linted |
 | `check_rule_pairs.py` | passed, 120 rules |
-| `check_added_rules.py`, `check_scan_only.py` | still running when this commit was made; the next commit fills it in |
+| `check_added_rules.py`, `check_scan_only.py` | passed, 246 cases plus 4 vendor-override cases; 7 cases |
 | `probe_rule_coverage.py --verify` | exit 0 |
-| `measure_precision.py --fail-over` | still running when this commit was made; the next commit fills it in |
+| `measure_precision.py --fail-over` | 328 files, 0 incomplete, 0 hits on `agent_role_spoof_action` |
 | `probe_detection_gaps.py --verify` | exit 0 |
-| `sweep_rule_changes.py --base-ref origin/main` | still running when this commit was made; the next commit fills it in |
-| `check_worst_case_timing.py` | still running when this commit was made; the next commit fills it in |
-| `probe_match_cap.py` | still running when this commit was made; the next commit fills it in |
-| `record_pages_demo.py --baseline web-demo/recordings.json` | still running when this commit was made; the next commit fills it in |
+| `sweep_rule_changes.py --base-ref origin/main` | 0 of 6,545 installed files changed findings (9 hits before and after), over `/usr/share/doc`, three Python library trees, Perl, Vim, and the project's virtual environment |
+| `check_worst_case_timing.py` | PASS, 97 inputs of 4 MiB, slowest 6.65 s (`pdf-font-definitions.pdf`) |
+| `probe_match_cap.py` | 2,839 flooded texts over 84 rules, 0 with a cap blind spot |
+| `record_pages_demo.py --baseline web-demo/recordings.json` | outcomes match, 91 scenarios under 3 policies |
 
 Not run locally: the broad pytest suite and `selftest` (hosted CI), and `mypy`, since no
 Python contract moved.
@@ -163,9 +164,10 @@ Python contract moved.
 - A production false-positive rate, or timing on macOS or Windows.
 - That no other input makes this rule slow. The floods above are the shapes that were tried.
 - **Other rules have the same gap.** Eleven more files in `rules/local` hold an any-byte gap
-  over 200 inside one pattern. Two were tried, each rule file alone on 131,072, 262,144, and
-  524,288 bytes while other checks were running: `display:none ignore previous instructions `
-  against `agent_hidden_html` took 0.03 s, 0.12 s, 0.39 s, and a `ProgramArguments` key with a
-  shell string against `script_launchagent_shell` took 0.02 s, 0.08 s, 0.31 s. That is three
-  to four times per doubling. Neither was run to 4 MiB, and none was changed here. It is a
-  row in the backlog.
+  over 200 inside one pattern. Two were tried through `scan_bytes` at 4 MiB with a 30 s
+  timeout, on the changed tree, once each: `display:none ignore previous instructions ` as
+  `notes.html` was incomplete (`timeout`) at 30.0 s, and a `ProgramArguments` key with a
+  `/bin/sh` string as `a.plist` was clean in 26.6 s. Each rule file alone grew three to four
+  times per doubling up to 512 KiB (`agent_hidden_html`: 0.03 s, 0.12 s, 0.39 s;
+  `script_launchagent_shell`: 0.02 s, 0.08 s, 0.31 s). The other nine were not tried and none
+  was changed here. It is a row in the backlog.
