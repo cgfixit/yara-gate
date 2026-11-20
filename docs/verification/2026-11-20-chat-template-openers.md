@@ -134,3 +134,39 @@ wrong. Each finding was reproduced before it was acted on.
 | The benign shapes in the table above | Kept as the rule's existing reach, and stated |
 | The spellings in the list above | Left open and stated |
 | The timing findings | In [Timing](#timing) |
+
+## Timing
+
+Each row is one `scan_bytes` call on 4 MiB, base rules against changed rules in the same run,
+on the container named at the top. The first block is the median of three; the floods were run
+once each with a 30 s timeout. Measured on `49e6d1d`, the first rule commit.
+
+| Input, repeated to 4 MiB | Base | Changed |
+| --- | --- | --- |
+| Ordinary notes | 0.44 s clean | 0.44 s clean |
+| An opener and a greeting with no verb, for each of the seven new openers | 0.45 to 0.60 s clean | 0.62 to 1.40 s clean |
+| The same for Phi's `<\|assistant\|>`, which the base reads | 1.02 s clean | 0.99 s clean |
+| `]~b]ai` and a line feed, nothing else | 0.56 s clean | 4.51 s clean |
+| Phi's `<\|assistant\|>`, nothing else | 1.69 s clean | 1.73 s clean |
+| `</tool_response>` and a verb, with one open tag in the unit | 1.25 s clean | 1.55 s clean |
+| `]~b]system ignore ` | 2.02 s clean | incomplete (`timeout`) at 30 s |
+| `<\|im_system\|>system<\|im_middle\|> ignore ` | 1.38 s clean | advisory in 29.2 s |
+| Llama 2 `<<SYS>> ignore `, which the base reads | incomplete (`timeout`) at 30 s | incomplete (`timeout`) at 30 s |
+| Phi `<\|system\|>x ignore `, which the base reads | incomplete (`timeout`) at 30 s | incomplete (`timeout`) at 30 s |
+
+Two things follow.
+
+- **A short opener costs more.** `]~b]ai` is seven bytes with its line feed, so 4 MiB holds
+  about 600,000 of them, and each one is followed by a 200-byte window. It is 2.6 times the
+  slowest listed opener on the same kind of input and under the 10 s ceiling of
+  `check_worst_case_timing.py`.
+- **A flood of system openers that each carry a verb does not finish, on the base too.** The
+  last four rows are one class: the two the base reads already reach the 30 s deadline on
+  `a32b63f`. The new openers join it, so a file of that shape that the base passed as clean in
+  2 s is now incomplete or advisory. Incomplete is exit 2 and keeps an inbox copy quarantined.
+  The cause is in how `$header` is read, not in the new spellings, and it is not fixed here; it
+  is a row in the [detection backlog](../research/detection-backlog.md#further-candidates-not-yet-in-the-probe).
+
+`check_worst_case_timing.py` passed its 96 inputs of 4 MiB on `49e6d1d`; the slowest was 5.9 s.
+No input was added to it: none of its cases is a flood of role openers, and its budget is the
+one the [November 14 record](2026-11-14-macos-timing-flake.md) calls thin.
