@@ -564,6 +564,7 @@
       const provenance = {
         "Input SHA-256": data.sha256,
         "Ruleset SHA-256": data.ruleset_sha256 || "Unavailable",
+        "Detector SHA-256": data.detector_sha256 || "Unavailable",
         "Runtime": "yara-gate " + (data.tool_version || "unknown") + " · YARA-X " + (data.engine_version || "unknown"),
         "Additional derived views": Object.entries(data.views_scanned).map(([view, count]) => view + ": " + count).join(", ") || "None (raw input counted above)",
         "Bytes handed to YARA (including views)": data.bytes_scanned.toLocaleString(),
