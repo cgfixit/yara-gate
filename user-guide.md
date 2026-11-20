@@ -151,6 +151,10 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 
 `scan_file(path, policy="agent-ingest")` and `scan_bytes(data, name=..., policy="agent-ingest")` apply the same policy as the CLI flag. Without that argument, the default policy retains advisory/exit 0 behavior.
 
+After you upgrade `yara-gate`, `yara-gate conform` checks the new install against fixtures
+and expected verdicts shipped inside it: exit 0 when nothing changed, 1 when a verdict
+did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
+
 ## 5. Read a report
 
 Start with the current held queue:
