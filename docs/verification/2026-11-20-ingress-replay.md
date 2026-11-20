@@ -96,7 +96,7 @@ A capture with any failed item exits 2. No case produced exit 1.
 - `docs/research/probe_rule_coverage.py --verify`: exit 0, no failures.
 - `ruff check .`, `ruff format --check .`, `mypy --strict src scripts`: clean.
 - `check_doc_links.py`, `check_text_controls.py`: pass.
-- `pytest -m "not slow"`, the whole suite on Linux: 1285 passed, 5 skipped. The 25 replay
+- `pytest -m "not slow"`, the whole suite on Linux: 1285 passed, 5 skipped. The 24 replay
   tests are in `tests/test_replay.py`.
 
 ## Cost
