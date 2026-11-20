@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 96 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 97 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -50,7 +50,11 @@ the shortest quotation of an override, `the phrase ignore the above`
 The base is close enough to the ceiling that a faster runner could pass it, so the quotation
 input also fails when its 4 MiB scan takes more than 8 times its first MiB (`SCALING`,
 [#283](https://github.com/cgfixit/yara-gate/issues/283)). That ratio does not depend on the
-runner's speed: 4.0 on `7143d93`, 16.9 to 18.2 for the old count. The RTF reader now rejects the unclosed nesting
+runner's speed: 4.0 on `7143d93`, 16.9 to 18.2 for the old count. A third input,
+`system-openers.txt`, repeats a system turn opener with its verb, `<<SYS>> ignore`, which
+YARA-X paired match by match inside one pattern ([record](2026-11-20-role-spoof-timing.md),
+incomplete at 30 s on the base). It must be advisory and has the same bound of 8 times its
+first MiB. The RTF reader now rejects the unclosed nesting
 at depth 128; the historical table below predates that reader. Any other incomplete result, worker failure, timeout, or over-ceiling
 scan fails. Reaching a safe incomplete limit is not detection clearance.
 
