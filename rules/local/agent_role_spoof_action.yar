@@ -16,7 +16,7 @@ rule agent_role_spoof_action {
         // fullwidth bars, U+FF5C), Kimi (<|im_system|>system<|im_middle|>), MiniMax (]~b]system),
         // Inkling (<|message_system|><|content_text|>), and plain <system> tags. Kimi and Inkling
         // also write <|im_system|>tool_declare and <|message_system|>tool_declare before a tool
-        // list, which is not an order and is not read.
+        // list; those two are not openers here, so an order written after one is not read.
         $header = /(<\|start_header_id\|>(system|developer)<\|end_header_id\|>|<\|header_start\|>(system|developer)<\|header_end\|>|\[start\](system|developer)\[message\]|<\|start\|>(system|developer)<\|message\|>|<<SYS>>|\[SYSTEM_PROMPT\]|<\|system\|>|<start_of_turn>(system|developer)|<\|turn>(system|developer)|<\|start_of_role\|>(system|developer)<\|end_of_role\|>|<\|SYSTEM_TOKEN\|>|<\xef\xbd\x9cSystem\xef\xbd\x9c>|<\|im_system\|>(system|developer)<\|im_middle\|>|\]~b\]system\b|<\|message_system\|><\|content_text\|>|<(system|developer)>)[\s\S]{0,256}\b(reveal|ignore|override|execute|credentials)\b/ nocase ascii wide
         // A one-line message: an all-caps authority header (SYSTEM:, [ADMIN], ADMIN OVERRIDE CODE 7731:) or an
         // "I am your developer" claim, then a disclosure, override, or mode-switch request on the same line.
