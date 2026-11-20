@@ -292,6 +292,13 @@ comment was clean with exit 0 under all three. The files stayed in place.
 Not run locally: the broad pytest suite and `selftest` (hosted CI), and `mypy`, since no
 Python contract moved.
 
+## Afterwards: memory
+
+A security review of #310 found that strings like these second halves, a million matches of
+each, multiplied the scan's memory. The [placed-rule memory record](2026-11-20-placed-rule-memory.md)
+measures it for this change (222 to 292 MiB on 15 MiB floods) and removes the match objects
+in the scanner: 145 to 213 MiB after, with every finding, offset, and length above unchanged.
+
 ## What this does not show
 
 - A production false-positive rate, or timing on macOS or Windows. The timing step gained
