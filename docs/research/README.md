@@ -1,6 +1,6 @@
 # Research notes and probes
 
-Start with the [detection backlog](detection-backlog.md). It is the one living page: open
+Start with the [detection backlog](detection-backlog.md). It is the living page for detection: open
 candidates with their evidence and false-positive class, ideas that were weighed and turned
 down, and the checks a rule change has to pass. Everything else here is either a dated
 record, a data file a probe reads, or a script.
@@ -14,6 +14,7 @@ revision; it is a lead to reproduce on the current tree, not a description of it
 | Page | Use it for |
 | --- | --- |
 | [detection-backlog.md](detection-backlog.md) | What to build next, what not to build and why, and how to keep tokens, settings keys, the engine, and vendor pins current |
+| [shadow-evaluation-protocol.md](shadow-evaluation-protocol.md) | How a consumer measures the gate on its own traffic before enforcing it: conditions, pilot size, budgets, and which metric `yara-gate replay` records. Frozen for [#236](https://github.com/cgfixit/yara-gate/issues/236); changes are dated in the page |
 
 ## Dated records
 

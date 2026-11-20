@@ -613,6 +613,9 @@ held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=rule
 Allow the document only when both verdicts are clean. Name the text `.txt`
 (not `report.pdf`) so the scan treats it as text.
 
+To measure this before enforcing it, capture the extractor's output and run
+[`yara-gate replay`](#replaying-captured-model-input) over it.
+
 ### Documents that quote attacks
 
 A threat report, a red-team corpus, or a rule's own test file quotes the phrases
@@ -689,6 +692,92 @@ a document; the scanner does not guess from the content, and a size or ratio
 rule would be defeated by filler. A document that asks the reader to forward a
 one-time code, or that carries an instruction in hidden text, is still held. An
 encoded override phrase is a note, recorded like the plain phrase.
+
+## Replaying captured model input
+
+`yara-gate replay CAPTURE` answers one question before a consumer enforces anything: on
+the text this consumer hands its model, what would the gate have decided? It scans a
+capture of that text and prints the gate's record beside the consumer's own decision. It
+is a measurement. It admits nothing, holds nothing, writes no report, needs no gate home,
+and never downloads. The [shadow evaluation protocol](research/shadow-evaluation-protocol.md)
+says how to turn its output into a decision.
+
+```sh
+yara-gate replay capture.jsonl --rules RULES > replay.jsonl
+yara-gate replay - --rules RULES --policy agent-document < capture.jsonl
+```
+
+The capture is JSON Lines, one object per item, at most 16 MiB a line:
+
+| Key | Required | Holds |
+| --- | --- | --- |
+| `source_id` | Yes | Your identifier for the item, up to 256 characters. It is copied to the output, so keep query strings, tokens, and personal identifiers out of it |
+| `channel` | Yes | A lowercase label for where the text entered: `search-snippet`, `fetched-html`, `pdf-text`, `cached-passage`, or your own |
+| `text` or `text_base64` | One of them | The exact text handed to the model. `text` is scanned as its UTF-8 bytes; `text_base64` carries bytes that are not UTF-8 |
+| `text_sha256` | No | Your own SHA-256 of those bytes. An item whose digest differs is `failed` with `receipt mismatch` and is not scanned |
+| `name` | No | The logical file name whose suffix drives the type checks; `item.txt` when absent |
+| `policy` | No | `agent-ingest`, `agent-document`, or `default` for this item; otherwise `--policy`, which defaults to `agent-ingest` |
+| `label` | No | Ground truth, `attack` or `benign`, for the summary |
+| `actual_decision` | No | What the consumer did: `admitted` or `held` |
+| `original_sha256` | No | The SHA-256 of the file the text was extracted from, recorded beside the text's own digest |
+| `extractor`, `extractor_version` | No | What produced the text |
+| `classifier` | No | A flat object of scores and identity from a separate classifier. It is copied through, and the gate never reads it |
+
+An unknown key, a repeated key, or a control character in an identifier makes the line
+malformed. A malformed line still produces an item, `failed`, so every line of the capture
+is counted.
+
+Each item becomes one envelope on stdout, and a summary follows the last one:
+
+```json
+{"record":"item","schema_version":1,"line":2,"source_id":"task-017:fetch-2","channel":"fetched-html","label":"attack","policy":"agent-ingest","text_sha256":"345d…b5e4","text_bytes":62,"original_sha256":"abab…abab","extractor":"pdf-text-worker","extractor_version":"0.3.1","status":"complete","status_reason":null,"proposed_decision":"hold","actual_decision":"admitted","agreement":"gate-would-hold","wall_seconds":0.248,"classifier":null,"gate":{"sha256":"345d…b5e4","verdict":"block","exit_code":1,"…":"the compact report"}}
+```
+
+- `gate` is the same compact report `scan --json` prints, present only when it is one valid
+  record for exactly these bytes and this policy. The envelope never holds the text or
+  matched bytes.
+- `status` describes the scan, and each value is distinct from clean:
+  - `complete`: a complete record for these bytes.
+  - `truncated`: the gate returned an incomplete record (a limit, its own deadline, the match
+    cap, rules that did not load). `status_reason` is its `incomplete_reason`.
+  - `failed`: no usable record. The child was killed at the hard deadline, crashed, printed
+    something other than one valid record, answered for other bytes or another policy, or the
+    capture line was malformed.
+- `proposed_decision` applies the policy's read rule from the top of this guide: `admit` for
+  a complete `clean` record, and under `agent-document` also for the exact
+  [notes-only record](#documents-that-quote-attacks). Everything else is `hold`, including
+  every `truncated` and `failed` item. `default` admits a complete record that exits 0.
+- `agreement` compares that with `actual_decision`: `agree`, `gate-would-hold`, or
+  `gate-would-admit`. It is null without an `actual_decision` and for a `failed` item.
+- `wall_seconds` includes one process start; `gate.scan_seconds` is the scan alone.
+
+The summary (`"record":"summary"`) counts items by `status`, by proposed decision, by
+agreement, and by label (`admit`, `hold`, `truncated`, `failed`, so a scan that did not
+finish is never counted as an admit). It also lists items per rule ID, the median and
+maximum of both timings, and `identities`: each distinct ruleset digest, detector digest,
+engine and tool version, and rule counts seen. `mixed_identities` is true when a run saw
+more than one, which means its numbers mix two baselines.
+
+Each item is scanned in its own child process, which the parent kills 30 seconds after the
+scan's own `--timeout`, because the scanner's deadline cannot preempt every parser. One
+item cannot affect the next. A small text item takes about 0.2 s of wall time once the
+compiled rules are cached.
+`--no-timings` leaves the seconds out, so two runs over the same capture with the same
+rules and detector print the same bytes.
+
+The exit code is 0 when every item got a gate record and 2 when one did not. It is never
+1: a proposed hold is an observation here, not a verdict. Do not use this command to admit
+content. An envelope describes a capture; admission uses a fresh `scan` or `scan_bytes`
+record for the bytes being read.
+
+A caller that already holds bytes in Python can use the same core:
+
+```python
+from yara_gate.replay import proposed_decision, shadow_scan
+
+scan = shadow_scan(text, name="page.txt", policy="agent-ingest", rules_dir=rules_root)
+observed = {"status": scan.status, "would": proposed_decision(scan, "agent-ingest")}
+```
 
 ## Listing held items
 
