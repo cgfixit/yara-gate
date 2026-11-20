@@ -240,6 +240,10 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 - Two watches at once: the second exits 2 with `incomplete: watch already running`.
 - Vendor files that fail to compile are skipped and counted in the report's `skipped_rule_files`. A shipped local rule that fails to compile is fatal (exit 2). Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
 
+After you upgrade `yara-gate`, `yara-gate conform` checks the new install against fixtures
+and expected verdicts shipped inside it: exit 0 when nothing changed, 1 when a verdict
+did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
+
 ## 9. Try a verdict in the browser
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.

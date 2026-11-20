@@ -792,6 +792,30 @@ scan = shadow_scan(data, name="page.txt", policy="agent-ingest", rules_dir=rules
 observed = {"status": scan.status, "would": proposed_decision(scan, "agent-ingest")}
 ```
 
+## Checking a pin bump and your own extractor
+
+Two things can change what your model receives without any change in your code: a new
+`yara-gate` version that answers differently, and a reader of yours that shows the model
+text the gate judged differently in the file. `yara-gate conform` checks the first against
+fixtures and expected verdicts shipped in the package, and `yara-gate conform --agreement`
+shows the second on the same fixtures.
+
+```sh
+yara-gate conform                                   # exit 0, 1 (a verdict changed), or 2
+yara-gate conform --export kit                      # the fixtures, for your reader
+yara-gate conform --agreement extraction.jsonl > agreement.jsonl
+```
+
+- Run the plain command in CI whenever the pin moves. It uses the bundled rules only, needs
+  no network and no gate home, and takes a few seconds.
+- Run agreement mode after every extractor change and every pin move, and fail CI when the
+  committed `agreement.jsonl` changes. A `file-holds-only` line is an input the gate holds
+  as a file and would admit as your extraction.
+- Installed vendor packs are compared in a section of their own that never fails the run.
+
+The record types, exit codes, capture keys, and the change list are in the
+[conformance kit guide](conformance.md).
+
 ## Listing held items
 
 `yara-gate held --home GATE --json` is a read-only queue index for an operator or
