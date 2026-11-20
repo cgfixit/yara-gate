@@ -14,13 +14,13 @@ with an order after it, beside a ChatML, Granite system, and Gemma control that 
 | Template | Opener | Rule | Base | Now |
 | --- | --- | --- | --- | --- |
 | Kimi K2 | `<\|im_system\|>system<\|im_middle\|>` (or `developer`) | `agent_role_spoof_action`, `$header` | clean | advisory |
-| Kimi K2 | `<\|im_assistant\|>assistant<\|im_middle\|>` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
+| Kimi K2 | `<\|im_assistant\|>`, the role or a message name of up to 32 characters, `<\|im_middle\|>` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
 | MiniMax M2 | `]~b]system` | `agent_role_spoof_action`, `$header` | clean | advisory |
 | MiniMax M2 | `]~b]ai` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
 | Granite 4.0 | `<\|start_of_role\|>assistant<\|end_of_role\|>` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
 | Inkling 2 | `<\|message_system\|><\|content_text\|>` | `agent_role_spoof_action`, `$header` | clean | advisory |
-| Inkling 2 | `<\|message_model\|><\|content_text\|>` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
-| Qwen 3.8, GLM-4.6, Granite 4.0 | `</tool_response>` with no `<tool_response` in the unit, then an instruction verb within 80 bytes | `agent_fake_chat_marker`, `$close_response` and `$open_response` | clean | advisory |
+| Inkling 2 | `<\|message_model\|>` then `<\|content_text\|>` or `<\|content_thinking\|>` | `agent_fake_chat_marker`, `$turn` | clean | advisory |
+| Qwen 3.8, GLM-4.6, Granite 4.0 | `</tool_response>` with no `<tool_response` anywhere in the unit, before or after it, then an instruction verb within 80 bytes | `agent_fake_chat_marker`, `$close_response` and `$open_response` | clean | advisory |
 
 No rule id, severity, or policy changed. Each opener still needs the rule's own verb after it
 (`reveal`, `ignore`, `override`, `execute`, or `credentials` within 256 bytes for the system
@@ -63,21 +63,74 @@ the DeepSeek V3.1 and Phi-4-mini repositories, which hold no `chat_template.jinj
 ## Boundaries
 
 The near-miss was written before each pattern and is kept in
-[`check_rule_pairs.py`](check_rule_pairs.py).
+[`check_rule_pairs.py`](check_rule_pairs.py). Every boundary below is about the marker and
+what follows it within the rule's window. None of them is a claim about a whole rendered
+prompt; the next section says what a rendered prompt does.
 
-- **A tool list is not a system turn.** Kimi and Inkling write `tool_declare` under the same
-  token as a system message, and a tool list names `execute` and `reveal` in its descriptions.
-  Only `system` or `developer` before `<|im_middle|>`, and `<|content_text|>` after
-  `<|message_system|>`, are read. Both tool lists stay clean.
-- **A user or tool turn is not a role claim.** `<|im_user|>`, `]~b]user`, `]~b]tool`,
+- **The tool-list marker is not an opener.** Kimi and Inkling write `tool_declare` under the
+  same token as a system message, and a tool list names `execute` and `reveal` in its
+  descriptions. Only `system` or `developer` before `<|im_middle|>`, and `<|content_text|>`
+  after `<|message_system|>`, open a system turn. A tool list alone stays clean.
+- **A user or tool marker is not an opener.** `<|im_user|>`, `]~b]user`, `]~b]tool`,
   `<|start_of_role|>user`, and `<|message_user|>` followed by "please ignore the typo" stay
-  clean, and so does an Inkling tool call (`<|message_model|>run<|content_invoke_tool_json|>`).
-- **A rendered greeting carries no order.** Each template's default system prompt and a
-  greeting from the assistant stay clean.
+  clean when no system or assistant opener stands within the window before them, and so does
+  an Inkling tool call (`<|message_model|>run<|content_invoke_tool_json|>`).
+- **An opener with no verb after it carries no order.** Each template's default system prompt
+  and a greeting from the assistant stay clean.
 - **Each tool wrapper is paired with its own open tag.** A file that opens `<tool_response>`
   and then carries a stray `</tool_result>` with an order is advisory on the base and still is.
-  One open string for both closes would have cleared it.
-- **Unchanged from the base:** a rendered transcript whose system prompt is followed within 256
-  bytes by a user turn that says "ignore" is advisory for every family the rule lists, old and
-  new. The first draft of the MiniMax near-miss was such a transcript and fired; it was
-  rewritten, and the boundary is not new.
+  One open string for both closes would have cleared it. The open tag counts anywhere in the
+  unit, before or after the close, and self-closed (`<tool_response/>`).
+
+## What a rendered prompt or transcript does
+
+The rules read a window after an opener, 256 bytes for a system opener and 200 for an
+assistant opener, and do not know where a turn ends. That is how they read every family they
+list, and the base behaves the same way. An independent review of this change reproduced it
+for the new families, each beside a family the base already reads:
+
+| Benign text | New family | Base, same shape in a listed family |
+| --- | --- | --- |
+| A system turn, then a user turn within the window that says "execute" or "ignore" | Inkling, MiniMax, Kimi: clean on the base, advisory now | ChatML: advisory on the base |
+| A system turn that holds a tool list naming `execute` within the window | MiniMax, which renders its tools inside the system turn: clean on the base, advisory now | ChatML: advisory on the base |
+| An assistant greeting, then a user or tool turn within the window that says "ignore" | Kimi, MiniMax, Granite, Inkling: clean on the base, advisory now | Phi: advisory on the base |
+| A tool named `run_command` called in the assistant turn | The four new families: clean on the base, advisory now | ChatML: advisory on the base |
+| Source code that holds the close tag as a constant, with "ignore" in the next comment | `</tool_response>`: clean on the base, advisory now | `</tool_result>`: advisory on the base |
+
+Inkling writes `<|message_system|><|content_text|>Thinking effort level: ...` at the head of
+every prompt, so a logged Inkling prompt carries the system opener about 70 bytes before the
+user's first words. A captured prompt or a chat log in one of these four templates is
+therefore advisory when one of the rule's verbs falls in a window, as a ChatML log is today.
+The rules are written for a document or message that imitates a turn; a consumer that scans
+its own rendered prompts will see these findings.
+
+## Spellings that still pass
+
+Verified clean with the changed rules, each with an order after it:
+
+- `<|im_system|>tool_declare<|im_middle|>` and `<|message_system|>tool_declare<|content_xml|>`
+  followed by an order instead of a tool list. The exemption that keeps a tool list clean also
+  passes this. A name other than `system` or `developer` after `<|im_system|>` passes too.
+- White space or a line break between the tokens of an opener (`<|im_system|>system
+  <|im_middle|>`, `]~b] system`). The Llama 3 header with a space is clean on the base in the
+  same way; only the ChatML strings allow blanks after their first token.
+- `]~b]assistant` and `]~b]developer`, which the MiniMax template does not write.
+- `</tool_response >` with a space, and a close whose `<tool_response>` open is added anywhere
+  after it.
+- An Inkling `<|message_model|>` turn opened by a name (`<|message_model|>planner<|content_text|>`).
+
+## Review and what it changed
+
+A fresh-context reviewer was given the diff and the fixtures and asked to make the change
+wrong. Each finding was reproduced before it was acted on.
+
+| Finding | Outcome |
+| --- | --- |
+| Kimi writes a message's name between its tokens; `<\|im_assistant\|>Kimi<\|im_middle\|>` with an order was clean | Fixed: the assistant opener takes a name of up to 32 characters |
+| Inkling opens a thinking turn with `<\|content_thinking\|>`; an order there was clean | Fixed: the assistant opener takes either content token |
+| `<tool_response/>` did not count as an open tag, so a close after it was a stray one | Fixed: the open string takes `/` |
+| The Inkling pair fixtures were not shapes the template writes | Fixed: the tool list is a bare sorted JSON array and the tool call is `{"name":...,"args":{...}}` |
+| The record said a user turn and a tool list "stay clean" without saying where | Rewritten above; the rendered-prompt table is the result |
+| The benign shapes in the table above | Kept as the rule's existing reach, and stated |
+| The spellings in the list above | Left open and stated |
+| The timing findings | In [Timing](#timing) |
