@@ -393,11 +393,12 @@ rather than as a file. Scan that buffer directly:
 
 ```python
 import hashlib
+from pathlib import Path
 
 from yara_gate import scan_bytes
 
 body = incoming_message.encode("utf-8")
-result = scan_bytes(body, name="sms.txt", policy="agent-ingest", rules_dir=rules_root)
+result = scan_bytes(body, name="sms.txt", policy="agent-ingest", rules_dir=Path(rules_root))
 allowed = (
     result.verdict == "clean"
     and result.incomplete_reason is None
@@ -417,7 +418,8 @@ that the extension-sensitive checks read, so pass the type the consumer will
 treat it as (`message.txt`, `payload.json`, `attachment.pdf`). Only its final
 component is kept, and it becomes the report `path`, so leave phone numbers and
 other identifiers out of it. Input that is not bytes, `bytearray`, or
-`memoryview` returns incomplete with `scan failed`.
+`memoryview` returns incomplete with `scan failed`. So does a `rules_dir` passed as a
+string: it must be a `pathlib.Path`, or every input is held.
 
 Besides the injection rules, a message body can match `agent_message_code_relay`:
 a request to send or forward a one-time code or a received sign-in link to
@@ -616,7 +618,7 @@ reaches the model.
 
 ```python
 text = extract_text(path).encode("utf-8")  # your extractor
-held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=rules_root)
+held = scan_bytes(text, name="report.txt", policy="agent-ingest", rules_dir=Path(rules_root))
 ```
 
 Allow the document only when both verdicts are clean. Name the text `.txt`
@@ -791,6 +793,30 @@ data = text.encode("utf-8")  # bytes, as handed to the model
 scan = shadow_scan(data, name="page.txt", policy="agent-ingest", rules_dir=rules_root)
 observed = {"status": scan.status, "would": proposed_decision(scan, "agent-ingest")}
 ```
+
+## Checking a pin bump and your own extractor
+
+Two things can change what your model receives without any change in your code: a new
+`yara-gate` version that answers differently, and a reader of yours that shows the model
+text the gate judged differently in the file. `yara-gate conform` checks the first against
+fixtures and expected verdicts shipped in the package, and `yara-gate conform --agreement`
+shows the second on the same fixtures.
+
+```sh
+yara-gate conform                                   # exit 0, 1 (a verdict changed), or 2
+yara-gate conform --export kit                      # the fixtures, for your reader
+yara-gate conform --agreement extraction.jsonl > agreement.jsonl
+```
+
+- Run the plain command in CI whenever the pin moves. It uses the bundled rules only, needs
+  no network and no gate home, and takes a few seconds.
+- Run agreement mode after every extractor change and every pin move, and fail CI when the
+  committed `agreement.jsonl` changes. A `file-holds-only` line is an input the gate holds
+  as a file and would admit as your extraction.
+- Installed vendor packs are compared in a section of their own that never fails the run.
+
+The record types, exit codes, capture keys, and the change list are in the
+[conformance kit guide](conformance.md).
 
 ## Listing held items
 

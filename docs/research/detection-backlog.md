@@ -2,7 +2,9 @@
 
 Last reviewed: November 16, 2026, on `main` at `e6d92bc` plus the
 [readiness review's P2 spellings](../verification/2026-11-16-readiness-p2-shapes.md).
-Python 3.12.3, YARA-X 1.23.0, 89 local rules, no vendor packs.
+Python 3.12.3, YARA-X 1.23.0, 89 local rules, no vendor packs. Rows have been added and
+marked built since then, through November 20 on `353746b`; each names its own record and
+date. The list as a whole has not been reviewed again.
 
 This is the one living list of detection work that is not built yet, and of ideas that were
 tried or weighed and turned down. Read it before drafting a detection change. The dated
@@ -424,7 +426,7 @@ triggered the defended tool, 2.4%. NotInject's 339 benign prompts give one note 
 | [deepset/prompt-injections](https://huggingface.co/datasets/deepset/prompt-injections) | Card states both Apache-2.0 and CC-BY-4.0 | 662 direct prompts in English and German, with benign rows |
 | [NotInject](https://huggingface.co/datasets/leolee99/NotInject) | MIT | 339 benign prompts built around trigger words: a hold-rate test |
 | [LLMail-Inject](https://huggingface.co/datasets/microsoft/llmail-inject-challenge) | MIT | Indirect injections in mail bodies, with 203 false-positive mails |
-| [BrowseSafe-Bench](https://huggingface.co/datasets/perplexity-ai/browsesafe-bench) | MIT | 14,719 HTML pages with injections and benign distractors: the test for B3 |
+| [BrowseSafe-Bench](https://huggingface.co/datasets/perplexity-ai/browsesafe-bench) | MIT | 14,719 HTML pages with injections and benign distractors: the test for B3. Baseline per read rule on November 20 ([record](../verification/2026-11-20-web-benchmark-baseline.md)): `agent-ingest` holds 42.5% of attack and 11.7% of benign test pages, `agent-document` 19.3% and 1.2% |
 
 A lexical gate's recall on paraphrase corpora is a floor to report, not a target to tune.
 

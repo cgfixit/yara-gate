@@ -40,6 +40,8 @@ For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between stagi
 
 To measure the gate on a consumer's own traffic before enforcing it, `yara-gate replay CAPTURE.jsonl --rules RULES` scans a capture of the exact text a consumer handed its model and prints, per item, the gate's record, the decision its read rule gives, and the consumer's own decision beside it. It admits and holds nothing, writes no report, and exits 0 or 2, never 1. Each scan runs in a child process killed at a hard deadline, and a killed, crashed, or mismatched scan is `failed`, never clean. See [replaying captured model input](docs/integrations.md#replaying-captured-model-input) and the [shadow evaluation protocol](docs/research/shadow-evaluation-protocol.md).
 
+To notice when a gate upgrade changes an answer you rely on, `yara-gate conform` rebuilds 92 inert fixtures from the installed package, checks them against a hash-pinned manifest shipped with it, and scans each under all three policies with the bundled rules: exit 0 when every verdict and exit code is the recorded one, 1 when one changed, 2 when the kit could not run. `--agreement` sets a scan of the text your own extractor produced beside the scan of the file, so a finding your reader loses (hidden text is the usual one) is visible before your model reads it. See the [conformance kit](docs/conformance.md).
+
 ## Why it's worth running
 
 **For the business**
@@ -182,7 +184,7 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 
 ## Rules and hunting
 
-- `setup`, `rules install --allow-network`, and `rules update --allow-network` are the only commands that use the network. Each checks the SHA-256 pins in `rules/rules.lock` and swaps the vendor tree only after the new rules compile. Extraction refuses duplicate rule names, more than 20,000 rule files, or more than 300 MiB expanded, and keeps the previous tree. A scan never downloads.
+- `setup`, `rules install --allow-network`, and `rules update --allow-network` are the only commands that use the network. Each checks the SHA-256 pins in `rules/rules.lock` and swaps the vendor tree only after the new rules compile. Extraction refuses two archive members that would land on the same file, more than 20,000 rule files, or more than 300 MiB expanded, and keeps the previous tree. A scan never downloads.
 - Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. A shipped rule that fails to compile, or a recorded vendor file that is missing, makes the scan exit 2.
 - Rule files must be self-contained: YARA `include` is disabled so the fingerprint covers every compiled source. The phrase, hidden-HTML, and model-addressed rules are generated from `rules/templates/`, and lint fails a hand edit.
 
@@ -232,7 +234,8 @@ src/yara_gate/       cli, scanner, content (archives, mail, views), jsonbounds, 
                      (pdftext, pdfpages, pdfxref, pdfannotations, rtftext, odftext,
                      htmlhidden), filetype, heuristics, models, quarantine, report, rules,
                      hunt, release, held, rescan, replay (observe-only scans of captured
-                     model input), demo, showcase (the catalog both demos read), selftest,
+                     model input), conform (the consumer conformance kit and its
+                     packaged manifest, conformance.json), demo, showcase (the catalog both demos read), selftest,
                      samples, launchd
 rules/local/         the 89 shipped rules in 59 files; rules/rules.lock pins the vendor packs
 rules/templates/     templates and shared fragments for the generated agent rules;
@@ -240,7 +243,7 @@ rules/templates/     templates and shared fragments for the generated agent rule
 rules/README.md      detection-method map, source links, loading and evidence boundaries
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
-docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.sh
+docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.py and .sh
 docs/verification/   CI checks and dated evidence;  docs/research/  probes, research notes,
                      detection-backlog.md (what is not built, and what was turned down), and
                      shadow-evaluation-protocol.md (how a consumer measures the gate)

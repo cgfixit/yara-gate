@@ -30,4 +30,5 @@ The [project README](../../README.md) describes installation and use; [AGENTS.md
 - [`py.typed`](py.typed) marks the package as providing type information.
 
 - [`replay.py`](replay.py) scans captured model input in a child process under a hard deadline and builds one observe-only envelope per item: the gate's record, the decision its read rule gives, and the consumer's own decision. It writes no report and admits nothing (a scan still fills the compiled-rule cache); `yara-gate replay` is its runner.
+- [`conform.py`](conform.py) is the consumer conformance kit behind `yara-gate conform`: it rebuilds the catalog's fixtures and two of its own, checks them against the generated manifest [`conformance.json`](conformance.json), scans them with the bundled rules alone, and in agreement mode sets a consumer's extracted text beside the file scan through the replay core. See the [guide](../../docs/conformance.md).
 - [`rescan.py`](rescan.py) revalidates admitted copies under the watch and intake locks, writes reports, and withdraws new holds without releasing existing ones.

@@ -290,6 +290,65 @@ def replay(
 
 
 @app.command()
+def conform(
+    agreement: str | None = typer.Option(
+        None,
+        "--agreement",
+        metavar="CAPTURE",
+        help="JSON Lines capture of your reader's text for each fixture, or '-' for stdin.",
+    ),
+    export: Path | None = typer.Option(
+        None, "--export", metavar="DIR", help="Write the fixtures to an empty directory and stop."
+    ),
+    policy: ScanPolicy = typer.Option(
+        ScanPolicy.agent_document, "--policy", help="Policy for a capture line that names none."
+    ),
+    rules: Path | None = typer.Option(
+        None, "--rules", help="Installed rules tree for the section that never gates."
+    ),
+    timeout_s: int = typer.Option(
+        30, "--timeout", min=1, max=86400, help="Seconds for one capture line."
+    ),
+) -> None:
+    """Check this install against the packaged fixtures and expected verdicts.
+
+    Exit 0 when every fixture has its recorded verdict and exit code under every policy
+    with the bundled rules, 1 when one changed, and 2 when the kit could not run. A changed
+    rule id or view is printed and does not fail. Installed vendor rules are compared in a
+    section of their own that never changes the exit code.
+    """
+    from yara_gate import conform as kit
+
+    try:
+        if export is not None:
+            typer.echo(f"exported {kit.export(export)} fixtures", err=True)
+            return
+        handle = None
+        if agreement is not None:
+            handle = sys.stdin.buffer if agreement == "-" else Path(agreement).open("rb")
+        try:
+            code = 0
+            for record in kit.run(handle, rules=rules, policy=policy, timeout_s=timeout_s):
+                # ASCII output: a captured identifier cannot control the terminal.
+                typer.echo(json.dumps(record, separators=(",", ":"), ensure_ascii=True))
+                if record["record"] == "summary":
+                    code = {"pass": 0, "fail": 1}.get(record["result"], 2)
+                    typer.echo(kit.headline(record), err=True)
+        finally:
+            if handle is not None and handle is not sys.stdin.buffer:
+                handle.close()
+    except kit.KitError as exc:
+        typer.echo(f"incomplete: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except BrokenPipeError as exc:
+        raise typer.Exit(code=2) from exc
+    except OSError as exc:
+        typer.echo(f"incomplete: capture unreadable ({exc.__class__.__name__})", err=True)
+        raise typer.Exit(code=2) from exc
+    raise typer.Exit(code=code)
+
+
+@app.command()
 def release(
     sha256: str = typer.Argument(..., metavar="SHA256"),
     home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),

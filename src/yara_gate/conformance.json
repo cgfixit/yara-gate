@@ -1,0 +1,3925 @@
+{
+ "fixtures": [
+  {
+   "bytes": 29,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "note",
+   "kind": "detection",
+   "name": "message.txt",
+   "pair": "plain",
+   "sha256": "978df99c59dc44746818698a5c1cea1243afc23045b7c15f6dc38acb1a3431fb",
+   "source": "showcase"
+  },
+  {
+   "bytes": 49,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "plain",
+   "kind": "control",
+   "name": "note.txt",
+   "pair": "note",
+   "sha256": "d42017c46770a8b550ce31b07c0aaf1234c8aacfa159ae926b7caf23a8264102",
+   "source": "showcase"
+  },
+  {
+   "bytes": 68,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_secret_transfer_request"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_secret_transfer_request"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_secret_transfer_request"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "advisory",
+   "kind": "detection",
+   "name": "message.txt",
+   "pair": "advisory_benign",
+   "sha256": "6bb6fe01418aabc0e675aea6074d64f9afbd2899ad96f3846ac1ce165f3d41e1",
+   "source": "showcase"
+  },
+  {
+   "bytes": 67,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "advisory_benign",
+   "kind": "control",
+   "name": "message.txt",
+   "pair": "advisory",
+   "sha256": "83c71044f3fa265033642f1efc70d738c2922689e60dcbd5108e10a3263beb01",
+   "source": "showcase"
+  },
+  {
+   "bytes": 63,
+   "channel": "SMS",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    }
+   },
+   "id": "lookalike",
+   "kind": "detection",
+   "name": "sms.txt",
+   "pair": "lookalike_benign",
+   "sha256": "0f762450333c8f3c84069ddc5b276a3b1961970eeb6875f8807a47c32198f100",
+   "source": "showcase"
+  },
+  {
+   "bytes": 98,
+   "channel": "SMS",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "lookalike_benign",
+   "kind": "control",
+   "name": "sms.txt",
+   "pair": "lookalike",
+   "sha256": "8bec0a15e85c688f26a66d6b4bd7c52e25e738174d2786b0d935d5b431497657",
+   "source": "showcase"
+  },
+  {
+   "bytes": 174,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "base64-decoded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "block",
+     "views": [
+      "base64-decoded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "base64-decoded"
+     ]
+    }
+   },
+   "id": "b64_tool",
+   "kind": "detection",
+   "name": "tool-result.json",
+   "pair": "b64_tool_benign",
+   "sha256": "5af735864169cc42f20c13a2355d8419fe2f05d6b0b9a485bc6192ac8c3ff310",
+   "source": "showcase"
+  },
+  {
+   "bytes": 424,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "b64_tool_benign",
+   "kind": "control",
+   "name": "tool-result.json",
+   "pair": "b64_tool",
+   "sha256": "9ab8de505beb4017a8e2941c2ab0ad6b068e885d36ce370f92f50c3df50bb8ff",
+   "source": "showcase"
+  },
+  {
+   "bytes": 254,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    }
+   },
+   "id": "ansi_log",
+   "kind": "detection",
+   "name": "build.log",
+   "pair": "ansi_log_benign",
+   "sha256": "01d505fdfd0791154a2f1e45bf1466dd2ad9ab0750c92fb2be342645fe53f501",
+   "source": "showcase"
+  },
+  {
+   "bytes": 238,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "ansi_log_benign",
+   "kind": "control",
+   "name": "build.log",
+   "pair": "ansi_log",
+   "sha256": "52a77c9cd8de309f851fe84305b7909d940ec3908c948af7346a27421124a817",
+   "source": "showcase"
+  },
+  {
+   "bytes": 40,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-unescaped"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-unescaped"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-unescaped"
+     ]
+    }
+   },
+   "id": "encoded",
+   "kind": "detection",
+   "name": "message.html",
+   "pair": "encoded_benign",
+   "sha256": "72daf131276c154e22a0143ad88d00bc0f4a3340db8f28e59260781e0ca58253",
+   "source": "showcase"
+  },
+  {
+   "bytes": 42,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "encoded_benign",
+   "kind": "control",
+   "name": "message.html",
+   "pair": "encoded",
+   "sha256": "cdbb0e1bfd455eb666f6c7cf9298c2d20e72e4e4caa34bbe0878f4507ca8e92d",
+   "source": "showcase"
+  },
+  {
+   "bytes": 149,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_hidden_html",
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_hidden_html",
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_hidden_html",
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "hidden_html",
+   "kind": "detection",
+   "name": "page.html",
+   "pair": "hidden_html_benign",
+   "sha256": "28aa41a5f452133d9b9d261dd8d0628cc2f6773438ff50862177e1b377700cd2",
+   "source": "showcase"
+  },
+  {
+   "bytes": 142,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "hidden_html_benign",
+   "kind": "control",
+   "name": "page.html",
+   "pair": "hidden_html",
+   "sha256": "1b4595123bd8bc8799442e4bff170c4789fb5a7d78b5aa18aa318746a8bc78d9",
+   "source": "showcase"
+  },
+  {
+   "bytes": 129,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-text"
+     ]
+    }
+   },
+   "id": "html_split",
+   "kind": "detection",
+   "name": "release-notes.html",
+   "pair": "html_split_benign",
+   "sha256": "d334f473b73dc8ebeed8b34822f22df3a8b40f45275c1419536fec3e2d9a5139",
+   "source": "showcase"
+  },
+  {
+   "bytes": 152,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "html_split_benign",
+   "kind": "control",
+   "name": "release-notes.html",
+   "pair": "html_split",
+   "sha256": "5720e6ac1ac686769114d81a8f083a922a98393cf86c717bf06541cd0467b38e",
+   "source": "showcase"
+  },
+  {
+   "bytes": 824,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    }
+   },
+   "id": "word_split",
+   "kind": "detection",
+   "name": "review.docx",
+   "pair": "word_split_benign",
+   "sha256": "9aa2be991191865a32bfc57349ca00241e95498f6a9fb2b32d43d68ad6df3cd8",
+   "source": "showcase"
+  },
+  {
+   "bytes": 824,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "word_split_benign",
+   "kind": "control",
+   "name": "review.docx",
+   "pair": "word_split",
+   "sha256": "7da43fb529ee9d93c5763b3d3385361fcf480394f228543f44bbd84ea12fb561",
+   "source": "showcase"
+  },
+  {
+   "bytes": 765,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-cell+text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-cell+text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-cell+text-folded"
+     ]
+    }
+   },
+   "id": "xlsx_cell",
+   "kind": "detection",
+   "name": "totals.xlsx",
+   "pair": "xlsx_cell_benign",
+   "sha256": "c75c6929ea74c7aaaf8eab4b256007e824b1a6efa01803f1660f142f16352965",
+   "source": "showcase"
+  },
+  {
+   "bytes": 778,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "xlsx_cell_benign",
+   "kind": "control",
+   "name": "totals.xlsx",
+   "pair": "xlsx_cell",
+   "sha256": "1a31f1a3470fdcfaaa7bd4bb845e7bb2f6d92cc5d9eaf9329b10d1be11ad0700",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1642,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-paragraph"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-paragraph"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-paragraph"
+     ]
+    }
+   },
+   "id": "pdf_glyph",
+   "kind": "detection",
+   "name": "checklist.pdf",
+   "pair": "pdf_glyph_benign",
+   "sha256": "d2e03615beed42c61a4ebe02e7552c84af4b5ab53ace80ef85ecf0957cd68b6e",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1624,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_glyph_benign",
+   "kind": "control",
+   "name": "checklist.pdf",
+   "pair": "pdf_glyph",
+   "sha256": "816f11be536875bfd70b46050665640622798392c218690da3a790efff1fecdc",
+   "source": "showcase"
+  },
+  {
+   "bytes": 344,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "zip_concat",
+   "kind": "detection",
+   "name": "invoice.zip",
+   "pair": "zip_concat_benign",
+   "sha256": "5c2099fce9c4e4ac89b2db649a4a514a0b5d15aac11eb64782b18f711b52b70d",
+   "source": "showcase"
+  },
+  {
+   "bytes": 313,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "zip_concat_benign",
+   "kind": "control",
+   "name": "invoice.zip",
+   "pair": "zip_concat",
+   "sha256": "5b3b9540260d99a11930b89d804c089d18e464dc4a0dc99d2f3c85c22402cfa2",
+   "source": "showcase"
+  },
+  {
+   "bytes": 182,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_event_handler"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_event_handler"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_event_handler"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "svg_handler",
+   "kind": "detection",
+   "name": "logo.svg",
+   "pair": "svg_handler_benign",
+   "sha256": "0ed1fa3a47b19119d5bbb8b39c3b25a104c7666c48cfa15bd16f5e8f932fd383",
+   "source": "showcase"
+  },
+  {
+   "bytes": 176,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "svg_handler_benign",
+   "kind": "control",
+   "name": "logo.svg",
+   "pair": "svg_handler",
+   "sha256": "2c10d425b73fccf7a5734a13586442e56f2f7baacf0075f9f71d1d03a5c47c79",
+   "source": "showcase"
+  },
+  {
+   "bytes": 128,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "filetype_mismatch_pe"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "filetype_mismatch_pe"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "filetype_mismatch_pe"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "pe_pdf",
+   "kind": "detection",
+   "name": "report.pdf",
+   "pair": "pe_pdf_benign",
+   "sha256": "cbcb41c3a3adf01c68ffb4774e8fe6751e2c0aa9d4f107ffe8788fa1efa2313f",
+   "source": "showcase"
+  },
+  {
+   "bytes": 193,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pe_pdf_benign",
+   "kind": "control",
+   "name": "report.pdf",
+   "pair": "pe_pdf",
+   "sha256": "cef3b030a93763cb836367821d6d398a276b6844b783f9e1b8f8bfca4d22e637",
+   "source": "showcase"
+  },
+  {
+   "bytes": 291,
+   "channel": "Model file",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_pickle_reduce"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_pickle_reduce"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_pickle_reduce"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "pickle_call",
+   "kind": "detection",
+   "name": "model.pt",
+   "pair": "pickle_benign",
+   "sha256": "34ebd5d4054aa8af8a9d79463580a7c9047a292d91b5cd2085780ec00de850c5",
+   "source": "showcase"
+  },
+  {
+   "bytes": 297,
+   "channel": "Model file",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pickle_benign",
+   "kind": "control",
+   "name": "model.pt",
+   "pair": "pickle_call",
+   "sha256": "47445b21af98c872a1ff0fd2f93d837e38eda516e89f520c97f6f5af579ef7f1",
+   "source": "showcase"
+  },
+  {
+   "bytes": 248,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "dev_devcontainer_lifecycle"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "dev_devcontainer_lifecycle"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "dev_devcontainer_lifecycle"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "devcontainer",
+   "kind": "detection",
+   "name": "devcontainer.json",
+   "pair": "devcontainer_benign",
+   "sha256": "995f54efd3e2a251f188cedc84c9bb9b6fb34b41fe99e5a1f05f63f48ea94c8f",
+   "source": "showcase"
+  },
+  {
+   "bytes": 181,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "devcontainer_benign",
+   "kind": "control",
+   "name": "devcontainer.json",
+   "pair": "devcontainer",
+   "sha256": "6fd78b3447dca1f4056ab7155d71bec18e854eaff3fdfc5e3fd702981812c7e4",
+   "source": "showcase"
+  },
+  {
+   "bytes": 294,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_variation_selector_run"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_variation_selector_run"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_variation_selector_run"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "selector_run",
+   "kind": "detection",
+   "name": "extension.js",
+   "pair": "selector_run_benign",
+   "sha256": "7bc388ad4368b06eb3c74eadab9f6ca80160dad7e61f7416473e026ecfee14be",
+   "source": "showcase"
+  },
+  {
+   "bytes": 64,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "selector_run_benign",
+   "kind": "control",
+   "name": "extension.js",
+   "pair": "selector_run",
+   "sha256": "a6818c9052ce9137880c9ea641f334482bab87ada9f6ebc85b0a703182d16318",
+   "source": "showcase"
+  },
+  {
+   "bytes": 134,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-text"
+     ]
+    }
+   },
+   "id": "svg_cdata_override",
+   "kind": "detection",
+   "name": "logo.svg",
+   "pair": "svg_cdata_benign",
+   "sha256": "ba8612078ea8568f8f2549a4d1794f7058e23bc47fa69b75f1c0a0d73a07f08c",
+   "source": "showcase"
+  },
+  {
+   "bytes": 128,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "svg_cdata_benign",
+   "kind": "control",
+   "name": "logo.svg",
+   "pair": "svg_cdata_override",
+   "sha256": "ad01854d38e18e3c44e5db45c2cc047771219412c99c540b630d3ff9e5950988",
+   "source": "showcase"
+  },
+  {
+   "bytes": 644,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-comment"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-comment"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-comment"
+     ]
+    }
+   },
+   "id": "xlsx_comment_override",
+   "kind": "detection",
+   "name": "review.xlsx",
+   "pair": "xlsx_comment_benign",
+   "sha256": "0a3827564bef9010617076cfb151b1227b50ab0089df93316f21371fbae55340",
+   "source": "showcase"
+  },
+  {
+   "bytes": 639,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "xlsx_comment_benign",
+   "kind": "control",
+   "name": "review.xlsx",
+   "pair": "xlsx_comment_override",
+   "sha256": "662e28554f64e26ba5ab768d32b098fe3395de1c4b434f4b998a5751c7ad3ad1",
+   "source": "showcase"
+  },
+  {
+   "bytes": 41,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    }
+   },
+   "id": "small_caps_override",
+   "kind": "detection",
+   "name": "note.txt",
+   "pair": "small_caps_benign",
+   "sha256": "3e3373e7996a00f9c80d940abc97981b6816a75c4c41b8ef68585387ad1b3e86",
+   "source": "showcase"
+  },
+  {
+   "bytes": 38,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "small_caps_benign",
+   "kind": "control",
+   "name": "note.txt",
+   "pair": "small_caps_override",
+   "sha256": "6dd951f4be4e8e6f75cb2a36a58deccb253e680604878293f63db1c4e238ad92",
+   "source": "showcase"
+  },
+  {
+   "bytes": 61,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_multilingual"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_multilingual"
+     ],
+     "verdict": "block",
+     "views": [
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_multilingual"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "text-folded"
+     ]
+    }
+   },
+   "id": "uppercase_russian",
+   "kind": "detection",
+   "name": "message.txt",
+   "pair": "uppercase_russian_benign",
+   "sha256": "0e243775e33000448a543fd7f34652fda2b10698512314def64eb5dbd2343428",
+   "source": "showcase"
+  },
+  {
+   "bytes": 80,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "uppercase_russian_benign",
+   "kind": "control",
+   "name": "message.txt",
+   "pair": "uppercase_russian",
+   "sha256": "109253db65e3e3a578cd05881915d239ad75c5bfff21b4dd333f5d9a07c56af6",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1292,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-paragraph+text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-paragraph+text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-paragraph+text-folded"
+     ]
+    }
+   },
+   "id": "pdf_glyph_folded",
+   "kind": "detection",
+   "name": "review.pdf",
+   "pair": "pdf_glyph_folded_benign",
+   "sha256": "a25793c50eda4e913b9d1b1c8aa731b36242453ce43f4a656c00ddbc8656a22e",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1310,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_glyph_folded_benign",
+   "kind": "control",
+   "name": "review.pdf",
+   "pair": "pdf_glyph_folded",
+   "sha256": "46c528520be95bd324e342c41403b5d69d6cf44035bce68d3acc021953dd090c",
+   "source": "showcase"
+  },
+  {
+   "bytes": 79,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "rtf-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "rtf-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "rtf-text"
+     ]
+    }
+   },
+   "id": "rtf_override",
+   "kind": "detection",
+   "name": "review.rtf",
+   "pair": "rtf_benign",
+   "sha256": "3abcf4ffcdaad5630a8d3d5c436b39621c4dfd81986ee3b29fe28d926da006a7",
+   "source": "showcase"
+  },
+  {
+   "bytes": 78,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "rtf_benign",
+   "kind": "control",
+   "name": "review.rtf",
+   "pair": "rtf_override",
+   "sha256": "e3d7e00ed3da9f8128b847c4cd7a457ed3a9d456c43e5e4104bc6d16146ae72e",
+   "source": "showcase"
+  },
+  {
+   "bytes": 751,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "odf-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "odf-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "odf-text"
+     ]
+    }
+   },
+   "id": "odt_span_override",
+   "kind": "detection",
+   "name": "review.odt",
+   "pair": "odt_span_benign",
+   "sha256": "90dba12a44d8caabf0e4f3d28f04e808082c9e69b1704d876061dbc416fa7a85",
+   "source": "showcase"
+  },
+  {
+   "bytes": 750,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "odt_span_benign",
+   "kind": "control",
+   "name": "review.odt",
+   "pair": "odt_span_override",
+   "sha256": "8d088b76cd8e0ef20ca0ece019977b3ed701ff7c115bde374af5206c635a93ad",
+   "source": "showcase"
+  },
+  {
+   "bytes": 643,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    }
+   },
+   "id": "word_xml_comment_override",
+   "kind": "detection",
+   "name": "review.docx",
+   "pair": "word_xml_comment_benign",
+   "sha256": "aaa692b86f343db565559e59e02bcb5056d8251e07f619ac8fc162a77c12fc57",
+   "source": "showcase"
+  },
+  {
+   "bytes": 642,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "word_xml_comment_benign",
+   "kind": "control",
+   "name": "review.docx",
+   "pair": "word_xml_comment_override",
+   "sha256": "0fdf40bb3b33e19f0c127c91ab15c15791e330471c2146b6962085d33c2ad757",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1128,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text"
+     ]
+    }
+   },
+   "id": "pptx_master_override",
+   "kind": "detection",
+   "name": "deck.pptx",
+   "pair": "pptx_master_benign",
+   "sha256": "4e1f4422d9d7a138d77719ec606afcf8f5548f1c5407d264a99eb93fc422daa3",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1117,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pptx_master_benign",
+   "kind": "control",
+   "name": "deck.pptx",
+   "pair": "pptx_master_override",
+   "sha256": "c5be3e4bcbd0319b6bb1e9997b26ae56b55d44311f70e9614c87656ea540887d",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1590,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    }
+   },
+   "id": "pdf_neighbour_font_override",
+   "kind": "detection",
+   "name": "invoice.pdf",
+   "pair": "pdf_neighbour_font_benign",
+   "sha256": "64985b132d8f730ac1354ca00dc4873cf6d6ed3d0ddec442fcf3891aee956f37",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1589,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_neighbour_font_benign",
+   "kind": "control",
+   "name": "invoice.pdf",
+   "pair": "pdf_neighbour_font_override",
+   "sha256": "f30b6c29612ce8723dc81b61419c471040c4d14abb0d2a26f3f8e0e39a633db6",
+   "source": "showcase"
+  },
+  {
+   "bytes": 2970,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text",
+      "ooxml-text+text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-text",
+      "ooxml-text+text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-text",
+      "ooxml-text+text-folded"
+     ]
+    }
+   },
+   "id": "xlsx_sdk_prefix_override",
+   "kind": "detection",
+   "name": "totals.xlsx",
+   "pair": "xlsx_sdk_prefix_benign",
+   "sha256": "7f4d6d8794befaf2cf32819c9d327bb903f5dd22eb03fe5eec3c1e012e8dc624",
+   "source": "showcase"
+  },
+  {
+   "bytes": 2969,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "xlsx_sdk_prefix_benign",
+   "kind": "control",
+   "name": "totals.xlsx",
+   "pair": "xlsx_sdk_prefix_override",
+   "sha256": "e7afe41d26948e9389966d8286c980b545a752047789af64407ab107ecf6b359",
+   "source": "showcase"
+  },
+  {
+   "bytes": 10095,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "mail_relayed_override",
+   "kind": "detection",
+   "name": "totals.eml",
+   "pair": "mail_relayed_benign",
+   "sha256": "15084af5eada11431408cfa1d39f968d9ae5bc98f43e00cfc074bcccfbd7f02c",
+   "source": "showcase"
+  },
+  {
+   "bytes": 10094,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "mail_relayed_benign",
+   "kind": "control",
+   "name": "totals.eml",
+   "pair": "mail_relayed_override",
+   "sha256": "e806596646b6d84131d65afce81d379eb945021584e42d3b74793995f1c4365e",
+   "source": "showcase"
+  },
+  {
+   "bytes": 685,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-annotation"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-annotation"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-annotation"
+     ]
+    }
+   },
+   "id": "pdf_annotation_override",
+   "kind": "detection",
+   "name": "review.pdf",
+   "pair": "pdf_annotation_benign",
+   "sha256": "d5ef2ed6437a941d82fbfb4093530796768b796693457b9b190a3b81625b7db9",
+   "source": "showcase"
+  },
+  {
+   "bytes": 681,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_annotation_benign",
+   "kind": "control",
+   "name": "review.pdf",
+   "pair": "pdf_annotation_override",
+   "sha256": "d726be99ee8cf3558990242af32031ea24b7d8b08ab7cb9f93c6c73c351685ff",
+   "source": "showcase"
+  },
+  {
+   "bytes": 301,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "html_svg_script",
+   "kind": "detection",
+   "name": "portal.html",
+   "pair": "html_svg_icon_benign",
+   "sha256": "710b644d9c17d7fb0f767d6fb4a9db3cfe6f4d123ee1e6b6a307f061ec909bee",
+   "source": "showcase"
+  },
+  {
+   "bytes": 328,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "html_svg_icon_benign",
+   "kind": "control",
+   "name": "portal.html",
+   "pair": "html_svg_script",
+   "sha256": "4aa2ea828123fde18dbf6ac9c8657129c309b6f128c2def3f79a2f9e474447d8",
+   "source": "showcase"
+  },
+  {
+   "bytes": 14015,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_mcp_hidden_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_mcp_hidden_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_mcp_hidden_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "mcp_tool_poisoned",
+   "kind": "detection",
+   "name": "tools.json",
+   "pair": "mcp_tool_benign",
+   "sha256": "173f5a6c7e6b9d60856f1e32140fd42451900e2082dff819d9da492dbadc0d25",
+   "source": "showcase"
+  },
+  {
+   "bytes": 13954,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "mcp_tool_benign",
+   "kind": "control",
+   "name": "tools.json",
+   "pair": "mcp_tool_poisoned",
+   "sha256": "e5eda762599ef7904a94445e792887f74fb0441f40380bcfc5fdeca2e5b35d07",
+   "source": "showcase"
+  },
+  {
+   "bytes": 828,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-hidden-text",
+      "ooxml-text",
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "ooxml-hidden-text",
+      "ooxml-text",
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "ooxml-hidden-text",
+      "ooxml-text",
+      "raw"
+     ]
+    }
+   },
+   "id": "word_hidden_override",
+   "kind": "detection",
+   "name": "review.docx",
+   "pair": "word_hidden_benign",
+   "sha256": "01c9d6728e879932c206cc9c712a1faa9d80dc24b1f2f899aefbed29b2416420",
+   "source": "showcase"
+  },
+  {
+   "bytes": 831,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "word_hidden_benign",
+   "kind": "control",
+   "name": "review.docx",
+   "pair": "word_hidden_override",
+   "sha256": "c13b2da983faddaf808e5bd6256c70c669bd819a1bd57137d57962c2388b7248",
+   "source": "showcase"
+  },
+  {
+   "bytes": 482,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-hidden-text",
+      "pdf-text",
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-hidden-text",
+      "pdf-text",
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-hidden-text",
+      "pdf-text",
+      "raw"
+     ]
+    }
+   },
+   "id": "pdf_invisible_override",
+   "kind": "detection",
+   "name": "invoice.pdf",
+   "pair": "pdf_invisible_benign",
+   "sha256": "2053a9f61be5d052e3bedde3e809eed560cd96febaae5e7d2445174ade56d346",
+   "source": "showcase"
+  },
+  {
+   "bytes": 475,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_invisible_benign",
+   "kind": "control",
+   "name": "invoice.pdf",
+   "pair": "pdf_invisible_override",
+   "sha256": "b790a3a860e6066e66e52c26dfd52ffce810393a7c7c2d6f7ca336bd50090e2f",
+   "source": "showcase"
+  },
+  {
+   "bytes": 257,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "html_white_override",
+   "kind": "detection",
+   "name": "update.html",
+   "pair": "html_white_benign",
+   "sha256": "2c80d60a6fe5341f516518aa1e989403863b785d3bec5767c9bc81e416b247cc",
+   "source": "showcase"
+  },
+  {
+   "bytes": 258,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "html_white_benign",
+   "kind": "control",
+   "name": "update.html",
+   "pair": "html_white_override",
+   "sha256": "f91e9dcd5100077d36604939ac9bd8a309ecd7a7221e347d2fcfa02cd7e27582",
+   "source": "showcase"
+  },
+  {
+   "bytes": 198,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "block",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases",
+      "heuristic_hidden_text"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "html-hidden-text",
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "html_data_override",
+   "kind": "detection",
+   "name": "notes.html",
+   "pair": "html_data_benign",
+   "sha256": "a18fe1820b70c1dcd73bc7f20362d93199253f6fa8ffa2ca09290abd810e72ad",
+   "source": "showcase"
+  },
+  {
+   "bytes": 197,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "html_data_benign",
+   "kind": "control",
+   "name": "notes.html",
+   "pair": "html_data_override",
+   "sha256": "8d97b7007af11ddffaff1f68ac75300a212c8ed46de3250ab168f097080de65b",
+   "source": "showcase"
+  },
+  {
+   "bytes": 8031,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_override_imperative"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    }
+   },
+   "id": "merged_pdf_override",
+   "kind": "detection",
+   "name": "bundle.pdf",
+   "pair": "merged_pdf_benign",
+   "sha256": "71d9a719ae5468d99c709fb58f43015719f1f481bff4a14210d3d35cf83d6b14",
+   "source": "showcase"
+  },
+  {
+   "bytes": 7893,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "merged_pdf_benign",
+   "kind": "control",
+   "name": "bundle.pdf",
+   "pair": "merged_pdf_override",
+   "sha256": "78f0c4bb2322a72d58558ed5d3990af0f8e629144516151ffd312d35b29ea59a",
+   "source": "showcase"
+  },
+  {
+   "bytes": 245,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "svg_link_script",
+   "kind": "detection",
+   "name": "button.svg",
+   "pair": "svg_link_benign",
+   "sha256": "9e9a2a3a9ba3dacb7983fc5ef99952dd843ccbf64a2385b4a859a77a5bd84579",
+   "source": "showcase"
+  },
+  {
+   "bytes": 232,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "svg_link_benign",
+   "kind": "control",
+   "name": "button.svg",
+   "pair": "svg_link_script",
+   "sha256": "668e702da7a6f3d8168db93543637d4251fc3190f40128d70930d13bb6f1ced1",
+   "source": "showcase"
+  },
+  {
+   "bytes": 630,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active_link"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "svg_diagram_frame",
+   "kind": "detection",
+   "name": "diagram.svg",
+   "pair": "svg_diagram_benign",
+   "sha256": "46a955a19490534bce57b0d0ead17774303f4251dd489cef18ed46f580f22bb3",
+   "source": "showcase"
+  },
+  {
+   "bytes": 676,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "svg_diagram_benign",
+   "kind": "control",
+   "name": "diagram.svg",
+   "pair": "svg_diagram_frame",
+   "sha256": "3cbf8092d8a0a32d69c0e07842c66674c0b65049d73232e3def172622b4f4d6b",
+   "source": "showcase"
+  },
+  {
+   "bytes": 162,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_invisible_run",
+      "agent_invisible_unicode"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_invisible_run",
+      "agent_invisible_unicode"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_invisible_run",
+      "agent_invisible_unicode"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "zero_width_run",
+   "kind": "detection",
+   "name": "message.txt",
+   "pair": "zero_width_benign",
+   "sha256": "3020b00a4d8417e3ff63026985772e0703b84d29dae8fcf467948ecdae9f6ba9",
+   "source": "showcase"
+  },
+  {
+   "bytes": 69,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "zero_width_benign",
+   "kind": "control",
+   "name": "message.txt",
+   "pair": "zero_width_run",
+   "sha256": "7a068030ce6e1d10cf8e7442b90f0801958e85e5f5fc0460c1d8910b27f478ce",
+   "source": "showcase"
+  },
+  {
+   "bytes": 431,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "feed-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "feed-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "feed-text"
+     ]
+    }
+   },
+   "id": "vendor_feed_ranking",
+   "kind": "detection",
+   "name": "vendor-updates.xml",
+   "pair": "vendor_feed_comparison",
+   "sha256": "3db1a02bfb81cdeacec27166d4642c7253e34ecb8098ac64fec4c9c6a33bb3f8",
+   "source": "showcase"
+  },
+  {
+   "bytes": 444,
+   "channel": "Web page",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "vendor_feed_comparison",
+   "kind": "control",
+   "name": "vendor-updates.xml",
+   "pair": "vendor_feed_ranking",
+   "sha256": "fdf2ad5dd04c4bd148196d964997fe973b215369678064cdd3f84bac08dc04f7",
+   "source": "showcase"
+  },
+  {
+   "bytes": 98,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_message_code_relay"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_message_code_relay"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_message_code_relay"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "account_recovery",
+   "kind": "detection",
+   "name": "recovery.txt",
+   "pair": "account_notice",
+   "sha256": "3e8c3ab82def21fbf9d48179f4a7615b38871833ccdf17029ac9964d2f93ff08",
+   "source": "showcase"
+  },
+  {
+   "bytes": 114,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "account_notice",
+   "kind": "control",
+   "name": "recovery.txt",
+   "pair": "account_recovery",
+   "sha256": "bdb190183cc0769e6a81609f610bdb5881fce36be63bf7d60f85c53144cae9f5",
+   "source": "showcase"
+  },
+  {
+   "bytes": 71,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_tool_hijack_directive"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_tool_hijack_directive"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_tool_hijack_directive"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "tool_handoff",
+   "kind": "detection",
+   "name": "ticket.txt",
+   "pair": "tool_refusal",
+   "sha256": "a0ac9e9e38077d3ba71f5d7d3b39f5f9fd6a91f4d53bf75d2ab0d53cec5cc360",
+   "source": "showcase"
+  },
+  {
+   "bytes": 78,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "tool_refusal",
+   "kind": "control",
+   "name": "ticket.txt",
+   "pair": "tool_handoff",
+   "sha256": "245dbc8ccb761b1620a0b51aef518a80370bd9858a639bfc48d00d32ebec0f79",
+   "source": "showcase"
+  },
+  {
+   "bytes": 72,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_persistent_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_persistent_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_persistent_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "future_bypass",
+   "kind": "detection",
+   "name": "guidance.md",
+   "pair": "future_approval",
+   "sha256": "7c6b3cac79f7351afd05cdd18d24a7fd4c0ef6ac212d03fd87150599ee867e5b",
+   "source": "showcase"
+  },
+  {
+   "bytes": 78,
+   "channel": "Message",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "future_approval",
+   "kind": "control",
+   "name": "guidance.md",
+   "pair": "future_bypass",
+   "sha256": "81375a7571a4641529bc04969d0f31c35314d1892dbb4948785a2443bca85a2b",
+   "source": "showcase"
+  },
+  {
+   "bytes": 177,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 2,
+     "incomplete_reason": "mcp json exceeds structure limit",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 2,
+     "incomplete_reason": "mcp json exceeds structure limit",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    },
+    "default": {
+     "exit_code": 2,
+     "incomplete_reason": "mcp json exceeds structure limit",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    }
+   },
+   "id": "json_depth",
+   "kind": "failure",
+   "name": "tools.json",
+   "pair": null,
+   "sha256": "c5733572cca3055d1feb996a8ed8bf38c5642485e3c718b79e3fbb43f944eec0",
+   "source": "showcase"
+  },
+  {
+   "bytes": 32,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 2,
+     "incomplete_reason": "unsupported archive",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 2,
+     "incomplete_reason": "unsupported archive",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    },
+    "default": {
+     "exit_code": 2,
+     "incomplete_reason": "unsupported archive",
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "incomplete",
+     "views": []
+    }
+   },
+   "id": "unreadable_7z",
+   "kind": "failure",
+   "name": "backup.7z",
+   "pair": null,
+   "sha256": "b7a0c88f9e03c25ca8c134066a7ff2c2b91c849fdcb493320546da9cd51e9f51",
+   "source": "showcase"
+  },
+  {
+   "bytes": 355,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {
+      "CCITTFaxDecode": 1
+     },
+     "rule_ids": [
+      "heuristic_pdf_content_unread"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {
+      "CCITTFaxDecode": 1
+     },
+     "rule_ids": [
+      "heuristic_pdf_content_unread"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {
+      "CCITTFaxDecode": 1
+     },
+     "rule_ids": [
+      "heuristic_pdf_content_unread"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-text"
+     ]
+    }
+   },
+   "id": "kit_pdf_unread",
+   "kind": "detection",
+   "name": "scan.pdf",
+   "pair": "kit_pdf_read",
+   "sha256": "c1ae4d3df1f28fc48fb0c404dbfeae93958f14956cc3b3f69c803eb6dfe2979c",
+   "source": "kit"
+  },
+  {
+   "bytes": 331,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "kit_pdf_read",
+   "kind": "control",
+   "name": "scan.pdf",
+   "pair": "kit_pdf_unread",
+   "sha256": "d6d6e5e6e0f9c284307d9c979c5c979c246bd2cc8b19a942a28cc02e9ae9e05a",
+   "source": "kit"
+  }
+ ],
+ "policies": [
+  "default",
+  "agent-ingest",
+  "agent-document"
+ ],
+ "schema_version": 1
+}

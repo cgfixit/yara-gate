@@ -199,7 +199,11 @@ def _stored_zip(entries: tuple[tuple[str, bytes], ...]) -> bytes:
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as archive:
         for name, data in entries:
-            archive.writestr(zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0)), data)
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            # ZipInfo records the system that wrote the entry: 0 on Windows, 3 elsewhere.
+            # Pin it, or every fixture built from a zip has another SHA-256 on Windows.
+            info.create_system = 3
+            archive.writestr(info, data)
     return out.getvalue()
 
 
@@ -823,6 +827,30 @@ def minimal_pdf() -> bytes:
         b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\n"
         b"trailer<</Root 1 0 R>>\n%%EOF\n"
     )
+
+
+def _content_pdf(keys: bytes) -> bytes:
+    body = b"BT /F1 12 Tf 72 700 Td (Quarterly totals) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+        b"<< /Length %d%s >>\nstream\n" % (len(body), keys) + body + b"\nendstream",
+    ]
+    out = bytearray(b"%PDF-1.7\n")
+    for index, obj in enumerate(objects, 1):
+        out += b"%d 0 obj\n" % index + obj + b"\nendobj\n"
+    return bytes(out + b"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+
+
+def pdf_unread_content() -> bytes:
+    """A page whose content names a filter the PDF views cannot decode (CCITTFax)."""
+    return _content_pdf(b" /Filter /CCITTFaxDecode")
+
+
+def pdf_read_content() -> bytes:
+    """The same page with its content written plainly."""
+    return _content_pdf(b"")
 
 
 def svg_cdata_override() -> bytes:
