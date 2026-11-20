@@ -9,7 +9,8 @@ container with 4 cores. Rules: the shipped `rules/local` (89 rules), no vendor p
 openers of chat templates by model family. The [detection backlog](../research/detection-backlog.md#keeping-the-detector-current)
 says to read a tokenizer's own template when a family ships. Four families whose templates are
 on the Hub were not listed. On `a32b63f` each opener below scanned clean under every policy
-with an order after it, beside a ChatML, Granite system, and Gemma control that were advisory.
+with an order after it, beside ChatML, Granite system, Gemma, and `</tool_result>` controls
+that were advisory.
 
 | Template | Opener | Rule | Base | Now |
 | --- | --- | --- | --- | --- |
@@ -138,17 +139,19 @@ wrong. Each finding was reproduced before it was acted on.
 ## Timing
 
 Each row is one `scan_bytes` call on 4 MiB, base rules against changed rules in the same run,
-on the container named at the top. The first block is the median of three; the floods were run
-once each with a 30 s timeout. Measured on `49e6d1d`, the first rule commit.
+on the container named at the top. Rows without a verb are the median of three on `308ee16`,
+the second rule commit. The four floods were run once each with a 30 s timeout on `49e6d1d`,
+the first; the system openers they use did not change after it.
 
 | Input, repeated to 4 MiB | Base | Changed |
 | --- | --- | --- |
-| Ordinary notes | 0.44 s clean | 0.44 s clean |
-| An opener and a greeting with no verb, for each of the seven new openers | 0.45 to 0.60 s clean | 0.62 to 1.40 s clean |
-| The same for Phi's `<\|assistant\|>`, which the base reads | 1.02 s clean | 0.99 s clean |
-| `]~b]ai` and a line feed, nothing else | 0.56 s clean | 4.51 s clean |
-| Phi's `<\|assistant\|>`, nothing else | 1.69 s clean | 1.73 s clean |
-| `</tool_response>` and a verb, with one open tag in the unit | 1.25 s clean | 1.55 s clean |
+| Ordinary notes | 0.47 s clean | 0.49 s clean |
+| An opener and a greeting with no verb, for each of the seven new openers | 0.46 to 0.79 s clean | 0.59 to 1.37 s clean |
+| `<\|im_assistant\|>` and 32 letters with no `<\|im_middle\|>` | 0.66 s clean | 0.75 s clean |
+| The same for Phi's `<\|assistant\|>`, which the base reads | 1.13 s clean | 1.13 s clean |
+| `]~b]ai` and a line feed, nothing else | 0.58 s clean | 4.71 s clean |
+| Phi's `<\|assistant\|>`, nothing else (on `49e6d1d`) | 1.69 s clean | 1.73 s clean |
+| `</tool_response>` and a verb, with one open tag in the unit | 1.27 s clean | 1.67 s clean |
 | `]~b]system ignore ` | 2.02 s clean | incomplete (`timeout`) at 30 s |
 | `<\|im_system\|>system<\|im_middle\|> ignore ` | 1.38 s clean | advisory in 29.2 s |
 | Llama 2 `<<SYS>> ignore `, which the base reads | incomplete (`timeout`) at 30 s | incomplete (`timeout`) at 30 s |
@@ -157,7 +160,7 @@ once each with a 30 s timeout. Measured on `49e6d1d`, the first rule commit.
 Two things follow.
 
 - **A short opener costs more.** `]~b]ai` is seven bytes with its line feed, so 4 MiB holds
-  about 600,000 of them, and each one is followed by a 200-byte window. It is 2.6 times the
+  about 600,000 of them, and each one is followed by a 200-byte window. It is about 2.7 times the
   slowest listed opener on the same kind of input and under the 10 s ceiling of
   `check_worst_case_timing.py`.
 - **A flood of system openers that each carry a verb does not finish, on the base too.** The
@@ -167,6 +170,37 @@ Two things follow.
   The cause is in how `$header` is read, not in the new spellings, and it is not fixed here; it
   is a row in the [detection backlog](../research/detection-backlog.md#further-candidates-not-yet-in-the-probe).
 
-`check_worst_case_timing.py` passed its 96 inputs of 4 MiB on `49e6d1d`; the slowest was 5.9 s.
+`check_worst_case_timing.py` passed its 96 inputs of 4 MiB on `49e6d1d` and again on `308ee16`;
+the slowest was 6.1 s.
 No input was added to it: none of its cases is a flood of role openers, and its budget is the
 one the [November 14 record](2026-11-14-macos-timing-flake.md) calls thin.
+
+## Checks
+
+Run on `308ee16`, which holds both rule commits; the later commits change documents only.
+Direct runs in this container. The broad pytest suite and `selftest` were left to hosted CI.
+
+| Check | Result |
+| --- | --- |
+| Reproduction on `a32b63f` | 11 spellings with no finding, so clean under every policy, beside 4 controls that were advisory |
+| Hits and near-misses, `scan_bytes` | 12 hits and 17 near-misses as expected; the same texts as UTF-16, zipped, and CRLF Markdown: 33 hits, 51 clean |
+| The 29 claims of the two sections above (benign shapes, passing spellings) | each as stated, on the base and with the change |
+| CLI, disposable rules copy | Kimi system fixture: exit 0 advisory under `default`, exit 1 under `agent-document`; benign twin exit 0; both files left in place |
+| `lint_rules.py` | 89 rules compiled and linted |
+| `check_rule_pairs.py` | passed; 9 pairs added |
+| `measure_precision.py --fail-over` | 328 files, 0 incomplete, 0 hits on either rule |
+| `probe_rule_coverage.py --verify`, `probe_detection_gaps.py --verify`, `check_added_rules.py`, `check_scan_only.py` | exit 0 |
+| `probe_match_cap.py` | 2,685 flooded texts over 84 rules, 0 with a cap blind spot. Neither rule reads where a match lies; `not $open_response` reads presence only |
+| `sweep_rule_changes.py --jobs 3 --base-ref origin/main` over `/usr/share/doc`, `/usr/lib/python3.12`, `/usr/include`, `/usr/share/man`, the locked site-packages, and `docs` | 0 of 6,042 files changed findings (298 hits before and after). The first run, on `49e6d1d`, changed one file: this change's own draft of `docs/rules.md`, which wrote three new openers within 256 bytes of the word "override". The sentence now names the families without their tokens. No installed file holds any of the new tokens, so this sweep shows only that nothing else moved |
+| 70 public files that do hold such tokens: chat templates, tool-parser source, and chat-templating documents from llama.cpp, vLLM, Transformers, Qwen-Agent, Hermes-Function-Calling, Ollama, and nine model repositories; 22 hold a new token | 0 changed findings between base and changed rules; 6 have findings on both |
+| `check_worst_case_timing.py` | PASS, 96 inputs of 4 MiB, slowest 6.1 s |
+| `record_pages_demo.py --baseline web-demo/recordings.json` | outcomes match the reviewed baseline, 91 scenarios under 3 policies |
+| `ruff check`, `ruff format --check`, `check_text_controls.py`, `check_doc_links.py` | pass |
+
+## Not established
+
+- A production false-positive rate. The 70-file corpus was fetched for this change and is not
+  kept in the repository; the files that fire on both rule sets were not examined one by one.
+- That a model of one of these families obeys an imitated opener more readily than plain
+  text. No tokenizer or model was run.
+- Hy4's role tokens, the gated Cohere template, and any family not named here.
