@@ -20,6 +20,9 @@ updates:
         dependency-type: production
         update-types: [minor, patch]
         patterns: ["*"]
+        # typer is 0.x, so a minor release can break the CLI (0.29.0 changed help,
+        # usage, and validation output). It gets its own pull request.
+        exclude-patterns: ["typer"]
 
   - package-ecosystem: github-actions
     directory: /
