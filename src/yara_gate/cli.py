@@ -242,6 +242,54 @@ def held(
 
 
 @app.command()
+def replay(
+    capture: str = typer.Argument(
+        ..., metavar="CAPTURE", help="JSON Lines capture of model input, or '-' for stdin."
+    ),
+    rules: Path | None = typer.Option(None, "--rules", help="Rules directory."),
+    policy: ScanPolicy = typer.Option(
+        ScanPolicy.agent_ingest, "--policy", help="Policy for an item that names none."
+    ),
+    timeout_s: int = typer.Option(30, "--timeout", min=1, max=86400, help="Seconds for one item."),
+    no_timings: bool = typer.Option(
+        False, "--no-timings", help="Leave seconds out, so two runs print the same bytes."
+    ),
+) -> None:
+    """Scan captured model input and print what the gate would decide. Observe only.
+
+    One JSON envelope per captured item, then a summary. Nothing is admitted, held, or
+    moved, and no report is written. Exit 0 when every item got a gate record and 2 when
+    one did not; never 1.
+    """
+    from yara_gate.replay import FAILED, Tally, replay_capture
+
+    tally = Tally()
+    failed = False
+    try:
+        handle = sys.stdin.buffer if capture == "-" else Path(capture).open("rb")
+        with handle:
+            for envelope in replay_capture(
+                handle,
+                policy=policy,
+                rules_dir=rules,
+                timeout_s=timeout_s,
+                timings=not no_timings,
+            ):
+                tally.add(envelope)
+                failed = failed or envelope["status"] == FAILED
+                # ASCII output: a captured identifier cannot control the terminal.
+                typer.echo(json.dumps(envelope, separators=(",", ":"), ensure_ascii=True))
+    except BrokenPipeError as exc:
+        # The reader of stdout went away; that is not a fault in the capture.
+        raise typer.Exit(code=2) from exc
+    except OSError as exc:
+        typer.echo(f"incomplete: capture unreadable ({exc.__class__.__name__})", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(json.dumps(tally.result(), separators=(",", ":"), ensure_ascii=True))
+    raise typer.Exit(code=2 if failed else 0)
+
+
+@app.command()
 def release(
     sha256: str = typer.Argument(..., metavar="SHA256"),
     home: Path = typer.Option(..., "--home", help="The gate home that holds the reviewed report."),

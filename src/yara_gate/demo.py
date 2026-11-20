@@ -78,6 +78,8 @@ class DemoResponse(BaseModel):
     engine_version: str | None
     tool_version: str | None
     ruleset_sha256: str | None
+    # The scanner build, so two previews can be told apart when the rules did not change.
+    detector_sha256: str | None
     units_scanned: int
     views_scanned: dict[str, int]
     bytes_scanned: int
@@ -100,6 +102,7 @@ def view_result(result: ScanResult) -> DemoResponse:
         engine_version=result.engine_version,
         tool_version=result.tool_version,
         ruleset_sha256=result.ruleset_sha256,
+        detector_sha256=result.detector_sha256,
         units_scanned=result.units_scanned,
         views_scanned=result.views_scanned,
         bytes_scanned=result.bytes_scanned,

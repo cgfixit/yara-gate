@@ -244,7 +244,7 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 84 inert examples, each of 41 attacks beside a benign
+replays saved results for 91 inert examples, each of 44 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -262,8 +262,9 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
    The list holds the catalog the public demo records, grouped by intake channel:
-   41 attacks, including a vendor ranking directive recovered from RSS, each directly above its benign twin, and a 7z archive the scanner
-   cannot open (incomplete under every policy). Other pairs include a PDF line in a
+   44 attacks, including a vendor ranking directive recovered from RSS, each directly above its benign twin, and two scans that
+   cannot finish: a 7z archive the scanner cannot open and a tool document past the JSON
+   depth budget (incomplete under every policy). Other pairs include a PDF line in a
    plain font beside another font's map, a workbook written with the Open XML SDK's
    `x:` prefix, and an email whose quoted-printable body sits past 8 KiB of relay
    headers; each twin has the same layout around an ordinary sentence. **Scan pair side by side** scans the selected example
@@ -275,10 +276,11 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    hidden from the reader, invisible characters, disguised spelling, split across
    formatting, encoded, inside an archive or message, file structure, or a plain pattern. Under
    `agent-ingest` every attack is held and every twin is clean; `agent-document`
-   holds 16 of the 40 and records the rest as notes, and the default policy holds 4.
+   holds 20 of the 44 and records the rest as notes, and the default policy holds 4.
 3. Read the decision and original finding severities. Each finding says which
    check found it and in which view, in plain words. **Coverage & provenance**
-   shows the loaded-rule count, skipped files, derived views, and fingerprints; a
+   shows the loaded-rule count, skipped files, derived views, and the ruleset and
+   detector fingerprints; a
    completed bundled-only scan does not mean vendor packs were installed. **Demo
    response JSON** shows preview fields without the input or matched bytes; it is
    not the full CLI integration record.

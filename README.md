@@ -38,6 +38,8 @@ These are supported ingestion patterns, not automatically installed connectors. 
 
 For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between staging and corpus reindexing, and scan incoming message bodies before they become queries. For [CG-agent-harness](https://github.com/cgfixit/CG-agent-harness), gate attachments, retrieved documents, fetched pages, tool results, and cloned repositories before they enter the prompt. The [consumer integration guide](docs/integrations.md#cyclaw-and-cg-agent-harness) describes the wiring and acceptance checks; the [sync-folder example](docs/examples/sync_folder_gate.py), [SMS bridge](docs/examples/sms_gate_bridge.py), and [pre-read hook](docs/examples/yara_gate_pre_read_hook.sh) are runnable starting points the caller must connect and enforce; the [integration-readiness review](docs/reviews/2026-11-02-integration-readiness.md) lists what each consumer still needs. The gate runs in front of each product's own defenses (retrieval checks, untrusted-content fences, consent for cloud models, write approvals), not instead of them.
 
+To measure the gate on a consumer's own traffic before enforcing it, `yara-gate replay CAPTURE.jsonl --rules RULES` scans a capture of the exact text a consumer handed its model and prints, per item, the gate's record, the decision its read rule gives, and the consumer's own decision beside it. It admits and holds nothing, writes no report, and exits 0 or 2, never 1. Each scan runs in a child process killed at a hard deadline, and a killed, crashed, or mismatched scan is `failed`, never clean. See [replaying captured model input](docs/integrations.md#replaying-captured-model-input) and the [shadow evaluation protocol](docs/research/shadow-evaluation-protocol.md).
+
 ## Why it's worth running
 
 **For the business**
@@ -196,7 +198,7 @@ Vendor matches default to **block**. The reviewed [`rules/vendor-overrides.json`
 uv run yara-gate demo --rules rules
 ```
 
-The local workbench binds to `127.0.0.1`, scans in memory, and calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It shares one catalog with the public page ([`showcase.py`](src/yara_gate/showcase.py)): 41 attacks, each beside a benign near-twin, plus a 7z archive the scanner cannot open. **Scan pair side by side** compares an attack and its twin under the selected policy. **Run every pair** scans the whole catalog, flags any result that differs from the reviewed expectation, and breaks results down by how each attack was caught (hidden from the reader, invisible characters, disguised spelling, split across formatting, encoded, inside an archive or message, file structure, plain pattern). With bundled rules it reports 41 of 41 held under `agent-ingest`, 41 of 41 twins clean, and 0 findings on twins. See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser).
+The local workbench binds to `127.0.0.1`, scans in memory, and calls the real scanner on inert examples or up to 64 KiB of pasted UTF-8 text. It shares one catalog with the public page ([`showcase.py`](src/yara_gate/showcase.py)): 44 attacks, each beside a benign near-twin, plus two scans that cannot finish (a 7z archive the scanner cannot open and a tool document past the JSON depth budget). **Scan pair side by side** compares an attack and its twin under the selected policy. **Run every pair** scans the whole catalog, flags any result that differs from the reviewed expectation, and breaks results down by how each attack was caught (hidden from the reader, invisible characters, disguised spelling, split across formatting, encoded, inside an archive or message, file structure, plain pattern). With bundled rules it reports 44 of 44 held under `agent-ingest`, 44 of 44 twins clean, and 0 findings on twins. See the [browser walkthrough](user-guide.md#9-try-a-verdict-in-the-browser).
 
 ![The local workbench scans every attack and benign twin, counts the results, and breaks them down by how each attack was caught](screenshots/yara-gate-catalog40-workbench-run.png)
 
@@ -206,7 +208,7 @@ Captured November 12 at `0a5113a` with the then-87 bundled rules and no vendor p
 
 **[Open the public recorded demo →](https://cgfixit.github.io/yara-gate/)**
 
-The Pages companion replays real scans of 84 inert examples under all three policies: 41 attacks, 41 benign twins, and two scans that could not finish (a broken local rule and a 7z archive). The page shows the capture time, scanner revision, and engine for its replay. The [checked-in baseline](web-demo/recordings.json) is reviewed in Git.
+The Pages companion replays real scans of 91 inert examples under all three policies: 44 attacks, 44 benign twins, and three scans that could not finish (a broken local rule, a 7z archive, and a tool document past the JSON depth budget). The page shows the capture time, scanner revision, and engine for its replay. The [checked-in baseline](web-demo/recordings.json) is reviewed in Git.
 
 - **Start with a vendor comparison:** a fictional procurement assistant compares two versions of the same feed. Switch policies to see when a model-directed request to rank the vendor first is held, and compare the benign twin.
 - **Reader examples:** six files whose bytes differ from what a reader shows: a bold word in an OpenDocument file, an XML comment inside a Word sentence, text on a slide master, a PDF line spaced by kerning beside another font's map, a workbook whose every element is written `x:`, and a quoted-printable email body past 8 KiB of relay headers. The last three scanned clean under every policy before [#216](https://github.com/cgfixit/yara-gate/pull/216); the first three before [#213](https://github.com/cgfixit/yara-gate/pull/213).
@@ -229,8 +231,9 @@ uv run python docs/research/probe_rule_coverage.py --verify   # real library and
 src/yara_gate/       cli, scanner, content (archives, mail, views), jsonbounds, readers
                      (pdftext, pdfpages, pdfxref, pdfannotations, rtftext, odftext,
                      htmlhidden), filetype, heuristics, models, quarantine, report, rules,
-                     hunt, release, held, rescan, demo, showcase (the catalog both demos
-                     read), selftest, samples, launchd
+                     hunt, release, held, rescan, replay (observe-only scans of captured
+                     model input), demo, showcase (the catalog both demos read), selftest,
+                     samples, launchd
 rules/local/         the 89 shipped rules in 59 files; rules/rules.lock pins the vendor packs
 rules/templates/     templates and shared fragments for the generated agent rules;
                      scripts/generate_rules.py renders them, and lint fails a hand edit
@@ -239,7 +242,8 @@ docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
 docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.sh
 docs/verification/   CI checks and dated evidence;  docs/research/  probes, research notes,
-                     and detection-backlog.md (what is not built, and what was turned down)
+                     detection-backlog.md (what is not built, and what was turned down), and
+                     shadow-evaluation-protocol.md (how a consumer measures the gate)
 web-demo/            public recorded-demo assets; docs/pages-demo.md explains deployment
 screenshots/         original captures and provenance
 user-guide.md        operator walkthrough;  SECURITY.md  reporting and network scope
