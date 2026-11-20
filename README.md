@@ -240,7 +240,7 @@ rules/templates/     templates and shared fragments for the generated agent rule
 rules/README.md      detection-method map, source links, loading and evidence boundaries
 docs/rules.md        every rule's boundaries, the derived views, and the limits
 docs/integrations.md the caller contract: pipelines, messages, synced folders, pre-read hooks
-docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.sh
+docs/examples/       sync_folder_gate.py, sms_gate_bridge.py, yara_gate_pre_read_hook.py and .sh
 docs/verification/   CI checks and dated evidence;  docs/research/  probes, research notes,
                      detection-backlog.md (what is not built, and what was turned down), and
                      shadow-evaluation-protocol.md (how a consumer measures the gate)
