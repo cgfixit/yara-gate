@@ -151,10 +151,6 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 
 `scan_file(path, policy="agent-ingest")` and `scan_bytes(data, name=..., policy="agent-ingest")` apply the same policy as the CLI flag. Without that argument, the default policy retains advisory/exit 0 behavior.
 
-After you upgrade `yara-gate`, `yara-gate conform` checks the new install against fixtures
-and expected verdicts shipped inside it: exit 0 when nothing changed, 1 when a verdict
-did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
-
 ## 5. Read a report
 
 Start with the current held queue:
@@ -243,6 +239,10 @@ Do not expect a block on a brand-new payload that no rule mentions. Updating the
 - `rules install` or `rules update` without `--allow-network` is supposed to exit 2.
 - Two watches at once: the second exits 2 with `incomplete: watch already running`.
 - Vendor files that fail to compile are skipped and counted in the report's `skipped_rule_files`. A shipped local rule that fails to compile is fatal (exit 2). Read `rules/vendor/SKIPPED.md` before treating a quiet scan as full coverage.
+
+After you upgrade `yara-gate`, `yara-gate conform` checks the new install against fixtures
+and expected verdicts shipped inside it: exit 0 when nothing changed, 1 when a verdict
+did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
 
 ## 9. Try a verdict in the browser
 
