@@ -270,7 +270,11 @@ def test_agreement_line_without_a_record_is_exit_2(tmp_path: Path) -> None:
         "malformed capture: not one JSON object",
     ]
     assert all(r["result"] == "failed" and r["file"] is None for r in records[:3])
+    # The first two scanned clean text, which is still shown, but a failed line never admits.
+    assert [r["extraction"]["verdict"] for r in records[:3]] == ["clean", "clean", None]
+    assert all(r["extraction"]["decision"] == "hold" for r in records[:3])
     assert records[3]["result"] == "same"
+    assert records[3]["extraction"]["decision"] == "admit"
     assert records[-1]["agreement"] == {"failed": 3, "same": 1}
     assert records[-1]["bundled"]["mismatches"] == 0
     code, _, err = run("--agreement", str(tmp_path / "absent.jsonl"))
@@ -298,6 +302,7 @@ def test_agreement_after_a_scan_without_an_answer_is_exit_2(
     assert code == 2 and "CONFORM INCOMPLETE" in err
     assert records[-2]["status_reason"] == "fixture was not scanned"
     assert records[-2]["result"] == "failed" and records[-2]["file"] is None
+    assert records[-2]["extraction"]["decision"] == "hold"
     assert records[-1]["result"] == "incomplete" and records[-1]["agreement"] == {"failed": 1}
 
 

@@ -25,7 +25,7 @@ from typing import Any, BinaryIO
 
 from yara_gate import samples, showcase
 from yara_gate.models import ScanPolicy
-from yara_gate.replay import COMPLETE, FAILED, TRUNCATED, ShadowScan, proposed_decision
+from yara_gate.replay import COMPLETE, FAILED, HOLD, TRUNCATED, ShadowScan, proposed_decision
 
 SCHEMA_VERSION = 1
 POLICIES = showcase.POLICIES
@@ -271,6 +271,13 @@ def _side(report: dict[str, Any] | None, decision: str) -> dict[str, Any]:
     }
 
 
+def _failed(record: dict[str, Any], reason: str) -> dict[str, Any]:
+    """A line with no comparison. Its extraction scan stays visible, but a failed record is
+    never proposed as an admit, as ``replay`` proposes none for a failed item."""
+    extraction = {**record["extraction"], "decision": HOLD}
+    return {**record, "status": FAILED, "status_reason": reason, "extraction": extraction}
+
+
 def agreement(
     handle: BinaryIO,
     kit: dict[str, tuple[Fixture, dict[str, Any]]],
@@ -321,17 +328,17 @@ def agreement(
             yield record
             continue
         if known is None:
-            yield {**record, "status": FAILED, "status_reason": "unknown fixture"}
+            yield _failed(record, "unknown fixture")
             continue
         fixture, _ = known
         original = envelope["original_sha256"]
         if original is not None and original != fixture.sha256:
-            yield {**record, "status": FAILED, "status_reason": "extraction is of other bytes"}
+            yield _failed(record, "extraction is of other bytes")
             continue
         seen = seen_by.get((fixture.id, envelope["policy"]))
         if seen is None:
             # The bundled pass stopped at a scan that gave no answer before this fixture.
-            yield {**record, "status": FAILED, "status_reason": "fixture was not scanned"}
+            yield _failed(record, "fixture was not scanned")
             continue
         report = seen["report"]
         whole = ShadowScan(
