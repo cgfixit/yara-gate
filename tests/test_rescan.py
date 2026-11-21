@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -284,3 +285,49 @@ def test_mutation_during_scan_is_incomplete(
     results = list(rescan_clean(home, rules_dir=rules_copy))
     assert results[0].verdict is Verdict.incomplete
     assert (home.quarantine / digest).exists()
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [(BrokenPipeError, None), (OSError, "incomplete: output unwritable (OSError)")],
+)
+@pytest.mark.parametrize("line", ['{"dry_run": false, "sha256"', '{"dry_run": false, "rescanned"'])
+def test_output_that_cannot_be_written_is_exit_2_not_1(
+    tmp_path: Path,
+    rules_copy: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[OSError],
+    message: str | None,
+    line: str,
+) -> None:
+    import typer
+    from typer.testing import CliRunner
+
+    from yara_gate.cli import app
+
+    home = GatePaths(tmp_path / "gate")
+    admit(home, rules_copy, b"hello\n")
+    real = typer.echo
+
+    def echo(text: object = None, *args: object, **kwargs: Any) -> None:
+        # A copy's line, or the summary: the reader of stdout has gone, or the device is full.
+        if isinstance(text, str) and text.startswith(line):
+            raise error(32 if error is BrokenPipeError else 28, "refused")
+        real(text, *args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", echo)
+    # Another policy makes the stored report stale, so the copy is scanned and printed.
+    result = CliRunner().invoke(
+        app,
+        [
+            "rescan",
+            "--home",
+            str(home.root),
+            "--rules",
+            str(rules_copy),
+            "--policy",
+            "agent-ingest",
+        ],
+    )
+    assert result.exit_code == 2
+    assert (message in result.stderr) if message else result.stderr == ""

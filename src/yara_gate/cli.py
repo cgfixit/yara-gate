@@ -202,13 +202,19 @@ def rescan(
                 counts["newly_incomplete"] += 1
             else:
                 counts["unchanged"] += 1
-            typer.echo(json.dumps({"dry_run": dry_run, **compact_report(result)}))
+            _print_line(json.dumps({"dry_run": dry_run, **compact_report(result)}))
+    except _OutputLost as exc:
+        # The copies after this one are unvalidated, as after any other error.
+        raise typer.Exit(2) from exc
     except Exception as exc:
         typer.echo(
             f"incomplete: {_incomplete_text(exc)}; remaining copies are unvalidated", err=True
         )
         code = 2
-    typer.echo(json.dumps({"dry_run": dry_run, **counts, "exit_code": code}))
+    try:
+        _print_line(json.dumps({"dry_run": dry_run, **counts, "exit_code": code}))
+    except _OutputLost as exc:
+        raise typer.Exit(2) from exc
     raise typer.Exit(code)
 
 
@@ -232,14 +238,17 @@ def held(
     except (OSError, ValueError) as exc:
         typer.echo(f"held index unavailable: {_incomplete_text(exc)}", err=True)
         raise typer.Exit(2) from exc
-    if json_output:
-        typer.echo(json.dumps({"schema_version": 1, "items": items}, ensure_ascii=True))
-    elif not items:
-        typer.echo("No held items.")
-    else:
-        for item in items:
-            # JSON quoting prevents file names and report text from controlling the terminal.
-            typer.echo(json.dumps(item, ensure_ascii=True))
+    try:
+        if json_output:
+            _print_line(json.dumps({"schema_version": 1, "items": items}, ensure_ascii=True))
+        elif not items:
+            _print_line("No held items.")
+        else:
+            for item in items:
+                # JSON quoting prevents file names and report text from controlling the terminal.
+                _print_line(json.dumps(item, ensure_ascii=True))
+    except _OutputLost as exc:
+        raise typer.Exit(2) from exc
 
 
 @app.command()
@@ -298,7 +307,11 @@ class _OutputLost(Exception):
 def _print_record(record: dict[str, Any]) -> None:
     """Print one JSON Lines record. ASCII output: a captured identifier cannot control the
     terminal. A record that cannot be written leaves the run without an answer, exit 2."""
-    line = json.dumps(record, separators=(",", ":"), ensure_ascii=True)
+    _print_line(json.dumps(record, separators=(",", ":"), ensure_ascii=True))
+
+
+def _print_line(line: str) -> None:
+    """Print one line of a command's answer, or raise ``_OutputLost`` when it cannot."""
     try:
         typer.echo(line)
     except BrokenPipeError as exc:
@@ -399,7 +412,8 @@ def release(
     from yara_gate.release import AuditLogError
 
     try:
-        if not non_interactive and not sys.stdin.isatty():
+        # Python sets sys.stdin to None when descriptor 0 is closed at start: not a terminal.
+        if not non_interactive and (sys.stdin is None or not sys.stdin.isatty()):
             raise ValueError("release requires a terminal or --non-interactive")
         result, head = release_file(
             GatePaths(home),
@@ -412,7 +426,13 @@ def release(
     except (AuditLogError, IntakeRejected, OSError, ValueError) as exc:
         typer.echo(f"release refused: {exc}", err=True)
         raise typer.Exit(2) from exc
-    typer.echo(f"released {result.sha256} under ruleset {result.ruleset_sha256}; audit head {head}")
+    try:
+        _print_line(
+            f"released {result.sha256} under ruleset {result.ruleset_sha256}; audit head {head}"
+        )
+    except _OutputLost as exc:
+        # The release and its audit entry are written; only this confirmation was lost.
+        raise typer.Exit(2) from exc
 
 
 @app.command()
