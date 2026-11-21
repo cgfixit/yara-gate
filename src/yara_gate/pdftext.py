@@ -1010,33 +1010,33 @@ class _Definitions:
         if self._lexed > max(MIN_FONT_DICTIONARY_BYTES, len(self._data) // 2):
             return [wide], False
         self._check()
-        own, sure, more = self._own(body, start)
+        own, sure, unread = self._own(body, start)
         if own is None:
-            return [wide], read and not more
+            return [wide], read and not unread
         if wide in own:
-            return [wide, *(way for way in own if way != wide)], not more
+            return [wide, *(way for way in own if way != wide)], not unread
         if wide[0] is None and own and all(each == _UTF16_MAP for each, _ in own):
             # A Type0 font whose own dictionary names a predefined Unicode CMap and no map:
             # every reading is UTF-16BE (backlog B8). The window only added "no map".
-            return own, read and not more
+            return own, read and not unread
         if wide[0] is not None and own == [(None, True)]:
             # A composite font that names no map, with a map in the bytes after its header:
             # it keeps that one reading. With the reading that has no map beside it, its
             # text would be reported as unmapped, which is new on merged benign documents
             # (backlog B8; a Unicode predefined CMap is read as UTF-16BE above).
-            return [wide], read and not more
+            return [wide], read and not unread
         both = [wide, *own]
         if sure and (wide[0] is not None or all(each is None for each, _ in own)):
             kept = [(each, True) for each, _ in own if each is not None] if wide[1] else []
             alone = list(dict.fromkeys([*(way for way in kept if way == wide), *own, *kept]))
             # The file is read for its layout only when that decides something.
             if alone == both or self.plain.get() is not None:
-                return alone, not more
-        return both, read and not more
+                return alone, not unread
+        return both, read and not unread
 
     def _own(self, body: bytes, start: int | None) -> tuple[list[_Way] | None, bool, bool]:
         """The ways readers take the definition's own dictionary (``_ways``), whether that
-        settles how the font is read, and whether there are more ways than were read. The
+        settles how the font is read, and whether some readings are left unread. The
         ways are None when the definition does not open with a dictionary, its end was not
         reached, or the allowance for lenient reading is spent.
 
@@ -1066,11 +1066,11 @@ class _Definitions:
                     if key in (b"/Subtype", b"/Encoding")
                 )
             )
-            ways, more, settled = _ways(
+            ways, unread, settled = _ways(
                 (_spellings(key), _spellings(value) if isinstance(value, bytes) else value, exact)
                 for key, value, exact in entries
             )
-            return ways, sure and settled, more
+            return ways, sure and settled, unread
         if self._loose > MAX_LOOSE_FONT_BYTES:
             return None, False, True
         view = body if start is None else memoryview(self._data)[start:stop]
@@ -1086,11 +1086,11 @@ class _Definitions:
         # takes, so a font that names a map there is read with none as well.
         first = start or 0
         noted = (body if start is None else self._data).find(b"%", first, first + used) >= 0
-        ways, more, _ = _ways(
+        ways, unread, _ = _ways(
             (_cut(key), _cut(value) if isinstance(value, bytes) else value, exact and not noted)
             for key, value, exact in _loose_entries(tokens)
         )
-        return ways, False, more
+        return ways, False, unread
 
     def _spend(self, count: int) -> None:
         self._lexed += count
@@ -1123,8 +1123,8 @@ def _cut(name: bytes) -> tuple[bytes, ...]:
 
 
 def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
-    """Every way readers take one font dictionary, the likeliest first; whether there are
-    more than ``MAX_FONT_WAYS``; and whether the dictionary alone settles how readers show
+    """Every way readers take one font dictionary, the likeliest first; whether some
+    readings are left unread; and whether the dictionary alone settles how readers show
     the font's text.
 
     A reader keeps one value of a key that is written more than once: pypdf the first,
@@ -1154,11 +1154,13 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
     unsure = False
     named = latin = True
     encoded = described = False
+    descendants = invalid_map = False
     for keys, value, exact in entries:
         names = value if isinstance(value, tuple) else ()
         if b"/ToUnicode" in keys:
             maps.append(value if isinstance(value, int) else None)
             unsure = unsure or len(keys) > 1 or not exact
+            invalid_map = invalid_map or bool(names)
         if b"/Subtype" in keys:
             named = named and bool(names)
             type0.extend(dict.fromkeys(name == b"/Type0" for name in names) or [False])
@@ -1177,6 +1179,8 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
                 unicode.append(False)
         if b"/FontDescriptor" in keys:
             described = True
+        if b"/DescendantFonts" in keys:
+            descendants = True
     if unsure or not maps:
         # No /ToUnicode key, or one that only some readers take for it.
         maps.append(None)
@@ -1211,7 +1215,13 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
         )
     simple = bool(type0) and named and composites == [False]
     decoded = None not in maps or (latin if encoded else not described)
-    return ways[:MAX_FONT_WAYS], len(ways) > MAX_FONT_WAYS, simple and decoded
+    # A map borrowed from the next object cannot settle these conflicting declarations.
+    unread = ways == [(None, True)] and (
+        invalid_map
+        or (kinds == [False] and bool(type0) and named)
+        or (kinds == [True] and not descendants and encoded and latin)
+    )
+    return ways[:MAX_FONT_WAYS], unread or len(ways) > MAX_FONT_WAYS, simple and decoded
 
 
 def _loose_dictionary(

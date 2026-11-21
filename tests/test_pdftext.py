@@ -1492,6 +1492,22 @@ def _font_ways(data: bytes) -> tuple[list[tuple[int | None, bool]], bool]:
 
 
 @pytest.mark.parametrize(
+    "font",
+    [
+        (_HELVETICA % b"").replace(b"/WinAnsiEncoding", b"/Identity-H"),
+        (_HELVETICA % b"").replace(b"/Type1", b"/Type0"),
+        (_TYPE0 % 9).replace(b"/ToUnicode 9 0 R", b"/ToUnicode /None"),
+    ],
+)
+def test_an_adjacent_map_does_not_clear_conflicting_font_coverage(font: bytes) -> None:
+    shown = b"BT /F1 12 Tf 72 700 Td (Quarterly planning notes) Tj ET"
+    neighbour = (5, 0, _HELVETICA % b"/ToUnicode 9 0 R ")
+    assert _font_text(shown, (6, 0, font)).unmapped
+    assert _font_text(shown, (6, 0, font), neighbour).unmapped
+    assert not _font_text(shown, (6, 0, _HELVETICA % b""), neighbour).unmapped
+
+
+@pytest.mark.parametrize(
     "neighbour",
     [
         _HELVETICA % b"/ToUnicode 9 0 R ",

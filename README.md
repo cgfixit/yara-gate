@@ -163,6 +163,9 @@ trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals)
 
 **Structural checks without YARA:** Office macros and DDE (block), OLE objects and `altChunk` imports (advisory), PDF actions (including inside object streams), undecodable PDF text or page content (notes), executables embedded in documents or nested archives, double extensions (including fullwidth dots and launcher suffixes such as `.lnk`, `.iso`, `.msix`), filename control characters, empty files named as documents, stray joiners and Unicode tags, MCP tool poisoning, pickle, safetensors, and GGUF model files, and Keras configs that import `os`, `subprocess`, or `get_file`, or carry a Lambda layer.
 
+For certain conflicting PDF font declarations, the scanner keeps an unmapped-text note
+even when another font's map is nearby. See [PDF font coverage](docs/rules.md#pdf-font-coverage).
+
 **Vendor packs**, downloaded once by `yara-gate setup`: YARA Forge core, signature-base, and Elastic protections-artifacts. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them. See the [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) for measured coverage and skips.
 
 **Benign-corpus findings:** on the [328-file synthetic corpus at `1426e7f`](docs/rules.md#measured-precision), all scans completed. Four distinct files had findings (4/328, 1.22%): four documented Windows shortcut-family collisions, one file per rule (0.30% each). The other 85 of 89 rules and all structural checks had no hits. This measures a benign hit rate, not statistical precision. Each new reader has a dated record of finding changes on thousands of installed and generated files in [docs/verification/](docs/verification/). These corpora do not establish production precision or recall.

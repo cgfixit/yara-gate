@@ -520,6 +520,19 @@ it substitutes a value for part of a sentence. See
 [verification](verification/2026-11-15-xml-text-atom-xhtml-actualtext.md) and
 [named property lists](verification/2026-11-15-actualtext-properties-sheet-values-headers.md).
 
+## PDF font coverage
+
+When a selected font has an unreadable composite interpretation, the scanner can report
+`heuristic_pdf_text_unmapped`. A nearby font's map cannot clear that note for these declarations
+when the selected font has no usable map of its own:
+
+- A declared simple font with a composite Identity encoding.
+- A Type0 font with no `/DescendantFonts` entry and an explicit WinAnsi or MacRoman encoding.
+- A font interpreted as composite whose `/ToUnicode` value is a name instead of a map reference.
+
+The scanner still tries the existing font readings. The note describes unread text, and
+it follows the existing policy for notes. See [verification](verification/2026-11-20-pdf-conflicting-font-coverage.md).
+
 ## RTF reader boundaries
 
 RTF data beginning with `{\rtf1` is read even under a renamed filename or inside
