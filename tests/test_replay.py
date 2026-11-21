@@ -317,6 +317,35 @@ def test_inconsistent_child_records_are_malformed(
         assert result.record is None
 
 
+def test_unidentified_worker_records_are_excluded_from_replay_rates(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clean = shadow_scan(BENIGN.encode(), rules_dir=rules_copy).record
+    assert clean is not None
+    for change in (
+        {"detector_sha256": None},
+        {"ruleset_sha256": "unknown"},
+        {"engine_version": []},
+        {"tool_version": " "},
+        {"compiled_rules": True},
+        {"skipped_rule_files": -1},
+    ):
+        output = {**clean, **change}
+        monkeypatch.setattr(replay, "_run", answering(json.dumps(output).encode(), 0))
+        (item,) = envelopes(line(text=BENIGN, label="benign"), rules_copy)
+        assert item["status"] == "failed"
+        assert item["status_reason"] == "missing or invalid worker identity"
+        assert item["proposed_decision"] == "hold" and item["gate"] is None
+        summary = summarize([item])
+        assert summary["identities"] == []
+        assert summary["labels"]["benign"] == {"admit": 0, "hold": 0, "truncated": 0, "failed": 1}
+
+    del clean["detector_sha256"]
+    monkeypatch.setattr(replay, "_run", answering(json.dumps(clean).encode(), 0))
+    (item,) = envelopes(line(text=BENIGN), rules_copy)
+    assert item["status"] == "failed"
+
+
 def test_a_scan_that_raised_keeps_no_record_under_any_policy(
     rules_copy: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
