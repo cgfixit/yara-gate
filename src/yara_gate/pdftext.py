@@ -187,7 +187,7 @@ Lookup = Callable[[int, int], list[bytes]]
 # and whether the font is composite.
 _Way = tuple[int | None, bool]
 # A dictionary entry as readers may take it: the names its key can be; the names its value
-# can be, the object number it refers to, or None for any other value; and whether the
+# can be, the object number it refers to, (b"null",), or None for other values; and whether the
 # value is written as every reader takes it (``pdfpages._EXACT_REFERENCE``).
 _Entry = tuple[tuple[bytes, ...], tuple[bytes, ...] | int | None, bool]
 
@@ -1086,33 +1086,33 @@ class _Definitions:
         if self._lexed > max(MIN_FONT_DICTIONARY_BYTES, len(self._data) // 2):
             return [wide], False
         self._check()
-        own, sure, more = self._own(body, start)
+        own, sure, unread = self._own(body, start)
         if own is None:
-            return [wide], read and not more
+            return [wide], read and not unread
         if wide in own:
-            return [wide, *(way for way in own if way != wide)], not more
+            return [wide, *(way for way in own if way != wide)], not unread
         if wide[0] is None and own and all(each == _UTF16_MAP for each, _ in own):
             # A Type0 font whose own dictionary names a predefined Unicode CMap and no map:
             # every reading is UTF-16BE (backlog B8). The window only added "no map".
-            return own, read and not more
+            return own, read and not unread
         if wide[0] is not None and own == [(None, True)]:
             # A composite font that names no map, with a map in the bytes after its header:
             # it keeps that one reading. With the reading that has no map beside it, its
             # text would be reported as unmapped, which is new on merged benign documents
             # (backlog B8; a Unicode predefined CMap is read as UTF-16BE above).
-            return [wide], read and not more
+            return [wide], read and not unread
         both = [wide, *own]
         if sure and (wide[0] is not None or all(each is None for each, _ in own)):
             kept = [(each, True) for each, _ in own if each is not None] if wide[1] else []
             alone = list(dict.fromkeys([*(way for way in kept if way == wide), *own, *kept]))
             # The file is read for its layout only when that decides something.
             if alone == both or self.plain.get() is not None:
-                return alone, not more
-        return both, read and not more
+                return alone, not unread
+        return both, read and not unread
 
     def _own(self, body: bytes, start: int | None) -> tuple[list[_Way] | None, bool, bool]:
         """The ways readers take the definition's own dictionary (``_ways``), whether that
-        settles how the font is read, and whether there are more ways than were read. The
+        settles how the font is read, and whether some readings are left unread. The
         ways are None when the definition does not open with a dictionary, its end was not
         reached, or the allowance for lenient reading is spent.
 
@@ -1142,11 +1142,11 @@ class _Definitions:
                     if key in (b"/Subtype", b"/Encoding")
                 )
             )
-            ways, more, settled = _ways(
+            ways, unread, settled = _ways(
                 (_spellings(key), _spellings(value) if isinstance(value, bytes) else value, exact)
                 for key, value, exact in entries
             )
-            return ways, sure and settled, more
+            return ways, sure and settled, unread
         if self._loose > MAX_LOOSE_FONT_BYTES:
             return None, False, True
         view = body if start is None else memoryview(self._data)[start:stop]
@@ -1162,11 +1162,11 @@ class _Definitions:
         # takes, so a font that names a map there is read with none as well.
         first = start or 0
         noted = (body if start is None else self._data).find(b"%", first, first + used) >= 0
-        ways, more, _ = _ways(
+        ways, unread, _ = _ways(
             (_cut(key), _cut(value) if isinstance(value, bytes) else value, exact and not noted)
             for key, value, exact in _loose_entries(tokens)
         )
-        return ways, False, more
+        return ways, False, unread
 
     def _spend(self, count: int) -> None:
         self._lexed += count
@@ -1199,8 +1199,8 @@ def _cut(name: bytes) -> tuple[bytes, ...]:
 
 
 def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
-    """Every way readers take one font dictionary, the likeliest first; whether there are
-    more than ``MAX_FONT_WAYS``; and whether the dictionary alone settles how readers show
+    """Every way readers take one font dictionary, the likeliest first; whether some
+    readings are left unread; and whether the dictionary alone settles how readers show
     the font's text.
 
     A reader keeps one value of a key that is written more than once: pypdf the first,
@@ -1230,11 +1230,15 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
     unsure = False
     named = latin = True
     encoded = described = False
+    descendants = invalid_map = False
     for keys, value, exact in entries:
-        names = value if isinstance(value, tuple) else ()
+        null_value = value == (b"null",)
+        names = value if isinstance(value, tuple) and not null_value else ()
         if b"/ToUnicode" in keys:
             maps.append(value if isinstance(value, int) else None)
             unsure = unsure or len(keys) > 1 or not exact
+            # ISO 32000-1 7.3.9 treats a null dictionary value as absent.
+            invalid_map = invalid_map or (not isinstance(value, int) and not null_value)
         if b"/Subtype" in keys:
             named = named and bool(names)
             type0.extend(dict.fromkeys(name == b"/Type0" for name in names) or [False])
@@ -1253,6 +1257,8 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
                 unicode.append(False)
         if b"/FontDescriptor" in keys:
             described = True
+        if b"/DescendantFonts" in keys:
+            descendants = descendants or not null_value
     if unsure or not maps:
         # No /ToUnicode key, or one that only some readers take for it.
         maps.append(None)
@@ -1287,7 +1293,13 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
         )
     simple = bool(type0) and named and composites == [False]
     decoded = None not in maps or (latin if encoded else not described)
-    return ways[:MAX_FONT_WAYS], len(ways) > MAX_FONT_WAYS, simple and decoded
+    # A map borrowed from the next object cannot settle these conflicting declarations.
+    unread = ways == [(None, True)] and (
+        invalid_map
+        or (kinds == [False] and bool(type0) and named)
+        or (kinds == [True] and not descendants)
+    )
+    return ways[:MAX_FONT_WAYS], unread or len(ways) > MAX_FONT_WAYS, simple and decoded
 
 
 def _loose_dictionary(
@@ -1320,7 +1332,7 @@ def _loose_dictionary(
 
 def _loose_entries(tokens: list[bytes]) -> Iterator[tuple[bytes, bytes | int | None, bool]]:
     """Each key of the dictionary ``tokens`` opens with; the name its value is, the object
-    number its value refers to, or None; and whether the value is written as every reader
+    number its value refers to, null, or None; and whether the value is written as every reader
     takes it. A token that is not a name where a key belongs is skipped, as the lenient
     readers skip it.
 
@@ -1339,7 +1351,7 @@ def _loose_entries(tokens: list[bytes]) -> Iterator[tuple[bytes, bytes | int | N
             exact = len(value) <= 10 and len(tokens[index + 2]) <= 5
             yield key, None if target is None else target[0], exact
         else:
-            yield key, value if value.startswith(b"/") else None, True
+            yield key, value if value.startswith(b"/") or value == b"null" else None, True
         index = _pdf_value_end(tokens, index + 1)
 
 

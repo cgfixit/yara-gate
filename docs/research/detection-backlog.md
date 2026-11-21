@@ -172,11 +172,17 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   alone or beside an object that has a map. PDFium shows every such fixture, pypdf all but one
   it cannot open, pdfminer.six three of six; poppler needs its CJK data package, which this
   machine lacks. The reportlab originals the earlier attempt left advisory are clean.
-- **Still open (verified).** A `/Type0` font with no descendant fonts, a simple font with
-  `/Encoding /Identity-H`, a composite font whose `/ToUnicode` value is not a reference, and a
-  font whose predefined CMap is not Unicode (`GBK-EUC-H`, `90ms-RKSJ-H`): each is still
-  reported as unmapped when it stands alone. Count the fonts generators write with the
-  non-Unicode CMaps before reading them; each needs the CMap's own table.
+- **Coverage reported.** A simple font with an Identity encoding, a Type0 font with an
+  absent or null descendant entry, and a composite font with a non-null, non-reference
+  `/ToUnicode` value keep their unmapped note beside another font with a map whenever no
+  supported reading settles the selected font. This change adds no new decoding.
+  See [the reader comparison](../verification/2026-11-20-pdf-conflicting-font-coverage.md).
+- **Deferred on measured evidence.** No legacy named CMap such as `GBK-EUC-H` or
+  `90ms-RKSJ-H` appeared in 18 generated CJK PDFs or 216 distinct installed PDFs.
+  Revisit when an ordinary producer or a representative corpus supplies one. Each
+  encoding needs its own table and reader agreement. See
+  [the generator inventory](../verification/2026-11-20-cjk-generator-inventory.md).
+  Other malformed font values still require their own reader evidence.
 
 ### JSON object-tree allocation
 
