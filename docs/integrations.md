@@ -208,6 +208,9 @@ plus `dry_run`; the last line contains `dry_run`, `rescanned`, `unchanged`,
 `newly_held`, `newly_incomplete`, and `exit_code`. `unchanged` includes both skipped
 current clean copies and rescanned copies that remain allowed. Exit 2 takes precedence
 when any result is incomplete or the pass aborts, then 1 for any new block, otherwise 0.
+Output that cannot be written aborts the pass: it exits 2 without a summary line
+(silently when the reader closed the pipe, with `incomplete: output unwritable`
+otherwise), and the copies after the last line printed are unvalidated.
 Dry runs return those same predicted exits but do not change reports or copies; lock
 files and the ordinary compiled-rule cache may still be written. No finding text is
 included, and filenames use the usual home-prefix redaction.
@@ -852,6 +855,8 @@ The scan/report schema and verdict semantics are unchanged. `--since 7d` filters
 Without `--json`, the command prints one JSON-escaped row per item, or `No held items.`
 Both empty and nonempty indexes exit 0. Invalid arguments, an unavailable home, or a
 held/report directory that cannot be safely enumerated exit 2 without a partial index.
+An index that cannot be written exits 2 as well: silently when the reader closed the
+pipe early (`yara-gate held | head -1`), with `incomplete: output unwritable` otherwise.
 Individual corrupt reports remain rows marked unreadable and do not fail the command.
 
 The reader accepts regular, single-link reports up to 8 MiB; linked reports and
@@ -885,6 +890,11 @@ checks the ruleset and findings against the last report for the digest, and
 moves a blocked copy to `clean/<sha256>/` after recording the review. An
 in-place file stays in place. Releases require a terminal by default. Use
 `--non-interactive` only to record a completed human review in a non-TTY session.
+A refusal exits 2 with `release refused: <reason>`; standard input closed at start
+counts as no terminal. A release whose confirmation line cannot be written exits 2
+after the release and its audit entry are recorded, so read the audit log
+(`<home>/releases.jsonl`), not the exit, to learn whether a release that exited 2 took
+place.
 
 A subsequent file scan under the same explicit `--home` verifies the audit log
 and looks up the content SHA-256, ruleset SHA-256, policy, and sorted finding
