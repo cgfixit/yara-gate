@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -237,3 +238,55 @@ def test_unknown_digest_report_keeps_recovery_reason(tmp_path: Path, rules_copy:
     assert row["sha256"] is None
     assert row["incomplete_reason"] == "unreadable file"
     assert row["release_eligible"] is False
+
+
+def _refusing_echo(monkeypatch: pytest.MonkeyPatch, error: type[OSError], prefix: str) -> None:
+    import typer
+
+    real = typer.echo
+
+    def echo(text: object = None, *args: object, **kwargs: Any) -> None:
+        # The reader of stdout has gone, or the device is full.
+        if isinstance(text, str) and text.startswith(prefix):
+            raise error(32 if error is BrokenPipeError else 28, "refused")
+        real(text, *args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", echo)
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [(BrokenPipeError, None), (OSError, "incomplete: output unwritable (OSError)")],
+)
+@pytest.mark.parametrize("json_output", [False, True])
+def test_an_index_that_cannot_be_written_is_exit_2_not_1(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[OSError],
+    message: str | None,
+    json_output: bool,
+) -> None:
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    _refusing_echo(monkeypatch, error, '{"schema_version"' if json_output else "No held items.")
+    args = ["held", "--home", str(home.root), *(["--json"] if json_output else [])]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 2
+    assert (message in result.stderr) if message else result.stderr == ""
+
+
+def test_release_with_standard_input_closed_is_refused(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    # Python sets sys.stdin to None when descriptor 0 was closed at start. CliRunner replaces
+    # sys.stdin, so the command runs in a child that starts the way such a process does.
+    code = "import sys; sys.stdin = None; from yara_gate.cli import app; app()"
+    args = ["release", "0" * 64, "--home", str(home.root), "--reason", "reviewed"]
+    result = subprocess.run(
+        [sys.executable, "-c", code, *args], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 2
+    assert "release requires a terminal or --non-interactive" in result.stderr

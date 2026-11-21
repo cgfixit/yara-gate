@@ -174,8 +174,8 @@ JSON-escaped so a filename or report cannot send control sequences to the termin
 `--json` wraps the rows in the [versioned index](docs/integrations.md#listing-held-items).
 Unreadable or missing reports remain visible; a rejection without an associated
 readable report has an unknown identifier. Unknown ages remain visible with `--since`.
-An empty queue exits 0, as does a nonempty queue; an unavailable home or invalid option
-exits 2. In-place scans are not held copies and are not included.
+An empty queue exits 0, as does a nonempty queue; an unavailable home, an invalid option,
+or output that cannot be written (a pipe into `head` closes early) exits 2. In-place scans are not held copies and are not included.
 
 An eligible row is a review candidate, not permission to read or move its bytes.
 Use the [reviewed release command](docs/integrations.md#reviewed-document-releases)
