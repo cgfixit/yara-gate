@@ -469,6 +469,18 @@ or unreadable encoding makes the scan incomplete. Each source is limited to
 parser depth, encoded strings to 1 MiB, and objects/pieces to 100,000, under the
 shared deadline and expansion budget. See [verification](verification/2026-11-07-pdf-annotations.md).
 
+## PDF font resource keys
+
+The file-wide font lookup recognizes standard PDF name escapes in the `/Font` key.
+Direct and indirect resource dictionaries use the same lookup. The page-specific
+lookup still requires an unambiguous page tree and falls back to the file-wide
+lookup for escaped keys. For the measured nonstandard reference spellings that
+only some readers follow, text shown with the affected font adds the
+`heuristic_pdf_text_unmapped` coverage note. The scanner keeps its other readings
+and leaves the disputed reference unresolved. Printed examples and comments do
+not add the note.
+See [reader verification](verification/2026-11-20-pdf-font-resource-keys.md).
+
 ## PDF text strings
 
 `pdf-string` reads the other text strings a PDF reader shows ([#239](https://github.com/cgfixit/yara-gate/issues/239)):

@@ -46,6 +46,7 @@ from yara_gate.content import (
     _PDF_STREAM,
     Budget,
     ContentLimit,
+    PdfObjects,
     PdfStream,
     _pdf_stream_dict,
     _pdf_tokens,
@@ -136,14 +137,22 @@ _LITERAL_ESCAPES = {
     ord("\\"): b"\\",
 }
 
-_FONT_RESOURCES = re.compile(rb"/Font[\x00\t\n\f\r ]*<<(.{0,8192}?)>>", re.DOTALL)
+# PDF name escapes can spell the /Font resource key as well as the names it lists.
+_FONT_KEY = rb"(/(?:F|#46)(?:o|#6[fF])(?:n|#6[eE])(?:t|#74))"
+_FONT_RESOURCES = re.compile(_FONT_KEY + rb"[\x00\t\n\f\r ]*(<<.{0,8192}?>>)", re.DOTALL)
 _FONT_RESOURCE_REF = re.compile(
-    rb"/Font[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
+    _FONT_KEY + rb"[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
 )
 _NAME_REF = re.compile(
     rb"/([^\x00\t\n\f\r ()<>\[\]{}/%]{1,127})"
     rb"[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
 )
+_FONT_REF_CUE = re.compile(rb"[0-9][.R-]|\+[0-9]|\x0b")
+_RECOVERED_FONT_REF = re.compile(
+    rb"\+?[0-9]{1,10}(?:\.0{0,10}|-)?[ \x0b]++"
+    rb"\+?[0-9]{1,5}(?:\.0{0,5})?[ \x0b]*+R(?= |\Z)"
+)
+_PLAIN_FONT_REF = re.compile(rb"[0-9]{1,10} [0-9]{1,5} R")
 _TO_UNICODE = re.compile(
     rb"/ToUnicode[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
 )
@@ -665,23 +674,44 @@ def _fonts(
     sources: list[bytes] = [data]
     sources.extend(stream.text for stream in streams if stream.text and stream.inflated)
     references: dict[bytes, set[tuple[int, int]]] = {}
-    truncated: set[bytes] = set()
+    unread: set[bytes] = set()
     dictionaries: list[bytes] = []
     indirect: set[tuple[int, int]] = set()
-    for source in sources:
+    suspect_keys: dict[int, dict[int, bytes | set[bytes]]] = {}
+    for index, source in enumerate(sources):
         budget.check()
-        dictionaries.extend(match.group(1) for match in _FONT_RESOURCES.finditer(source))
+        for match in _FONT_RESOURCES.finditer(source):
+            body = match.group(2)
+            dictionaries.append(body)
+            if _FONT_REF_CUE.search(body):
+                suspect_keys.setdefault(index, {})[match.end(1)] = body
         indirect.update(
-            (int(match.group(1)), int(match.group(2)))
+            (int(match.group(2)), int(match.group(3)))
             for match in _FONT_RESOURCE_REF.finditer(source)
         )
     # One pass over the file finds every wanted object; a lookup per key would rescan it.
     definitions.prime(indirect)
+    suspect_indirect: dict[int, set[bytes]] = {}
     for number in sorted({number for number, _ in indirect}):
         bodies, complete, _ = definitions(number)
         dictionaries.extend(body for body, _ in bodies)
+        for body, _ in bodies:
+            if names := _unread_font_references(body, budget):
+                suspect_indirect.setdefault(number, set()).update(names)
         if not complete:
             definitions.resources_unread = True
+    if suspect_indirect:
+        for index, source in enumerate(sources):
+            budget.check()
+            for match in _FONT_RESOURCE_REF.finditer(source):
+                if referenced := suspect_indirect.get(int(match.group(2))):
+                    suspect_keys.setdefault(index, {})[match.end(1)] = referenced
+    for index, keys in suspect_keys.items():
+        source = sources[index]
+        lookup = objects if source is data and isinstance(objects, PdfObjects) else None
+        unread.update(_confirmed_font_keys(source, keys, budget, lookup))
+    for name in unread:
+        references.setdefault(name, set())
     for dictionary in dictionaries:
         for ref in _NAME_REF.finditer(dictionary):
             name = _name(ref.group(1))
@@ -690,19 +720,65 @@ def _fonts(
             if len(slot) < MAX_FONT_REFERENCES:
                 slot.add(key)
             elif key not in slot:
-                truncated.add(name)
+                unread.add(name)
     fonts: dict[bytes, list[Font]] = {}
     reader.prime(key for refs in references.values() for key in refs)
     for name, refs in references.items():
         found = reader.readings(refs)
         unresolved = Font(True, None, (2,))
-        if name in truncated and unresolved not in found:
-            # The fonts past the reference cap are never resolved: a composite font with no
-            # map stands for them, so text shown in this name is reported as unmapped.
+        if name in unread and unresolved not in found:
+            # Preserve the existing fallback when all references for this name are unread.
+            if not found:
+                found.append(_WINANSI)
             found.append(unresolved)
         if found:
             fonts[name] = found
     return fonts
+
+
+def _unread_font_references(body: bytes, budget: Budget) -> set[bytes]:
+    """Only dictionary entries, excluding strings, comments, and nested values."""
+    if _FONT_REF_CUE.search(body) is None:
+        return set()
+    budget.check()
+    tokens, _, short = _loose_dictionary(body, budget)
+    if not tokens or short or tokens[-1] != b">>":
+        return set()
+    unread: set[bytes] = set()
+    index = 1
+    while index + 1 < len(tokens) and tokens[index] != b">>":
+        key = tokens[index]
+        index += 1
+        if not key.startswith(b"/"):
+            continue
+        raw = b" ".join(tokens[index : index + 3])
+        match = _RECOVERED_FONT_REF.match(raw)
+        if match and _PLAIN_FONT_REF.fullmatch(match.group()) is None:
+            unread.add(key[1:])
+        index = _pdf_value_end(tokens, index)
+    return unread
+
+
+def _confirmed_font_keys(
+    source: bytes,
+    keys: dict[int, bytes | set[bytes]],
+    budget: Budget,
+    objects: PdfObjects | None,
+) -> set[bytes]:
+    """Verify the raw hit was a PDF token and not printed text or a comment."""
+    from yara_gate.pdfannotations import _tokens
+
+    stop = max(keys)
+    found: set[bytes] = set()
+    for token, end in _tokens(source, budget, objects):
+        if token == b"/Font" and end in keys:
+            value = keys[end]
+            found.update(
+                _unread_font_references(value, budget) if isinstance(value, bytes) else value
+            )
+        if end >= stop:
+            break
+    return found
 
 
 class _PageFonts(Mapping[bytes, list[Font]]):

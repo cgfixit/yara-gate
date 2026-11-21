@@ -275,6 +275,20 @@ def _read(data: bytes) -> pdftext.PdfText:
     return pdftext.pdf_text(data, pdf_streams(data, budget, objects.decoded), objects, budget)
 
 
+@pytest.mark.parametrize("key", [b"/F#6Fnt", b"/#46#6f#6E#74"])
+@pytest.mark.parametrize("indirect", [False, True])
+def test_pdf_font_resource_key_accepts_name_escapes(key: bytes, indirect: bool) -> None:
+    plain = samples.glyph_pdf_benign()
+    if indirect:
+        plain = plain.replace(b"/Font << /F1 5 0 R >>", b"/Font 7 0 R")
+        plain = plain.replace(b"trailer", b"7 0 obj\n<< /F1 5 0 R >>\nendobj\ntrailer")
+    expected = _read(plain)
+    assert expected.blocks[0].startswith("Vendor onboarding checklist.")
+    actual = _read(plain.replace(b"/Resources << /Font ", b"/Resources << " + key + b" "))
+    assert actual.blocks == expected.blocks
+    assert not actual.unmapped
+
+
 def _pages(content: bytes, *cmaps: bytes, shared: bool = True) -> pdftext.PdfText:
     """Read a file whose pages show ``content`` in /F1, each page through its own map.
 
@@ -1347,6 +1361,47 @@ def _numbered(font: bytes, content: bytes, *objects: tuple[int, int, bytes]) -> 
     return _read(
         data.replace(samples._stream(b"BT /F1 12 Tf 72 700 Td <> Tj ET"), _stream(content))
     )
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        b"+6 0 R",
+        b"6.0 0 R",
+        b"6. 0 R",
+        b"6- 0 R",
+        b"6 +0 R",
+        b"6 0.0 R",
+        b"6\x0b0 R",
+        b"6 0\x0bR",
+        b"6 0R",
+    ],
+)
+@pytest.mark.parametrize("indirect", [False, True])
+def test_pdf_font_resource_recovery_does_not_claim_complete_text(
+    reference: bytes, indirect: bool
+) -> None:
+    content = b"BT /F1 12 Tf 72 700 Td (Quarterly planning notes) Tj ET"
+    font = (6, 0, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    data = samples._one_page_pdf("", reference, [font])
+    data = data.replace(samples._stream(b"BT /F1 12 Tf 72 700 Td <> Tj ET"), _stream(content))
+    if indirect:
+        dictionary = b"<< /F1 " + reference + b" >>"
+        data = data.replace(b"/Font " + dictionary, b"/Font 7 0 R")
+        data = data.replace(b"trailer", b"7 0 obj\n" + dictionary + b"\nendobj\ntrailer")
+    text = _read(data)
+    assert text.unmapped
+    assert text.blocks == ["Quarterly planning notes"]
+
+
+def test_pdf_font_resource_recovery_ignores_quoted_references_and_unused_fonts() -> None:
+    content = b"BT /F1 12 Tf 72 700 Td (Quarterly planning notes) Tj ET"
+    font = (6, 0, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    printed = (7, 0, b"<< /Example (/Font << /F1 +6 0 R >>) >>")
+    unused = (8, 0, b"<< /Font << /F2 +6 0 R >> >>")
+    result = _numbered(b"6 0 R", content, font, printed, unused)
+    assert not result.unmapped
+    assert result.blocks == ["Quarterly planning notes"]
 
 
 def _maps(number: int, *shifts: int) -> list[tuple[int, int, bytes]]:
