@@ -177,9 +177,12 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   `/ToUnicode` value without referencing a map keep their unmapped note beside another font
   with a map. Readers disagree on the first two cases, so this change adds no new decoding.
   See [the reader comparison](../verification/2026-11-20-pdf-conflicting-font-coverage.md).
-- **Still open.** Count the fonts generators write with non-Unicode CMaps such as
-  `GBK-EUC-H` and `90ms-RKSJ-H` before reading them. Each needs its own table. Other
-  malformed font values still require their own reader evidence.
+- **Deferred on measured evidence.** No legacy named CMap such as `GBK-EUC-H` or
+  `90ms-RKSJ-H` appeared in 18 generated CJK PDFs or 216 distinct installed PDFs.
+  Revisit when an ordinary producer or a representative corpus supplies one. Each
+  encoding needs its own table and reader agreement. See
+  [the generator inventory](../verification/2026-11-20-cjk-generator-inventory.md).
+  Other malformed font values still require their own reader evidence.
 
 ### JSON object-tree allocation
 

@@ -165,6 +165,8 @@ trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals)
 
 For certain conflicting PDF font declarations, the scanner keeps an unmapped-text note
 even when another font's map is nearby. See [PDF font coverage](docs/rules.md#pdf-font-coverage).
+The [CJK generator inventory](docs/verification/2026-11-20-cjk-generator-inventory.md)
+records which font mappings were observed in ordinary exports.
 
 **Vendor packs**, downloaded once by `yara-gate setup`: YARA Forge core, signature-base, and Elastic protections-artifacts. Their matches block unless the reviewed [override list](#how-vendor-matches-are-graded) lowers or skips them. See the [vendor census](docs/verification/2026-11-01-ecosystem-rules.md) for measured coverage and skips.
 
