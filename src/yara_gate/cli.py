@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import stat
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Any, BinaryIO, NoReturn
 
 import typer
 
@@ -266,8 +267,7 @@ def replay(
     tally = Tally()
     failed = False
     try:
-        handle = sys.stdin.buffer if capture == "-" else Path(capture).open("rb")
-        with handle:
+        with _capture_input(capture) as handle:
             for envelope in replay_capture(
                 handle,
                 policy=policy,
@@ -277,16 +277,46 @@ def replay(
             ):
                 tally.add(envelope)
                 failed = failed or envelope["status"] == FAILED
-                # ASCII output: a captured identifier cannot control the terminal.
-                typer.echo(json.dumps(envelope, separators=(",", ":"), ensure_ascii=True))
-    except BrokenPipeError as exc:
-        # The reader of stdout went away; that is not a fault in the capture.
+                _print_record(envelope)
+        _print_record(tally.result())
+    except _OutputLost as exc:
         raise typer.Exit(code=2) from exc
     except OSError as exc:
         typer.echo(f"incomplete: capture unreadable ({exc.__class__.__name__})", err=True)
         raise typer.Exit(code=2) from exc
-    typer.echo(json.dumps(tally.result(), separators=(",", ":"), ensure_ascii=True))
+    except Exception as exc:
+        # Replay exits 0 or 2, never 1: an error it did not expect is still no answer.
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
+        raise typer.Exit(code=2) from exc
     raise typer.Exit(code=2 if failed else 0)
+
+
+class _OutputLost(Exception):
+    """Standard output stopped taking records: its reader went away, or its device refused."""
+
+
+def _print_record(record: dict[str, Any]) -> None:
+    """Print one JSON Lines record. ASCII output: a captured identifier cannot control the
+    terminal. A record that cannot be written leaves the run without an answer, exit 2."""
+    line = json.dumps(record, separators=(",", ":"), ensure_ascii=True)
+    try:
+        typer.echo(line)
+    except BrokenPipeError as exc:
+        # The reader of stdout went away; that is not a fault in the capture.
+        raise _OutputLost from exc
+    except OSError as exc:
+        typer.echo(f"incomplete: output unwritable ({exc.__class__.__name__})", err=True)
+        raise _OutputLost from exc
+
+
+def _capture_input(capture: str) -> BinaryIO:
+    """The named capture file, or standard input for ``-``. A closed stdin is unreadable."""
+    if capture != "-":
+        return Path(capture).open("rb")
+    if sys.stdin is None:
+        # Python sets sys.stdin to None when the process starts with descriptor 0 closed.
+        raise OSError(errno.EBADF, "standard input is closed")
+    return sys.stdin.buffer
 
 
 @app.command()
@@ -323,27 +353,29 @@ def conform(
         if export is not None:
             typer.echo(f"exported {kit.export(export)} fixtures", err=True)
             return
-        handle = None
-        if agreement is not None:
-            handle = sys.stdin.buffer if agreement == "-" else Path(agreement).open("rb")
+        handle = None if agreement is None else _capture_input(agreement)
         try:
             code = 0
             for record in kit.run(handle, rules=rules, policy=policy, timeout_s=timeout_s):
-                # ASCII output: a captured identifier cannot control the terminal.
-                typer.echo(json.dumps(record, separators=(",", ":"), ensure_ascii=True))
+                _print_record(record)
                 if record["record"] == "summary":
                     code = {"pass": 0, "fail": 1}.get(record["result"], 2)
                     typer.echo(kit.headline(record), err=True)
         finally:
-            if handle is not None and handle is not sys.stdin.buffer:
+            # Standard input is left open; a capture file this command opened is closed.
+            if handle is not None and agreement != "-":
                 handle.close()
     except kit.KitError as exc:
         typer.echo(f"incomplete: {exc}", err=True)
         raise typer.Exit(code=2) from exc
-    except BrokenPipeError as exc:
+    except (_OutputLost, BrokenPipeError) as exc:
         raise typer.Exit(code=2) from exc
     except OSError as exc:
         typer.echo(f"incomplete: capture unreadable ({exc.__class__.__name__})", err=True)
+        raise typer.Exit(code=2) from exc
+    except Exception as exc:
+        # Exit 1 says a fixture changed. An error the kit did not expect is not that: exit 2.
+        typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
     raise typer.Exit(code=code)
 

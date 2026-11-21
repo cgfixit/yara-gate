@@ -779,7 +779,9 @@ item cannot affect the next. For measured startup and warm timings, see the
 rules and detector print the same bytes.
 
 The exit code is 0 when every item got a gate record and 2 when one did not. It is never
-1: a proposed hold is an observation here, not a verdict. Exit 0 does not mean every item
+1: a proposed hold is an observation here, not a verdict. A capture that cannot be read
+(including standard input closed at start), standard output that stops taking records, and
+an error replay did not expect (`incomplete: <Type>`) also exit 2. Exit 0 does not mean every item
 was fully scanned: a missing rules directory makes every item `truncated` and still exits
 0, so read `status` in the summary before using a run. Like any scan, a replay fills the
 compiled-rule cache under the user cache directory; it writes nothing else. Do not use this command to admit
