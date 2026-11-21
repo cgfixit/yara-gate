@@ -140,4 +140,4 @@ shows.
 | Date | Manifest | What changed |
 | --- | --- | --- |
 | 2026-11-20 | `e0f77f72e5cff1af` | First manifest: the 90 catalog fixtures that scan with the bundled rules, and the unread-content PDF pair. Schema version 1 |
-| 2026-11-21 | `e0f77f72e5cff1af` | Manifest unchanged. Agreement output: a `failed` line whose extraction was scanned (an unknown fixture id, an `original_sha256` that is not the fixture's, or `fixture was not scanned`) now gives `"decision": "hold"` on its `extraction` side instead of the extraction's own `admit`. Its verdict and rule ids are unchanged. A committed `agreement.jsonl` that holds such a line changes on that field only; the run still exits 2 |
+| 2026-11-21 | unchanged | Agreement output only: a `failed` line whose extraction was scanned (an unknown fixture id, an `original_sha256` that is not the fixture's, or `fixture was not scanned`) now gives `"decision": "hold"` on its `extraction` side instead of the extraction's own `admit`. Its verdict and rule ids are unchanged. A committed `agreement.jsonl` that holds such a line changes on that field only; the run still exits 2 |
