@@ -26,3 +26,30 @@ rules directory with no vendor packs.
 
 The installed files and fixtures establish the behavior of this change on those inputs.
 The live workbench uses its bundled pair. The focused reader tests exercise the new key spellings.
+
+## Coverage for disputed resource references
+
+The follow-up preserves existing font readings and adds the unmapped coverage note
+when a selected name has a measured reference that readers recover differently.
+The note also applies when an ordinary reference for that name exists elsewhere.
+The key must occur as a PDF token. Text strings and comments that print resource
+examples do not count.
+
+On the same Mac toolchain, eighteen new cases for nine recovery spellings across
+direct and indirect dictionaries reproduced the missing note on `e483328` and
+pass with this change. A quoted example and an unused name stay clean. The
+packaged CLI checked eight affected documents and three controls with rebuilt
+cross-reference tables. Under `agent-document`, each affected document returned
+advisory/0 with only the unmapped note, and the controls returned clean/0.
+
+The 141 directed reader cases now include nine that report unmapped text where
+they previously reported nothing. This establishes coverage reporting for those
+references. Their exact glyph decoding remains reader dependent. The 15,000-input
+page-map fuzz pass observed zero narrowing misses. The 216-PDF sweep showed no
+changed verdicts or findings. A 4,194,298-byte inert comment holding repeated
+reference examples stayed clean. Three scans took 1.09–1.17 s on the prior draft
+and 1.14–1.22 s with the follow-up.
+
+The wheel passed all 276 conformance checks with no changed findings or verdicts.
+In the live browser, the built-in plain-font pair showed block/1 for the
+instruction and clean/0 for the ordinary revision note under `agent-ingest`.

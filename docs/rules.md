@@ -474,9 +474,11 @@ shared deadline and expansion budget. See [verification](verification/2026-11-07
 The file-wide font lookup recognizes standard PDF name escapes in the `/Font` key.
 Direct and indirect resource dictionaries use the same lookup. The page-specific
 lookup still requires an unambiguous page tree and falls back to the file-wide
-lookup for escaped keys. Recovery spellings that only some readers accept for
-the object reference itself remain in the
-[detection backlog](research/detection-backlog.md#further-candidates-not-yet-in-the-probe).
+lookup for escaped keys. For the measured nonstandard reference spellings that
+only some readers follow, text shown with the affected font adds the
+`heuristic_pdf_text_unmapped` coverage note. The scanner keeps its other readings
+and leaves the disputed reference unresolved. Printed examples and comments do
+not add the note.
 See [reader verification](verification/2026-11-20-pdf-font-resource-keys.md).
 
 ## PDF text strings

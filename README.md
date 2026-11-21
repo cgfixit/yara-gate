@@ -179,8 +179,8 @@ trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals)
 Open gaps and declined ideas are in the [detection backlog](docs/research/detection-backlog.md). Start with the **[detection-method map](rules/README.md)** for every detection layer; exact rule boundaries, views, and limits are in **[docs/rules.md](docs/rules.md)**.
 
 PDF text reconstruction recognizes standard name escapes in the `/Font` resource key.
-See [PDF font resource keys](docs/rules.md#pdf-font-resource-keys) for what happens when
-readers disagree about a font reference.
+It reports unread text when a selected font uses a measured reference spelling that
+PDF readers handle differently. See [PDF font resource keys](docs/rules.md#pdf-font-resource-keys).
 
 ## Reports and telemetry
 
