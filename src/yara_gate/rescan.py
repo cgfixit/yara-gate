@@ -35,7 +35,9 @@ def rescan_clean(
     """Yield a fresh result per changed admission, or None for a current clean copy.
 
     Reports precede withdrawal. Any error aborts with the remaining copies unvalidated;
-    consumers must stop reading this home until a successful pass completes.
+    consumers must stop reading this home until a successful pass completes. Rules that
+    cannot scan at all (missing bundled or vendor files, a local compile failure, a
+    malformed override list) abort before the first copy, so nothing is written or moved.
     """
     if timeout_s <= 0:
         raise ValueError("scan timeout must be positive")
@@ -47,6 +49,11 @@ def rescan_clean(
             if home.pending_intake.exists():
                 raise ValueError("pending intake must be recovered before rescan")
             identity = scan_bytes(b"", rules_dir=rules_dir, timeout_s=timeout_s, policy=policy)
+            if identity.verdict is Verdict.incomplete:
+                # Rules that cannot scan empty bytes cannot scan any copy. Every slot would
+                # come back incomplete for the ruleset's fault, not its own, and move to
+                # quarantine/, which a later pass never rechecks. Stop with nothing moved.
+                raise ValueError(f"rules cannot scan: {identity.incomplete_reason}")
             for slot in sorted(home.clean.iterdir()):
                 yield _rescan_slot(home, slot, identity, rules_dir, timeout_s, policy, dry_run)
     finally:

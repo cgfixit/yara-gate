@@ -192,16 +192,24 @@ intake must first be recovered by the existing intake/watch path.
 Every clean copy is opened under the intake regular-file, single-link and byte-limit
 checks and hashed. A complete clean report with the same bytes, filename, policy,
 ruleset and detector identity skips scanning. Missing, malformed or stale reports
-and every advisory admission are scanned again. Missing recorded vendor rules make
-rescans incomplete, including with a warm compiled cache. Reviewed releases are not
-applied by this command; a document may need fresh review after revalidation.
+and every advisory admission are scanned again. Reviewed releases are not applied by
+this command; a document may need fresh review after revalidation.
+
+Before the first copy, the pass checks that the rules can scan at all. Missing bundled
+or recorded vendor rules (including with a warm compiled cache), a local rule that does
+not compile, or a malformed `vendor-overrides.json` stops it with exit 2 and
+`incomplete: rules cannot scan: <reason>` on stderr, before any report is written or
+any copy moves. A broken ruleset says nothing about a file, and a copy moved to
+`quarantine/` is never rechecked by a later pass, so withdrawing every copy for it would
+empty `clean/` until each file was resubmitted by hand. Fix the rules and run the pass
+again; keep consumers paused until it finishes.
 
 Fresh JSON and SARIF reports precede relocation. Blocks move to `blocked/<digest>/`;
 incomplete copies move to `quarantine/<digest>/`; allowed copies remain in place.
 Changed or unreadable bytes have an unknown (zero) report digest, stored under the
 original slot identifier. Existing held destinations are never overwritten. Malformed
-slot layouts, pending intake, report-write or relocation failures abort with exit 2;
-remaining copies are unvalidated. A retry rechecks any non-clean report. Keep consumers
+slot layouts, pending intake, rules that cannot scan, report-write or relocation
+failures abort with exit 2; remaining copies are unvalidated. A retry rechecks any non-clean report. Keep consumers
 paused until the error is resolved and a full pass finishes. This is a maintenance
 pass, not a transaction across the whole home or protection against another process
 writing files or rules during the pass. It cannot withdraw bytes a consumer already
