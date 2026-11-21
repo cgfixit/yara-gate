@@ -135,7 +135,11 @@ completeness, and byte identity. Never turn a displayed exit 0 or an earlier
 preview into permission to read changed content. The browser paste is always
 named `paste.txt`; use the original type/name when gating a real file.
 
-Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The app stores no
+Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The server answers a
+request that is not one bounded JSON object with an error and keeps serving: no length
+(411), a body over its size bound (413), JSON that does not parse or nests past the
+decoder's limit (400 `bad json`), and a request that stops arriving for 10 seconds,
+whose connection is closed (408 when the headers had arrived). The app stores no
 scan history or content and sends scans only to its loopback server. Expanding
 JSON reveals hashes and metadata, which can identify known content even without
 matched bytes. This UI is neither an authenticated multi-user service nor a remote
@@ -188,16 +192,24 @@ intake must first be recovered by the existing intake/watch path.
 Every clean copy is opened under the intake regular-file, single-link and byte-limit
 checks and hashed. A complete clean report with the same bytes, filename, policy,
 ruleset and detector identity skips scanning. Missing, malformed or stale reports
-and every advisory admission are scanned again. Missing recorded vendor rules make
-rescans incomplete, including with a warm compiled cache. Reviewed releases are not
-applied by this command; a document may need fresh review after revalidation.
+and every advisory admission are scanned again. Reviewed releases are not applied by
+this command; a document may need fresh review after revalidation.
+
+Before the first copy, the pass checks that the rules can scan at all. Missing bundled
+or recorded vendor rules (including with a warm compiled cache), a local rule that does
+not compile, or a malformed `vendor-overrides.json` stops it with exit 2 and
+`incomplete: rules cannot scan: <reason>` on stderr, before any report is written or
+any copy moves. A broken ruleset says nothing about a file, and a copy moved to
+`quarantine/` is never rechecked by a later pass, so withdrawing every copy for it would
+empty `clean/` until each file was resubmitted by hand. Fix the rules and run the pass
+again; keep consumers paused until it finishes.
 
 Fresh JSON and SARIF reports precede relocation. Blocks move to `blocked/<digest>/`;
 incomplete copies move to `quarantine/<digest>/`; allowed copies remain in place.
 Changed or unreadable bytes have an unknown (zero) report digest, stored under the
 original slot identifier. Existing held destinations are never overwritten. Malformed
-slot layouts, pending intake, report-write or relocation failures abort with exit 2;
-remaining copies are unvalidated. A retry rechecks any non-clean report. Keep consumers
+slot layouts, pending intake, rules that cannot scan, report-write or relocation
+failures abort with exit 2; remaining copies are unvalidated. A retry rechecks any non-clean report. Keep consumers
 paused until the error is resolved and a full pass finishes. This is a maintenance
 pass, not a transaction across the whole home or protection against another process
 writing files or rules during the pass. It cannot withdraw bytes a consumer already
@@ -208,6 +220,9 @@ plus `dry_run`; the last line contains `dry_run`, `rescanned`, `unchanged`,
 `newly_held`, `newly_incomplete`, and `exit_code`. `unchanged` includes both skipped
 current clean copies and rescanned copies that remain allowed. Exit 2 takes precedence
 when any result is incomplete or the pass aborts, then 1 for any new block, otherwise 0.
+Output that cannot be written aborts the pass: it exits 2 without a summary line
+(silently when the reader closed the pipe, with `incomplete: output unwritable`
+otherwise), and the copies after the last line printed are unvalidated.
 Dry runs return those same predicted exits but do not change reports or copies; lock
 files and the ordinary compiled-rule cache may still be written. No finding text is
 included, and filenames use the usual home-prefix redaction.
@@ -852,6 +867,8 @@ The scan/report schema and verdict semantics are unchanged. `--since 7d` filters
 Without `--json`, the command prints one JSON-escaped row per item, or `No held items.`
 Both empty and nonempty indexes exit 0. Invalid arguments, an unavailable home, or a
 held/report directory that cannot be safely enumerated exit 2 without a partial index.
+An index that cannot be written exits 2 as well: silently when the reader closed the
+pipe early (`yara-gate held | head -1`), with `incomplete: output unwritable` otherwise.
 Individual corrupt reports remain rows marked unreadable and do not fail the command.
 
 The reader accepts regular, single-link reports up to 8 MiB; linked reports and
@@ -885,6 +902,11 @@ checks the ruleset and findings against the last report for the digest, and
 moves a blocked copy to `clean/<sha256>/` after recording the review. An
 in-place file stays in place. Releases require a terminal by default. Use
 `--non-interactive` only to record a completed human review in a non-TTY session.
+A refusal exits 2 with `release refused: <reason>`; standard input closed at start
+counts as no terminal. A release whose confirmation line cannot be written exits 2
+after the release and its audit entry are recorded, so read the audit log
+(`<home>/releases.jsonl`), not the exit, to learn whether a release that exited 2 took
+place.
 
 A subsequent file scan under the same explicit `--home` verifies the audit log
 and looks up the content SHA-256, ruleset SHA-256, policy, and sorted finding

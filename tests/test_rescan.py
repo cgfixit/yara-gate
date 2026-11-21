@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -97,20 +98,40 @@ def test_advisory_and_policy_change(tmp_path: Path, rules_copy: Path) -> None:
     assert (home.blocked / digest).is_dir()
 
 
-def test_missing_vendor_withdraws(tmp_path: Path, rules_copy: Path) -> None:
+@pytest.mark.parametrize(
+    ("broken", "reason"),
+    [
+        ("vendor.installed.json", "installed vendor rules missing"),
+        ("local/zz_broken.yar", "local rule compile failed"),
+    ],
+)
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_rules_that_cannot_scan_stop_before_any_copy(
+    tmp_path: Path, rules_copy: Path, broken: str, reason: str, dry_run: bool
+) -> None:
     home = GatePaths(tmp_path / "gate")
-    digest = admit(home, rules_copy, b"Ordinary notes.")
-    (rules_copy / "vendor.installed.json").write_text(
+    digests = [admit(home, rules_copy, f"Ordinary notes {n}.".encode(), f"{n}.txt") for n in "ab"]
+    before = {p.relative_to(home.root): p.read_bytes() for p in home.root.rglob("*") if p.is_file()}
+    (rules_copy / broken).write_text(
         json.dumps({"installed_vendor_files": ["pack/missing.yar"]})
+        if broken.endswith(".json")
+        else "rule broken { condition: nope }"
     )
-    result = command(home, rules_copy)
+    result = command(home, rules_copy, *(["--dry-run"] if dry_run else []))
     assert result.returncode == 2
-    assert (home.quarantine / digest).is_dir()
-    assert not (home.clean / digest).exists()
-    assert (
-        json.loads((home.reports / f"{digest}.json").read_text())["incomplete_reason"]
-        == "installed vendor rules missing"
-    )
+    assert f"rules cannot scan: {reason}" in result.stderr
+    summary = json.loads(result.stdout.splitlines()[-1])
+    assert (summary["rescanned"], summary["exit_code"]) == (0, 2)
+    locks = {Path(".watch.lock"), Path(".intake.lock")}
+    after = {p.relative_to(home.root): p.read_bytes() for p in home.root.rglob("*") if p.is_file()}
+    assert {k: v for k, v in after.items() if k not in locks} == {
+        k: v for k, v in before.items() if k not in locks
+    }
+    (rules_copy / broken).unlink()
+    repaired = command(home, rules_copy)
+    assert repaired.returncode == 0, repaired.stderr
+    assert json.loads(repaired.stdout.splitlines()[-1])["unchanged"] == 2
+    assert all((home.clean / digest).is_dir() for digest in digests)
 
 
 def test_watch_lock_refuses(tmp_path: Path, rules_copy: Path) -> None:
@@ -284,3 +305,49 @@ def test_mutation_during_scan_is_incomplete(
     results = list(rescan_clean(home, rules_dir=rules_copy))
     assert results[0].verdict is Verdict.incomplete
     assert (home.quarantine / digest).exists()
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [(BrokenPipeError, None), (OSError, "incomplete: output unwritable (OSError)")],
+)
+@pytest.mark.parametrize("line", ['{"dry_run": false, "sha256"', '{"dry_run": false, "rescanned"'])
+def test_output_that_cannot_be_written_is_exit_2_not_1(
+    tmp_path: Path,
+    rules_copy: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[OSError],
+    message: str | None,
+    line: str,
+) -> None:
+    import typer
+    from typer.testing import CliRunner
+
+    from yara_gate.cli import app
+
+    home = GatePaths(tmp_path / "gate")
+    admit(home, rules_copy, b"hello\n")
+    real = typer.echo
+
+    def echo(text: object = None, *args: object, **kwargs: Any) -> None:
+        # A copy's line, or the summary: the reader of stdout has gone, or the device is full.
+        if isinstance(text, str) and text.startswith(line):
+            raise error(32 if error is BrokenPipeError else 28, "refused")
+        real(text, *args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", echo)
+    # Another policy makes the stored report stale, so the copy is scanned and printed.
+    result = CliRunner().invoke(
+        app,
+        [
+            "rescan",
+            "--home",
+            str(home.root),
+            "--rules",
+            str(rules_copy),
+            "--policy",
+            "agent-ingest",
+        ],
+    )
+    assert result.exit_code == 2
+    assert (message in result.stderr) if message else result.stderr == ""

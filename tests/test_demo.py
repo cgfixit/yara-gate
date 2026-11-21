@@ -166,8 +166,9 @@ def test_demo_rejects_cross_origin(rules_copy: Path) -> None:
 
 @pytest.mark.parametrize(
     "body",
-    [b'{"text":"\xff"}', b"\xff\xfe\x00"],
-    ids=["utf8", "utf16"],
+    # The last is under the size bound and deeper than the decoder's recursion limit.
+    [b'{"text":"\xff"}', b"\xff\xfe\x00", b"[" * 60_000],
+    ids=["utf8", "utf16", "deep"],
 )
 def test_demo_rejects_invalid_json_encoding(rules_copy: Path, body: bytes) -> None:
     server, thread = serve_in_thread(rules_copy)
@@ -184,6 +185,37 @@ def test_demo_rejects_invalid_json_encoding(rules_copy: Path, body: bytes) -> No
         assert plain["verdict"] == "clean"
     finally:
         connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_demo_times_out_a_body_that_stops_short(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+
+    from yara_gate.demo import DemoHandler
+
+    monkeypatch.setattr(DemoHandler, "timeout", 0.5)
+    server, thread = serve_in_thread(rules_copy)
+    port = server.server_port
+    stalled = socket.create_connection(("127.0.0.1", port), timeout=10)
+    try:
+        # Content-Length promises more than is sent, and the connection stays open.
+        stalled.sendall(
+            f"POST /api/scan HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            "Content-Type: application/json\r\nContent-Length: 1000\r\n\r\n"
+            '{"sample":'.encode()
+        )
+        reply = stalled.recv(4096)
+        assert reply.startswith(b"HTTP/1.0 408 ")
+        assert reply.endswith(b'{"error": "request timeout"}')
+        status, plain = _post(port, {"sample": "plain"})
+        assert status == 200
+        assert plain["verdict"] == "clean"
+    finally:
+        stalled.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
@@ -367,6 +399,7 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
         ),
         "html_svg_script": ("html_svg_icon_benign", "doc_svg_active", {"raw", "text-folded"}),
         "mcp_tool_poisoned": ("mcp_tool_benign", "heuristic_mcp_hidden_instruction", {"raw"}),
+        "chat_header_override": ("chat_header_benign", "agent_role_spoof_action", {"raw"}),
         "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
         "word_xml_comment_override": (
             "word_xml_comment_benign",

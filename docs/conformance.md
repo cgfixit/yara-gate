@@ -40,7 +40,7 @@ PDF pair whose page content the gate cannot decode, for the
 | 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing or damaged, a scan that should answer was incomplete, an agreement line gave no record, standard output could not be written, or an error the kit did not expect (`incomplete: <Type>`) |
 
 Standard output is JSON Lines; standard error carries one line for a person
-(`CONFORM PASS: 92 fixtures, 276 checks, …`).
+(`CONFORM PASS: 94 fixtures, 282 checks, …`).
 
 | Record | When | Fails the run |
 | --- | --- | --- |
@@ -140,4 +140,5 @@ shows.
 | Date | Manifest | What changed |
 | --- | --- | --- |
 | 2026-11-20 | `e0f77f72e5cff1af` | First manifest: the 90 catalog fixtures that scan with the bundled rules, and the unread-content PDF pair. Schema version 1 |
+| 2026-11-21 | `422a27b3bd76a2a1` | Two fixtures added, no fixture moved: `chat_header_override`, a page a browsing tool returned as text that opens a Llama 3 system turn and orders a ranking (`agent_role_spoof_action`, an advisory: held by both agent policies), and its near-twin `chat_header_benign`, the same opener quoted in a model guide, clean under every policy |
 | 2026-11-21 | unchanged | Agreement output only: a `failed` line whose extraction was scanned (an unknown fixture id, an `original_sha256` that is not the fixture's, or `fixture was not scanned`) now gives `"decision": "hold"` on its `extraction` side instead of the extraction's own `admit`. Its verdict and rule ids are unchanged. A committed `agreement.jsonl` that holds such a line changes on that field only; the run still exits 2 |
