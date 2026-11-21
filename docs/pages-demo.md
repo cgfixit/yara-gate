@@ -24,7 +24,9 @@ were clean under every policy, the findings on twins across every policy recordi
 (zero in the committed baseline), and the unfinished scans that stayed incomplete.
 The limits section separately gives an example of coverage the PDF reader does
 not provide: page streams under a filter it cannot decode, which it reports as the
-note `heuristic_pdf_content_unread` instead of reading. The scoreboard counts recorded cases selected for the showcase, not a representative benchmark. Zero findings on these controls is not a production false-positive rate or evidence of broad recall.
+note `heuristic_pdf_content_unread` instead of reading, and says the readers are
+lexical: text hidden by a stylesheet, by layout, or by a background the page does not
+declare reads as shown text, and a terminal log is read without its redraws. The scoreboard counts recorded cases selected for the showcase, not a representative benchmark. Zero findings on these controls is not a production false-positive rate or evidence of broad recall.
 A strip under the scoreboard shows every pair at once, the attack above its twin,
 marked and coloured by the verdict under the selected policy, so switching to
 `agent-document` or `default` shows which attacks that policy reports without
@@ -44,8 +46,12 @@ either member sets the two side by side under the chosen policy. Each finding sa
 member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
 folded for look-alikes and digits). A static section summarizes the
-benign-corpus evidence and links to its records. Per-rule hit rates and the
-number of distinct benign files held are different measures.
+benign-corpus evidence and links to its records, and gives the web-page benchmark
+baseline beside it: on BrowseSafe-Bench's test split `agent-ingest` held 11.7% of the
+benign pages, while every twin here is clean. Per-rule hit rates and the
+number of distinct benign files held are different measures. The section on running the
+scanner locally names `yara-gate replay` and `yara-gate conform` for a consumer that
+measures the gate before enforcing it or checks an upgrade.
 
 The site is live at **<https://cgfixit.github.io/yara-gate/>**. The first
 deployment ran on November 1, 2026

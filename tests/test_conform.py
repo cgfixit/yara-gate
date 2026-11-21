@@ -275,3 +275,65 @@ def test_agreement_line_without_a_record_is_exit_2(tmp_path: Path) -> None:
     assert records[-1]["bundled"]["mismatches"] == 0
     code, _, err = run("--agreement", str(tmp_path / "absent.jsonl"))
     assert code == 2 and "capture unreadable" in err
+
+
+def test_agreement_after_a_scan_without_an_answer_is_exit_2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = conform.observe
+    calls: list[str] = []
+
+    def first_has_no_answer(fixture: conform.Fixture, policy: str, rules: Any) -> dict[str, Any]:
+        seen = real(fixture, policy, rules)
+        calls.append(fixture.id)
+        if len(calls) == 1:
+            report = {**seen["report"], "verdict": "incomplete", "incomplete_reason": "timeout"}
+            return {**seen, "verdict": "incomplete", "exit_code": 2, "report": report}
+        return seen
+
+    monkeypatch.setattr(conform, "observe", first_has_no_answer)
+    # The bundled pass stops at its first scan, so the last fixture is never scanned.
+    last = conform.load_manifest()[0]["fixtures"][-1]["id"]
+    code, records, err = run("--agreement", "-", input=capture_line(source_id=last, text="Hi."))
+    assert code == 2 and "CONFORM INCOMPLETE" in err
+    assert records[-2]["status_reason"] == "fixture was not scanned"
+    assert records[-2]["result"] == "failed" and records[-2]["file"] is None
+    assert records[-1]["result"] == "incomplete" and records[-1]["agreement"] == {"failed": 1}
+
+
+def test_a_vendor_tree_that_cannot_be_read_never_changes_the_exit(
+    rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import errno
+
+    (rules_copy / "vendor" / "pack").mkdir()
+    (rules_copy / "vendor" / "pack" / "desk.yar").write_text(DESK_RULE % "block", encoding="utf-8")
+    (rules_copy / "vendor.installed.json").write_text(
+        json.dumps({"installed_vendor_files": ["pack/desk.yar"]}), encoding="utf-8"
+    )
+    real = Path.is_file
+    vendor = rules_copy / "vendor"
+
+    def denied(path: Path) -> bool:
+        # Python 3.12 raises on a stat the directory's permissions refuse; root never is refused.
+        if vendor in path.parents:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(Path, "is_file", denied)
+    code, records, err = run("--rules", str(rules_copy))
+    assert code == 0 and "CONFORM PASS" in err
+    assert records[-1]["result"] == "pass" and records[-1]["installed"] is None
+
+
+def test_a_damaged_manifest_entry_is_exit_2_not_1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    manifest = json.loads(conform.MANIFEST.read_bytes())
+    del manifest["fixtures"][0]["sha256"]
+    path = tmp_path / "conformance.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(conform, "MANIFEST", path)
+    monkeypatch.setattr(conform.load_manifest, "__defaults__", (path,))
+    code, records, err = run()
+    assert code == 2 and records == [] and "incomplete: KeyError" in err

@@ -328,7 +328,12 @@ def agreement(
         if original is not None and original != fixture.sha256:
             yield {**record, "status": FAILED, "status_reason": "extraction is of other bytes"}
             continue
-        report = seen_by[fixture.id, envelope["policy"]]["report"]
+        seen = seen_by.get((fixture.id, envelope["policy"]))
+        if seen is None:
+            # The bundled pass stopped at a scan that gave no answer before this fixture.
+            yield {**record, "status": FAILED, "status_reason": "fixture was not scanned"}
+            continue
+        report = seen["report"]
         whole = ShadowScan(
             status=TRUNCATED if report["verdict"] == "incomplete" else COMPLETE,
             status_reason=report["incomplete_reason"],
@@ -392,11 +397,13 @@ def _vendor_installed(root: Path) -> bool:
 
     try:
         installed = installed_inventory(root)
+        if not installed:
+            return False
+        # Python 3.12's is_file raises on a denied stat. A tree that cannot be read is not
+        # installed: the section never gates, so it must not turn the bundled result into 2.
+        return all((root / "vendor" / name).is_file() for name in installed)
     except (OSError, ValueError):
         return False
-    if not installed:
-        return False
-    return all((root / "vendor" / name).is_file() for name in installed)
 
 
 def _counts(section: Section) -> dict[str, Any]:

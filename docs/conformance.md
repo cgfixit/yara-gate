@@ -37,7 +37,7 @@ PDF pair whose page content the gate cannot decode, for the
 | --- | --- |
 | 0 | Every fixture has its recorded verdict and exit code under every policy |
 | 1 | A verdict or an exit code changed |
-| 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing, a scan that should answer was incomplete, or an agreement line gave no record |
+| 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing or damaged, a scan that should answer was incomplete, an agreement line gave no record, standard output could not be written, or an error the kit did not expect (`incomplete: <Type>`) |
 
 Standard output is JSON Lines; standard error carries one line for a person
 (`CONFORM PASS: 92 fixtures, 276 checks, …`).
@@ -61,7 +61,8 @@ unless [`vendor-overrides.json`](../rules/vendor-overrides.json) grades them, an
 `rules update`, so a benign twin a vendor rule holds is information about your install, not
 a failed kit. No vendor expectation is shipped: the comparison is against the bundled
 expectations, and the summary carries the installed tree's `ruleset_sha256` so two runs can
-be told apart.
+be told apart. A recorded vendor file that is missing or cannot be read skips the section
+(`"installed": null`).
 
 ## Agreement mode
 
@@ -87,7 +88,7 @@ bundled rules, and compared with the scan of the fixture file under the same pol
 | `findings-differ` | The same decision, different rule ids |
 | `file-holds-only` | The gate holds the file and would admit your extraction. If you scan only the extraction, this input reaches your model |
 | `extraction-holds-only` | The reverse: your reader produced text the file scan does not hold |
-| `failed` | No record to compare: an unknown fixture id, an `original_sha256` that is not the fixture's, a malformed line, or a scan that was killed. The run exits 2 |
+| `failed` | No record to compare: an unknown fixture id, an `original_sha256` that is not the fixture's, a malformed line, a scan that was killed, or a fixture the plain run never reached because an earlier scan gave no answer (`fixture was not scanned`). The run exits 2 |
 
 `only_in_file` and `only_in_extraction` list the rule ids behind a difference. A decision is
 the read rule `replay` uses: `agent-ingest` admits a complete clean record, and

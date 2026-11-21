@@ -432,3 +432,58 @@ def test_cli_bounds_the_timeout_and_never_exits_1(tmp_path: Path, rules_copy: Pa
             app, ["replay", str(capture), "--rules", str(rules_copy), "--timeout", value]
         )
         assert refused.exit_code == 2, value
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [(BrokenPipeError, None), (OSError, "incomplete: output unwritable (OSError)")],
+)
+def test_output_that_cannot_be_written_is_exit_2_not_1(
+    tmp_path: Path,
+    rules_copy: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: type[OSError],
+    message: str | None,
+) -> None:
+    import typer
+
+    capture = tmp_path / "capture.jsonl"
+    capture.write_bytes(line(text=BENIGN))
+    real = typer.echo
+
+    def echo(text: object = None, *args: Any, **kwargs: Any) -> None:
+        # The summary is the last write: the reader has gone, or the disk is full.
+        if isinstance(text, str) and text.startswith('{"record":"summary"'):
+            raise error(32 if error is BrokenPipeError else 28, "refused")
+        real(text, *args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", echo)
+    result = CliRunner().invoke(app, ["replay", str(capture), "--rules", str(rules_copy)])
+    assert result.exit_code == 2
+    assert (message in result.stderr) if message else result.stderr == ""
+
+
+def test_a_closed_stdin_is_an_unreadable_capture(monkeypatch: pytest.MonkeyPatch) -> None:
+    import errno
+
+    from yara_gate import cli
+
+    # Python sets sys.stdin to None when descriptor 0 was closed at start.
+    monkeypatch.setattr(sys, "stdin", None)
+    with pytest.raises(OSError) as raised:
+        cli._capture_input("-")
+    assert raised.value.errno == errno.EBADF
+
+
+def test_an_unexpected_error_is_exit_2_not_1(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = tmp_path / "capture.jsonl"
+    capture.write_bytes(line(text=BENIGN))
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise KeyError("unexpected")
+
+    monkeypatch.setattr(replay, "replay_capture", broken)
+    result = CliRunner().invoke(app, ["replay", str(capture), "--rules", str(rules_copy)])
+    assert result.exit_code == 2 and "incomplete: KeyError" in result.stderr
