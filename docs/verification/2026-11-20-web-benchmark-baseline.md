@@ -82,8 +82,9 @@ an attack.
 | train | 621 of 5,473 | 0 of 5,566 |
 
 That is a precision figure for the hiding the reader claims today. It says nothing about B3
-recall: white text and layout hiding are what the reader does not claim, and
-[#231](https://github.com/cgfixit/yara-gate/issues/231) still needs a rendered reference.
+recall for default backdrops or layout hiding. The later [B3 rendering record](2026-11-21-html-terminal-boundaries.md#b3-html-backdrops)
+uses these same corpus files to assess the default-backdrop proposal from
+[#231](https://github.com/cgfixit/yara-gate/issues/231).
 
 ### Time
 

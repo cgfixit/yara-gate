@@ -717,8 +717,10 @@ more than 400,000 tags.
 
 Not claimed, because the markup does not settle it: a box of no size that clips its
 content, text moved off the page by an offset, a font of a pixel, and near-white text with
-no background of its own (a dark theme is written the same way). `agent_hidden_html` still
-reads the offset and the small font as cues beside one of its phrases. Colour attributes
+no background of its own. Chromium can paint the same markup differently with a different
+colour preference or stylesheet. See the
+[browser measurements](verification/2026-11-21-html-terminal-boundaries.md#b3-html-backdrops).
+`agent_hidden_html` still reads the offset and the small font as cues beside one of its phrases. Colour attributes
 (`<font color>`, `bgcolor`) and SVG presentation attributes are not read. A document a
 browser reads as XML (an `.svg` or `.xhtml` name, or an XML start under any name but
 `.html`) gives only its comments and `data-*` values, since the element rules are the HTML
@@ -732,6 +734,14 @@ phrase rules do not depend on it. The
 [record](verification/2026-11-10-hidden-html-text.md) has the comparison with Chromium
 that set these boundaries, and [`probe_html_hidden_browser.py`](research/probe_html_hidden_browser.py)
 repeats it.
+
+## Terminal output
+
+`text-folded` handles escape sequences for text matching. A phrase can still be
+read when a terminal later redraws over it. The scanner has no terminal viewport,
+wrapping, or scrollback state for a captured log. The
+[tmux 3.4 measurements](verification/2026-11-21-html-terminal-boundaries.md#b5-terminal-redraw)
+show how those details affect whether the same bytes leave text visible.
 
 ## Declared charsets
 
