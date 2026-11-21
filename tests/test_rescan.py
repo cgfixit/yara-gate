@@ -97,20 +97,40 @@ def test_advisory_and_policy_change(tmp_path: Path, rules_copy: Path) -> None:
     assert (home.blocked / digest).is_dir()
 
 
-def test_missing_vendor_withdraws(tmp_path: Path, rules_copy: Path) -> None:
+@pytest.mark.parametrize(
+    ("broken", "reason"),
+    [
+        ("vendor.installed.json", "installed vendor rules missing"),
+        ("local/zz_broken.yar", "local rule compile failed"),
+    ],
+)
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_rules_that_cannot_scan_stop_before_any_copy(
+    tmp_path: Path, rules_copy: Path, broken: str, reason: str, dry_run: bool
+) -> None:
     home = GatePaths(tmp_path / "gate")
-    digest = admit(home, rules_copy, b"Ordinary notes.")
-    (rules_copy / "vendor.installed.json").write_text(
+    digests = [admit(home, rules_copy, f"Ordinary notes {n}.".encode(), f"{n}.txt") for n in "ab"]
+    before = {p.relative_to(home.root): p.read_bytes() for p in home.root.rglob("*") if p.is_file()}
+    (rules_copy / broken).write_text(
         json.dumps({"installed_vendor_files": ["pack/missing.yar"]})
+        if broken.endswith(".json")
+        else "rule broken { condition: nope }"
     )
-    result = command(home, rules_copy)
+    result = command(home, rules_copy, *(["--dry-run"] if dry_run else []))
     assert result.returncode == 2
-    assert (home.quarantine / digest).is_dir()
-    assert not (home.clean / digest).exists()
-    assert (
-        json.loads((home.reports / f"{digest}.json").read_text())["incomplete_reason"]
-        == "installed vendor rules missing"
-    )
+    assert f"rules cannot scan: {reason}" in result.stderr
+    summary = json.loads(result.stdout.splitlines()[-1])
+    assert (summary["rescanned"], summary["exit_code"]) == (0, 2)
+    locks = {Path(".watch.lock"), Path(".intake.lock")}
+    after = {p.relative_to(home.root): p.read_bytes() for p in home.root.rglob("*") if p.is_file()}
+    assert {k: v for k, v in after.items() if k not in locks} == {
+        k: v for k, v in before.items() if k not in locks
+    }
+    (rules_copy / broken).unlink()
+    repaired = command(home, rules_copy)
+    assert repaired.returncode == 0, repaired.stderr
+    assert json.loads(repaired.stdout.splitlines()[-1])["unchanged"] == 2
+    assert all((home.clean / digest).is_dir() for digest in digests)
 
 
 def test_watch_lock_refuses(tmp_path: Path, rules_copy: Path) -> None:

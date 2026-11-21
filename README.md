@@ -113,7 +113,7 @@ A finding keeps the severity its rule declares (`note`, `advisory`, or `block`) 
 
 - `yara-gate held --home GATE [--json] [--since 7d]` lists current blocked, incomplete, and rejected entries without opening their bytes. Missing or corrupt reports stay visible as unreadable. See the [held-index schema](docs/integrations.md#listing-held-items).
 - `yara-gate release SHA256 --home GATE --reason "…"` releases an inspected document. The index's eligibility is only a preview; release rescans and verifies the file and covers the exact bytes, ruleset, `agent-document` policy, and finding IDs. Block-severity findings and incomplete scans stay held, and the findings stay in the report.
-- `yara-gate rescan --home GATE --rules RULES --policy agent-ingest` rechecks admitted copies after rules, detector code, or policy change. Stop the watcher and consumers first; it writes reports before moving new blocks to `blocked/` and incomplete scans to `quarantine/`. `--dry-run` previews. Watch startup does not run it. See [revalidating admitted files](docs/integrations.md#revalidating-admitted-files).
+- `yara-gate rescan --home GATE --rules RULES --policy agent-ingest` rechecks admitted copies after rules, detector code, or policy change. Stop the watcher and consumers first; it writes reports before moving new blocks to `blocked/` and incomplete scans to `quarantine/`. Rules that cannot scan at all (a missing vendor file, a local rule that does not compile) stop it with exit 2 before any copy moves. `--dry-run` previews. Watch startup does not run it. See [revalidating admitted files](docs/integrations.md#revalidating-admitted-files).
 
 ## Drop folder
 
