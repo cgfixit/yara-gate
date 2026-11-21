@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "4ff2a9378960713aedb09d8d6e15c294463b7133",
-  "captured_at": "2026-11-20T20:56:36+00:00",
+  "source_revision": "98b22df15da152ca2100510b84619230b1203560",
+  "captured_at": "2026-11-21T16:37:49+00:00",
   "cases": [
     {
       "id": "note",
@@ -5802,6 +5802,170 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 13954,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "chat_header_override",
+      "kind": "detection",
+      "channel": "Tool result",
+      "pair": "chat_header_benign",
+      "title": "A chat-template system turn in a browsed page",
+      "description": "A vendor page that a browsing tool returned to the model as text opens a Llama 3 system turn and orders it to rank the vendor first. The order alone is ordinary text; the system opener before it is what makes it an advisory.",
+      "results": {
+        "default": {
+          "sha256": "241587ffdb2ff7fe8c4c95c75e572eb71d77e91bda4945b610e74d57c8db4407",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_role_spoof_action",
+              "offset": 132,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 244,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "241587ffdb2ff7fe8c4c95c75e572eb71d77e91bda4945b610e74d57c8db4407",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_role_spoof_action",
+              "offset": 132,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 244,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "241587ffdb2ff7fe8c4c95c75e572eb71d77e91bda4945b610e74d57c8db4407",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_role_spoof_action",
+              "offset": 132,
+              "length": 42,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 244,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "chat_header_benign",
+      "kind": "control",
+      "channel": "Tool result",
+      "pair": "chat_header_override",
+      "title": "The same opener quoted in a model guide",
+      "description": "The same page quoting the same system opener in its model guide. An opener alone is not a finding: the rule needs an override, reveal, or execute word within 256 bytes after it.",
+      "results": {
+        "default": {
+          "sha256": "2e2439657f5e56f8ed881490c0332ce05f1b7c2f071a001081e9829bfb4b5b7c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 259,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "2e2439657f5e56f8ed881490c0332ce05f1b7c2f071a001081e9829bfb4b5b7c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 259,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "2e2439657f5e56f8ed881490c0332ce05f1b7c2f071a001081e9829bfb4b5b7c",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "59bbbd226ef35eed50502802c189bd0bc394ead11de5d9a8046579b7ff4f5408",
+          "engine_version": "1.23.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 259,
           "exit_code": 0
         }
       }

@@ -2701,6 +2701,90 @@
    "source": "showcase"
   },
   {
+   "bytes": 244,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_role_spoof_action"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_role_spoof_action"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_role_spoof_action"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "chat_header_override",
+   "kind": "detection",
+   "name": "browse-result.txt",
+   "pair": "chat_header_benign",
+   "sha256": "241587ffdb2ff7fe8c4c95c75e572eb71d77e91bda4945b610e74d57c8db4407",
+   "source": "showcase"
+  },
+  {
+   "bytes": 259,
+   "channel": "Tool result",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "chat_header_benign",
+   "kind": "control",
+   "name": "browse-result.txt",
+   "pair": "chat_header_override",
+   "sha256": "2e2439657f5e56f8ed881490c0332ce05f1b7c2f071a001081e9829bfb4b5b7c",
+   "source": "showcase"
+  },
+  {
    "bytes": 828,
    "channel": "Document",
    "expected": {
