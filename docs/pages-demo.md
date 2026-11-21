@@ -1,7 +1,7 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 91 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 44 attacks, their 44 benign
+GitHub Pages replays real scanner results for 93 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 45 attacks, their 45 benign
 near-twins, and three unfinished scans. The default workflow demonstrates a
 model-directed ranking request reconstructed from an RSS description. Other pairs
 cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
@@ -88,7 +88,7 @@ same-byte enforcement responsibility; no downstream agent or disposition is simu
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
 visitors can compare its twin and change policy without leaving the evidence.
-The full 44-pair catalog and the three unfinished scans remain under an expandable section.
+The full 45-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers the same nineteen shortcuts and the same catalog: both read
@@ -220,7 +220,7 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 91 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 93 inert
 examples, recorded with 89 bundled rules and YARA-X 1.23.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
@@ -334,7 +334,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 91 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 93 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

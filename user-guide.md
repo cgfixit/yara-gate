@@ -254,7 +254,7 @@ did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 91 inert examples, each of 44 attacks beside a benign
+replays saved results for 93 inert examples, each of 45 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -272,7 +272,7 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
    The list holds the catalog the public demo records, grouped by intake channel:
-   44 attacks, including a vendor ranking directive recovered from RSS, each directly above its benign twin, and two scans that
+   45 attacks, including a vendor ranking directive recovered from RSS, each directly above its benign twin, and two scans that
    cannot finish: a 7z archive the scanner cannot open and a tool document past the JSON
    depth budget (incomplete under every policy). Other pairs include a PDF line in a
    plain font beside another font's map, a workbook written with the Open XML SDK's
