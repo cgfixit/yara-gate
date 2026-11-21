@@ -92,7 +92,9 @@ bundled rules, and compared with the scan of the fixture file under the same pol
 
 `only_in_file` and `only_in_extraction` list the rule ids behind a difference. A decision is
 the read rule `replay` uses: `agent-ingest` admits a complete clean record, and
-`agent-document` admits that or the exact notes-only record.
+`agent-document` admits that or the exact notes-only record. A `failed` line is never an
+admit: its `extraction` side keeps the verdict and rule ids of any scan that ran, and its
+`decision` is always `hold`, as `replay` proposes `hold` for a failed item.
 
 The output holds no timings, so two runs over the same capture and detector print the same
 bytes. **Commit `agreement.jsonl` and fail your CI when it changes** (`git diff --exit-code`):
@@ -138,3 +140,4 @@ shows.
 | Date | Manifest | What changed |
 | --- | --- | --- |
 | 2026-11-20 | `e0f77f72e5cff1af` | First manifest: the 90 catalog fixtures that scan with the bundled rules, and the unread-content PDF pair. Schema version 1 |
+| 2026-11-21 | unchanged | Agreement output only: a `failed` line whose extraction was scanned (an unknown fixture id, an `original_sha256` that is not the fixture's, or `fixture was not scanned`) now gives `"decision": "hold"` on its `extraction` side instead of the extraction's own `admit`. Its verdict and rule ids are unchanged. A committed `agreement.jsonl` that holds such a line changes on that field only; the run still exits 2 |
