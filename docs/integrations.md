@@ -745,15 +745,17 @@ Each item becomes one envelope on stdout, and a summary follows the last one:
 ```
 
 - `gate` is the same compact report `scan --json` prints, present only when it is one valid
-  record for exactly these bytes and this policy. The envelope never holds the text or
-  matched bytes.
+  record for exactly these bytes and this policy. A complete record includes the ruleset
+  and detector SHA-256 digests, engine and tool versions, and compiled and skipped rule
+  counts. The envelope never holds the text or matched bytes.
 - `status` describes the scan, and each value is distinct from clean:
   - `complete`: a complete record for these bytes.
   - `truncated`: the gate returned an incomplete record (a limit, its own deadline, the match
     cap, rules that did not load). `status_reason` is its `incomplete_reason`.
   - `failed`: no usable record. The child was killed at the hard deadline, crashed, printed
     something other than one valid record, answered for other bytes or another policy, the
-    scanner itself raised (`scan failed`), or the capture line was malformed.
+    scanner itself raised (`scan failed`), or the capture line was malformed. A complete reply
+    with missing or invalid provenance is `failed` with `missing or invalid worker identity`.
 - `proposed_decision` applies the policy's read rule from the top of this guide: `admit` for
   a complete `clean` record, and under `agent-document` also for the exact
   [notes-only record](#documents-that-quote-attacks). Everything else is `hold`, including
@@ -771,8 +773,8 @@ more than one, which means its numbers mix two baselines.
 
 Each item is scanned in its own child process, which the parent kills 30 seconds after the
 scan's own `--timeout`, because the scanner's deadline cannot preempt every parser. One
-item cannot affect the next. A small text item takes about 0.2 s of wall time once the
-compiled rules are cached.
+item cannot affect the next. For measured startup and warm timings, see the
+[Mac replay measurement](verification/2026-11-21-replay-worker-provenance.md).
 `--no-timings` leaves the seconds out, so two runs over the same capture with the same
 rules and detector print the same bytes.
 

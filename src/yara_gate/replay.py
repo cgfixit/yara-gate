@@ -227,6 +227,23 @@ def parse_item(line: bytes, *, policy: ScanPolicy = ScanPolicy.agent_ingest) -> 
     )
 
 
+def _identified(record: Mapping[str, Any]) -> bool:
+    """Check that a complete worker record identifies the detector and rules it ran."""
+    for key in ("ruleset_sha256", "detector_sha256"):
+        value = record.get(key)
+        if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+            return False
+    for key in ("engine_version", "tool_version"):
+        value = record.get(key)
+        if not isinstance(value, str) or not value.strip() or _CONTROL.search(value):
+            return False
+    for key in ("compiled_rules", "skipped_rule_files"):
+        value = record.get(key)
+        if type(value) is not int or value < 0:
+            return False
+    return True
+
+
 def _checked(
     stdout: bytes, returncode: int, digest: str, policy: ScanPolicy
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -271,6 +288,8 @@ def _checked(
     covered = record.get("sha256")
     if covered != digest and not (covered == _ZERO and verdict == "incomplete"):
         return None, "record is for other bytes"
+    if verdict != "incomplete" and not _identified(record):
+        return None, "missing or invalid worker identity"
     return record, None
 
 
