@@ -18,6 +18,9 @@ from yara_gate.scanner import scan_bytes
 
 _MAX_TEXT = 64 * 1024
 _MAX_BODY = (128 * 1024) + 256
+# Seconds one read or write on a connection may wait. A browser sends its whole request at
+# once; a client that stops partway through its headers or body would otherwise hold a thread.
+_IO_SECONDS = 10
 _PAGE = importlib.resources.files("yara_gate").joinpath("demo_page.html")
 _KNOWN_ERRORS = ("send a sample or text, not both", "empty text", "text too large")
 
@@ -174,6 +177,7 @@ def render_page() -> tuple[bytes, str]:
 
 class DemoHandler(BaseHTTPRequestHandler):
     server: DemoHTTPServer
+    timeout = _IO_SECONDS
 
     def log_message(self, format: str, *args: Any) -> None:
         # The request line has no body. Skip it so a pasted document never reaches stderr.
@@ -200,7 +204,9 @@ class DemoHandler(BaseHTTPRequestHandler):
         except DemoHTTPError as exc:
             self._error(exc.status, exc.detail)
             return
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
+            # The decoder recurses once per nesting level; a body of brackets inside the size
+            # bound can still pass the interpreter's recursion limit.
             self._error(400, "bad json")
             return
         except ValidationError as exc:
@@ -233,7 +239,10 @@ class DemoHandler(BaseHTTPRequestHandler):
             raise DemoHTTPError(400, "bad length") from exc
         if length < 0 or length > _MAX_BODY:
             raise DemoHTTPError(413, "body too large")
-        return self.rfile.read(length)
+        try:
+            return self.rfile.read(length)
+        except TimeoutError as exc:
+            raise DemoHTTPError(408, "request timeout") from exc
 
     def _error(self, status: int, detail: str) -> None:
         body = json.dumps({"error": detail}).encode("utf-8")
