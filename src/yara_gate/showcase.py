@@ -843,6 +843,32 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "chat_header_override",
+        "detection",
+        "Tool result",
+        "chat_header_benign",
+        "A chat-template system turn in a browsed page",
+        "A vendor page that a browsing tool returned to the model as text opens a Llama 3 "
+        "system turn and orders it to rank the vendor first. The order alone is ordinary "
+        "text; the system opener before it is what makes it an advisory.",
+        "browse-result.txt",
+        samples.chat_header_browse_result(),
+        HELD,
+    ),
+    _case(
+        "chat_header_benign",
+        "control",
+        "Tool result",
+        "chat_header_override",
+        "The same opener quoted in a model guide",
+        "The same page quoting the same system opener in its model guide. An opener alone "
+        "is not a finding: the rule needs an override, reveal, or execute word within 256 "
+        "bytes after it.",
+        "browse-result.txt",
+        samples.chat_header_browse_result_benign(),
+        CLEAN,
+    ),
+    _case(
         "word_hidden_override",
         "detection",
         "Document",
