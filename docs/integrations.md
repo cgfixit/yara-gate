@@ -135,7 +135,11 @@ completeness, and byte identity. Never turn a displayed exit 0 or an earlier
 preview into permission to read changed content. The browser paste is always
 named `paste.txt`; use the original type/name when gating a real file.
 
-Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The app stores no
+Pastes are limited to 64 KiB of UTF-8 and scanned in memory. The server answers a
+request that is not one bounded JSON object with an error and keeps serving: no length
+(411), a body over its size bound (413), JSON that does not parse or nests past the
+decoder's limit (400 `bad json`), and a request that stops arriving for 10 seconds,
+whose connection is closed (408 when the headers had arrived). The app stores no
 scan history or content and sends scans only to its loopback server. Expanding
 JSON reveals hashes and metadata, which can identify known content even without
 matched bytes. This UI is neither an authenticated multi-user service nor a remote
