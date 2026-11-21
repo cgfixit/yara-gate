@@ -275,6 +275,20 @@ def _read(data: bytes) -> pdftext.PdfText:
     return pdftext.pdf_text(data, pdf_streams(data, budget, objects.decoded), objects, budget)
 
 
+@pytest.mark.parametrize("key", [b"/F#6Fnt", b"/#46#6f#6E#74"])
+@pytest.mark.parametrize("indirect", [False, True])
+def test_pdf_font_resource_key_accepts_name_escapes(key: bytes, indirect: bool) -> None:
+    plain = samples.glyph_pdf_benign()
+    if indirect:
+        plain = plain.replace(b"/Font << /F1 5 0 R >>", b"/Font 7 0 R")
+        plain = plain.replace(b"trailer", b"7 0 obj\n<< /F1 5 0 R >>\nendobj\ntrailer")
+    expected = _read(plain)
+    assert expected.blocks[0].startswith("Vendor onboarding checklist.")
+    actual = _read(plain.replace(b"/Resources << /Font ", b"/Resources << " + key + b" "))
+    assert actual.blocks == expected.blocks
+    assert not actual.unmapped
+
+
 def _pages(content: bytes, *cmaps: bytes, shared: bool = True) -> pdftext.PdfText:
     """Read a file whose pages show ``content`` in /F1, each page through its own map.
 

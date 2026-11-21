@@ -1,0 +1,28 @@
+# Escaped PDF font resource keys
+
+This covers one reader-agreement item in [#231](https://github.com/cgfixit/yara-gate/issues/231).
+On `a6e8143`, the file-wide font lookup recognized the literal `/Font` key and skipped its
+equivalent PDF name escapes. The same onboarding PDF reconstructed ordinary text with a plain
+key and different text with an escaped key. The existing reader probe independently confirmed
+the gap in PDFium and pdfminer.six.
+
+Both direct and indirect font resource lookups now recognize the same escaped spelling.
+The page-specific map still falls back to the file-wide lookup when the resource key is escaped.
+Permissive readings of malformed references and the remaining B3, B5, and B8 cases stay tracked
+in [the backlog](../research/detection-backlog.md).
+
+Verified on macOS with Python 3.12.13, YARA-X 1.23.0, PDFium via pypdfium2 5.15.2,
+pdfminer.six 20260107, and pypdf 7.1.1. The scanner used 89 bundled rules in a disposable
+rules directory with no vendor packs.
+
+| Check | Result |
+| --- | --- |
+| Focused PDF text test | Plain, partly escaped, and fully escaped keys reconstruct identical text through direct and indirect dictionaries. Four parameterized cases pass. |
+| Page reader agreement | 141 directed cases. The escaped-key case moved from absent to decoded in both the file-wide and page-aware readings. Nine pre-existing gaps remain and no case lost a reading supported by a reference reader. |
+| Font reader agreement | 107 directed cases and their outcomes are unchanged. Existing probe fuzz passes used 15,000 inputs per probe and reported zero narrowing misses. |
+| Installed PDF sweep | 378 paths, 216 distinct file digests, from installed app and system documentation PDFs up to 5 MiB. The candidate and base give the same verdicts and findings, including offsets, under `default` and `agent-document`. |
+| Timing | A 4 MiB inert PDF with repeated near-match names stayed clean under `agent-document`. Three scans took 0.90–1.08 s on the base and 0.91–0.97 s on the candidate. |
+| Packaged browser demo | The in-app browser ran the bundled glyph PDF pair from the wheel. Under `agent-ingest` the fixture held with exit 1 and a PDF paragraph finding. The benign twin was clean with exit 0 and no findings. |
+
+The installed files and fixtures establish the behavior of this change on those inputs.
+The live workbench uses its bundled pair. The focused reader tests exercise the new key spellings.

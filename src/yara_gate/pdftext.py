@@ -136,9 +136,11 @@ _LITERAL_ESCAPES = {
     ord("\\"): b"\\",
 }
 
-_FONT_RESOURCES = re.compile(rb"/Font[\x00\t\n\f\r ]*<<(.{0,8192}?)>>", re.DOTALL)
+# PDF name escapes can spell the /Font resource key as well as the names it lists.
+_FONT_KEY = rb"/(?:F|#46)(?:o|#6[fF])(?:n|#6[eE])(?:t|#74)"
+_FONT_RESOURCES = re.compile(_FONT_KEY + rb"[\x00\t\n\f\r ]*<<(.{0,8192}?)>>", re.DOTALL)
 _FONT_RESOURCE_REF = re.compile(
-    rb"/Font[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
+    _FONT_KEY + rb"[\x00\t\n\f\r ]+([0-9]{1,10})[\x00\t\n\f\r ]+([0-9]{1,5})[\x00\t\n\f\r ]+R\b"
 )
 _NAME_REF = re.compile(
     rb"/([^\x00\t\n\f\r ()<>\[\]{}/%]{1,127})"

@@ -178,6 +178,10 @@ trigger it. See [code-relay refusal handling](docs/rules.md#code-relay-refusals)
 
 Open gaps and declined ideas are in the [detection backlog](docs/research/detection-backlog.md). Start with the **[detection-method map](rules/README.md)** for every detection layer; exact rule boundaries, views, and limits are in **[docs/rules.md](docs/rules.md)**.
 
+PDF text reconstruction recognizes standard name escapes in the `/Font` resource key.
+See [PDF font resource keys](docs/rules.md#pdf-font-resource-keys) for what happens when
+readers disagree about a font reference.
+
 ## Reports and telemetry
 
 A finding records its rule ID, severity, namespace, byte offset and length within its view (of a match that made the rule fire; see [reported offsets](docs/rules.md#reported-offsets)), the `view` it came from, and its `member_path` as container positions such as `zip:0` or `mime:2`, never member names. A scan record adds the policy, `policy_reason`, engine and tool versions, a ruleset fingerprint, `detector_sha256` (a digest of the scanner's own sources and parser versions), compiled-rule and skipped-file counts, and coverage counters (`units_scanned`, `views_scanned`, `bytes_scanned`, `scan_seconds`, `yara_seconds`, and `pdf_content_unread` by filter), `match_rescan_limit` and `unguarded_rule_files` ([match limit](docs/rules.md#limits)), so a caller can see which views ran and how much work they reported. Reports never contain the matched bytes. Paths are shortened only at the user's home directory, and each file is written under a temporary name and renamed into place. See [reading a report](user-guide.md#5-read-a-report) and the [intake and report verification record](docs/verification/2026-11-13-intake-report-integrity.md).
