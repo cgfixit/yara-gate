@@ -178,7 +178,7 @@ Lookup = Callable[[int, int], list[bytes]]
 # and whether the font is composite.
 _Way = tuple[int | None, bool]
 # A dictionary entry as readers may take it: the names its key can be; the names its value
-# can be, the object number it refers to, or None for any other value; and whether the
+# can be, the object number it refers to, (b"null",), or None for other values; and whether the
 # value is written as every reader takes it (``pdfpages._EXACT_REFERENCE``).
 _Entry = tuple[tuple[bytes, ...], tuple[bytes, ...] | int | None, bool]
 
@@ -1156,11 +1156,13 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
     encoded = described = False
     descendants = invalid_map = False
     for keys, value, exact in entries:
-        names = value if isinstance(value, tuple) else ()
+        null_value = value == (b"null",)
+        names = value if isinstance(value, tuple) and not null_value else ()
         if b"/ToUnicode" in keys:
             maps.append(value if isinstance(value, int) else None)
             unsure = unsure or len(keys) > 1 or not exact
-            invalid_map = invalid_map or bool(names)
+            # ISO 32000-1 7.3.9 treats a null dictionary value as absent.
+            invalid_map = invalid_map or (not isinstance(value, int) and not null_value)
         if b"/Subtype" in keys:
             named = named and bool(names)
             type0.extend(dict.fromkeys(name == b"/Type0" for name in names) or [False])
@@ -1180,7 +1182,7 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
         if b"/FontDescriptor" in keys:
             described = True
         if b"/DescendantFonts" in keys:
-            descendants = True
+            descendants = descendants or not null_value
     if unsure or not maps:
         # No /ToUnicode key, or one that only some readers take for it.
         maps.append(None)
@@ -1219,7 +1221,7 @@ def _ways(entries: Iterable[_Entry]) -> tuple[list[_Way], bool, bool]:
     unread = ways == [(None, True)] and (
         invalid_map
         or (kinds == [False] and bool(type0) and named)
-        or (kinds == [True] and not descendants and encoded and latin)
+        or (kinds == [True] and not descendants)
     )
     return ways[:MAX_FONT_WAYS], unread or len(ways) > MAX_FONT_WAYS, simple and decoded
 
@@ -1254,7 +1256,7 @@ def _loose_dictionary(
 
 def _loose_entries(tokens: list[bytes]) -> Iterator[tuple[bytes, bytes | int | None, bool]]:
     """Each key of the dictionary ``tokens`` opens with; the name its value is, the object
-    number its value refers to, or None; and whether the value is written as every reader
+    number its value refers to, null, or None; and whether the value is written as every reader
     takes it. A token that is not a name where a key belongs is skipped, as the lenient
     readers skip it.
 
@@ -1273,7 +1275,7 @@ def _loose_entries(tokens: list[bytes]) -> Iterator[tuple[bytes, bytes | int | N
             exact = len(value) <= 10 and len(tokens[index + 2]) <= 5
             yield key, None if target is None else target[0], exact
         else:
-            yield key, value if value.startswith(b"/") else None, True
+            yield key, value if value.startswith(b"/") or value == b"null" else None, True
         index = _pdf_value_end(tokens, index + 1)
 
 

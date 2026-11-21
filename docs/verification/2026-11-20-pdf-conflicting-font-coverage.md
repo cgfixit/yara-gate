@@ -22,3 +22,29 @@ The locked scan ran on macOS with Python 3.12.13, YARA-X 1.23.0, and 89 bundled 
 The reader comparison used pypdfium2 5.15.2, pdfminer.six 20260107, and pypdf 7.1.1.
 These checks cover the measured corpus. They cannot rule out a legitimate malformed PDF
 receiving the same coverage note and being held by the existing agent intake policy.
+
+## Other direct values and null controls
+
+[ISO 32000-1](https://udp.adobe.io/document-services/docs/assets/35e4369068f86065372c18787171a17e/PDF_ISO_32000-1.pdf)
+requires an indirect reference to the CMap stream (sections 7.3.8 and 9.10.3).
+A null dictionary value is equivalent to omission (section 7.3.9). Both
+dictionary readers now keep that distinction when describing an unresolved
+composite font. A missing or null descendant entry no longer relies on the
+presence of an explicit Latin encoding to preserve the note. Readable map
+candidates remain available.
+
+On the same toolchain, the direct CLI returned advisory/0 under
+`agent-document` and block/1 under `agent-ingest` for the six non-null
+wrong-type values and one null descendant case. Both policies gave clean/0
+for the null-map and omitted-map controls beside the existing candidate.
+Eleven focused cases reproduced the missing note on `6dec7ef`. The final
+candidate passed 106 selected font and dictionary tests.
+
+The 107-case directed reader comparison stayed unchanged from the previous
+draft. From 15,000 fuzz attempts, 14,997 documents were generated and 216
+were checked by the reference readers. There were zero narrowing misses.
+The 216 installed PDFs and the 18 generated CJK PDFs retained their verdicts
+and findings under the policies previously measured. A 4 MiB timing fixture
+completed in 0.32–0.38 s on the earlier draft and 0.37–0.42 s with this change.
+The final wheel passed 276 conformance checks with identical outcomes. The
+live browser showed block/1 and clean/0 for the bundled merged-PDF pair.

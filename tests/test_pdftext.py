@@ -1496,7 +1496,7 @@ def _font_ways(data: bytes) -> tuple[list[tuple[int | None, bool]], bool]:
     [
         (_HELVETICA % b"").replace(b"/WinAnsiEncoding", b"/Identity-H"),
         (_HELVETICA % b"").replace(b"/Type1", b"/Type0"),
-        (_TYPE0 % 9).replace(b"/ToUnicode 9 0 R", b"/ToUnicode /None"),
+        (_TYPE0 % 9).replace(b"/ToUnicode 9 0 R", b"/DescendantFonts null"),
     ],
 )
 def test_an_adjacent_map_does_not_clear_conflicting_font_coverage(font: bytes) -> None:
@@ -1505,6 +1505,22 @@ def test_an_adjacent_map_does_not_clear_conflicting_font_coverage(font: bytes) -
     assert _font_text(shown, (6, 0, font)).unmapped
     assert _font_text(shown, (6, 0, font), neighbour).unmapped
     assert not _font_text(shown, (6, 0, _HELVETICA % b""), neighbour).unmapped
+
+
+@pytest.mark.parametrize("map_value", [b"/None", b"7", b"false", b"(map)", b"[]", b"<<>>", b"null"])
+@pytest.mark.parametrize("separator", [b" ", b"\x0c"])
+def test_non_reference_font_maps_preserve_coverage_except_null(
+    map_value: bytes, separator: bytes
+) -> None:
+    font = (_TYPE0 % 9).replace(
+        b" /ToUnicode 9 0 R",
+        b" /DescendantFonts [13 0 R]" + separator + b"/ToUnicode " + map_value,
+    )
+    cidfont = (13, 0, b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Helvetica >>")
+    neighbour = (5, 0, _HELVETICA % b"/ToUnicode 9 0 R ")
+    shown = b"BT /F1 12 Tf 72 700 Td (Quarterly planning notes) Tj ET"
+    result = _font_text(shown, (6, 0, font), neighbour, cidfont)
+    assert result.unmapped == (map_value != b"null")
 
 
 @pytest.mark.parametrize(
@@ -1538,14 +1554,16 @@ def test_a_simple_font_beside_a_composite_font_is_not_composite() -> None:
 
 
 def test_a_composite_font_with_no_map_keeps_the_next_objects_map() -> None:
-    # Alone it is reported as unmapped. Beside an object with a map it was read through that
-    # map and not reported, and it keeps that reading, the only one it has: pdf.js looks for
-    # a composite font's map in its descendant font, which is usually the next object.
     bare = b"<< /Type /Font /Subtype /Type0 /Encoding /Identity-H >>"
     alone = _font_text(_SHOWN, (6, 0, bare))
     assert not _shown(alone) and alone.unmapped
     descendant = b"<< /Type /Font /Subtype /CIDFontType2 /ToUnicode 7 0 R >>"
+    # An adjacent map still produces a reading. There is no declared descendant
+    # to justify clearing the coverage note for the selected font.
     beside = _font_text(_SHOWN, (6, 0, bare), (5, 0, descendant))
+    assert _shown(beside) and beside.unmapped
+    declared = bare.replace(b" >>", b" /DescendantFonts [5 0 R] >>")
+    beside = _font_text(_SHOWN, (6, 0, declared), (5, 0, descendant))
     assert _shown(beside) and not beside.unmapped
     # A simple font beside the same object has no map of its own and none from it.
     assert not _shown(_font_text(_SHOWN, (6, 0, _HELVETICA % b""), (5, 0, descendant)))
@@ -1974,7 +1992,7 @@ def test_plain_dictionary_lists_every_key_in_order() -> None:
         (b"/Note", None, True),
         (b"/W", None, True),
         (b"/D", None, True),
-        (b"/ToUnicode", None, True),
+        (b"/ToUnicode", b"null", True),
         (b"/ToUnicode", 14, True),
     ]
     # Not a dictionary, and not one plainly written value: where reading stopped is given.

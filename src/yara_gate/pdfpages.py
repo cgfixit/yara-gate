@@ -322,7 +322,7 @@ def plain_dictionary(
 
     The entries are None when the bytes are not one plainly written value (see ``_value``) or
     the value is not a dictionary. Each entry is a key as written; the name its value is, the
-    object number its value refers to, or None for any other value; and whether the value is
+    object number its value refers to, ``b"null"``, or None for other values; and whether it is
     written as every reader takes it, which is False for a reference with no whitespace
     before its ``R`` or with more digits than ``_EXACT_REFERENCE`` allows. Keys are in the
     order written and a repeated key is listed each time: readers keep the first of them or
@@ -337,9 +337,11 @@ def plain_dictionary(
 
 def _entry(token: re.Match[bytes]) -> tuple[bytes | int | None, bool]:
     """What the first token of a dictionary value says, and whether it is written as every
-    reader takes it: a name, the object number of a reference, or None."""
+    reader takes it: a name, the object number of a reference, null, or None."""
     if token.lastindex == _NAME:
         return token.group(_NAME), True
+    if token.lastindex == _ATOM and token.group(_ATOM) == b"null":
+        return b"null", True
     if token.lastindex == _REFERENCE:
         # The digits are bounded before they are converted: a run of zeros can be any length.
         exact = _EXACT_REFERENCE.fullmatch(token.group(_REFERENCE)) is not None

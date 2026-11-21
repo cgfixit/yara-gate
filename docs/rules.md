@@ -527,8 +527,9 @@ When a selected font has an unreadable composite interpretation, the scanner can
 when the selected font has no usable map of its own:
 
 - A declared simple font with a composite Identity encoding.
-- A Type0 font with no `/DescendantFonts` entry and an explicit WinAnsi or MacRoman encoding.
-- A font interpreted as composite whose `/ToUnicode` value is a name instead of a map reference.
+- A Type0 font with an absent or null `/DescendantFonts` entry.
+- A font interpreted as composite whose `/ToUnicode` value has the wrong type for a map
+  reference. An explicit null is treated like an omitted entry.
 
 The scanner still tries the existing font readings. The note describes unread text, and
 it follows the existing policy for notes. See [verification](verification/2026-11-20-pdf-conflicting-font-coverage.md).
