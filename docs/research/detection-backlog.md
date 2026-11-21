@@ -74,9 +74,8 @@ mind. A change needs both at zero, or an explanation of each changed file.
 
 ## Open candidates
 
-Ordered by expected value for the agent-intake use. B3 and B5 are executable: each is
-an `OPEN` case in [`probe_detection_gaps.py`](probe_detection_gaps.py) beside a control and a
-benign boundary, so the probe fails when one starts to hold without its marker removed. B2
+Ordered by expected value for the agent-intake use. B3 and B5 now have measured
+deferrals and boundary cases in [`probe_detection_gaps.py`](probe_detection_gaps.py). B2
 (MCP tool-poisoning wording) and the part of B3 that markup settles were built on November
 10; the [record](../verification/2026-11-10-hidden-html-text.md) has what was measured. B1
 (scriptless SVG: `doc_svg_active_link`) and B4 (zero-width runs: `agent_invisible_run`) were
@@ -91,7 +90,7 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   `visibility:hidden`, a font size of zero, zero opacity in a document nothing animates,
   transparent text, text the colour of the background its own element declares). The
   `data-*` and `opacity:0` probes hold under `agent-document`.
-- **Still open (verified).** `<p style="color:#ffffff">` holding the phrase, on a page that
+- **Current boundary (verified).** `<p style="color:#ffffff">` holding the phrase, on a page that
   declares no background, is a note. So is a phrase in a box of no height that clips its
   content, in a font of one pixel, or moved off the page by an offset, when it is not one
   of the seven phrases `agent_hidden_html` reads beside the cue.
@@ -109,32 +108,24 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   ([Unit 42](https://unit42.paloaltonetworks.com/ai-agent-prompt-injection/)). A crawl study
   found about 70% of 15.3K instances in HTML that is not rendered: comments, headers,
   metadata ([arXiv 2604.27202](https://arxiv.org/abs/2604.27202), located).
-- **What would change it.** A renderer in the scan path is outside the contract. A
-  narrower claim may hold for white text alone: a document with no stylesheet and no
-  `background`, `bgcolor`, image, `position`, or colour scheme anywhere paints nothing
-  behind any text, whatever its tree. It needs its false-positive class counted first (a
-  caption written over an image with a negative margin), and a browser run like the
-  record's.
-- **Acceptance.** The white-text probe holds under `agent-document`; a dark-theme
-  paragraph and a caption over an image that quote the phrase stay notes.
+- **Measured and deferred.** The [B3 record](../verification/2026-11-21-html-terminal-boundaries.md#b3-html-backdrops)
+  found no eligible inline-white specimen in either BrowseSafe-Bench split or the distinct
+  installed HTML files examined. Chromium painted the same neutral label differently across
+  display settings. Revisit with a representative case that adds a hold under
+  `agent-document` and evidence that the supplied context settles the backdrop.
 
-### B5. Text a terminal conceals
+### B5. Terminal overwrite and clear
 
-- **Gap (verified).** A phrase inside `ESC [ 8 m` is a note, as if it were shown.
-  `text-folded` removes the sequence so the phrase matches; nothing records that the
-  terminal hid it.
-- **Evidence (sourced, read; corrected November 10).** The page shows three shapes: text
-  in white on the terminal's default background (`ESC[38;5;231;49m`), a cursor move that
-  overwrites or clears what was printed (`ESC[2F ESC[1G`, `ESC[1;1H ESC[0J`), and an OSC 8
-  link whose text differs from its target
-  ([ANSI terminal codes in MCP](https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/)).
-  It does not show SGR 8 (conceal), which this entry named and the probe uses: conceal is
-  an assessment, not a published shape.
-- **Proposal.** Collect overwritten and cleared stretches as pieces and reuse
-  `heuristic_hidden_text`; add conceal only with a source. White on the default background
-  is hidden only on a light terminal, so it is the HTML white-text question again (B3).
-  Captured logs colour text often and overwrite it for progress bars, which is the
-  boundary to count first.
+- **Current boundary (verified).** The folded-text view can match a phrase after removing
+  escape sequences. A resulting phrase note leaves the hold decision to the selected policy.
+- **Measured and deferred.** The [B5 record](../verification/2026-11-21-html-terminal-boundaries.md#b5-terminal-redraw)
+  shows erase and cursor movement in ordinary progress output. In tmux 3.4, the same redraw
+  bytes gave different visible output at two widths. A clear also left earlier text in
+  scrollback. Revisit for a producer that supplies the display state and defines what an
+  agent or viewer reads, with a representative gain and benign redraw controls.
+- **Scope.** The [published MCP terminal examples](https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/)
+  cover redraw, colour and links. The existing conceal fixture checks text folding.
+  Colour, links and conceal were outside the overwrite and clear experiment.
 
 ### B6. `binding.gyp` command expansion that discards its output
 
@@ -377,6 +368,8 @@ Revisit these proposals when new evidence addresses the reason in the table.
 | Treat a header the mail library raises on as "not mail" | It left the body unread and the scan clean, while the same headers on a multipart message are incomplete. The one-body message is incomplete too |
 | Honour a UTF-7 meta or XML declaration | UTF-7 is not a WHATWG label, and Chromium 153 passes over `<meta charset=utf-7>` and an XML declaration that names it. A page of UTF-7 text stays as written ([record](../verification/2026-11-14-html-declared-charset.md)) |
 | Read a valid UTF-8 page through the legacy charset it declares | A browser shows such a page as mojibake, which no phrase spells, and Cyrillic, CJK, and Arabic phrases in a legacy charset are never valid UTF-8. ISO-2022-JP is the exception, since its seven-bit text is valid UTF-8; a page declared in it that holds an escape is transcoded |
+| Assume a white HTML canvas for inline white text (B3) | Zero eligible specimens in the measured cohorts. Chromium controls also differed with colour preference and stylesheet availability ([record](../verification/2026-11-21-html-terminal-boundaries.md#b3-html-backdrops)) |
+| Treat terminal overwrite or clear as hidden text based on log bytes alone (B5) | Ordinary progress output redraws. At two tmux widths the same bytes left different text visible, and cleared text remained in scrollback ([record](../verification/2026-11-21-html-terminal-boundaries.md#b5-terminal-redraw)) |
 | Read the C1 string openers (U+009D for OSC, U+0090 for DCS) as terminal strings in `text-folded` | tmux 3.4 does not read them as openers in UTF-8 text and draws their payload; only the 7-bit `ESC ]`, `ESC P`, `ESC X`, `ESC ^`, and `ESC _` forms are read ([record](../verification/2026-11-15-terminal-strings-html-tokens-feeds.md)) |
 | Drop the rest of the text after a terminal string that never ends, or drop a payload outright | tmux hides both, but the first would remove every reading the base gives of what follows a stray `ESC ]` in a log, and an OSC 0 to 2 payload is a window title, shown elsewhere. A string that never ends loses only its opener, and each payload is kept as a paragraph after the text (same record) |
 | Replace the bounded HTML tokenizer with the WHATWG one | The WHATWG reading drops a tag that never closes with everything after it, and pandoc keeps `</>` as text where Chromium drops it. Both readings are kept, and a block is added only where they differ (same record) |
