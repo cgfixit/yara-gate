@@ -40,9 +40,8 @@ VERDICTS = {
     "svg-foreign-embeds.svg": "advisory",
     "library-urls.library-ms": "block",
     "text-stray-joiners.txt": "advisory",
-    # Tokens inside a web URL that are not language: neither is a base64 blob.
-    "url-path-segments.html": "clean",
-    "url-token-runs.html": "clean",
+    # One base64 run of 4 MiB, which is agent_base64_blob whatever its segments decode to.
+    "url-path-segments.html": "advisory",
 }
 
 
@@ -777,14 +776,6 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     yield (
         "url-path-segments.html",
         _filled(b'<a href="https://a.example.invalid/', b"QUJDREVGR0hJSktM/"),
-        None,
-    )
-    # 9,300 links, each with a 400-character token that is not language. None is a blob, so
-    # the run check reads every one: its URL back to the quote, and the token at four
-    # alignments. Before, the first run was a blob and the walk stopped there.
-    yield (
-        "url-token-runs.html",
-        _filled(b"<html>", b'<a href="https://a.example.invalid/r?t=' + b"Qk" * 200 + b'">x</a>\n'),
         None,
     )
 

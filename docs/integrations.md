@@ -643,6 +643,22 @@ Allow the document only when both verdicts are clean. Name the text `.txt`
 To measure this before enforcing it, capture the extractor's output and run
 [`yara-gate replay`](#replaying-captured-model-input) over it.
 
+### Web pages with long links
+
+`agent_base64_blob` is an advisory on any base64 run of 400 or more characters that is not
+media, a key, or hex. On a web page that is usually a link: a click-tracking token, a
+signed parameter, a JWT in an image URL. On BrowseSafe-Bench's test split 20 of the 23
+benign pages `agent-document` holds are held by that rule alone, and every one of their
+runs is part of a URL ([record](verification/2026-11-22-url-token-base64.md)).
+
+The rule is not changed for this, by the maintainer's decision of November 22, 2026. A
+consumer that screens fetched pages or search results can decide it in its own read rule:
+record a finding whose `rule_id` is `agent_base64_blob` and hold on every other advisory
+or block finding, and on whatever notes its channel holds. The rule id is in each report
+and each `replay` envelope, so this can be scored from records already captured. Keep
+`agent_base64_executable` a hold. Do not do this for a message channel, where nobody
+sends a 400-character link by hand.
+
 ### Documents that quote attacks
 
 A threat report, a red-team corpus, or a rule's own test file quotes the phrases

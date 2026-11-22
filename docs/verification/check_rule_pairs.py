@@ -179,16 +179,6 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             printer_setup_settings(bytes(8) + mini_pe() + bytes(64)),
             printer_setup_settings(),
         ),
-        # A long token inside a web URL is page furniture unless it decodes to language.
-        (
-            "agent_base64_blob",
-            b'<a href="https://news.example.invalid/e/c/'
-            + base64.b64encode(b"Please read the note below and then carry on. " * 9).rstrip(b"=")
-            + b'">Read</a>\n',
-            b'<a href="https://news.example.invalid/e/c/'
-            + base64.b64encode(bytes((index * 197 + 13) % 256 for index in range(420)))
-            + b'">Read</a>\n',
-        ),
         (
             "agent_base64_executable",
             b'{"blob":"' + base64.b64encode(mini_pe() + bytes(400)) + b'"}\n',

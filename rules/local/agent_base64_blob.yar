@@ -1,8 +1,8 @@
 rule agent_base64_blob {
     meta:
         author = "yara-gate"
-        description = "A base64 run of 400 or more characters, independent of filename, that is not media, a font, a PEM body, an SSH key, hex digits only, a LibreOffice printer job setup, or a token inside a web URL that does not decode to text"
-        intent = "Advisory on a long base64 run whose own start is not an image, audio, video, or font header, that does not follow a data: media URI, a PEM header, or an SSH key type, and that is not hex text such as a PDF hex string or the job setup LibreOffice saves as its PrinterSetup item. A run inside an http or https URL is reported only when it decodes to written language: the rest are tracking tokens, signed parameters, and JWTs"
+        description = "A base64 run of 400 or more characters, independent of filename, that is not media, a font, a PEM body, an SSH key, hex digits only, or a LibreOffice printer job setup"
+        intent = "Advisory on a long base64 run whose own start is not an image, audio, video, or font header, that does not follow a data: media URI, a PEM header, or an SSH key type, and that is not hex text such as a PDF hex string or the job setup LibreOffice saves as its PrinterSetup item"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://datatracker.ietf.org/doc/html/rfc4648"
