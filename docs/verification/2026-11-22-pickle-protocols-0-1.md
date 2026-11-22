@@ -110,10 +110,12 @@ source.
   no suffix: nothing in the bytes marks them, and they are not walked. The gap probe carries
   this as its one `OPEN` case (`pickle protocol 0 under another name`). Walking every file
   costs little by the measurement above. It was left out because it can turn a benign file
-  that starts with a million pushing opcodes (a long run of `N`, `]`, or `)`) from clean to
-  incomplete under any name, and no such file was looked for outside this machine.
+  that starts with a million pushing opcodes (a long run of `N`, `]`, or `)`) from complete
+  to incomplete under any name, and no such file was looked for outside this machine.
 - **A file the walk now holds.** A file with a pickle's name that starts with such a run is
-  incomplete where it was clean. None of the 17 real files is one.
+  incomplete where the walk passed over it. On the base, 4 MiB of `]` or of `)` is clean and
+  4 MiB of `N` is advisory (`agent_base64_blob` alone); with the change each is incomplete,
+  and the `N` run keeps that finding. None of the 17 real files is one.
 - **Modules off the list.** As before, the check names `os`, `subprocess`, `posix`, `nt`,
   `eval`, `exec`, and most of `builtins`. A protocol 0 call to `runpy` or `importlib` is not
   reported, in any protocol.
