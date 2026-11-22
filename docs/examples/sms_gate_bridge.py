@@ -25,6 +25,11 @@ agent side reads ``allowed.jsonl`` and must still fence each body as untrusted d
 its own approval checks on any action. A held message reaches the agent only after a person
 reviews it; this example has no release command (see docs/integrations.md).
 
+It handles at most ``MAX_CONNECTIONS`` requests at once. A connection past that is answered
+503 without being read, so connections that send nothing cannot grow the thread count or use
+up the descriptors the queue files need. That bounds the bridge; it does not keep it
+available under a flood, and it is no substitute for connection and rate limits on the proxy.
+
 Run it on loopback behind the HTTPS reverse proxy or tunnel whose URL Twilio calls:
 
     TWILIO_AUTH_TOKEN=... uv run python docs/examples/sms_gate_bridge.py \\
@@ -62,6 +67,10 @@ MAX_BODY = 64 * 1024  # Twilio form posts are a few KB; anything larger is refus
 WINDOW_MESSAGES = 5  # How many of a sender's recent messages are rescanned together.
 WINDOW_SECONDS = 15 * 60
 RATE_PER_MINUTE = 12  # Per sender; a flood is held for review rather than scanned and passed.
+# Requests handled at once. Each holds a thread and a descriptor for up to Handler.timeout
+# seconds before its signature is checked, so the count is bounded, not left to the proxy.
+MAX_CONNECTIONS = 64
+BUSY = b"HTTP/1.0 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 EMPTY_TWIML = b'<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 QUEUE_FILES = ("allowed.jsonl", "held.jsonl")
 PROCESSED = "processed.sqlite3"
@@ -361,7 +370,30 @@ class Bridge(ThreadingHTTPServer):
         self.public_url = public_url
         self.auth_token = auth_token
         self.gate = gate
+        self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__(("127.0.0.1", port), Handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        """Start a handler thread only while a slot is free; otherwise answer 503 unread."""
+        if not self.slots.acquire(blocking=False):
+            try:
+                request.settimeout(1)
+                request.sendall(BUSY)
+            except OSError:
+                pass  # The client is already gone; there is no one to tell.
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()  # No thread started, so none will give the slot back.
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
 
 
 def main() -> None:

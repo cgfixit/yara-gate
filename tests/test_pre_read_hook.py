@@ -174,7 +174,7 @@ def test_sync_copy_size_limit_and_example_constants(
     staging = tmp_path / "staging"
     staging.mkdir()
     with pytest.raises(ValueError, match="file exceeds 100MB"):
-        sync["_stage"](source, staging)
+        sync["_stage"](tmp_path, source, staging)
     assert list(staging.iterdir()) == []
     assert sync["_skip_reason"](source) == "file exceeds 100MB"
 
@@ -211,18 +211,22 @@ def test_growing_sync_source_leaves_no_partial(
     source.write_bytes(b"x")
     staging = tmp_path / "staging"
     staging.mkdir()
-    real_stat = Path.stat
+    real_fstat = os.fstat
+    grown: list[int] = []
 
-    def grow_after_stat(path: Path, **kwargs: object) -> os.stat_result:
-        info = real_stat(path, **kwargs)
-        if path == source:
+    def grow_after_fstat(fd: int) -> os.stat_result:
+        # The example sizes the source from its open descriptor; the file grows right after.
+        info = real_fstat(fd)
+        if not grown and stat.S_ISREG(info.st_mode) and info.st_size == 1:
+            grown.append(fd)
             with source.open("ab") as writer:
                 writer.truncate(MAX_FILE_BYTES + 1)
         return info
 
-    monkeypatch.setattr(Path, "stat", grow_after_stat)
+    monkeypatch.setattr(os, "fstat", grow_after_fstat)
     with pytest.raises(ValueError, match="file exceeds 100MB"):
-        sync["_stage"](source, staging)
+        sync["_stage"](tmp_path, source, staging)
+    assert grown
     assert list(staging.iterdir()) == []
 
 
