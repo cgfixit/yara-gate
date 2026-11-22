@@ -4,7 +4,8 @@ Date: 2026-11-22. Base: `main` at `1883d28`. Engine: YARA-X 1.23.0 (the locked
 dependency), Python 3.12.3, x86_64 Linux container with 4 cores, running as root. Reference
 engine: classic YARA 4.5.4 through `yara-python` 4.5.4, added for these runs with
 `uv run --with`; it is not in the lock and nothing in the gate imports it. Every run below
-is a direct run on this container. No third-party rule file is committed here.
+is a direct run on this container. No third-party rule file is committed here. Revised later
+the same day to add what the classic manual says, once its host was reachable.
 
 For [#236](https://github.com/cgfixit/yara-gate/issues/236): what YARA-X is beside the
 YARA a Veeam YARA scan runs, and what happens to rules written for the older engine. The
@@ -26,7 +27,14 @@ Read, each opened on November 22:
   (updated 2026-08-11). A rule tagged `SuppressMalwareDetectionNotification` raises no
   malware detection event, and a scan can look for sensitive data instead of malware.
 - YARA-X, [Differences with YARA](https://github.com/VirusTotal/yara-x/blob/e4cc79c/site/content/docs/writing_rules/differences.md),
-  read in the repository at `e4cc79c`.
+  read in the repository at `e4cc79c`, and later the same day the
+  [published page](https://virustotal.github.io/yara-x/docs/writing_rules/differences-with-yara/),
+  which carries the same eleven sections.
+- The classic YARA manual,
+  [Writing YARA rules](https://yara.readthedocs.io/en/stable/writingrules.html) (the `stable`
+  build, from `docs/writingrules.rst` at VirusTotal/yara `1a85738`), read later the same day
+  once the host was reachable. What it says about the rows below is in
+  [What the classic manual says](#what-the-classic-manual-says).
 - Veeam community library: the
   [featured rule set](https://community.veeam.com/yara-and-script-library-67/featured-yara-rule-top-10-ransomware-threats-6267)
   (`Top10RW_YARArules.zip`, 11 `.yara` files, SHA-256
@@ -37,14 +45,12 @@ Read, each opened on November 22:
 
 Not established:
 
-- **Which engine version Veeam ships.** The pages read do not say. The guide points rule
+- **Which engine version Veeam ships.** The pages read do not say, and a web search on
+  November 22 found no Veeam page that names a libyara release. The guide points rule
   authors at the classic manual, so this record compares against classic YARA 4.5.4, the
   release on PyPI. That is a reading of the documentation, not a statement about the
   product's binary.
 - Whether a Veeam scan defines external variables. The pages do not mention any.
-- The classic manual itself was not read: `yara.readthedocs.io` and `virustotal.github.io`
-  are not reachable from this container. What is said about YARA 4.x below comes from
-  running 4.5.4 and from the YARA-X document.
 
 ## The same language, with exceptions
 
@@ -82,6 +88,29 @@ than a missed one.
 
 Two rows are not in the YARA-X document: the empty alternative and the boolean beside `&`.
 Both were found in a public rule collection below.
+
+## What the classic manual says
+
+Read after the runs above, to check the rows that rested on running 4.5.4 alone. Each line is
+what the manual says, then the row it bears on. None contradicts a row.
+
+- Rule sets: `any of (Rule*)` over rule names is documented, and every rule in the set must
+  be defined before the rule that uses it. The `1 of (fam_*)` row (E001 here).
+- `@a[i]` is one-based, and an index past the number of matches gives NaN. The manual says
+  nothing about a negative index; the `@a[-1]` row stays an observation of 4.5.4.
+- `entrypoint` is deprecated in favour of `pe.entry_point`, with a warning since YARA 3.0.
+  The `$a at entrypoint` row (E017 here).
+- The escape sequences it lists are `\t`, `\n`, `\r`, `\f`, `\a`, and `\xNN`, plus the
+  character classes; `\p` is not among them. The `/\p{L}+/` row, where 4.5.4 read `\p` as `p`.
+- `base64`: because leading and trailing characters are stripped after encoding, one
+  encoding of "Dhis program cannow" equals one of "This program cannot", and `base64` on a
+  single character is not recommended. The `base64` row, which differs on exactly that.
+  `xor`, `fullword`, and `nocase` beside `base64` are a compile error in 4.x.
+- `xor` is applied after every other modifier. The manual does not say how `xor` and
+  `fullword` together decide a word boundary; the `xor fullword` row, where the engines
+  disagree, is measured, and the YARA-X document is the only text that describes it.
+- `include` inserts the named file at compile time. External variables come from the caller
+  (`-d` on the command line, `externals` in yara-python). The `include` and `filename` rows.
 
 ## Rule collections
 
