@@ -611,7 +611,7 @@ is also folded before matching. Malformed RTF or unreadable declared encodings
 are incomplete. Not covered: text out of reading order or in columns,
 a sentence split across two paragraphs, Type 3 fonts, page content past the LZW and RunLength caps
 or under another filter (reported, above, not read),
-images, ODT spans, RTF embedded-object or picture text, and Office parts a reader does not see. The
+images, RTF embedded-object or picture text, and Office parts a reader does not see. The
 exact mechanics and caps are under [Limits](rules.md#limits); the PDF and Office
 structure checks still run on the raw file.
 

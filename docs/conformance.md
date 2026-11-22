@@ -19,7 +19,7 @@ or moved, and no gate home is used.
 yara-gate conform
 ```
 
-It builds 92 inert fixtures from the installed package: every pair of the
+It builds 94 inert fixtures from the installed package: every pair of the
 [demo catalog](../src/yara_gate/showcase.py) (an attack beside a benign near-twin, across
 messages, web pages, PDFs, Office files, archives, tool results, and repository files), and a
 PDF pair whose page content the gate cannot decode, for the
