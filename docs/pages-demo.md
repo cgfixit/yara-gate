@@ -68,11 +68,12 @@ checks.
 
 ## Guided workflows
 
-Nineteen fictional tasks open directly beside their recorded outcome: vendor comparison
+Twenty fictional tasks open directly beside their recorded outcome: vendor comparison
 (a ranking directive rebuilt from escaped HTML in an RSS description), supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
-onboarding (an MCP tool list), invoice intake (invisible PDF text), contract bundle
+onboarding (an MCP tool list), browsing tool (a chat-template system turn in a page
+returned as text), invoice intake (invisible PDF text), contract bundle
 (a merged PDF read through each page's own fonts), web research (white text on a
 white background), diagram review (a diagram label that frames another page),
 chat intake (zero-width characters in a message), proposal review (a bold word
@@ -91,7 +92,7 @@ visitors can compare its twin and change policy without leaving the evidence.
 The full 45-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same nineteen shortcuts and the same catalog: both read
+The local workbench offers the same twenty shortcuts and the same catalog: both read
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
 list different pairs. Both demos open with the vendor feed. The paired outcomes show the exact synthetic directives,
 and the ranking request produces an advisory finding in `feed-text` under all three policies.
