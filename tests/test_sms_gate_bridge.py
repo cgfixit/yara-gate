@@ -197,3 +197,58 @@ def test_sms_restart_finishes_a_pending_jsonl_write(
     finally:
         resumed.db.close()
         os.close(resumed.dir_fd)
+
+
+def test_connections_past_the_cap_are_answered_503_unread(
+    tmp_path: Path, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import socket
+    import threading
+    import time
+    from urllib.parse import urlencode
+
+    url, token = "https://sms.example.invalid/twilio/sms", "inert-token"
+    monkeypatch.setattr(bridge, "MAX_CONNECTIONS", 2)
+    server = bridge.Bridge(0, url, token, bridge.Gate(tmp_path / "queue", rules_copy))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def signed(sid: str) -> bytes:
+        fields = [("MessageSid", sid), ("From", "+15550100"), ("Body", "See you at 6.")]
+        body = urlencode(fields).encode()
+        head = (
+            "POST /twilio/sms HTTP/1.1\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            f"X-Twilio-Signature: {bridge.twilio_signature(token, url, fields)}\r\n\r\n"
+        )
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as client:
+            client.sendall(head.encode() + body)
+            return client.recv(64).split(b"\r\n")[0]
+
+    try:
+        before = threading.active_count()
+        # Two connections that never send their body hold both slots.
+        idle = [socket.create_connection(("127.0.0.1", port), timeout=10) for _ in range(2)]
+        for client in idle:
+            client.sendall(b"POST /twilio/sms HTTP/1.1\r\nContent-Length: 10\r\n\r\n")
+        deadline = time.monotonic() + 5
+        while threading.active_count() - before < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert threading.active_count() - before == 2
+        # More connections get no thread, and a signed message is told to come back.
+        extra = [socket.create_connection(("127.0.0.1", port), timeout=10) for _ in range(8)]
+        assert all(client.recv(64).startswith(b"HTTP/1.0 503") for client in extra)
+        assert threading.active_count() - before == 2
+        assert signed("SM-during") == b"HTTP/1.0 503 Service Unavailable"
+        # When the idle connections go away their slots come back.
+        for client in [*idle, *extra]:
+            client.close()
+        deadline = time.monotonic() + 5
+        while threading.active_count() - before > 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert signed("SM-after") == b"HTTP/1.0 200 OK"
+        allowed = (tmp_path / "queue" / "allowed.jsonl").read_text(encoding="utf-8")
+        assert '"SM-after"' in allowed and '"SM-during"' not in allowed
+    finally:
+        server.shutdown()
+        server.server_close()

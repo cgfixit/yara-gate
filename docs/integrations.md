@@ -520,7 +520,14 @@ held messages to owner-only queues. An owner-only SQLite transaction records the
 `MessageSid` and pending JSONL bytes together. A restart or delivery retry finishes
 the write at its recorded offset before acknowledging the message. A committed
 duplicate is acknowledged without scanning. An overlapping delivery or a storage
-failure gets HTTP 503. Stop the bridge before rotating a queue, and check that
+failure gets HTTP 503. The bridge handles at most 64 requests at once
+(`MAX_CONNECTIONS`); a connection past that is answered 503 without being read, so
+connections that send nothing cannot grow its thread count or take the descriptors
+its queue files need. That bounds the bridge and does not keep it available: while
+64 idle connections hold the slots, up to ten seconds each, a real delivery is
+answered 503 too. Put connection and rate limits on the proxy, and give Twilio a
+retry or a fallback URL ([record](verification/2026-11-22-sms-bridge-connections.md)).
+Stop the bridge before rotating a queue, and check that
 `SELECT count(*) FROM pending` in `processed.sqlite3` returns zero first. Consumers
 should still deduplicate by `message_sid` when rereading the queue. A message without
 a `MessageSid` is held. The bridge sends no automatic reply. The first half of a
