@@ -1253,6 +1253,11 @@ def base64_texts(text: str, budget: Budget) -> list[str]:
     cannot form one phrase. Every candidate is read, under the scan deadline; more than
     ``MAX_B64_TEXTS`` readable runs is incomplete. A wrapped run that does not decode whole is
     tried line by line, because a following line of ordinary text can join the token.
+
+    "/" is a base64 character and also joins the segments of a URL path, so a segment that is
+    base64 reads as one token with the path before it (``invalid/e/c/SWdub3Jl...``) and decodes
+    to nothing. A token, or a line of one, that does not decode whole is therefore tried
+    segment by segment as well.
     """
     pieces: list[str] = []
     for count, match in enumerate(_B64_TOKEN.finditer(text)):
@@ -1261,15 +1266,31 @@ def base64_texts(text: str, budget: Budget) -> list[str]:
         token = match.group()
         decoded = _b64_token_text(_B64_WRAP.sub("", token))
         found = [decoded] if decoded is not None else []
-        if decoded is None and "\n" in token:
+        if decoded is None:
+            wrapped = "\n" in token
             for line in token.splitlines():
-                if len(line) >= 16 and (each := _b64_token_text(line)) is not None:
+                if wrapped and len(line) >= 16 and (each := _b64_token_text(line)) is not None:
                     found.append(each)
+                elif "/" in line:
+                    found.extend(_b64_segment_texts(line, budget))
         for piece in found:
             pieces.append(piece)
             if len(pieces) > MAX_B64_TEXTS:
                 raise ContentLimit("base64 text runs exceed 1024")
     return pieces
+
+
+def _b64_segment_texts(line: str, budget: Budget) -> list[str]:
+    """The "/"-separated parts of ``line`` that decode to readable text on their own."""
+    found: list[str] = []
+    for count, part in enumerate(line.split("/")):
+        if count % 1024 == 1023:
+            budget.check()
+        if len(part) >= 16 and (each := _b64_token_text(part)) is not None:
+            found.append(each)
+            if len(found) > MAX_B64_TEXTS:
+                break
+    return found
 
 
 def _b64_token_text(run: str) -> str | None:

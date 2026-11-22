@@ -475,7 +475,8 @@ A JSON body is also read as a `json-unescaped` view, including one that opens wi
 byte order mark or with comments, any text body gets a
 `text-folded` view when look-alike, leet, or spaced-out spellings would hide a
 phrase, a base64 run that decodes to readable text (UTF-8, or UTF-16LE as
-PowerShell writes it) gets a `base64-decoded` view, and `%XX` query text gets a
+PowerShell writes it) gets a `base64-decoded` view, in a URL's query value or one of
+its path segments as anywhere else, and `%XX` query text gets a
 `percent-decoded` view, so escaping or encoding a phrase does not hide it from the
 lexical rules. Each decoded view is also folded, as `json-unescaped+text-folded` and so
 on, so an escape stacked on a look-alike spelling is read too, and `text-folded` drops

@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 104 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 105 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -179,3 +179,13 @@ million findings), two million PDF names with none of the seven the action check
 tokens after `Encr` (`pdf-encrypt-tokens.pdf`, 6.4 s, ended by the annotation reader's
 token cap). All 104 passed on Linux x86_64, Python 3.12.3; the slowest took 6.7 s
 (`pdf-font-readings-winansi.pdf`), and the scans summed 218 s.
+
+## November 22, 2026: a URL path of base64 segments
+
+One input was added with the change that reads
+[base64 text in a URL path segment](2026-11-22-url-path-base64.md): one URL whose path is
+246,000 segments of 16 base64 characters that do not read as text
+(`url-path-segments.html`). The path does not decode whole, so each segment is tried:
+2.6 s, and 1.7 s on `main`, best of two on a quiet machine. All 105 passed on Linux
+x86_64, Python 3.12.3; the slowest took 6.8 s (`pdf-encrypt-tokens.pdf`), and the scans
+summed 232 s.
