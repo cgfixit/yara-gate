@@ -186,7 +186,8 @@ A finding records its rule ID, severity, namespace, byte offset and length withi
 ## Rules and hunting
 
 - `setup`, `rules install --allow-network`, and `rules update --allow-network` are the only commands that use the network. Each checks the SHA-256 pins in `rules/rules.lock` and swaps the vendor tree only after the new rules compile. Extraction refuses two archive members that would land on the same file, more than 20,000 rule files, or more than 300 MiB expanded, and keeps the previous tree. A scan never downloads.
-- Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. A shipped rule that fails to compile, or a recorded vendor file that is missing, makes the scan exit 2.
+- Packaged local rules load first, then non-conflicting user rules in `<root>/local/`, then the vendor packs. A local rule file that fails to compile, shipped or your own, or a recorded vendor file that is missing, makes the scan exit 2.
+- Rules written for classic YARA 4.x, such as the `.yara` files kept for a backup product's YARA scan, load in `<root>/local/` unchanged in most cases, and a rule without `verdict_on_match` blocks on a match. [What differs under YARA-X, and a probe that names the files that do not compile](rules/README.md#rules-written-for-classic-yara).
 - Rule files must be self-contained: YARA `include` is disabled so the fingerprint covers every compiled source. The phrase, hidden-HTML, and model-addressed rules are generated from `rules/templates/`, and lint fails a hand edit.
 
 `yara-gate hunt --confirmed <sha256> --reason "…" --scope path/to/search` writes a candidate rule from a file already in `blocked/`. The candidate must hit that file and none of the benign files, and blocks nothing until `yara-gate rules promote <id>` compiles it and switches it to block. Only files with hunt's own `hunt_<12 hex>.yar` name are skipped as candidates.

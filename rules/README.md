@@ -29,6 +29,34 @@ Rule sources must be self-contained. YARA `include` directives are disabled so
 every compiled rule comes from a file listed in the ruleset fingerprint. Move
 shared rule source into the files that use it before adding them to the tree.
 
+## Rules written for classic YARA
+
+The engine is YARA-X, which reads most rules written for YARA 4.x unchanged. A `.yar` or
+`.yara` file kept for another scanner, such as a backup product's YARA scan, can go into
+`<rules root>/local/` as it is. Four things differ from what that scanner did:
+
+- A rule without `verdict_on_match` in its `meta` blocks on a match. Add
+  `verdict_on_match = "advisory"` or `"note"` to a rule that should only inform.
+- A tag compiles and is not read. Nothing here acts on a tag another product gave meaning.
+- External variables such as `filename`, `filepath`, and `extension` are not defined. The
+  gate sets `yara_gate_name` and `yara_gate_ext` ([the globals](../docs/rules.md#globals-for-other-yara-tools)).
+- Each file is compiled in a namespace of its own, so a rule cannot read a rule defined
+  in another file.
+
+One file in `local/` that does not compile makes every scan incomplete
+(`local rule compile failed`), and the report does not name it. Before adding files, run
+
+```sh
+uv run python docs/research/probe_yara_compat.py RULES_DIR
+```
+
+It compiles each file the way the gate does and prints the file, the line, and the cause
+for each one that fails. With no folder it runs the known differences between the two
+engines on the locked one; two of them compile on both and answer differently (`xor` with
+`fullword`, and `base64`). The measurements, on a Veeam rule file, Veeam's featured rule
+set, and two public collections, are in the
+[record](../docs/verification/2026-11-22-classic-yara-rules.md).
+
 `setup` consents to the first pinned download; `rules install --allow-network`
 installs pinned packs and `rules update --allow-network` resolves new pins. Each
 compiles the staged tree before swapping it into place. Scanning never downloads
