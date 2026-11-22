@@ -2,8 +2,10 @@
 
 The demo-results-page workflow runs this with a read-only token before it builds anything. It allows
 only the newest commit on main, and only once every other check on that commit has finished
-green: the ci workflow, CodeQL, and any other check suite. It fails closed: a red, cancelled,
-or timed-out check, an API error, or a check still running at the deadline stops the deploy.
+green: the ci workflow, CodeQL, and any other check suite. The ci run and a CodeQL analysis
+of the commit must both be there and have passed; a commit that either never ran on is not
+green. It fails closed: a red, cancelled, or timed-out check, a missing one, an API error, or
+a check still running at the deadline stops the deploy.
 A commit that main has already moved past is skipped, since the newer commit deploys itself.
 
 Usage (in the workflow): GH_TOKEN=... python3 scripts/pages_deploy_gate.py --sha <sha>
@@ -27,6 +29,9 @@ from typing import Any
 API = "https://api.github.com"
 SELF = ".github/workflows/demo-results-page.yml"
 CI = ".github/workflows/ci.yml"
+# CodeQL runs through GitHub's default setup, which has no workflow file in the repository.
+# Its runs carry this path, on a push, a schedule, and a pull request alike.
+CODEQL = "dynamic/github-code-scanning/codeql"
 GREEN = frozenset({"success", "skipped", "neutral"})
 PAGE = 100
 MAX_PAGES = 10
@@ -40,7 +45,9 @@ def evaluate(
     """Classify every check on the commit outside this workflow: green, pending, or red.
 
     ``runs`` are the commit's workflow runs and ``checks`` its check runs, as the REST API
-    returns them. The ci workflow must have run on the push and passed.
+    returns them. The ci workflow must have run on the push and passed, and a CodeQL analysis
+    of the commit on main must have finished with success. Without the second rule a commit
+    CodeQL never ran on had nothing red and nothing pending, and was green.
     """
     own_suites = {run.get("check_suite_id") for run in runs if run.get("path") == SELF}
     own_runs = {run.get("id") for run in runs if run.get("path") == SELF} | {own_run_id} - {None}
@@ -74,6 +81,17 @@ def evaluate(
     ]
     if pending:
         return "pending", pending
+    # Last, so a failed analysis is reported by its own check above, as red. What is left is
+    # an analysis that never started, or one cancelled before it made a check.
+    analysed = any(
+        run.get("path") == CODEQL
+        and run.get("head_branch") == "main"
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        for run in runs
+    )
+    if not analysed:
+        return "pending", ["CodeQL has not passed on this commit"]
     return "green", [str(check.get("name")) for check in others]
 
 

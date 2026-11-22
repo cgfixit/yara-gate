@@ -30,6 +30,7 @@ def _run(run_id: int, path: str, conclusion: str | None = "success", status: str
     return {
         "id": run_id,
         "path": path,
+        "head_branch": "main",
         "event": "push",
         "status": status,
         "conclusion": conclusion,
@@ -73,6 +74,43 @@ def test_gate_refuses_any_non_green_check(conclusion: str) -> None:
 def test_gate_requires_ci_to_have_passed_on_the_push() -> None:
     assert gate.evaluate(RUNS[1:], [], 9)[0] == "pending"
     assert gate.evaluate([_run(1, gate.CI, "failure")], [], 9)[0] == "red"
+
+
+def test_gate_requires_a_codeql_analysis_of_the_commit() -> None:
+    ci, codeql, own_run = RUNS
+    own = _check("Deploy gate (main only)", None, run_id=9)
+    green = [_check("check", run_id=1), own]
+    waiting = ("pending", ["CodeQL has not passed on this commit"])
+    # No analysis at all: nothing is red and nothing is running, and that is not a pass.
+    assert gate.evaluate([ci, own_run], green, 9) == waiting
+    # Cancelled before it made a check, still running, or an analysis of another branch.
+    for other in (
+        _run(2, gate.CODEQL, "cancelled"),
+        _run(2, gate.CODEQL, None, "in_progress"),
+        {**codeql, "head_branch": "claude/some-branch"},
+    ):
+        assert gate.evaluate([ci, other, own_run], green, 9) == waiting
+    # One good analysis is enough beside a later scheduled one that is also good.
+    again = _run(3, gate.CODEQL)
+    assert gate.evaluate([ci, codeql, again, own_run], green, 9)[0] == "green"
+    # A failed analysis is red through its own check, not a wait.
+    failed = [_check("Analyze (python)", "failure", run_id=2), *green]
+    assert gate.evaluate([ci, _run(2, gate.CODEQL, "failure"), own_run], failed, 9) == (
+        "red",
+        ["Analyze (python): failure"],
+    )
+
+
+def test_gate_refuses_at_the_deadline_without_a_codeql_analysis() -> None:
+    def fetch(path: str) -> dict:
+        if path.endswith("/commits/main"):
+            return {"sha": SHA}
+        if "/actions/runs" in path:
+            return {"workflow_runs": [_run(1, gate.CI)]}
+        return {"check_runs": [_check("check", run_id=1)]}
+
+    with pytest.raises(SystemExit, match="CodeQL has not passed on this commit"):
+        gate.decide(fetch, "o/r", SHA, run_id=9, timeout=0, interval=0)
 
 
 def test_gate_skips_a_commit_main_has_moved_past() -> None:
