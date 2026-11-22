@@ -81,9 +81,9 @@ batch mode the issue's plan describes, and it is not built here.
 | Damaged cache, each beside a 200-byte and a 1,200,000-byte scan in a fresh process: guarded copy overwritten, cut to half, emptied, deleted; the list of unguarded files deleted | Every scan returned what the base returned (`clean`, 89 rules, 0 unguarded). On the base the cache was whole again after every case. On the change it is whole again after every case but three: the overwritten, cut, and emptied copies beside the 200-byte scan, which never read them |
 | `docs/research/probe_rule_coverage.py --verify` | passed. Beside the base run, only the run time, the two changed source hashes, and the digests of five archives the probe builds with the current time differ |
 | `yara-gate conform` | 94 fixtures, 282 checks, 0 changed verdicts, 0 changed findings |
-| `docs/verification/check_worst_case_timing.py`, 104 inputs of 4 MiB, each of which is scanned with the guarded ruleset | TRIPWIRE_RESULT |
-| `docs/research/probe_match_cap.py` | MATCHCAP_RESULT |
-| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | PAGES_RESULT |
+| `docs/verification/check_worst_case_timing.py`, 104 inputs of 4 MiB, each of which is scanned with the guarded ruleset | pass on the base and on the change. No input differs in verdict, incomplete reason, rule count, or views. The slowest took 7.80 s on the base and 7.62 s on the change (`pdf-encrypt-tokens.pdf`); both runs shared the machine with other work, so their totals are not compared |
+| `docs/research/probe_match_cap.py` | 3,031 flooded texts over 84 rules, 0 with a cap blind spot, 0 fail |
+| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | at `586c702`: outcomes match the reviewed baseline, 93 scenarios under 3 policies |
 | `docs/verification/lint_rules.py`, `check_rule_pairs.py` | pass (89 rules, 120 rule pairs) |
 | `ruff check`, `ruff format --check`, `mypy --strict src scripts` | pass |
 | `check_doc_links.py`, `check_text_controls.py` | pass |
