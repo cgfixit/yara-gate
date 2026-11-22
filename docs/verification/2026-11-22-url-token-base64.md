@@ -130,7 +130,7 @@ sequence.
 | `check_worst_case_timing.py` | pass, 106 inputs. The 104 inputs `main` has keep their verdict, reason, rule count, and views. The input added here, `url-token-runs.html` (9,300 links, each with a 400-character token that is not language), takes 1.35 s against 1.17 s on `main`, where the first run is a blob and the walk stops |
 | `probe_rule_coverage.py --verify`, `probe_detection_gaps.py --verify`, `measure_precision.py`, `lint_rules.py`, `probe_match_cap.py` | the coverage probe passed, and beside the `main` run only the rule file's hash and the digests of five run-time archives differ; the gap probe passes with five new cases (a token alone, an encoded paragraph in a path, and a token in a `javascript:` URL are reported; a token in a link and in a search result's URL are clean); the precision table is `main`'s; 3,035 flooded texts, 0 with a cap blind spot |
 | `yara-gate conform` | 94 fixtures, 282 checks, 0 changed verdicts, 0 changed findings |
-| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | PAGES_RESULT |
+| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | at `b51df92`: outcomes match the reviewed baseline, 93 scenarios under 3 policies |
 | `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_doc_links.py`, `check_text_controls.py` | pass |
 
 Not run here: the full pytest suite, selftest, and the Windows job, which hosted CI runs.
