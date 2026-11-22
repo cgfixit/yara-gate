@@ -47,7 +47,7 @@ member, and through which derived view (for example, one decoded base64 run, a
 PDF paragraph rejoined across text blocks, or a spreadsheet cell rejoined and then
 folded for look-alikes and digits). A static section summarizes the
 benign-corpus evidence and links to its records, and gives the web-page benchmark
-baseline beside it: on BrowseSafe-Bench's test split `agent-ingest` held 11.7% of the
+baseline beside it: on BrowseSafe-Bench's test split `agent-ingest` held 10.7% of the
 benign pages, while every twin here is clean. Per-rule hit rates and the
 number of distinct benign files held are different measures. The section on running the
 scanner locally names `yara-gate replay` and `yara-gate conform` for a consumer that

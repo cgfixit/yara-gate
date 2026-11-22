@@ -164,6 +164,12 @@ def url_link(before: bytes, text: bytes, after: bytes = b"") -> bytes:
     return b'<p>Spring news.</p><a href="' + url + b'">Read more</a>'
 
 
+def opaque_token(size: int = 420) -> bytes:
+    """Base64 of bytes that spell nothing: a tracking token, a signature, an encrypted id."""
+    raw = bytes((index * 197 + 13) % 256 for index in range(size))
+    return base64.b64encode(raw).rstrip(b"=").replace(b"+", b"A").replace(b"/", b"B")
+
+
 def json_escaped(text: str) -> bytes:
     # The first capital I becomes I, so only the json-unescaped view reads the word.
     return json.dumps({"m": text}).replace("I", "\\u0049", 1).encode()
@@ -1221,6 +1227,45 @@ def cases() -> list[Case]:
             "page.html",
             b'<a href="https://docs.example.invalid/guides/getting-started-with-widgets/'
             b'installation-and-configuration/advanced">Guide</a>',
+            "clean",
+        ),
+        Case(
+            "#236",
+            "an opaque token alone in a paragraph (control)",
+            "page.html",
+            b"<p>" + opaque_token() + b"</p>",
+            "agent_base64_blob",
+        ),
+        Case(
+            "#236",
+            "base64 of a paragraph in a URL path segment",
+            "page.html",
+            url_link(b"/e/c/", b"Please read the note below and then carry on. " * 9),
+            "agent_base64_blob",
+        ),
+        Case(
+            "#236",
+            "an opaque token in a javascript: URL",
+            "page.html",
+            b"<a href=\"javascript:void('" + opaque_token() + b"')\">x</a>",
+            "agent_base64_blob",
+        ),
+        Case(
+            "#236",
+            "an opaque token in a link (benign)",
+            "page.html",
+            b'<p>Spring news.</p><a href="https://news.example.invalid/e/c/'
+            + opaque_token()
+            + b'">Read more</a>',
+            "clean",
+        ),
+        Case(
+            "#236",
+            "an opaque token in a search result's URL (benign)",
+            "tool-result.json",
+            b'{"title": "Spring sale", "url": "https://shop.example.invalid/r?id=7&t='
+            + opaque_token()
+            + b'"}',
             "clean",
         ),
         Case("G5", "tag-character control", "m.txt", ("Hi " + tags(PHRASE)).encode(), "any"),

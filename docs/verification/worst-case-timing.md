@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 105 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 106 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -189,3 +189,14 @@ One input was added with the change that reads
 2.6 s, and 1.7 s on `main`, best of two on a quiet machine. All 105 passed on Linux
 x86_64, Python 3.12.3; the slowest took 6.8 s (`pdf-encrypt-tokens.pdf`), and the scans
 summed 232 s.
+
+## November 22, 2026: tokens in links
+
+One input was added with the change that stops reporting
+[a token inside a web URL](2026-11-22-url-token-base64.md) as a base64 blob: 9,300 links,
+each with a 400-character token that is not language (`url-token-runs.html`). No run is a
+blob, so every one is checked: its URL read back to the quote, and the token decoded at
+four alignments. 1.4 s, and 1.2 s on `main`, where the first run is a blob and the walk
+stops. `url-path-segments.html` is now clean, since its run is a URL token too. All 106
+passed on Linux x86_64, Python 3.12.3; the slowest took 6.6 s (`pdf-encrypt-tokens.pdf`),
+and the scans summed 228 s.

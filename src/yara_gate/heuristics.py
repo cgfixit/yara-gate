@@ -272,6 +272,10 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
     media URI, a PEM header, or an SSH key type, and it is not made only of hex digits. Hex
     digits are 22 of the 64 base64 characters, so 400 of them in a row are hex text, such as a
     PDF hex string (glyph ids in a content stream, a UTF-16BE outline title), not base64 data.
+    A run inside an ``http`` or ``https`` URL (``_in_web_url``) is a blob only when it decodes
+    to text a person could read (``_b64_reads_as_text``). The rest are tracking tokens, signed
+    parameters, and JWTs, written for a server and not for a reader. An executable header is
+    still an executable header wherever it sits.
     ``executable`` is a run whose decoded head is MZ, ELF, or Mach-O. Each exemption covers its
     own run. The YARA rules agent_base64_blob and
     agent_base64_executable read these as globals and keep their ids and verdict_on_match.
@@ -295,6 +299,8 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
         ):
             before = data[max(0, start - 128) : start]
             blob = _B64_PREFIX.search(before) is None
+            if blob and _in_web_url(data, start):
+                blob = _b64_reads_as_text(data[start : match.end()])
             if blob and _printer_setup(data, start, match.end()):
                 blob = False
             if blob and samples:
@@ -303,6 +309,51 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
         if blob and exe:
             break
     return blob, exe
+
+
+def _in_web_url(data: bytes, start: int) -> bool:
+    """True when the base64 run at ``start`` is part of an ``http`` or ``https`` URL.
+
+    The run's token is read back to the nearest byte a URL is not written with (white space,
+    a quote, an angle bracket, a backtick, an opening parenthesis) or to the start of the
+    data, at most ``_URL_REACH`` bytes, and has to begin with the scheme. JSON writes the two
+    slashes escaped. A token that begins with anything else is not a URL here: ``data:``,
+    ``javascript:``, an attribute written without quotes, text that only follows a URL.
+    """
+    low = max(0, start - _URL_REACH)
+    cut = max(data.rfind(stop, low, start) for stop in _URL_STOPS)
+    if cut < 0 and low > 0:
+        return False
+    return _URL_SCHEME.match(data, cut + 1) is not None
+
+
+def _b64_reads_as_text(run: bytes) -> bool:
+    """True when a base64 run decodes, at one of its four alignments, to written language.
+
+    A URL path joins a base64 segment to the text before it, so the run may begin a few
+    characters early; each alignment is tried and the bytes that prefix decodes to are
+    tolerated. Language here is UTF-8, or UTF-16LE as PowerShell encodes a command, with
+    almost no control bytes, and either spaces between its words or a tenth of its bytes
+    outside ASCII (a script written without spaces). An encrypted token, a hash, compressed
+    data, and JSON written without spaces are not language.
+    """
+    for skip in range(4):
+        piece = run[skip:]
+        try:
+            raw = base64.b64decode(piece[: len(piece) - len(piece) % 4], validate=True)
+        except (binascii.Error, ValueError):
+            continue
+        if len(raw) >= 8 and raw[1::2].count(0) * 10 >= (len(raw) // 2) * 9:
+            raw = raw[0::2]
+        size = len(raw)
+        if not size or len(raw.translate(None, _B64_TEXT_BYTES)) * 20 > size:
+            continue
+        if (size - len(raw.decode("utf-8", "ignore").encode("utf-8"))) * 20 > size:
+            continue
+        outside = size - len(raw.translate(None, _B64_HIGH_BYTES))
+        if raw.count(b" ") * 50 >= size or outside * 10 >= size:
+            return True
+    return False
 
 
 # LibreOffice saves the printer's job setup in an OpenDocument settings.xml as this item.
@@ -1017,6 +1068,14 @@ _B64_PREFIX = re.compile(
     rb"|-----BEGIN [A-Z0-9 ]{1,40}-----[\r\n]+"
     rb"|\b(?:ssh-(?:rsa|ed25519|dss)|ecdsa-sha2-nistp(?:256|384|521))[ \t]+)\Z"
 )
+# A base64 run inside a web URL is not reported as a blob. On the 14,719 pages of
+# BrowseSafe-Bench the furthest such run began 1,706 bytes into its URL.
+_URL_SCHEME = re.compile(rb"https?:(?://|\\/\\/)", re.IGNORECASE)
+_URL_STOPS = tuple(bytes([stop]) for stop in b" \t\n\r\x0b\x0c\"'<>`(")
+_URL_REACH = 4096
+# _b64_reads_as_text: every byte text is written with, and the ones outside ASCII.
+_B64_HIGH_BYTES = bytes(range(0x80, 0x100))
+_B64_TEXT_BYTES = b"\t\n\r" + bytes(range(0x20, 0x7F)) + _B64_HIGH_BYTES
 _PDF_NAME = re.compile(rb"/(?:[^\x00\t\n\f\r /<>\[\]()#%]|#[0-9A-Fa-f]{2})+")
 # Whitespace, a comment, a dictionary bracket, a hex string, a string opener, an array bracket,
 # a name, or a regular token (number or keyword).

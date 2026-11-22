@@ -20,6 +20,7 @@ from yara_gate.heuristics import (
     MAX_PDF_DEFINITIONS,
     PDF_TOKENS,
     PdfRawObjects,
+    base64_run_signals,
     heuristic_findings,
     pdf_encrypted,
     pdf_findings,
@@ -717,3 +718,84 @@ def test_each_new_filter_reference_looks_at_the_deadline() -> None:
 
     pdf_streams(data, Counting(time.monotonic() + 30))
     assert looks >= count
+
+
+def _opaque(size: int = 420) -> bytes:
+    """Base64 of bytes that spell nothing, in the letters and digits a token is written with."""
+    raw = bytes((index * 197 + 13) % 256 for index in range(size))
+    return base64.b64encode(raw).rstrip(b"=").replace(b"+", b"A").replace(b"/", b"B")
+
+
+_PROSE = b"Please read the note below and then carry on with the rest of the page. " * 6
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        b'<a href="https://news.example.invalid/r?id=7&amp;token=%s">Read</a>',
+        b'<a href="https://news.example.invalid/c/%s/open">Read</a>',
+        b"<a href='HTTPS://news.example.invalid/c/%s'>Read</a>",
+        b'<img src="http://cdn.example.invalid/i.png?jwt=eyJhbGciOiJIUzI1NiJ9.%s.sig">',
+        b'{"title": "Spring sale", "url": "https://shop.example.invalid/r?t=%s"}',
+        b'{"title": "Spring sale", "url": "https:\\/\\/shop.example.invalid\\/r?t=%s"}',
+        b"Track your parcel: https://post.example.invalid/t?k=%s Thanks!",
+        b"[Unsubscribe](https://news.example.invalid/u/%s)",
+        b"https://news.example.invalid/u/%s",
+    ],
+)
+def test_a_token_inside_a_web_url_is_not_a_base64_blob(text: bytes) -> None:
+    # A tracking token, a signed parameter, a JWT: long, base64, and written for a server.
+    assert base64_run_signals(text % _opaque()) == (False, False)
+    # The same place holding base64 of a paragraph is still reported.
+    assert base64_run_signals(text % base64.b64encode(_PROSE).rstrip(b"=")) == (True, False)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        b"<p>%s</p>",
+        b'{"note": "weekly", "blob": "%s"}',
+        b"<a href=\"javascript:void('%s')\">x</a>",
+        b'<a href="data:text/html;base64,%s">x</a>',
+        b'<a href="ftp://files.example.invalid/%s">x</a>',
+        b"see https://a.example.invalid/x %s",
+        b"<a href=https://news.example.invalid/c/%s>unquoted</a>",
+        b"https://a.example.invalid/" + b"x" * 5000 + b"-%s",
+    ],
+)
+def test_a_token_outside_a_web_url_is_still_a_base64_blob(text: bytes) -> None:
+    assert base64_run_signals(text % _opaque()) == (True, False)
+
+
+def test_text_in_a_web_url_is_a_blob_at_any_alignment_and_in_other_scripts() -> None:
+    link = b'<a href="https://news.example.invalid/%s">Read</a>'
+    encoded = base64.b64encode(_PROSE).rstrip(b"=")
+    # A path joins the run to what precedes it, so the run can begin up to three characters
+    # out of step with the bytes it encodes.
+    for lead in (b"", b"e/", b"ab/", b"abc/", b"e/c/"):
+        assert base64_run_signals(link % (lead + encoded)) == (True, False)
+    russian = "Пожалуйста, прочитайте заметку ниже и продолжайте работу со страницей. " * 5
+    japanese = "下記の注意書きを読んでから、ページの残りの部分を続けてください。" * 8
+    for raw in (
+        russian.encode(),
+        japanese.encode(),
+        _PROSE.decode().encode("utf-16-le"),
+    ):
+        run = base64.b64encode(raw).rstrip(b"=")
+        assert len(run) >= 400
+        assert base64_run_signals(link % run) == (True, False), raw[:12]
+    # UTF-16LE in a script without ASCII letters has no zero bytes to know it by; like the
+    # decoded view, the check does not read it, and the token is not reported.
+    assert base64_run_signals(
+        link % base64.b64encode(russian.encode("utf-16-le")).rstrip(b"=")
+    ) == (False, False)
+    # Text written without spaces and without other scripts is an identifier or a record.
+    record = json.dumps({"email_id": "a" * 300, "href": "x" * 60}, separators=(",", ":"))
+    compact = base64.b64encode(record.encode()).rstrip(b"=")
+    assert base64_run_signals(link % compact) == (False, False)
+
+
+def test_an_executable_in_a_web_url_is_still_an_executable() -> None:
+    head = base64.b64encode(b"MZ" + bytes(400)).rstrip(b"=")
+    link = b'<a href="https://dl.example.invalid/get?f=%s">x</a>'
+    assert base64_run_signals(link % head) == (False, True)
