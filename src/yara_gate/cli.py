@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import sys
+import unicodedata
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, NoReturn
 
@@ -322,6 +323,22 @@ def _print_line(line: str) -> None:
         raise _OutputLost from exc
 
 
+def _printable(text: str) -> str:
+    """``text`` as one terminal line that controls nothing.
+
+    Every control, format, private-use, unassigned, and unpaired-surrogate character is written
+    as its backslash escape, so a file name cannot move the cursor, set the window title, start
+    a second line, or reorder what is shown. Other text is unchanged, a backslash included, so
+    the line is for reading: a name that holds the six characters ``\\x1b[0`` prints the same.
+    """
+    return "".join(
+        char.encode("unicode_escape").decode("ascii")
+        if unicodedata.category(char).startswith("C")
+        else char
+        for char in text
+    )
+
+
 def _capture_input(capture: str) -> BinaryIO:
     """The named capture file, or standard input for ``-``. A closed stdin is unreadable."""
     if capture != "-":
@@ -529,7 +546,8 @@ def hunt(
         raise typer.Exit(code=2) from exc
     typer.echo(f"candidate {rule_path.name} hits={len(hits)}")
     for hit in hits:
-        typer.echo(hit)
+        # A hit is a file someone else named, found beside a confirmed bad file.
+        typer.echo(_printable(str(hit)))
 
 
 @rules_app.command("install")
