@@ -7,12 +7,21 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import Budget, ContentLimit, PdfObjects, _png_rows, pdf_views
+from yara_gate.content import (
+    Budget,
+    ContentLimit,
+    PdfObjects,
+    _png_rows,
+    pdf_streams,
+    pdf_views,
+)
+from yara_gate.filetype import embedded_exec_offset
 from yara_gate.heuristics import (
     MAX_PDF_DEFINITIONS,
     PDF_TOKENS,
     PdfRawObjects,
     heuristic_findings,
+    pdf_encrypted,
     pdf_findings,
     pdf_token_findings,
 )
@@ -651,3 +660,60 @@ def test_lzw_output_is_charged_as_it_grows(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(ContentLimit, match="extracted size"):
         content._lzw(_lzw_longest_entry_repeated(2_000), 1, budget)
     assert peak <= 10_000 + content._CHARGE_BYTES + 4096
+
+
+def test_one_pass_over_the_names_reports_each_first_spelling() -> None:
+    # /J#53 is /JS, met before the plain spelling; /Open#41ction opens a page.
+    data = b"%PDF-1.7\n/a /J#53 /JS /Open#41ction << /S /GoTo /D [1 0 R /Fit] >> /AA /AA"
+    found = {f.rule_id: (f.offset, f.length, f.severity) for f in pdf_findings(data)}
+    assert found == {
+        "heuristic_pdf_JS": (data.index(b"/J#53"), 5, Severity.block),
+        "heuristic_pdf_OpenAction_goto": (data.index(b"/Open#41ction"), 13, Severity.note),
+        "heuristic_pdf_AA": (data.index(b"/AA"), 3, Severity.block),
+    }
+    assert [f.rule_id for f in pdf_findings(data)] == [
+        "heuristic_pdf_JS",
+        "heuristic_pdf_OpenAction_goto",
+        "heuristic_pdf_AA",
+    ]
+
+
+def _late() -> None:
+    raise ContentLimit("timeout")
+
+
+@pytest.mark.parametrize(
+    "walk",
+    [
+        lambda: pdf_token_findings(b"%PDF-1.7\n" + b"/a" * 64, None, _late),
+        lambda: pdf_token_findings(b"%PDF-1.7\n/OpenAction [1 0 R /Fit]", None, _late),
+        lambda: pdf_encrypted(b"%PDF-1.7\nEncr " + b"a " * 64, _late),
+        lambda: embedded_exec_offset(b"MZ" * 8192, _late),
+    ],
+    ids=["names", "open-action", "encrypt-tokens", "executable-magics"],
+)
+def test_whole_file_walks_look_at_the_deadline(walk: Callable[[], object]) -> None:
+    # Each of these reads a whole file. Without a look at the deadline it ran on past it.
+    with pytest.raises(ContentLimit, match="timeout"):
+        walk()
+
+
+def test_each_new_filter_reference_looks_at_the_deadline() -> None:
+    # A reference not met before costs one pass over the file, and one filter array holds
+    # as many as its dictionary has room for.
+    count = 40
+    names = b"".join(b"%d 0 obj\n/AHx\nendobj\n" % (index + 10) for index in range(count))
+    chain = b" ".join(b"%d 0 R" % (index + 10) for index in range(count))
+    body = b"48656c6c6f>"
+    stream = b"1 0 obj\n<< /Length %d /Filter [%s] >>\nstream\n" % (len(body), chain)
+    data = b"%PDF-1.7\n" + names + stream + body + b"\nendstream\nendobj\n"
+    looks = 0
+
+    class Counting(Budget):
+        def check(self) -> None:
+            nonlocal looks
+            looks += 1
+            super().check()
+
+    pdf_streams(data, Counting(time.monotonic() + 30))
+    assert looks >= count

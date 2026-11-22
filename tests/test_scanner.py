@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from yara_gate.content import Budget, ContentUnit, content_units, text_views
+from yara_gate.content import Budget, ContentLimit, ContentUnit, content_units, text_views
+from yara_gate.heuristics import MAX_JOINER_FINDINGS, joiner_findings
 from yara_gate.models import Verdict, exit_code
 from yara_gate.samples import (
     EICAR,
@@ -180,6 +181,26 @@ def test_html_entity_joiners_in_context_are_clean(tmp_path: Path, rules_copy: Pa
     text = "<p>\u0645\u06cc&zwnj;\u0631\u0648\u0645 \U0001f468&zwj;\U0001f469</p>"
     result = _scan(tmp_path, rules_copy, "context.html", text.encode())
     assert result.verdict is Verdict.clean
+
+
+def test_stray_joiners_are_reported_up_to_a_cap(rules_copy: Path) -> None:
+    # One finding per character put a file of joiners into the scan's memory and its report.
+    # The first ones are reported, each at its own offset, and the verdict is the same.
+    payload = "\u200d".encode() * 5000
+    result = scan_bytes(payload, name="joiners.txt", rules_dir=rules_copy)
+    assert result.verdict is Verdict.advisory
+    joiners = [item for item in result.findings if item.rule_id == "heuristic_invisible_joiner"]
+    assert [item.offset for item in joiners] == [3 * n for n in range(MAX_JOINER_FINDINGS)]
+    assert {item.length for item in joiners} == {3}
+
+
+def test_the_joiner_walk_looks_at_the_deadline() -> None:
+    def late() -> None:
+        raise ContentLimit("timeout")
+
+    # Joiners that hold emoji together are walked without a finding to stop at.
+    with pytest.raises(ContentLimit, match="timeout"):
+        joiner_findings("\U0001f468\u200d" * 8, late)
 
 
 def test_utf16_zero_width_is_a_note(tmp_path: Path, rules_copy: Path) -> None:
