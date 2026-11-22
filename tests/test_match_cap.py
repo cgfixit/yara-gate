@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import yara_x
 
+from yara_gate import rules as rules_module
 from yara_gate.models import Verdict, exit_code
 from yara_gate.rules import (
     RESCAN_LIMIT,
@@ -117,6 +118,54 @@ def test_every_bundled_rule_file_is_guarded(rules_copy: Path) -> None:
     guarded, unguarded = guarded_ruleset(digest)
     assert guarded is not None
     assert unguarded == []
+
+
+def test_cached_guarded_ruleset_is_read_when_a_long_view_first_needs_it(
+    tmp_path: Path, cap_rules: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    monkeypatch.setattr("yara_gate.rules._user_cache_dir", lambda: cache)
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    assert compile_ruleset(cap_rules)[2] is None
+    reads: list[str] = []
+    read = rules_module._read_guard_cache
+
+    def counted(digest: str) -> object | None:
+        reads.append(digest)
+        return read(digest)
+
+    monkeypatch.setattr("yara_gate.rules._read_guard_cache", counted)
+    # A later process: nothing in memory, both rulesets in the cache.
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    short = scan_bytes(b"a" * 900_000 + b"aMARKER", name="t.txt", rules_dir=cap_rules)
+    assert short.verdict is Verdict.block
+    assert short.unguarded_rule_files == 0
+    assert reads == []
+    long = scan_bytes(b"a" * 1_500_000 + b"aMARKER", name="t.txt", rules_dir=cap_rules)
+    assert long.verdict is Verdict.block
+    assert long.match_rescan_limit == RESCAN_LIMIT
+    assert len(reads) == 1
+    scan_bytes(b"a" * 1_500_000 + b"aMARKER", name="t.txt", rules_dir=cap_rules)
+    assert len(reads) == 1
+
+
+def test_damaged_guard_cache_is_built_again_for_the_view_that_needs_it(
+    tmp_path: Path, cap_rules: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "cache"
+    monkeypatch.setattr("yara_gate.rules._user_cache_dir", lambda: cache)
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    assert compile_ruleset(cap_rules)[2] is None
+    (stored,) = cache.glob("*.guard*.yarc")
+    whole = stored.read_bytes()
+    stored.write_bytes(whole[: len(whole) // 2])
+    monkeypatch.setattr("yara_gate.rules._MEMO", {})
+    # The guard still answers: the marker lies past the first million matches of "a".
+    result = scan_bytes(b"a" * 1_500_000 + b"aMARKER", name="t.txt", rules_dir=cap_rules)
+    assert result.verdict is Verdict.block
+    assert "zz_letter_then_marker" in _rules_of(result)
+    assert result.unguarded_rule_files == 0
+    assert stored.read_bytes() == whole
 
 
 def test_guard_copies_strings_and_skips_rules_without_them() -> None:

@@ -91,10 +91,11 @@ from yara_gate.rules import (
     GUARD_LOG_PREFIX,
     MATCH_LIMIT,
     RESCAN_LIMIT,
+    GuardedRules,
     compile_ruleset,
     compile_source,
     default_rules_dir,
-    guarded_ruleset,
+    guarded_rules,
     locating_source,
     placed_rule_sources,
     vendor_namespace_dirs,
@@ -242,8 +243,7 @@ def _scan_file(
     scanned_bytes = 0
     yara_time = 0.0
     cap = MatchCap()
-    guarded: object | None = None
-    unguarded: list[str] = []
+    guard: GuardedRules | None = None
 
     def yara(
         rules: object,
@@ -257,6 +257,9 @@ def _scan_file(
         nonlocal scanned_bytes, yara_time
         if view is not None:
             views[view] = views.get(view, 0) + 1
+        # Only a view this long can fill a match list, so only it needs the guarded ruleset,
+        # which is read from the cache here the first time (before the time left is taken).
+        guarded = guard.rules() if guard is not None and len(payload) >= MATCH_LIMIT else None
         seconds = max(1, math.ceil(budget.deadline - time.monotonic()))
         begun = time.monotonic()
         try:
@@ -301,7 +304,7 @@ def _scan_file(
         result.views_scanned = dict(sorted(views.items()))
         result.pdf_content_unread = dict(sorted(unread.items()))
         result.match_rescan_limit = cap.rescan_limit
-        result.unguarded_rule_files = len(unguarded)
+        result.unguarded_rule_files = len(guard.unguarded) if guard is not None else 0
         result.bytes_scanned = scanned_bytes
         result.yara_seconds = round(yara_time, 3) if units else None
         result.policy = policy
@@ -342,7 +345,7 @@ def _scan_file(
     # An override applies only to a match from the pack directory its entry names.
     vendor_dirs = vendor_namespace_dirs(ruleset)
     placed = placed_rule_sources(ruleset)
-    guarded, unguarded = guarded_ruleset(ruleset)
+    guard = guarded_rules(ruleset)
     # Only the submitted name: the directories above it belong to the operator.
     findings.extend(_name_findings([file_path.name]))
     read_paths: set[tuple[str, ...]] = set()

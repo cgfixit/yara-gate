@@ -9,6 +9,7 @@ import re
 import secrets
 import shutil
 import tarfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -53,7 +54,7 @@ _VENDOR_NAMESPACES: dict[str, dict[str, str]] = {}
 _PLACED_SOURCES: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
 # Per compiled ruleset digest: the same rules plus a match-cap guard for each rule file, and the
 # files left unguarded (see ``guarded_ruleset``).
-_GUARDED: dict[str, tuple[object | None, list[str]]] = {}
+_GUARDED: dict[str, "GuardedRules"] = {}
 # YARA-X keeps this many matches of each string and then drops the rest without notice
 # (DEFAULT_MAX_MATCHES_PER_PATTERN in yara-x 1.23.0, lib/src/scanner/matches.rs).
 MATCH_LIMIT = 1_000_000
@@ -464,7 +465,7 @@ def compile_ruleset(
             _count_rules(good),
             _vendor_dirs(good, rules_dir),
             _placed_sources(good, rules_dir),
-            _read_guard_cache(digest) or _build_guarded(digest, good, rules_dir),
+            _cached_guarded(digest, good, rules_dir),
         )
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
@@ -506,7 +507,7 @@ def compile_ruleset(
         _count_rules(good),
         _vendor_dirs(good, rules_dir),
         _placed_sources(good, rules_dir),
-        _build_guarded(digest, good, rules_dir),
+        GuardedRules(*_build_guarded(digest, good, rules_dir)),
     )
     return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
@@ -518,7 +519,7 @@ def _remember(
     compiled: int,
     vendor_dirs: dict[str, str],
     placed: dict[str, tuple[str, frozenset[str]]],
-    guarded: tuple[object | None, list[str]],
+    guarded: "GuardedRules",
 ) -> None:
     _MEMO.clear()
     _VENDOR_NAMESPACES.clear()
@@ -546,14 +547,54 @@ def guarded_ruleset(digest: str | None) -> tuple[object | None, list[str]]:
     public rule of its name without strings (``hidden_source``), so a file that repeats one of
     its strings a million times costs no match objects either.
     """
-    return _GUARDED.get(digest or "", (None, []))
+    held = _GUARDED.get(digest or "")
+    if held is None:
+        return None, []
+    return held.rules(), list(held.unguarded)
+
+
+def guarded_rules(digest: str | None) -> "GuardedRules | None":
+    """The same ruleset, not yet read from the cache: ``rules()`` reads it when first called."""
+    return _GUARDED.get(digest or "")
 
 
 def last_unguarded() -> list[str]:
     """The unguarded files of the ruleset ``compile_ruleset`` compiled last in this process."""
-    for _rules, unguarded in _GUARDED.values():
-        return list(unguarded)
+    for held in _GUARDED.values():
+        return list(held.unguarded)
     return []
+
+
+class GuardedRules:
+    """A guarded ruleset and its unguarded files, with the ruleset read on first use.
+
+    Only a view of ``MATCH_LIMIT`` bytes or more is scanned with the guarded ruleset, and
+    reading it from the cache costs as much as reading the ruleset itself (about 65 ms each
+    for the 89 bundled rules). A process that scans a search snippet or a page never needs
+    it, so the cached copy is read when a scan first asks. The list of unguarded files is a
+    few bytes beside it and is read at once, because every report counts it.
+    """
+
+    def __init__(
+        self,
+        rules: object | None,
+        unguarded: list[str],
+        load: Callable[[], tuple[object | None, list[str]]] | None = None,
+    ) -> None:
+        self.unguarded = list(unguarded)
+        self._rules = rules
+        self._load = load
+        self._lock = threading.Lock()
+
+    def rules(self) -> object | None:
+        with self._lock:
+            if self._load is not None:
+                # A cached copy that no longer reads is built again, and the build says
+                # afresh which files have no guard.
+                self._rules, unguarded = self._load()
+                self.unguarded = list(unguarded)
+                self._load = None
+            return self._rules
 
 
 def guard_source(text: str) -> str | None:
@@ -848,17 +889,36 @@ def _compile_guarded(
         return None
 
 
-def _read_guard_cache(digest: str) -> tuple[object, list[str]] | None:
-    import yara_x
-
+def _cached_guarded(digest: str, good: list[tuple[Path, str]], rules_dir: Path) -> GuardedRules:
+    """The guarded ruleset for a cached ruleset: read later when cached whole, else built now."""
     cache = _user_cache_dir()
     try:
         text = (cache / f"{digest}.unguarded{_GUARD_FORMAT}").read_text(encoding="utf-8")
-        with (cache / f"{digest}.guard{_GUARD_FORMAT}.yarc").open("rb") as handle:
-            rules = yara_x.Rules.deserialize_from(handle)
+        cached = (cache / f"{digest}.guard{_GUARD_FORMAT}.yarc").is_file()
+    except (OSError, ValueError):
+        cached = False
+    if not cached:
+        return GuardedRules(*_build_guarded(digest, good, rules_dir))
+    unguarded = [line for line in text.splitlines() if line]
+
+    def load() -> tuple[object | None, list[str]]:
+        rules = _read_guard_cache(digest)
+        if rules is None:
+            return _build_guarded(digest, good, rules_dir)
+        return rules, unguarded
+
+    return GuardedRules(None, unguarded, load)
+
+
+def _read_guard_cache(digest: str) -> object | None:
+    import yara_x
+
+    try:
+        with (_user_cache_dir() / f"{digest}.guard{_GUARD_FORMAT}.yarc").open("rb") as handle:
+            rules: object = yara_x.Rules.deserialize_from(handle)
     except (OSError, ValueError):
         return None
-    return rules, [line for line in text.splitlines() if line]
+    return rules
 
 
 def _write_guard_cache(digest: str, rules: Any, unguarded: list[str]) -> None:
