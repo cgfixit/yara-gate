@@ -806,7 +806,10 @@ more than one, which means its numbers mix two baselines.
 Each item is scanned in its own child process, which the parent kills 30 seconds after the
 scan's own `--timeout`, because the scanner's deadline cannot preempt every parser. One
 item cannot affect the next. For measured startup and warm timings, see the
-[Mac replay measurement](verification/2026-11-21-replay-worker-provenance.md).
+[Mac replay measurement](verification/2026-11-21-replay-worker-provenance.md). A child that
+scans no view of a million bytes or more does not read the match-cap guards, which took a
+quarter off a ten-snippet replay on a Linux container
+([record](verification/2026-11-22-guarded-ruleset-on-first-use.md)).
 `--no-timings` leaves the seconds out, so two runs over the same capture with the same
 rules and detector print the same bytes.
 
