@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 101 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 104 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -169,3 +169,13 @@ One input was added with the [PDF text strings](2026-11-14-pdf-text-strings.md) 
 All 82 passed on Linux x86_64, Python 3.12.3; the slowest took 6.5 s
 (`pdf-font-readings-winansi.pdf`), and the scans summed 169 s on a slower container than the
 entry above.
+
+## November 22, 2026: whole-file walks beside YARA
+
+Three inputs were added with the [whole-file walks](2026-11-22-heuristic-walk-bounds.md)
+change: 4 MiB of U+200D (`text-stray-joiners.txt`, 1.8 s; 6.7 s on `main`, where it was 1.4
+million findings), two million PDF names with none of the seven the action check looks for
+(`pdf-name-run.pdf`, 4.5 s; 10.1 s on `main`, over the ceiling), and two million top-level
+tokens after `Encr` (`pdf-encrypt-tokens.pdf`, 6.4 s, ended by the annotation reader's
+token cap). All 104 passed on Linux x86_64, Python 3.12.3; the slowest took 6.7 s
+(`pdf-font-readings-winansi.pdf`), and the scans summed 218 s.
