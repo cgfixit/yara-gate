@@ -1427,9 +1427,11 @@ def _advisory(rule_id: str) -> Finding:
 
 
 def _pickle_candidate(path: Path, data: bytes) -> bool:
-    suffix = path.suffix.lower()
-    if suffix in {".pkl", ".pickle", ".pt", ".pth", ".ckpt"}:
-        return data[:1] == b"\x80"
+    # Protocols 0 and 1 write no PROTO opcode, so nothing in the bytes says such a stream is a
+    # pickle: under a pickle's name the walk starts whatever the first byte is. A loader runs
+    # `cos\nsystem\n(S'...'\ntR.` as it runs the protocol 2 spelling.
+    if path.suffix.lower() in {".pkl", ".pickle", ".pt", ".pth", ".ckpt"}:
+        return bool(data)
     return len(data) >= 2 and data[0] == 0x80 and data[1] <= 5
 
 
@@ -1471,13 +1473,15 @@ def _pickle_reduce_offset(data: bytes, check: Callable[[], None] | None = None) 
     integer, an object's state, or a memo reference before the call does not end the walk.
     Strings and globals are tracked through the memo, because STACK_GLOBAL can take its module
     and name from BINGET. Pickles written back to back (the legacy torch.save layout) are
-    walked in turn. A malformed stream ends with no finding, as a loader would refuse it; a
-    stream longer than the walk limit, or one whose memo or stack outgrows its cap, raises
+    walked in turn, whatever protocol each is written in: a loader that reads one after another
+    reads a protocol 0 stream behind a protocol 2 one. A malformed stream ends with no finding,
+    as a loader would refuse it, so the bytes after the last pickle end the walk; a stream
+    longer than the walk limit, or one whose memo or stack outgrows its cap, raises
     ``_PickleLimit``.
     """
     stream = io.BytesIO(data)
     steps = 0
-    while stream.tell() < len(data) and data[stream.tell()] == 0x80:
+    while stream.tell() < len(data):
         stack: list[object] = []
         memo: dict[object, object] = {}
         try:

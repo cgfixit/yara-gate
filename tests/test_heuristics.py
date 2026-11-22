@@ -554,6 +554,51 @@ def test_overlapping_unfiltered_object_streams_share_the_file_buffer() -> None:
     assert budget.expanded == 0
 
 
+# GLOBAL os.system, MARK, STRING, TUPLE, REDUCE, STOP in protocol 0. Never loaded.
+_PROTO0_CALL = b"cos\nsystem\n(S'true'\ntR."
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("model.pkl", _PROTO0_CALL),
+        ("model.pickle", b"(S'true'\nios\nsystem\n."),
+        ("model.pth", b"(cos\nsystem\nS'true'\no."),
+        ("model.ckpt", b"cos\nsystem\n(U\x04truetR."),
+        # A loader that reads pickles one after another reads protocol 0 behind protocol 2.
+        ("legacy.pt", b"\x80\x02K\x01." + _PROTO0_CALL),
+        ("legacy.pt", b"(lp0\nI1\na." + _PROTO0_CALL),
+    ],
+)
+def test_pickle_protocols_without_a_proto_opcode_are_walked(name: str, data: bytes) -> None:
+    from yara_gate import heuristics
+
+    findings, error = heuristics.pickle_reduce_findings(Path(name), data)
+    assert [finding.rule_id for finding in findings] == ["heuristic_pickle_reduce"]
+    assert error is None
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("ref.pkl", b"cos\nsystem\n."),
+        ("join.pkl", b"cos.path\njoin\n(S'a'\nS'b'\ntR."),
+        ("quoted.pkl", b"The classic payload is:\n\n" + _PROTO0_CALL + b"\n"),
+        ("paths.pth", b"./src\n../lib\n"),
+        ("tutor.pt", b"Bem-vindo ao tutorial. (Leia com calma.)\n"),
+        ("legacy.pt", b"\x80\x02K\x01." + bytes(range(256))),
+        ("empty.pkl", b""),
+        # Without a header the bytes say nothing, and the name is not a pickle's.
+        ("notes.txt", _PROTO0_CALL),
+        ("notes", _PROTO0_CALL),
+    ],
+)
+def test_pickle_walk_without_a_proto_opcode_reports_only_a_call(name: str, data: bytes) -> None:
+    from yara_gate import heuristics
+
+    assert heuristics.pickle_reduce_findings(Path(name), data) == ([], None)
+
+
 def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     import pickle
 
