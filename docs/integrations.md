@@ -258,7 +258,11 @@ directory the gate owns, and reads only what the gate allowed:
    mtime, then copy it under its original basename in private, unwatched staging.
    Reject files over 100 MiB before copying and cap the copy at 100 MiB even if
    the source grows. Compare the source's size
-   and mtime again after the copy and drop the copy if they changed.
+   and mtime again after the copy and drop the copy if they changed. Read the
+   entry through one descriptor opened without following a link, reached through
+   each directory the same way, and take its type, size, and times from that
+   descriptor: the entry was listed earlier, and a link put in its place since
+   then would otherwise be followed out of the sync folder into `allowed/`.
 3. Scan the staged copy with `yara-gate scan STAGED --json --policy POLICY
    --home GATE_REPORTS --rules RULES`, and allow it only on exit 0, exactly one
    record, that policy's read rule, and a record `sha256` equal to the SHA-256 of the
@@ -306,6 +310,12 @@ against a fake sync folder (clean, injected, metadata, lock, placeholder, symlin
 conflicted-copy, and still-growing entries) held the injected files, allowed the
 clean one whole once it stopped changing, skipped every other entry with a reason,
 left the sync folder unchanged, and refused a gate home inside it with exit 2.
+A direct run on 2026-11-22 swapped a listed file for a link to a file outside the
+folder, its directory for a link to an outside directory, and the file for a FIFO:
+each is logged `skip ... link or other entry in its place; not read` and nothing is
+copied ([record](verification/2026-11-22-sync-example-link-swap.md)). On Windows the
+script has no open that refuses a link, so it checks the entry, opens it, and
+compares the two; a swap inside that moment is not excluded there.
 
 Not established here: how the Dropbox client itself writes (temporary name and
 rename, or in place), how its online-only placeholders look on each OS, whether it

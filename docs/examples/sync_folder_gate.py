@@ -16,6 +16,14 @@ placeholders, which a read would hydrate), zero-length files (a placeholder or a
 progress), and files whose size or mtime changed between two looks. ``conflicted copy`` files
 are scanned like any other and named in the log so the operator can decide a policy.
 
+A listed entry is looked at again when it is read. Each directory between the sync folder and
+the file is opened from the one before it without following a link, the file is opened the
+same way, and its type, size, and times are then taken from that open descriptor. An entry
+that became a link, or a directory that did, after the listing is logged and not read, so a
+swap cannot bring a file from outside the sync folder into ``allowed/``. Windows has no such
+open: there the entry is checked, opened, and compared with what was checked, and its
+resolved path must still lie in the sync folder; a swap inside that moment is not excluded.
+
 Each admission is bound to the detector that made it. A run first scans a fixed probe from
 stdin and takes the policy, ``ruleset_sha256``, ``engine_version``, ``tool_version``, and
 ``detector_sha256`` from its record; a file whose ledger entry carries another identity is
@@ -39,6 +47,7 @@ Files over 100 MiB are held without copying and make the run exit 2.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -102,7 +111,11 @@ def main() -> int:
             if reason == "file exceeds 100MB":
                 worst = 2
             continue
-        info = path.stat()
+        try:
+            info = path.lstat()
+        except OSError:
+            _log("skip", relative, "vanished")
+            continue
         key = f"{info.st_size}:{info.st_mtime_ns}"
         previous = ledger.get(relative, {})
         if (
@@ -119,7 +132,10 @@ def main() -> int:
         if "conflicted copy" in path.name:
             _log("note", relative, "conflicted copy; scanned like any file")
         try:
-            staged = _stage(path, home / "staging")
+            staged = _stage(sync_root, path, home / "staging")
+        except _NotRead as exc:
+            _log("skip", relative, str(exc))
+            continue
         except ValueError as exc:
             _log("held", relative, str(exc))
             worst = 2
@@ -304,38 +320,101 @@ def _settled(path: Path, info: os.stat_result) -> bool:
         return True
     time.sleep(_SETTLE_SECONDS)
     try:
-        again = path.stat()
+        again = path.lstat()
     except OSError:
         return False
     return (again.st_size, again.st_mtime_ns) == (info.st_size, info.st_mtime_ns)
 
 
-def _stage(source: Path, staging: Path) -> Path | None:
-    """Bound the copy into private staging; staging must not be a watched inbox."""
-    before = source.stat()
-    if before.st_size > MAX_FILE_BYTES:
-        raise ValueError("file exceeds 100MB")
-    folder = staging / secrets.token_hex(8)
-    folder.mkdir(mode=0o700)
-    partial = folder / source.name
-    ready = False
+class _NotRead(Exception):
+    """The entry is not the regular file that was listed. Nothing was read from it."""
+
+
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_OPEN_BENEATH = bool(_NOFOLLOW) and os.open in os.supports_dir_fd
+_SWAPPED = "link or other entry in its place; not read"
+
+
+def _regular(info: os.stat_result) -> bool:
+    attributes = getattr(info, "st_file_attributes", 0)
+    return stat.S_ISREG(info.st_mode) and not attributes & _REPARSE
+
+
+def _open_source(root: Path, source: Path) -> int:
+    """Open ``source`` under ``root`` for reading, following no link on the way.
+
+    ``_skip_reason`` saw the entry earlier; this is the look that counts, because it is the
+    one the bytes come from. The caller must still check the descriptor with ``_regular``.
+    """
+    binary = getattr(os, "O_BINARY", 0)
+    if not _OPEN_BENEATH:
+        # Windows: no O_NOFOLLOW and no dir_fd. Refuse the entry from its lstat, open it,
+        # and require the same file; then require its resolved path to be in the folder.
+        try:
+            named = source.lstat()
+            if not _regular(named):
+                raise _NotRead(_SWAPPED)
+            fd = os.open(source, os.O_RDONLY | binary)
+        except FileNotFoundError as exc:
+            raise _NotRead("vanished") from exc
+        try:
+            inside = Path(os.path.realpath(source)).is_relative_to(os.path.realpath(root))
+            if not inside or not os.path.samestat(named, os.fstat(fd)):
+                raise _NotRead(_SWAPPED)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+    folder = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        with source.open("rb") as handle, partial.open("wb") as out:
-            remaining = MAX_FILE_BYTES
-            while chunk := handle.read(min(1024 * 1024, remaining + 1)):
-                if len(chunk) > remaining:
-                    raise ValueError("file exceeds 100MB")
-                out.write(chunk)
-                remaining -= len(chunk)
-        after = source.stat()
-        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
-            return None
-        ready = True
-        return partial
+        for part in source.relative_to(root).parts[:-1]:
+            below = os.open(part, os.O_RDONLY | os.O_DIRECTORY | _NOFOLLOW, dir_fd=folder)
+            os.close(folder)
+            folder = below
+        # O_NONBLOCK: a FIFO put in the file's place must not hold the open.
+        flags = os.O_RDONLY | _NOFOLLOW | getattr(os, "O_NONBLOCK", 0) | binary
+        return os.open(source.name, flags, dir_fd=folder)
+    except OSError as exc:
+        # A link at the last step is ELOOP (EMLINK on FreeBSD); one on the way is ENOTDIR too.
+        if exc.errno == errno.ENOENT:
+            raise _NotRead("vanished") from exc
+        if exc.errno in (errno.ELOOP, errno.EMLINK, errno.ENOTDIR):
+            raise _NotRead(_SWAPPED) from exc
+        raise
     finally:
-        if not ready:
-            partial.unlink(missing_ok=True)
-            folder.rmdir()
+        os.close(folder)
+
+
+def _stage(root: Path, source: Path, staging: Path) -> Path | None:
+    """Bound the copy into private staging; staging must not be a watched inbox."""
+    with os.fdopen(_open_source(root, source), "rb") as handle:
+        before = os.fstat(handle.fileno())
+        if not _regular(before):
+            raise _NotRead(_SWAPPED)
+        if before.st_size > MAX_FILE_BYTES:
+            raise ValueError("file exceeds 100MB")
+        folder = staging / secrets.token_hex(8)
+        folder.mkdir(mode=0o700)
+        partial = folder / source.name
+        ready = False
+        try:
+            with partial.open("wb") as out:
+                remaining = MAX_FILE_BYTES
+                while chunk := handle.read(min(1024 * 1024, remaining + 1)):
+                    if len(chunk) > remaining:
+                        raise ValueError("file exceeds 100MB")
+                    out.write(chunk)
+                    remaining -= len(chunk)
+            # The same open file, not whatever the name points at now.
+            after = os.fstat(handle.fileno())
+            if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                return None
+            ready = True
+            return partial
+        finally:
+            if not ready:
+                partial.unlink(missing_ok=True)
+                folder.rmdir()
 
 
 def _sha256(path: Path) -> str:
