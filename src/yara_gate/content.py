@@ -4435,15 +4435,18 @@ UNREAD_FILTERS = frozenset(_FILTER_LABELS.values()) | {"other"}
 
 
 def _unread_label(
-    data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
+    data: bytes,
+    stream_dict: dict[bytes, PdfValue],
+    objects: dict[tuple[int, int], PdfValue | None],
+    budget: Budget,
 ) -> str:
     """The first filter of the chain this view does not decode, or the last one when every
     filter is an ASCII stage with nothing after it, as a ``UNREAD_FILTERS`` label."""
-    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects, budget)
     chain = filters if isinstance(filters, list) else [filters]
     label = "other"
     for item in chain:
-        name = _pdf_resolve(data, item, objects)
+        name = _pdf_resolve(data, item, objects, budget)
         label = _FILTER_LABELS.get(name, "other") if isinstance(name, bytes) else "other"
         if not isinstance(name, bytes) or name not in _PDF_FILTERS:
             break
@@ -4604,11 +4607,11 @@ def _pdf_stream_decode(
         if b"/FlateDecode" not in data[max(0, start.start() - 1024) : start.start()]:
             return None, None
         return _inflate(body, budget), None
-    plan = _pdf_flate_plan(data, stream_dict, objects)
+    plan = _pdf_flate_plan(data, stream_dict, objects, budget)
     if plan is None:
         if b"/Filter" not in stream_dict or stream_dict.get(b"/Subtype") == b"/Image":
             return None, None
-        return None, _unread_label(data, stream_dict, objects)
+        return None, _unread_label(data, stream_dict, objects, budget)
     stages, parms, kind = plan
     if kind != _PDF_FLATE and (
         stream_dict.get(b"/Subtype") == b"/Image" or b"/Width" in stream_dict
@@ -4620,7 +4623,7 @@ def _pdf_stream_decode(
     if kind == _PDF_LZW:
         if len(body) > MAX_LZW_BYTES:
             return None, "LZWDecode"
-        early = _pdf_resolve(data, parms.get(b"/EarlyChange"), objects)
+        early = _pdf_resolve(data, parms.get(b"/EarlyChange"), objects, budget)
         inflated = _lzw(body, 0 if early == b"0" else 1, budget)
     elif kind == _PDF_RUN_LENGTH:
         if len(body) > MAX_RUN_LENGTH_BYTES:
@@ -4773,12 +4776,12 @@ class PdfObjects:
         if pairs > 2 * MAX_OBJSTM_OBJECTS:
             return None
         data = self._data
-        filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+        filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects, self._budget)
         if isinstance(filters, list) and len(filters) > 1:
             # Decoding stops at the first FlateDecode, so a filter after it (ASCIIHexDecode, a
             # second Flate pass) is still encoded and the objects inside are not the ones a
             # reader sees. Only ASCII stages may come before it, as the last filter.
-            names = [_pdf_resolve(data, item, objects) for item in filters]
+            names = [_pdf_resolve(data, item, objects, self._budget) for item in filters]
             if names[-1] not in _PDF_FLATE_NAMES or not all(
                 name in _PDF_ASCII_STAGES for name in names[:-1]
             ):
@@ -4924,12 +4927,20 @@ def _last_match(
 
 
 def _pdf_resolve(
-    data: bytes, value: PdfValue | None, objects: dict[tuple[int, int], PdfValue | None]
+    data: bytes,
+    value: PdfValue | None,
+    objects: dict[tuple[int, int], PdfValue | None],
+    budget: Budget,
 ) -> PdfValue | None:
-    """Follow one indirect reference to a top-level object; anything else is returned as is."""
+    """Follow one indirect reference to a top-level object; anything else is returned as is.
+
+    A reference not met before costs one pass over the file, and one filter array can hold
+    hundreds of them, so the deadline is checked before each pass.
+    """
     if not isinstance(value, tuple):
         return value
     if value not in objects:
+        budget.check()
         number, generation = value
         pattern = re.compile(
             rb"(?<![0-9])%d[\x00\t\n\f\r ]+%d[\x00\t\n\f\r ]+obj" % (number, generation)
@@ -4951,7 +4962,10 @@ def _pdf_resolve(
 
 
 def _pdf_flate_plan(
-    data: bytes, stream_dict: dict[bytes, PdfValue], objects: dict[tuple[int, int], PdfValue | None]
+    data: bytes,
+    stream_dict: dict[bytes, PdfValue],
+    objects: dict[tuple[int, int], PdfValue | None],
+    budget: Budget,
 ) -> tuple[tuple[bytes, ...], dict[bytes, PdfValue], bytes] | None:
     """The ASCII stages before the decoding filter, that filter's parameters, and the filter
     (FlateDecode, LZWDecode, or RunLengthDecode), or None.
@@ -4960,20 +4974,22 @@ def _pdf_flate_plan(
     alone. With a ``/DecodeParms`` array, the entry at the filter's index applies, as in pdf.js
     and MuPDF. A lone dictionary applies when the filter is the first one.
     """
-    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects)
+    filters = _pdf_resolve(data, stream_dict.get(b"/Filter"), objects, budget)
     chain = filters if isinstance(filters, list) else [filters]
     stages: list[bytes] = []
     for index, item in enumerate(chain):
-        name = _pdf_resolve(data, item, objects)
+        name = _pdf_resolve(data, item, objects, budget)
         kind = _PDF_FILTERS.get(name) if isinstance(name, bytes) else None
         if kind is None:
             return None
         if kind not in _PDF_TERMINALS:
             stages.append(kind)
             continue
-        parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects)
+        parms = _pdf_resolve(data, stream_dict.get(b"/DecodeParms"), objects, budget)
         if isinstance(parms, list):
-            parms = _pdf_resolve(data, parms[index], objects) if index < len(parms) else None
+            parms = (
+                _pdf_resolve(data, parms[index], objects, budget) if index < len(parms) else None
+            )
         elif index:
             parms = None
         return tuple(stages), parms if isinstance(parms, dict) else {}, kind

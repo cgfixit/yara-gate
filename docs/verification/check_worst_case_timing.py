@@ -39,6 +39,7 @@ VERDICTS = {
     "comment-phrases.html": "advisory",
     "svg-foreign-embeds.svg": "advisory",
     "library-urls.library-ms": "block",
+    "text-stray-joiners.txt": "advisory",
 }
 
 
@@ -755,6 +756,19 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         head = opening + b"Content-Transfer-Encoding: " + encoding + b"\r\n\r\n"
         count, rest = divmod(SIZE - len(head) - 160001, len(token))
         yield name, head + token * count + b"-" + b"a" * (160000 + rest), reason
+    # The checks beside YARA that walk a whole file. Stray joiners were one finding each, 1.4
+    # million of them here; the first 100 are reported.
+    yield "text-stray-joiners.txt", _filled(b"", "\u200d".encode()), None
+    # Two million names and none of the seven the action check looks for: one pass reads
+    # them, where a pass per name read the file seven times.
+    yield "pdf-name-run.pdf", _filled(b"%PDF-1.7\n", b"/a"), None
+    # Two million top-level tokens for the /Encrypt check, which reads on once it has seen
+    # ``Encr`` anywhere in the file. The annotation reader's token cap ends the scan.
+    yield (
+        "pdf-encrypt-tokens.pdf",
+        _filled(b"%PDF-1.7\nEncr ", b"a "),
+        "pdf annotation tokens exceed 4000000",
+    )
 
 
 def _unread_pdf() -> bytes:

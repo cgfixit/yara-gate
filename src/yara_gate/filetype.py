@@ -3,6 +3,7 @@
 import codecs
 import re
 import unicodedata
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -293,34 +294,47 @@ def _pe_at(data: bytes, offset: int) -> bool:
     return pe + 4 <= len(data) and data[pe : pe + 4] == b"PE\x00\x00"
 
 
-def embedded_exec_offset(data: bytes) -> tuple[str, int] | None:
-    """An executable header that does not start the file."""
-    start = 1
-    while True:
-        found = data.find(b"MZ", start)
-        if found < 0:
-            break
-        if _pe_at(data, found):
-            return ("pe", found)
-        start = found + 1
-    start = 1
-    while True:
-        elf_at = data.find(ELF, start)
-        if elf_at < 0:
-            break
-        if _elf_header(data, elf_at):
-            return ("elf", elf_at)
-        start = elf_at + 1
+# Candidate magics one search reads between two looks at the scan deadline.
+_HEADER_CHECK_EVERY = 4096
+
+
+def embedded_exec_offset(
+    data: bytes, check: Callable[[], None] | None = None
+) -> tuple[str, int] | None:
+    """An executable header that does not start the file. ``check`` enforces the scan
+    deadline: a file of magics with no header behind them is tried one candidate at a time."""
+    found = _header_offset(data, b"MZ", _pe_at, check)
+    if found is not None:
+        return ("pe", found)
+    found = _header_offset(data, ELF, _elf_header, check)
+    if found is not None:
+        return ("elf", found)
     for magic in MACHO:
-        start = 1
-        while True:
-            at = data.find(magic, start)
-            if at < 0:
-                break
-            if _macho_header(data, at):
-                return ("macho", at)
-            start = at + 1
+        found = _header_offset(data, magic, _macho_header, check)
+        if found is not None:
+            return ("macho", found)
     return None
+
+
+def _header_offset(
+    data: bytes,
+    magic: bytes,
+    valid: Callable[[bytes, int], bool],
+    check: Callable[[], None] | None,
+) -> int | None:
+    """The first ``magic`` past the file's start that ``valid`` accepts as a header."""
+    start = 1
+    tried = 0
+    while True:
+        found = data.find(magic, start)
+        if found < 0:
+            return None
+        if valid(data, found):
+            return found
+        start = found + 1
+        tried += 1
+        if check is not None and tried % _HEADER_CHECK_EVERY == 0:
+            check()
 
 
 def _elf_header(data: bytes, offset: int) -> bool:

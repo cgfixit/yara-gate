@@ -415,7 +415,7 @@ def _scan_file(
             readings = _readings(unit.data, decoded)
             for text, view in readings:
                 for finding in [
-                    *joiner_findings(text),
+                    *joiner_findings(text, budget.check),
                     *tag_findings(text),
                     *variation_findings(text),
                 ]:
@@ -452,7 +452,7 @@ def _scan_file(
                     view_findings.extend(_encoded_phrase_findings(derived, view_findings))
                 if view == "html-unescaped":
                     # An entity such as &zwnj; hides a joiner that the raw check cannot see.
-                    view_findings.extend(joiner_findings(derived.decode("utf-8")))
+                    view_findings.extend(joiner_findings(derived.decode("utf-8"), budget.check))
                 if view in {"html-unescaped", "json-unescaped"}:
                     # &#xE0049; or \udb40\udc49 spells a tag character the raw bytes do not hold,
                     # and an escaped run of variation selectors is hidden the same way.
@@ -477,7 +477,7 @@ def _scan_file(
                     view_findings.extend(_encoded_phrase_findings(derived, view_findings))
                 else:
                     # An action dictionary inside an object stream is invisible to the raw check.
-                    view_findings.extend(pdf_token_findings(derived, pdf_objects))
+                    view_findings.extend(pdf_token_findings(derived, pdf_objects, budget.check))
                 for finding in view_findings:
                     finding.member_path = list(unit.member_path)
                     finding.view = view

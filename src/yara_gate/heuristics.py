@@ -35,6 +35,7 @@ PDF_TOKENS = (
     b"/EmbeddedFile",
     b"/RichMedia",
 )
+_PDF_TOKEN_SET = frozenset(PDF_TOKENS)
 OFFICE_KEYWORDS = ("Shell", "CreateObject", "URLDownloadToFile")
 
 
@@ -61,8 +62,8 @@ def heuristic_findings(
     check: Callable[[], None] | None = None,
 ) -> tuple[list[Finding], str | None]:
     """Structural findings and an incomplete reason; ``check`` enforces the scan deadline."""
-    findings = pdf_findings(data, objects)
-    findings.extend(embedded_findings(data))
+    findings = pdf_findings(data, objects, check)
+    findings.extend(embedded_findings(data, check))
     pickled, pickle_error = pickle_reduce_findings(path, data, check)
     findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
@@ -73,7 +74,7 @@ def heuristic_findings(
     findings.extend(mcp)
     office, error = office_findings(path, data)
     findings.extend(office)
-    if error is None and pdf_encrypted(data):
+    if error is None and pdf_encrypted(data, check):
         # The strings and streams a reader decrypts are ciphertext here, so the text is unread.
         error = "encrypted pdf"
     if error is None:
@@ -85,30 +86,46 @@ def heuristic_findings(
     return findings, error
 
 
-def joiner_findings(text: str) -> list[Finding]:
+# The stray joiners one reading reports. Each is a note with its own offset, and a count past
+# this adds nothing a reviewer can use, while a file made of joiners would otherwise put one
+# finding per character into the scan's memory and its report.
+MAX_JOINER_FINDINGS = 100
+_JOINER = re.compile("[\u200c\u200d]")
+# Joiners walked between two looks at the scan deadline.
+_JOINER_CHECK_EVERY = 4096
+
+
+def joiner_findings(text: str, check: Callable[[], None] | None = None) -> list[Finding]:
     """Note a ZWNJ or ZWJ that is not holding an emoji or a joining script together.
 
     One stray joiner is a paste artifact as often as a hiding trick, so it is a note; the
-    conjunction with a lexical note in the same member is ``control_conjunction``.
+    conjunction with a lexical note in the same member is ``control_conjunction``. At most
+    ``MAX_JOINER_FINDINGS`` are reported, the first ones in ``text``; ``check`` enforces the
+    scan deadline while the joiners are walked.
     """
-    if "\u200c" not in text and "\u200d" not in text:
-        return []
     findings: list[Finding] = []
-    offset = 0
-    chars = list(text)
-    for index, char in enumerate(chars):
-        size = len(char.encode("utf-8"))
-        if char in {"\u200c", "\u200d"} and not _joiner_allowed(chars, index):
-            findings.append(
-                Finding(
-                    rule_id="heuristic_invisible_joiner",
-                    offset=offset,
-                    length=size,
-                    severity=Severity.note,
-                    source=FindingSource.heuristic,
-                )
+    # The UTF-8 offset of text[at], carried forward so each finding costs only the text
+    # since the one before it.
+    offset = at = 0
+    for count, found in enumerate(_JOINER.finditer(text)):
+        if check is not None and count % _JOINER_CHECK_EVERY == 0:
+            check()
+        index = found.start()
+        if _joiner_allowed(text, index):
+            continue
+        offset += len(text[at:index].encode("utf-8"))
+        at = index
+        findings.append(
+            Finding(
+                rule_id="heuristic_invisible_joiner",
+                offset=offset,
+                length=3,
+                severity=Severity.note,
+                source=FindingSource.heuristic,
             )
-        offset += size
+        )
+        if len(findings) == MAX_JOINER_FINDINGS:
+            break
     return findings
 
 
@@ -441,19 +458,28 @@ def _b64_far(grids: list[bytes], lag: int, offset: int) -> bytes:
     return head + found.to_bytes(count, "big")
 
 
-def pdf_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
+def pdf_findings(
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    check: Callable[[], None] | None = None,
+) -> list[Finding]:
     if sniff(data) != "pdf":
         return []
-    return pdf_token_findings(data, objects)
+    return pdf_token_findings(data, objects, check)
 
 
-def pdf_encrypted(data: bytes) -> bool:
+# Names, tokens, or candidate headers one of the walks below reads between two looks at the
+# scan deadline. Each walk covers a whole file, so without a look it runs on past the deadline.
+WALK_CHECK_EVERY = 4096
+
+
+def pdf_encrypted(data: bytes, check: Callable[[], None] | None = None) -> bool:
     """True when a trailer or XRef stream dictionary has an /Encrypt entry.
 
     A small top-level tokenizer skips whitespace and comments between tokens (both are legal
     separators), literal and hex strings, and stream bodies, so /Encrypt in page text, a comment,
     or a content stream does not count. The key is compared after #xx decoding, and its value
-    must be a dictionary or an indirect reference.
+    must be a dictionary or an indirect reference. ``check`` enforces the scan deadline.
     """
     if sniff(data) != "pdf":
         return False
@@ -464,7 +490,9 @@ def pdf_encrypted(data: bytes) -> bool:
     depth = 0
     root_kind = b""
     last_keyword = b""
-    for token in tokens:
+    for count, token in enumerate(tokens):
+        if check is not None and count % WALK_CHECK_EVERY == 0:
+            check()
         if token == b"<<":
             if depth == 0:
                 root_kind = b"trailer" if last_keyword == b"trailer" else b"object"
@@ -561,24 +589,30 @@ def _skip_pdf_string(data: bytes, position: int) -> int:
     return position
 
 
-def pdf_token_findings(data: bytes, objects: PdfObjectLookup | None = None) -> list[Finding]:
+def pdf_token_findings(
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    check: Callable[[], None] | None = None,
+) -> list[Finding]:
     """PDF action and embedding names in ``data``, which may be an inflated stream view.
 
     Every name blocks except an /OpenAction whose every occurrence opens a page: a direct
     destination array, or a /GoTo action dictionary with no /Next. That one is the note
     ``heuristic_pdf_OpenAction_goto``. ``objects`` returns every definition of an object
     number and generation in the whole file, raw or in an object stream, so a reference read
-    from an inflated view resolves against the file it came from.
+    from an inflated view resolves against the file it came from. ``check`` enforces the scan
+    deadline while the names are walked.
     """
     findings: list[Finding] = []
+    spans = _pdf_name_spans(data, check)
     for token in PDF_TOKENS:
-        found = _pdf_name_span(data, token)
+        found = spans.get(token)
         if found is None:
             continue
         offset, length = found
         rule_id = "heuristic_pdf_" + token.decode("ascii").removeprefix("/")
         severity = Severity.block
-        if token == b"/OpenAction" and _open_action_is_goto(data, objects):
+        if token == b"/OpenAction" and _open_action_is_goto(data, objects, check):
             rule_id, severity = "heuristic_pdf_OpenAction_goto", Severity.note
         findings.append(
             Finding(
@@ -598,7 +632,11 @@ _PDF_DESTINATIONS = frozenset(
 _PDF_NUMBER = re.compile(rb"[+-]?(?:\d+\.?\d*|\.\d+)")
 
 
-def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) -> bool:
+def _open_action_is_goto(
+    data: bytes,
+    objects: PdfObjectLookup | None = None,
+    check: Callable[[], None] | None = None,
+) -> bool:
     """True when every /OpenAction in ``data`` only opens a page.
 
     Every occurrence the name scanner finds is read from its own position, so a malformed
@@ -611,7 +649,9 @@ def _open_action_is_goto(data: bytes, objects: PdfObjectLookup | None = None) ->
     """
     lookup = objects if objects is not None else PdfRawObjects(data)
     values: list[list[bytes]] = []
-    for match in _PDF_NAME.finditer(data):
+    for count, match in enumerate(_PDF_NAME.finditer(data)):
+        if check is not None and count % WALK_CHECK_EVERY == 0:
+            check()
         if _decode_pdf_name(match.group()) != b"/OpenAction":
             continue
         if len(values) >= MAX_PDF_DEFINITIONS:
@@ -780,8 +820,8 @@ def _pdf_dictionary(value: list[bytes]) -> dict[bytes, list[bytes]] | None:
     return entries
 
 
-def embedded_findings(data: bytes) -> list[Finding]:
-    found = embedded_exec_offset(data)
+def embedded_findings(data: bytes, check: Callable[[], None] | None = None) -> list[Finding]:
+    found = embedded_exec_offset(data, check)
     if found is None:
         return []
     kind, offset = found
@@ -912,7 +952,7 @@ def _project_bytes(data: bytes) -> bytes:
     return b"\n".join(chunks)
 
 
-def _joiner_allowed(chars: list[str], index: int) -> bool:
+def _joiner_allowed(chars: Sequence[str], index: int) -> bool:
     left = _joiner_neighbor(chars, index, -1)
     right = _joiner_neighbor(chars, index, 1)
     if not left or not right:
@@ -922,7 +962,7 @@ def _joiner_allowed(chars: list[str], index: int) -> bool:
     return _script_letter(left) and _script_letter(right)
 
 
-def _joiner_neighbor(chars: list[str], index: int, step: int) -> str:
+def _joiner_neighbor(chars: Sequence[str], index: int, step: int) -> str:
     cursor = index + step
     while 0 <= cursor < len(chars) and ord(chars[cursor]) in _VARIATION:
         cursor += step
@@ -987,12 +1027,25 @@ _PDF_LEX = re.compile(
 )
 
 
-def _pdf_name_span(data: bytes, token: bytes) -> tuple[int, int] | None:
-    for match in _PDF_NAME.finditer(data):
-        decoded = _decode_pdf_name(match.group())
-        if decoded == token:
-            return match.start(), len(match.group())
-    return None
+def _pdf_name_spans(
+    data: bytes, check: Callable[[], None] | None = None
+) -> dict[bytes, tuple[int, int]]:
+    """The offset and length of the first spelling of each ``PDF_TOKENS`` name in ``data``.
+
+    One pass over the names finds all seven, where a pass per name read a file of names seven
+    times. ``check`` enforces the scan deadline.
+    """
+    spans: dict[bytes, tuple[int, int]] = {}
+    for count, match in enumerate(_PDF_NAME.finditer(data)):
+        if check is not None and count % WALK_CHECK_EVERY == 0:
+            check()
+        name = match.group()
+        decoded = _decode_pdf_name(name)
+        if decoded in _PDF_TOKEN_SET and decoded not in spans:
+            spans[decoded] = (match.start(), len(name))
+            if len(spans) == len(_PDF_TOKEN_SET):
+                break
+    return spans
 
 
 # Walk opcodes only. pickle.loads would run the callable this check exists to stop.
