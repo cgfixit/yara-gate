@@ -68,7 +68,7 @@ is not split.
 | `probe_rule_coverage.py --verify` | passed. Beside the base run, only the source revision and the digests of five archives the probe builds with the current time differ |
 | `yara-gate conform` | 94 fixtures, 282 checks, 0 changed verdicts, 0 changed findings |
 | `measure_precision.py`, `check_rule_pairs.py`, `lint_rules.py`, `probe_match_cap.py` | the precision table is the base's (328 files, 0 incomplete); rule pairs pass (120 rules); 89 rules lint; 3,031 flooded texts, 0 with a cap blind spot |
-| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | PAGES_RESULT |
+| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | at `3ad1cc4`: outcomes match the reviewed baseline, 93 scenarios under 3 policies |
 | `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_doc_links.py`, `check_text_controls.py` | pass |
 
 Not run here: the full pytest suite, selftest, and the Windows job, which hosted CI runs.
