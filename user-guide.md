@@ -217,7 +217,7 @@ uv run yara-gate hunt \
   --scope ~/Documents
 ```
 
-`--reason` is required. It is collapsed to one line, cut at 300 characters, then escaped, so a trailing backslash still compiles. Control characters are removed and non-ASCII text is kept. `--confirmed-by` labels the candidate with who confirmed it (default `operator`). The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load.
+`--reason` is required. It is collapsed to one line, cut at 300 characters, then escaped, so a trailing backslash still compiles. Control characters are removed and non-ASCII text is kept. `--confirmed-by` labels the candidate with who confirmed it (default `operator`). The sha256 must be a directory under `~/YaraGate/blocked/`. The new rule is `<rules-root>/local/hunt_<12 hex chars>.yar` and its status is `candidate`. Candidates do not block. On an installed copy that folder is the user-data directory, and the packaged rules still load. After the `candidate ... hits=N` line the command prints each file under `--scope` that the candidate matches, one per line. Those names come from whoever made the files, so a control or invisible character in one (an escape sequence, a line break, a bidi override) is printed as a backslash escape such as `\x1b` or `\u202e`. The listing is for reading; a name printed with an escape is not the path to hand to another command.
 
 When you want that rule to block later scans:
 

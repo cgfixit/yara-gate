@@ -184,3 +184,36 @@ def test_hunt_requires_a_reason_and_a_blocked_file(tmp_path: Path, rules_copy: P
         assert "reason" in str(exc)
     else:
         raise AssertionError("empty reason was accepted")
+
+
+def test_hunt_prints_a_hit_name_that_cannot_control_the_terminal(
+    tmp_path: Path, rules_copy: Path
+) -> None:
+    from typer.testing import CliRunner
+
+    from yara_gate.cli import _printable, app
+
+    home = GatePaths(tmp_path / "gate")
+    home.ensure()
+    src = home.inbox / "eicar.com"
+    src.write_bytes(eicar_bytes())
+    blocked = process_inbox_file(home, src, rules_dir=rules_copy)
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    # Clear the screen, set the window title, return to the line start, start a second line,
+    # and reverse the reading order: each is a name a POSIX file system accepts.
+    hostile = "a\x1b[2J\x1b]0;title\x07b\rc\nd\u202ee.com"
+    (scope / hostile).write_bytes(eicar_bytes())
+    (scope / "caf\u00e9 notes.com").write_bytes(eicar_bytes())
+    args = ["hunt", "--confirmed", blocked.sha256, "--reason", "confirmed", "--scope", str(scope)]
+    result = CliRunner().invoke(app, [*args, "--home", str(home.root), "--rules", str(rules_copy)])
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0].endswith("hits=2")
+    assert len(lines) == 3
+    assert not any(ord(char) < 32 or char in "\x7f\u202e" for line in lines for char in line)
+    assert str(scope / "a\\x1b[2J\\x1b]0;title\\x07b\\rc\\nd\\u202ee.com") in lines
+    # Text that controls nothing is printed as it is, accents and backslashes included.
+    assert str(scope / "caf\u00e9 notes.com") in lines
+    assert _printable("C:\\Users\\a\\b.txt") == "C:\\Users\\a\\b.txt"
+    assert _printable("bad\udcff.txt") == "bad\\udcff.txt"

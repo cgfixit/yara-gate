@@ -177,10 +177,18 @@ A merge to `main` publishes the demo in three jobs:
    is on `main`, and the commit it deploys is never a ref taken from the event
    payload. `scripts/pages_deploy_gate.py` lets only the newest `main` commit
    through, and only after every other check on it has finished `success`,
-   `skipped`, or `neutral`: CodeQL and any other check suite included. It waits up
+   `skipped`, or `neutral`: CodeQL and any other check suite included. Two of them
+   must also be present: the `ci` run for the push, and a CodeQL analysis of the
+   commit on `main` that finished with success. A commit CodeQL never ran on has
+   nothing red and nothing running, and it is not let through. The gate knows the
+   analysis by the run path GitHub's default setup uses
+   (`dynamic/github-code-scanning/codeql`, `CODEQL` in the script); if CodeQL moves
+   to a workflow file, change `CODEQL` in the same change or every deploy will stop
+   at the deadline with `CodeQL has not passed on this commit`. It waits up
    to 20 minutes, skips a commit that `main` has already moved past (the newer
    commit deploys itself), and stops the deploy on any red, cancelled, or timed-out
-   check, on a check still running at the deadline, or on an API error.
+   check, on a check still running or missing at the deadline, or on an API error
+   ([record](verification/2026-11-22-pages-gate-codeql.md)).
 2. **Re-record and build the demo**, job `build` (`contents: read`). It checks out
    the default ref, confirms it is the gated commit, uses no dependency cache, syncs
    the locked environment, re-records with `--baseline`, builds, and uploads only
