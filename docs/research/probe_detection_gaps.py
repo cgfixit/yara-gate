@@ -157,6 +157,13 @@ def xlsx_header(header: str, element: str = "oddHeader") -> bytes:
     return xlsx_sheet(after=f"<headerFooter><{element}>{escaped}</{element}></headerFooter>")
 
 
+def url_link(before: bytes, text: bytes, after: bytes = b"") -> bytes:
+    """A page with one link whose URL holds ``text`` as base64 between ``before`` and ``after``."""
+    encoded = base64.b64encode(text).rstrip(b"=")
+    url = b"https://news.example.invalid" + before + encoded + after
+    return b'<p>Spring news.</p><a href="' + url + b'">Read more</a>'
+
+
 def json_escaped(text: str) -> bytes:
     # The first capital I becomes I, so only the json-unescaped view reads the word.
     return json.dumps({"m": text}).replace("I", "\\u0049", 1).encode()
@@ -1007,6 +1014,30 @@ def cases() -> list[Case]:
         ),
         Case("G1", "base64 control", "m.txt", b"see " + base64.b64encode(phrase), PHRASE_RULE),
         Case("G1", "base64+leet", "m.txt", b"see " + base64.b64encode(LEET.encode()), PHRASE_RULE),
+        Case(
+            "G1",
+            "base64 in a URL query value",
+            "page.html",
+            url_link(b"/r?x=", phrase),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G1", "base64 in a URL path segment", "page.html", url_link(b"/", phrase), PHRASE_RULE
+        ),
+        Case(
+            "G1",
+            "base64 in a later URL path segment",
+            "page.html",
+            url_link(b"/e/c/", phrase, b"/open"),
+            PHRASE_RULE,
+        ),
+        Case(
+            "G1",
+            "base64 in a URL path segment of a text message",
+            "m.txt",
+            b"More at https://news.example.invalid/e/c/" + base64.b64encode(phrase).rstrip(b"="),
+            PHRASE_RULE,
+        ),
         Case("G1", "percent control", "m.txt", PHRASE.replace(" ", "%20").encode(), PHRASE_RULE),
         Case("G1", "percent+leet", "m.txt", LEET.replace(" ", "%20").encode(), PHRASE_RULE),
         Case("G2", "zip control", "a.zip", HIDDEN, PHRASE_RULE),
@@ -1175,6 +1206,21 @@ def cases() -> list[Case]:
             "m.txt",
             b"note "
             + base64.b64encode(b"Version 2.0 build 1234 shipped on 2026-11-06 to 3 regions"),
+            "clean",
+        ),
+        Case(
+            "G1",
+            "base64 of an ordinary sentence in a URL path segment (benign)",
+            "page.html",
+            url_link(b"/e/c/", b"The meeting moved to Thursday at ten and lunch is at noon."),
+            "clean",
+        ),
+        Case(
+            "G1",
+            "a URL path of ordinary words (benign)",
+            "page.html",
+            b'<a href="https://docs.example.invalid/guides/getting-started-with-widgets/'
+            b'installation-and-configuration/advanced">Guide</a>',
             "clean",
         ),
         Case("G5", "tag-character control", "m.txt", ("Hi " + tags(PHRASE)).encode(), "any"),

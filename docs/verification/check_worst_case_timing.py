@@ -40,6 +40,8 @@ VERDICTS = {
     "svg-foreign-embeds.svg": "advisory",
     "library-urls.library-ms": "block",
     "text-stray-joiners.txt": "advisory",
+    # One base64 run of 4 MiB, which is agent_base64_blob whatever its segments decode to.
+    "url-path-segments.html": "advisory",
 }
 
 
@@ -768,6 +770,13 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
         "pdf-encrypt-tokens.pdf",
         _filled(b"%PDF-1.7\nEncr ", b"a "),
         "pdf annotation tokens exceed 4000000",
+    )
+    # One URL path of 246,000 segments that are base64 and do not read as text. The path fails
+    # to decode whole, so each segment is tried on its own.
+    yield (
+        "url-path-segments.html",
+        _filled(b'<a href="https://a.example.invalid/', b"QUJDREVGR0hJSktM/"),
+        None,
     )
 
 
