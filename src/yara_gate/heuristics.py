@@ -1398,6 +1398,12 @@ def mcp_tool_findings(
                 if needs_jsonc and len(body) > _JSONC_MAX:
                     return [], "mcp json exceeds comment limit"
                 return [], None
+            # The budget above read the file as written. A removed comment can take a quote
+            # with it, and then other quotes pair in what is left: the decoder is handed this
+            # text, so the budget is read on it as well.
+            check_json_structure(
+                relaxed.decode(json.detect_encoding(relaxed), "surrogatepass"), check
+            )
             parsed = json.loads(relaxed)
     except JsonLimit:
         return [], "mcp json exceeds structure limit"

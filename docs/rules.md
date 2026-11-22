@@ -295,7 +295,11 @@ and opening braces/brackets outside strings and comments, and 64 nested containe
 The check keeps counters only; escaped quotes and punctuation inside strings or
 comments do not consume that budget. The standard decoder still owns syntax,
 duplicate keys, numbers, and string decoding. Keras's embedded HDF5 config check
-stops at the first JSON object's end. No new dependency is needed.
+stops at the first JSON object's end. No new dependency is needed. An MCP file read
+as JSON with comments is checked twice: as written, and again as the text left once
+comments and trailing commas are removed, because that text is what the decoder is
+handed and a removed comment can change which quotes pair
+([record](verification/2026-11-22-jsonc-structure-budget.md)).
 
 Exhaustion returns incomplete, with `mcp json exceeds structure limit`,
 `notebook json exceeds structure limit`, or `keras config exceeds structure limit`.

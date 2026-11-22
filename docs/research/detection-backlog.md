@@ -184,6 +184,13 @@ exceeds the budget. Ordinary JSON without MCP keys bypasses that heuristic's tre
 allocation. See [the measurements and compatibility checks](../verification/2026-11-16-json-allocation.md).
 There was no `OPEN` detection-gap marker for this availability issue.
 
+The budget read the file as written, and the MCP reader's comment pass then handed the
+decoder other text. A string that holds a line break and `/*`, with `*/` after it, lost
+its second quote with the comment, so an array the budget took for the inside of a string
+was decoded: 300,004 values against a budget of 100,000 on `bed66d4`, complete and clean.
+Since November 22 the budget is read again on the text the comment pass produces
+([record](../verification/2026-11-22-jsonc-structure-budget.md)).
+
 ### Code-relay refusal timing
 
 Issue [#269](https://github.com/cgfixit/yara-gate/issues/269) replaces the
