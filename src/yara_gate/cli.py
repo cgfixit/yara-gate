@@ -208,6 +208,8 @@ def rescan(
         # The copies after this one are unvalidated, as after any other error.
         raise typer.Exit(2) from exc
     except Exception as exc:
+        if str(exc).endswith("local rule compile failed"):
+            _echo_local_failures("local rule compile failed")
         typer.echo(
             f"incomplete: {_incomplete_text(exc)}; remaining copies are unvalidated", err=True
         )
@@ -573,6 +575,7 @@ def rules_install(
     _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
+        _echo_local_failures(error)
         typer.echo(error, err=True)
         raise typer.Exit(code=2)
 
@@ -600,6 +603,7 @@ def rules_update(
     _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
+        _echo_local_failures(error)
         typer.echo(error, err=True)
         raise typer.Exit(code=2)
 
@@ -633,6 +637,7 @@ def setup(
     _echo_unguarded()
     typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
     if error:
+        _echo_local_failures(error)
         typer.echo(error, err=True)
         raise typer.Exit(code=2)
     typer.echo("set up: scans now use bundled and vendor rules and stay offline")
@@ -719,6 +724,21 @@ def _echo_unguarded() -> None:
         typer.echo(f"{key}: unguarded")
 
 
+_NAMED_FAILURES: set[str] = set()
+
+
+def _echo_local_failures(reason: str | None) -> None:
+    """On stderr, name each local rule file that stopped the scan, once per process."""
+    from yara_gate.rules import last_local_failures
+
+    if reason != "local rule compile failed":
+        return
+    for line in last_local_failures():
+        if line not in _NAMED_FAILURES:
+            _NAMED_FAILURES.add(line)
+            typer.echo(f"rule file failed: {_printable(line)}", err=True)
+
+
 def _echo_shadows(skipped: list[str]) -> None:
     for line in skipped:
         if line.endswith(": shadowed by bundled"):
@@ -798,6 +818,7 @@ def _scan_stdin(
 def _emit(result: ScanResult, json_output: bool) -> None:
     from yara_gate.report import compact_report
 
+    _echo_local_failures(result.incomplete_reason)
     if json_output:
         typer.echo(json.dumps(compact_report(result), separators=(",", ":")))
         return

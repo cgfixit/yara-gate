@@ -96,6 +96,13 @@ def test_json_compile_failure_is_an_incomplete_record(tmp_path: Path, rules_copy
     report = json.loads(command.stdout)
     assert command.returncode == report["exit_code"] == 2
     assert report["incomplete_reason"] == "local rule compile failed"
+    # The record stays one JSON line; the file, line, and cause go to stderr, not the report.
+    assert len(command.stdout.splitlines()) == 1
+    assert "broken.yar" not in command.stdout
+    assert (
+        "rule file failed: local/broken.yar line 1: E009 unknown identifier `no_such_name`"
+        in command.stderr
+    )
 
 
 def test_json_symlink_rejection_does_not_expose_target(tmp_path: Path, rules_copy: Path) -> None:
