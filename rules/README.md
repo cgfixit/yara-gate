@@ -44,7 +44,10 @@ The engine is YARA-X, which reads most rules written for YARA 4.x unchanged. A `
   in another file.
 
 One file in `local/` that does not compile makes every scan incomplete
-(`local rule compile failed`), and the report does not name it. Before adding files, run
+(`local rule compile failed`). The report does not name it; `scan`, `rescan`, `setup`, and
+`rules install` or `update` print it on stderr, as
+``rule file failed: local/legacy.yar line 6: E009 unknown identifier `filename` ``. Before
+adding files, run
 
 ```sh
 uv run python docs/research/probe_yara_compat.py RULES_DIR

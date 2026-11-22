@@ -55,6 +55,10 @@ _PLACED_SOURCES: dict[str, dict[str, tuple[str, frozenset[str]]]] = {}
 # Per compiled ruleset digest: the same rules plus a match-cap guard for each rule file, and the
 # files left unguarded (see ``guarded_ruleset``).
 _GUARDED: dict[str, "GuardedRules"] = {}
+# Why each non-vendor file failed in the last compile that stopped on one, for the CLI to name.
+_LOCAL_FAILURES: list[str] = []
+_ERROR_CODE = re.compile(r"error\[(E\d+)\]: ([^\n]*)")
+_ERROR_LINE = re.compile(r"--> [^\n]*:(\d+):\d+")
 # YARA-X keeps this many matches of each string and then drops the rest without notice
 # (DEFAULT_MAX_MATCHES_PER_PATTERN in yara-x 1.23.0, lib/src/scanner/matches.rs).
 MATCH_LIMIT = 1_000_000
@@ -470,6 +474,7 @@ def compile_ruleset(
         return rules, skipped, None, _count_rules(good), _count_skipped(skipped), digest
 
     shipped_root = _readable_shipped_local() if use_overlay else None
+    causes: dict[str, str] = {}
     for path in files:
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -483,7 +488,9 @@ def compile_ruleset(
         try:
             _validate_one(yara_x, path, text)
         except yara_x.CompileError as exc:
-            skipped.append(f"{_rule_key(path, rules_dir)}: {exc.__class__.__name__}")
+            key = _rule_key(path, rules_dir)
+            skipped.append(f"{key}: {exc.__class__.__name__}")
+            causes[key] = _compile_cause(exc)
             continue
         good.append((path, text))
     skipped.extend(shadows)
@@ -492,6 +499,11 @@ def compile_ruleset(
         return None, skipped, reason, 0, _count_skipped(skipped), digest
 
     if _local_compile_failed(skipped):
+        failures = []
+        for line in filter(_local_failure, skipped):
+            key, why = line.split(": ", 1)
+            failures.append(key + causes.get(key, f": {why}"))
+        _LOCAL_FAILURES[:] = failures
         return None, skipped, "local rule compile failed", 0, _count_skipped(skipped), digest
 
     compiler = _rule_compiler(yara_x)
@@ -1572,11 +1584,31 @@ def _rule_compiler(yara_x: Any) -> Any:
 
 
 def _local_compile_failed(skipped: list[str]) -> bool:
-    for line in skipped:
-        if line.startswith("vendor/") or line.endswith(": shadowed by bundled"):
-            continue
-        return True
-    return False
+    return any(_local_failure(line) for line in skipped)
+
+
+def _local_failure(line: str) -> bool:
+    return not (line.startswith("vendor/") or line.endswith(": shadowed by bundled"))
+
+
+def _compile_cause(exc: Exception) -> str:
+    """`` line 6: E009 unknown identifier `filename``` from a YARA-X compile error, or the type."""
+    text = str(exc)
+    code = _ERROR_CODE.search(text)
+    if code is None:
+        return f": {exc.__class__.__name__}"
+    place = _ERROR_LINE.search(text)
+    where = f" line {place.group(1)}" if place else ""
+    return f"{where}: {code.group(1)} {code.group(2)}"
+
+
+def last_local_failures() -> list[str]:
+    """Each non-vendor file that stopped the last failed compile in this process, with why.
+
+    ``local/legacy.yar line 6: E009 unknown identifier `filename``` for a rule that does not
+    compile, ``local/x.yar: OSError`` for one that could not be read.
+    """
+    return list(_LOCAL_FAILURES)
 
 
 def _files_except(files: list[Path], rules_dir: Path, skipped: list[str]) -> list[tuple[Path, str]]:
