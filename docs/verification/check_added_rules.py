@@ -140,6 +140,11 @@ def _prefixed_pickle(prefix: bytes) -> bytes:
     return bytes((0x80, 0x04)) + prefix + b"0" + call + b"."
 
 
+# GLOBAL os.system, MARK, STRING, TUPLE, REDUCE, STOP: the protocol 0 spelling of the call.
+# Written by hand and never loaded; the argument is ``true``.
+_PROTO0_CALL = b"cos\nsystem\n(S'true'\ntR."
+
+
 def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
     long4 = b"\x8b" + (3).to_bytes(4, "little", signed=True) + b"\x01\x02\x03"
     eight = (3).to_bytes(8, "little")
@@ -161,8 +166,31 @@ def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
             b"\x80\x02c__builtin__\ngetattr\n)R.",
             "heuristic_pickle_reduce",
         ),
+        # Protocols 0 and 1 write no PROTO opcode: only the name says the bytes are a pickle.
+        ("proto0-global.pkl", _PROTO0_CALL, "heuristic_pickle_reduce"),
+        ("proto0-inst.pickle", b"(S'true'\nios\nsystem\n.", "heuristic_pickle_reduce"),
+        ("proto0-obj.pth", b"(cos\nsystem\nS'true'\no.", "heuristic_pickle_reduce"),
+        ("proto1-binstring.ckpt", b"cos\nsystem\n(U\x04truetR.", "heuristic_pickle_reduce"),
+        (
+            "legacy-proto2-then-proto0.pt",
+            pickle.dumps(1, protocol=2) + _PROTO0_CALL,
+            "heuristic_pickle_reduce",
+        ),
+        (
+            "legacy-proto0-then-proto0.pt",
+            pickle.dumps([1, 2], protocol=0) + _PROTO0_CALL,
+            "heuristic_pickle_reduce",
+        ),
+        # The nearest benign bytes: the global named and never called, a benign module's
+        # function called, the stream quoted after other text, and a path file that shares .pth.
+        ("proto0-uncalled.pkl", b"cos\nsystem\n.", None),
+        ("proto0-benign-call.pkl", b"cos.path\njoin\n(S'a'\nS'b'\ntR.", None),
+        ("proto0-quoted.pkl", b"The classic payload is:\n\n" + _PROTO0_CALL + b"\n", None),
+        ("paths.pth", b"./src\n../lib\n", None),
+        # No header and no pickle's name: the same bytes are text, and stay unwalked.
+        ("proto0-as-text.txt", _PROTO0_CALL, None),
     ]
-    for protocol in (2, 3, 4, 5):
+    for protocol in (0, 1, 2, 3, 4, 5):
         hits.append(
             (
                 f"shaped-p{protocol}.pkl",
@@ -182,7 +210,7 @@ def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
         [{1, 2}, frozenset({3}), bytearray(b"ab"), b"ab", 1 + 2j, range(3), slice(1, 2)],
         ValueError("inert"),
     ]
-    for protocol in (2, 3, 4, 5):
+    for protocol in (0, 1, 2, 3, 4, 5):
         for index, value in enumerate(benign):
             hits.append(
                 (f"benign{index}-p{protocol}.pkl", pickle.dumps(value, protocol=protocol), None)

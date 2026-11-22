@@ -72,6 +72,36 @@ def test_large_jsonc_with_relevant_fields_is_not_silently_skipped(data: bytes) -
     assert mcp_tool_findings(Path("mcp.json"), data) == ([], "mcp json exceeds comment limit")
 
 
+def test_budget_reads_the_text_the_comment_reader_hands_the_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dense = b"[" + b",".join([b"[]"] * (MAX_JSON_STRUCTURE * 2)) + b"]"
+    # A string that holds a line break and "/*", with "*/" after it. The budget pairs the
+    # quotes as written and takes the dense array for the inside of a string. The comment
+    # reader removes the comment with the second quote in it, so the decoder would pair the
+    # first quote with the third and build the array.
+    data = b'[" /* \n" */ ", ' + dense + b', "command"]'
+    assert check_json_structure(data.decode()) is False
+    real = json.loads
+
+    def decode(value: object, *args: object, **kwargs: object) -> object:
+        if isinstance(value, bytes) and b"\n" not in value:
+            pytest.fail("object tree was allocated before its budget")
+        return real(value, *args, **kwargs)  # type: ignore[arg-type]
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "loads", decode)
+        assert mcp_tool_findings(Path("mcp.json"), data) == (
+            [],
+            "mcp json exceeds structure limit",
+        )
+    # The same shape within the budget is still read, and a launcher in it is still found.
+    small = b'[" /* \n" */ ", {"command": "bash"}, "command"]'
+    findings, error = mcp_tool_findings(Path("mcp.json"), small)
+    assert error is None
+    assert [f.rule_id for f in findings] == ["heuristic_mcp_shell"]
+
+
 @pytest.mark.parametrize("prefix", [b"", b"\xef\xbb\xbf", b"/* generated */", b"// generated\n"])
 def test_supported_mcp_keeps_findings_and_benign_control(prefix: bytes) -> None:
     ordinary = b'{"description":"Lists files","command":"node","args":["index.js"]}'
