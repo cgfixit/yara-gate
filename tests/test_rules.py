@@ -283,6 +283,41 @@ def test_default_rules_resolve_from_package_data() -> None:
     assert "rule agent_eicar" in text
 
 
+def _installed_env(tmp_path: Path) -> dict[str, str]:
+    """The test's environment, isolated so a child runs the wheel as a new user would.
+
+    PYTHONPATH ahead of site-packages imports the checkout instead of the wheel, and
+    PYTHONHOME replaces the interpreter's prefix. YARA_GATE_RULES would replace the
+    packaged rules, and HOME and the XDG directories hold the caller's installed rules
+    root and compiled cache. No child is given a GitHub token.
+    """
+    env = os.environ.copy()
+    for name in (
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "YARA_GATE_RULES",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+    ):
+        env.pop(name, None)
+    env["HOME"] = str(tmp_path / "home")
+    env["XDG_DATA_HOME"] = str(tmp_path / "xdg")
+    env["XDG_CACHE_HOME"] = str(tmp_path / "cache")
+    return env
+
+
+def _assert_imports_installed(python: Path, venv: Path, env: dict[str, str]) -> None:
+    origin = subprocess.run(
+        [str(python), "-c", "import yara_gate; print(yara_gate.__file__)"],
+        cwd=venv,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert Path(origin).resolve().is_relative_to(venv.resolve()), origin
+
+
 def test_wheel_install_smoke(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     dist = tmp_path / "dist"
@@ -297,6 +332,8 @@ def test_wheel_install_smoke(tmp_path: Path) -> None:
     python = venv / "bin" / "python"
     subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
     cli = venv / "bin" / "yara-gate"
+    env = _installed_env(tmp_path)
+    _assert_imports_installed(python, venv, env)
     home = tmp_path / "gate"
     clean = tmp_path / "clean.txt"
     clean.write_bytes(clean_text())
@@ -304,12 +341,14 @@ def test_wheel_install_smoke(tmp_path: Path) -> None:
     eicar.write_bytes(eicar_bytes())
     scanned = subprocess.run(
         [str(cli), "scan", str(clean), "--home", str(home)],
+        env=env,
         check=False,
         capture_output=True,
         text=True,
     )
     blocked = subprocess.run(
         [str(cli), "scan", str(eicar), "--home", str(home)],
+        env=env,
         check=False,
         capture_output=True,
         text=True,
@@ -458,13 +497,8 @@ def test_wheel_install_end_to_end(tmp_path: Path) -> None:
     python = venv / "bin" / "python"
     subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
     cli = venv / "bin" / "yara-gate"
-    env = os.environ.copy()
-    env["HOME"] = str(tmp_path / "home")
-    env["XDG_DATA_HOME"] = str(tmp_path / "xdg")
-    env["XDG_CACHE_HOME"] = str(tmp_path / "cache")
-    env.pop("YARA_GATE_RULES", None)
-    env.pop("GITHUB_TOKEN", None)
-    env.pop("GH_TOKEN", None)
+    env = _installed_env(tmp_path)
+    _assert_imports_installed(python, venv, env)
     gate = tmp_path / "home" / "YaraGate"
 
     def run(args: list[str]) -> subprocess.CompletedProcess[str]:
