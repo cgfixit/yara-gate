@@ -133,6 +133,24 @@ sequence.
 | `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | at `b51df92`: outcomes match the reviewed baseline, 93 scenarios under 3 policies |
 | `ruff check`, `ruff format --check`, `mypy --strict src scripts`, `check_doc_links.py`, `check_text_controls.py` | pass |
 
+## Browser
+
+Headless Chromium through the preinstalled Playwright, against
+`yara-gate demo --port 0 --rules <disposable copy of rules/local>` on this branch. No page
+was edited; this is the changed scanner behind the real workbench.
+
+| Step | Observed |
+| --- | --- |
+| Paste a link with a 560-character opaque token, `agent-document`, **Scan** | 200, `clean`, no findings |
+| Paste the same link with an encoded paragraph | 200, `block`, `agent_base64_blob` |
+| Paste a link with a 78-character encoded override as a path segment | 200, `advisory`, `agent_prompt_injection_phrases` in `base64-decoded` |
+| Paste the opaque token alone in a paragraph | 200, `block`, `agent_base64_blob` |
+| **Run every pair** under `agent-ingest` | 92 of 92 results match the reviewed expectation |
+| Console | no errors |
+
+The public page was built from a tree that merges this branch with every open pull request
+and loaded the same way: the new paragraph is present and the console is clean.
+
 Not run here: the full pytest suite, selftest, and the Windows job, which hosted CI runs.
 
 ## What is given up
