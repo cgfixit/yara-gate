@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
-from yara_gate.models import DOCUMENT_NOTES, ScanPolicy, Severity
+from yara_gate.models import DOCUMENT_NOTES, UNKNOWN_SHA256, ScanPolicy, Severity
 
 SCHEMA_VERSION = 1
 # One capture line. Text a model reads is far smaller; a longer line is a malformed capture.
@@ -45,7 +45,6 @@ FAILED = "failed"
 ADMIT = "admit"
 HOLD = "hold"
 
-_ZERO = "0" * 64
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _CHANNEL = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _CLASSIFIER_KEY = re.compile(r"[a-z0-9_]{1,64}")
@@ -286,7 +285,7 @@ def _checked(
         return None, "record is for another policy"
     # An input over the scanner's size limit is incomplete with the unknown (zero) digest.
     covered = record.get("sha256")
-    if covered != digest and not (covered == _ZERO and verdict == "incomplete"):
+    if covered != digest and not (covered == UNKNOWN_SHA256 and verdict == "incomplete"):
         return None, "record is for other bytes"
     if verdict != "incomplete" and not _identified(record):
         return None, "missing or invalid worker identity"
@@ -431,7 +430,6 @@ def replay_item(
     line: int = 0,
     rules_dir: Path | None = None,
     timeout_s: int = 30,
-    kill_after_s: float | None = None,
     timings: bool = True,
 ) -> dict[str, Any]:
     """Scan one captured item and return its envelope. ``timings=False`` leaves seconds out."""
@@ -446,7 +444,6 @@ def replay_item(
         policy=item.policy,
         rules_dir=rules_dir,
         timeout_s=timeout_s,
-        kill_after_s=kill_after_s,
     )
     gate = scan.record
     if gate is not None and not timings:
@@ -485,7 +482,6 @@ def replay_capture(
     policy: ScanPolicy = ScanPolicy.agent_ingest,
     rules_dir: Path | None = None,
     timeout_s: int = 30,
-    kill_after_s: float | None = None,
     timings: bool = True,
 ) -> Iterator[dict[str, Any]]:
     """One envelope per non-blank capture line, in order. A bad line is a ``failed`` envelope."""
@@ -505,7 +501,6 @@ def replay_capture(
             line=number,
             rules_dir=rules_dir,
             timeout_s=timeout_s,
-            kill_after_s=kill_after_s,
             timings=timings,
         )
 

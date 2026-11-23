@@ -7,14 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from yara_gate import __version__
-from yara_gate.models import Finding, ScanResult, exit_code
+from yara_gate.models import UNKNOWN_SHA256, Finding, ScanResult, exit_code
 
 
 def write_reports(
     report_dir: Path, result: ScanResult, *, stem: str | None = None, record_event: bool = True
 ) -> tuple[Path, Path]:
     report_dir.mkdir(parents=True, exist_ok=True)
-    digest = stem or result.sha256 or "0" * 64
+    digest = stem or result.sha256 or UNKNOWN_SHA256
     sarif_path = report_dir / f"{digest}.sarif"
     json_path = report_dir / f"{digest}.json"
     compact = compact_report(result)

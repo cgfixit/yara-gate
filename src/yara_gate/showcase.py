@@ -1209,8 +1209,6 @@ CASES: tuple[Case, ...] = (
     ),
 )
 
-BY_ID = {case.id: case for case in CASES}
-
 
 def public_fields(case: Case) -> dict[str, str | None]:
     """What a page may show about a case: no payload, and no file name beyond the fixture's."""

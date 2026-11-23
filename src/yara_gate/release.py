@@ -176,7 +176,6 @@ class AuditLog:
         *,
         reason: str,
         reviewer: tuple[int | None, str] | None = None,
-        now: datetime | None = None,
     ) -> str:
         """Append one release and return the new head hash."""
         uid, user = reviewer or current_reviewer()
@@ -184,7 +183,7 @@ class AuditLog:
         with _exclusive(self.lock_path):
             previous = self._verified_head()
             entry: dict[str, Any] = {
-                "time": (now or datetime.now(UTC)).isoformat(),
+                "time": datetime.now(UTC).isoformat(),
                 "uid": uid,
                 "user": user,
                 "reason": checked,

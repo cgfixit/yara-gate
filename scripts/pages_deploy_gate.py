@@ -130,11 +130,9 @@ def decide(
     run_id: int | None,
     timeout: float,
     interval: float,
-    sleep: Callable[[float], None] = time.sleep,
-    clock: Callable[[], float] = time.monotonic,
 ) -> bool:
     """True to deploy ``sha``, False to skip a superseded commit; SystemExit stops the deploy."""
-    deadline = clock() + timeout
+    deadline = time.monotonic() + timeout
     while True:
         head = fetch(f"/repos/{repo}/commits/main")["sha"]
         if head != sha:
@@ -148,12 +146,12 @@ def decide(
             return True
         if state == "red":
             raise SystemExit(f"refusing: a check on {sha[:12]} did not pass: {'; '.join(details)}")
-        if clock() >= deadline:
+        if time.monotonic() >= deadline:
             raise SystemExit(
                 f"refusing: checks still running at the deadline: {'; '.join(details)}"
             )
         print(f"waiting: {'; '.join(details[:5])}")
-        sleep(interval)
+        time.sleep(interval)
 
 
 def main() -> None:
