@@ -8,7 +8,7 @@ import pytest
 
 from yara_gate import pdfxref
 from yara_gate.content import Budget, ContentLimit, PdfObjects, pdf_streams
-from yara_gate.pdfannotations import pdf_annotation_texts
+from yara_gate.pdfannotations import pdf_string_texts
 from yara_gate.pdfxref import xref_file_offsets, xref_tables
 from yara_gate.scanner import scan_bytes
 
@@ -230,7 +230,7 @@ def test_benign_shapes_still_read(rules_copy: Path) -> None:
     for name in ("classic", "flate", "predictor", "hybrid", "incremental"):
         data = _benign(name)
         budget = Budget(time.monotonic() + 30)
-        assert pdf_annotation_texts(data, PdfObjects(data, budget), budget) == [PHRASE]
+        assert pdf_string_texts(data, PdfObjects(data, budget), budget).annotations == [PHRASE]
         result = _scan(data, rules_copy)
         assert result.incomplete_reason is None, name
         assert result.verdict.value == "advisory", name
@@ -613,7 +613,7 @@ def test_flate_xref_is_not_inflated_twice() -> None:
     pdf_streams(data, budget, objects.decoded)
     charged = budget.expanded
     assert charged > 0
-    pdf_annotation_texts(data, objects, budget)
+    pdf_string_texts(data, objects, budget)
     assert budget.expanded == charged
 
 

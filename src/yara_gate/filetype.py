@@ -80,7 +80,6 @@ EXT_EXPECT: dict[str, str] = {
     ".cmd": "text",
 }
 
-TEXT_EXTS = {".txt", ".md", ".html", ".htm", ".json", ".yaml", ".yml"}
 OFFICE_EXTS = {".doc", ".docm", ".dot", ".dotm", ".xls", ".xlsm", ".ppt", ".pptm", ".ppsm"}
 DOCUMENT_SUFFIXES = frozenset(
     {

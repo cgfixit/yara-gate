@@ -264,7 +264,9 @@ def control_conjunction(findings: Sequence[Finding]) -> Finding | None:
     )
 
 
-def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, bool]:
+def base64_run_signals(
+    data: bytes, *, samples: bool = False, text: bool = True
+) -> tuple[bool, bool]:
     """Return (blob, executable) for base64 runs of 400 or more characters in ``data``.
 
     ``blob`` is a run that is not media, a font, a PEM body, an SSH key, or hex: its first
@@ -281,6 +283,13 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
     400 characters after each repeat is cut to one copy (``_b64_holds_data``, flat areas) and
     400 characters outside windows that read as neighboring pixels (``_b64_unsampled``, grainy
     areas). Content a payload carries counts in both. The executable check is unchanged.
+
+    ``text`` is False for a buffer that does not sniff as text, such as a zip, a PDF, or a
+    gzip stream read as raw bytes. Deflate writes a long run of one byte value as a repeat of
+    base64 characters (zlib at level 6 writes 4,098 ``U`` characters for 9 MiB or more of one
+    value), so there too a run is a blob only when it keeps 400 characters once repeats are
+    cut (``_b64_holds_data``). A member a container holds is its own buffer and keeps its own
+    reading, so base64 text inside a zip is read as text.
     """
     blob = exe = False
     for match in _B64_RUN.finditer(data):
@@ -297,9 +306,11 @@ def base64_run_signals(data: bytes, *, samples: bool = False) -> tuple[bool, boo
             blob = _B64_PREFIX.search(before) is None
             if blob and _printer_setup(data, start, match.end()):
                 blob = False
-            if blob and samples:
+            if blob and (samples or not text):
                 end = match.end()
-                blob = _b64_holds_data(data, start, end) and _b64_unsampled(data, start, end)
+                blob = _b64_holds_data(data, start, end) and (
+                    not samples or _b64_unsampled(data, start, end)
+                )
         if blob and exe:
             break
     return blob, exe
@@ -1705,30 +1716,6 @@ def _dangerous(module: str, name: str) -> bool:
     if module in {"builtins", "__builtin__"}:
         return name not in _PICKLE_SAFE_BUILTINS
     return module in _PICKLE_MODULES
-
-
-def _skip_counted(data: bytes, offset: int, width: int) -> int | None:
-    if offset + width > len(data):
-        return None
-    size = int.from_bytes(data[offset : offset + width], "little")
-    start = offset + width
-    if size > len(data) - start:
-        return None
-    return start + size
-
-
-def _counted(data: bytes, offset: int, width: int) -> tuple[str | None, int]:
-    if offset + width > len(data):
-        return None, offset
-    size = int.from_bytes(data[offset : offset + width], "little")
-    start = offset + width
-    if size > len(data) - start:
-        return None, start
-    try:
-        text = data[start : start + size].decode("utf-8")
-    except UnicodeError:
-        return None, start + size
-    return text, start + size
 
 
 def _line(data: bytes, offset: int) -> tuple[str | None, int]:

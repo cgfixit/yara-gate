@@ -411,10 +411,6 @@ def _property_list(entry: dict[bytes, PdfValue]) -> bool:
     return b"/S" not in entry and entry.get(b"/Type") != b"/StructElem"
 
 
-def pdf_annotation_texts(data: bytes, objects: PdfObjects, budget: Budget) -> list[str]:
-    return pdf_string_texts(data, objects, budget).annotations
-
-
 class PdfStrings(NamedTuple):
     # Annotation /Contents (``pdf-annotation``).
     annotations: list[str]

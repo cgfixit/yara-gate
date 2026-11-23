@@ -208,7 +208,10 @@ def test_demo_times_out_a_body_that_stops_short(
             "Content-Type: application/json\r\nContent-Length: 1000\r\n\r\n"
             '{"sample":'.encode()
         )
-        reply = stalled.recv(4096)
+        # The headers and the body are two sends, so read until the server closes.
+        reply = b""
+        while chunk := stalled.recv(4096):
+            reply += chunk
         assert reply.startswith(b"HTTP/1.0 408 ")
         assert reply.endswith(b'{"error": "request timeout"}')
         status, plain = _post(port, {"sample": "plain"})
@@ -443,16 +446,17 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
 def test_demo_catalog_matches_its_reviewed_expectations(rules_copy: Path) -> None:
     """Every case the workbench offers scans to its expected verdict, and no twin has a finding."""
     from yara_gate.demo import DemoRequest, scan_request
-    from yara_gate.showcase import BY_ID, CASES, POLICIES
+    from yara_gate.showcase import CASES, POLICIES
 
     hidden = {
         "word_hidden_override": "ooxml-hidden-text",
         "pdf_invisible_override": "pdf-hidden-text",
     }
-    assert len(CASES) == len(BY_ID)
+    by_id = {case.id: case for case in CASES}
+    assert len(CASES) == len(by_id)
     for case in CASES:
         if case.pair is not None:
-            twin = BY_ID[case.pair]
+            twin = by_id[case.pair]
             assert twin.pair == case.id
             assert {case.kind, twin.kind} == {"detection", "control"}
             assert case.channel == twin.channel

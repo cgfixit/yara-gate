@@ -7,14 +7,17 @@ policy, rule IDs, severity, member/view provenance, engine/ruleset identity,
 compiled rule count, detector digest, tool version, scan time, and completeness fields. No matched content is included. Paths abbreviate
 the user's home prefix; other path components remain visible.
 
-The digest-named JSON and SARIF are latest-report views. Each saved scan also
-writes `reports/events/<scan-id>.json` before relocation, with `schema_version`,
-`scan_id`, and UTC `recorded_at` alongside the compact report. Events can exist
-before a pending move completes. Use the returned record and verify the bytes for
-admission. Use the event files to inspect older scan contexts. If a deployment
-requires a particular reviewed vendor inventory, also require its expected
-`ruleset_sha256` and review the reported skip count before admitting files. Use
-`detector_sha256` separately when caching admission across scanner builds.
+The digest-named JSON and SARIF are latest-report views. The SARIF run's
+`properties` carry the JSON report's fields, `detector_sha256` included, so a
+consumer that reads only SARIF can key admissions on the same identity. Each
+saved scan also writes `reports/events/<scan-id>.json` before relocation, with
+`schema_version`, `scan_id`, and UTC `recorded_at` alongside the compact report.
+Events can exist before a pending move completes. Use the returned record and
+verify the bytes for admission. Use the event files to inspect older scan
+contexts. If a deployment requires a particular reviewed vendor inventory, also
+require its expected `ruleset_sha256` and review the reported skip count before
+admitting files. Use `detector_sha256` separately when caching admission across
+scanner builds.
 
 Dense or deeply nested JSON/notebooks can be incomplete before an object tree is
 allocated. Treat the [JSON parsing limits](rules.md#json-parsing-limits) like other
