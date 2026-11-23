@@ -55,6 +55,9 @@ def redact(path: str) -> str:
 
 
 _SARIF_LEVEL = {"block": "error", "advisory": "warning", "note": "note"}
+# The JSON report keys a SARIF log holds in its own fields (results, artifact location). Every
+# other key is copied into the run's properties, so the two reports name the same identity.
+_SARIF_ELSEWHERE = frozenset({"findings", "path"})
 
 
 def compact_report(result: ScanResult) -> dict[str, object]:
@@ -148,22 +151,9 @@ def _sarif(result: ScanResult) -> dict[str, object]:
                 },
                 "results": results,
                 "properties": {
-                    "ruleset_sha256": result.ruleset_sha256,
-                    "engine_version": result.engine_version,
-                    "skipped_rule_files": result.skipped_rule_files,
-                    "compiled_rules": result.compiled_rules,
-                    "scan_seconds": result.scan_seconds,
-                    "units_scanned": result.units_scanned,
-                    "views_scanned": result.views_scanned,
-                    "bytes_scanned": result.bytes_scanned,
-                    "yara_seconds": result.yara_seconds,
-                    "pdf_content_unread": result.pdf_content_unread,
-                    "match_rescan_limit": result.match_rescan_limit,
-                    "unguarded_rule_files": result.unguarded_rule_files,
-                    "verdict": result.verdict.value,
-                    "policy": result.policy.value,
-                    "policy_reason": result.policy_reason,
-                    "incomplete_reason": result.incomplete_reason,
+                    key: value
+                    for key, value in compact_report(result).items()
+                    if key not in _SARIF_ELSEWHERE
                 },
             }
         ],

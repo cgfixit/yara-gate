@@ -144,6 +144,27 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
     assert sarif["runs"][0]["properties"]["views_scanned"] == compact["views_scanned"]
 
 
+def test_sarif_run_properties_are_the_json_report_fields(tmp_path: Path, rules_copy: Path) -> None:
+    """SARIF and JSON describe the same scan: the run properties are the JSON report's fields,
+    less the two SARIF keeps in its own structure (the results and the artifact location)."""
+    from yara_gate.scanner import scan_bytes
+
+    cases = {
+        "clean": (clean_text(), "notes.txt"),
+        "block": (injection_markdown(), "note.md"),
+        "incomplete": (b"PK\x03\x04broken", "bad.zip"),
+    }
+    for label, (data, name) in cases.items():
+        result = scan_bytes(data, name=name, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+        assert result.verdict.value == label
+        sarif_path, js = write_reports(tmp_path / label, result)
+        compact = json.loads(js.read_text(encoding="utf-8"))
+        properties = json.loads(sarif_path.read_text(encoding="utf-8"))["runs"][0]["properties"]
+        assert set(properties) == set(compact) - {"findings", "path"}, label
+        assert all(properties[key] == compact[key] for key in properties), label
+        assert properties["detector_sha256"] == result.detector_sha256, label
+
+
 def test_coverage_counts_members_and_views(rules_copy: Path) -> None:
     import io
     import zipfile
