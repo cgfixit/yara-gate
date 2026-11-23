@@ -51,8 +51,9 @@ therefore unchanged.
 | `scripts/record_pages_demo.py --baseline` | outcomes match; 93 scenarios x 3 policies |
 | `tests/test_text_fast_paths.py`, `tests/test_hidden_members.py` | 23 passed |
 | Ruff, `mypy --strict src scripts` | passed |
-| `check_worst_case_timing.py`, `probe_match_cap.py` | pending at this commit |
-| Two-tree comparison over installed binary and compressed files | pending at this commit |
+| `check_worst_case_timing.py` | 105 adversarial inputs of 4 MiB, pass |
+| `probe_match_cap.py` | 3,031 flooded texts over 84 rules, 0 blind spots, 0 fail |
+| Two-tree comparison over installed files (below) | 12 of 5,845 changed, each advisory to clean |
 
 Timing of `base64_run_signals` alone on 4 MiB buffers (one run each, Linux):
 
@@ -67,8 +68,29 @@ Timing of `base64_run_signals` alone on 4 MiB buffers (one run each, Linux):
 The text column stops at the first blob; the other walks each repeat-only run to its end, which
 is linear.
 
+## Installed files
+
+`sweep_rule_changes.py` compares rule trees with one source, so the two sources were compared
+directly: `origin/main` in a worktree and this branch, each scanning the same 5,845 installed
+files on the test machine with the same copy of `rules/local` (every zip, wheel, jar, gzip, bzip2,
+xz, PNG, PDF, Office file, database, and shared library under 20 MiB outside `/proc`, `/sys`, and
+`/tmp`, and one in 16 `.pyc` files). On the base, 60 were advisory, 9 block, and 41 incomplete.
+
+Twelve files changed, and each lost only `agent_base64_blob`, going from advisory to clean.
+No file gained a finding, and no verdict moved in the other direction.
+
+| Files | Run that no longer counts |
+| --- | --- |
+| `libindex_data.so` (LibreOffice) | two runs, the first 22,344 `1` characters |
+| `im-thai.so` (GTK input method) | a 400-character state table of repeated `A`, `R`, `S`, `X` |
+| Eight CPython extensions: five in PIL (`_imaging`, `_imagingcms`, `_imagingft`, `_avif`, `_webp`) and three in numpy (`_multiarray_umath`, `_umath_linalg`, `lapack_lite`) | runs of `X` padding, up to 2,636 characters |
+| `pax-bad-hdr-large.tar.bz2` in two Go source trees | the bzip2 member: 1,048,563 `X` characters |
+
+Each run, read with `_b64_holds_data`, keeps fewer than 400 characters once repeats are cut.
+Under `agent-ingest` each of these twelve was held before this change.
+
 ## Not established
 
-- Real disk images and databases were not collected; the fixtures are synthetic constant
-  regions. The claim is the mechanism and its threshold, not a measured rate.
+- Real disk images and databases were not collected; the deflate fixtures are synthetic
+  constant regions. The installed-file comparison is one Linux machine, not a rate.
 - Vendor rules were not run.
