@@ -55,7 +55,7 @@ def main() -> None:
                 times.append(time.perf_counter() - start)
                 if result.verdict.value != expected.get(name, "clean"):
                     raise RuntimeError(f"unexpected verdict for {name}")
-                results.append(result.model_dump(exclude={"path", "scan_seconds"}))
+                results.append(result.model_dump(exclude={"path", "scan_seconds", "yara_seconds"}))
             if results[1:] != results[:-1]:
                 raise RuntimeError("inconsistent scan results")
             rows.append(
