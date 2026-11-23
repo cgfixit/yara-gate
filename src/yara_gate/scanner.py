@@ -1299,11 +1299,12 @@ def _guard_sink(log: list[str] | None) -> Callable[[str], None]:
 
 def _scan_globals(data: bytes, ext: str, name: str, samples: bool) -> list[tuple[str, object]]:
     """The values the scanner gives each global for one buffer."""
-    blob, exe = base64_run_signals(data, samples=samples)
+    text = sniff(data) == "text"
+    blob, exe = base64_run_signals(data, samples=samples, text=text)
     return [
         ("yara_gate_ext", ext),
         ("yara_gate_name", name),
-        ("yara_gate_text", sniff(data) == "text"),
+        ("yara_gate_text", text),
         ("yara_gate_b64_blob", blob),
         ("yara_gate_b64_exe", exe),
         ("yara_gate_svg_scope_proven", svg_scope_proven(data)),
