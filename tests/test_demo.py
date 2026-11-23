@@ -208,7 +208,10 @@ def test_demo_times_out_a_body_that_stops_short(
             "Content-Type: application/json\r\nContent-Length: 1000\r\n\r\n"
             '{"sample":'.encode()
         )
-        reply = stalled.recv(4096)
+        # The headers and the body are two sends, so read until the server closes.
+        reply = b""
+        while chunk := stalled.recv(4096):
+            reply += chunk
         assert reply.startswith(b"HTTP/1.0 408 ")
         assert reply.endswith(b'{"error": "request timeout"}')
         status, plain = _post(port, {"sample": "plain"})
