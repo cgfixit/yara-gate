@@ -60,7 +60,7 @@ _LOCAL_FAILURES: list[str] = []
 _ERROR_CODE = re.compile(r"error\[(E\d+)\]: ([^\n]*)")
 _ERROR_LINE = re.compile(r"--> [^\n]*:(\d+):\d+")
 # YARA-X keeps this many matches of each string and then drops the rest without notice
-# (DEFAULT_MAX_MATCHES_PER_PATTERN in yara-x 1.23.0, lib/src/scanner/matches.rs).
+# (DEFAULT_MAX_MATCHES_PER_PATTERN in yara-x 1.24.0, lib/src/scanner/matches.rs).
 MATCH_LIMIT = 1_000_000
 # A scan that fills a list is read again once with this limit.
 RESCAN_LIMIT = 4_000_000
