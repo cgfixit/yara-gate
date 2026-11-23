@@ -144,6 +144,27 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
     assert sarif["runs"][0]["properties"]["views_scanned"] == compact["views_scanned"]
 
 
+def test_sarif_run_properties_are_the_json_report_fields(tmp_path: Path, rules_copy: Path) -> None:
+    """SARIF and JSON describe the same scan: the run properties are the JSON report's fields,
+    less the two SARIF keeps in its own structure (the results and the artifact location)."""
+    from yara_gate.scanner import scan_bytes
+
+    cases = {
+        "clean": (clean_text(), "notes.txt"),
+        "block": (injection_markdown(), "note.md"),
+        "incomplete": (b"PK\x03\x04broken", "bad.zip"),
+    }
+    for label, (data, name) in cases.items():
+        result = scan_bytes(data, name=name, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+        assert result.verdict.value == label
+        sarif_path, js = write_reports(tmp_path / label, result)
+        compact = json.loads(js.read_text(encoding="utf-8"))
+        properties = json.loads(sarif_path.read_text(encoding="utf-8"))["runs"][0]["properties"]
+        assert set(properties) == set(compact) - {"findings", "path"}, label
+        assert all(properties[key] == compact[key] for key in properties), label
+        assert properties["detector_sha256"] == result.detector_sha256, label
+
+
 def test_coverage_counts_members_and_views(rules_copy: Path) -> None:
     import io
     import zipfile
@@ -208,3 +229,19 @@ def test_unread_pdf_page_content_is_a_counted_note(tmp_path: Path, rules_copy: P
     assert json.loads(js.read_text(encoding="utf-8"))["pdf_content_unread"] == {"CCITTFaxDecode": 1}
     sarif = json.loads(sarif_path.read_text(encoding="utf-8"))
     assert sarif["runs"][0]["properties"]["pdf_content_unread"] == {"CCITTFaxDecode": 1}
+
+
+def test_unread_filter_labels_never_come_from_the_file(rules_copy: Path) -> None:
+    """A ``pdf_content_unread`` key is a label from ``UNREAD_FILTERS``: a filter the reader
+    names, or ``other``. A name the file makes up, escaped or long, is never copied into it."""
+    from yara_gate.content import _FILTER_LABELS, _PDF_FILTERS, UNREAD_FILTERS
+    from yara_gate.scanner import scan_bytes
+
+    undecoded = sorted(set(_FILTER_LABELS) - set(_PDF_FILTERS))
+    assert undecoded
+    made_up = [b"/SecretName", b"/Secret#20Name", b"/" + b"S" * 200, b"[/AHx /SecretName]"]
+    for spelling in undecoded + made_up:
+        data = _content_pdf(b"/Filter " + spelling)
+        result = scan_bytes(data, name="a.pdf", rules_dir=rules_copy)
+        assert set(result.pdf_content_unread) <= UNREAD_FILTERS, spelling
+        assert result.pdf_content_unread == {_FILTER_LABELS.get(spelling, "other"): 1}, spelling

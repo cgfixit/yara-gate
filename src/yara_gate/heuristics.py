@@ -1718,30 +1718,6 @@ def _dangerous(module: str, name: str) -> bool:
     return module in _PICKLE_MODULES
 
 
-def _skip_counted(data: bytes, offset: int, width: int) -> int | None:
-    if offset + width > len(data):
-        return None
-    size = int.from_bytes(data[offset : offset + width], "little")
-    start = offset + width
-    if size > len(data) - start:
-        return None
-    return start + size
-
-
-def _counted(data: bytes, offset: int, width: int) -> tuple[str | None, int]:
-    if offset + width > len(data):
-        return None, offset
-    size = int.from_bytes(data[offset : offset + width], "little")
-    start = offset + width
-    if size > len(data) - start:
-        return None, start
-    try:
-        text = data[start : start + size].decode("utf-8")
-    except UnicodeError:
-        return None, start + size
-    return text, start + size
-
-
 def _line(data: bytes, offset: int) -> tuple[str | None, int]:
     end = data.find(b"\n", offset, offset + 256)
     if end < 0:

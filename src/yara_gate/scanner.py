@@ -75,6 +75,7 @@ from yara_gate.models import (
     DOCUMENT_HOLD,
     DOCUMENT_NOTES,
     INGEST_HOLD,
+    UNKNOWN_SHA256,
     Finding,
     FindingSource,
     ScanPolicy,
@@ -144,7 +145,7 @@ def scan_file(
         raise
     except Exception:
         return result_from_findings(
-            sha256="0" * 64, path=str(file_path), findings=[], incomplete_reason="scan failed"
+            sha256=UNKNOWN_SHA256, path=str(file_path), findings=[], incomplete_reason="scan failed"
         )
 
 
@@ -214,7 +215,7 @@ def scan_bytes(
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception:
-        digest = hashlib.sha256(payload).hexdigest() if payload is not None else "0" * 64
+        digest = hashlib.sha256(payload).hexdigest() if payload is not None else UNKNOWN_SHA256
         return result_from_findings(
             sha256=digest, path=label, findings=[], incomplete_reason="scan failed"
         )
@@ -230,7 +231,7 @@ def _scan_file(
 ) -> ScanResult:
     started = time.monotonic()
     budget = Budget(started + timeout_s)
-    digest = "0" * 64
+    digest = UNKNOWN_SHA256
     findings: list[Finding] = []
     fingerprint: str | None = None
     engine_version: str | None = None
@@ -1003,17 +1004,13 @@ def _decoded_text(name: str, data: bytes, budget: Budget) -> tuple[str, str] | N
         return None
 
 
-def archive_limit(data: bytes, *, depth: int = 0, budget: list[int] | None = None) -> str | None:
+def archive_limit(data: bytes, *, depth: int = 0) -> str | None:
     """Inspect archive coverage with the same bounded reader used by scans."""
-    limits = Budget(float("inf"), expanded=budget[0] if budget else 0)
     try:
-        for _unit in content_units(ContentUnit("archive", data), limits, depth):
+        for _unit in content_units(ContentUnit("archive", data), Budget(float("inf")), depth):
             pass
     except ContentLimit as exc:
         return str(exc)
-    finally:
-        if budget is not None:
-            budget[0] = limits.expanded
     return None
 
 

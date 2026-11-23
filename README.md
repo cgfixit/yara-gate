@@ -46,7 +46,7 @@ To notice when a gate upgrade changes an answer you rely on, `yara-gate conform`
 
 **For the business**
 - **It screens common entry points.** A public number, email address, or shared folder lets an untrusted sender place content in an agent's path. A deterministic local gate holds known shapes with no cloud classifier, no per-scan fee, or scanner-side content upload.
-- **Saved scans leave a record.** CLI scans save JSON and SARIF 2.1.0. The JSON includes policy, finding severity and view, rule and detector fingerprints, engine version, and coverage counters. Reports omit matched bytes. Library callers decide whether to persist the result.
+- **Saved scans leave a record.** CLI scans save JSON and SARIF 2.1.0. Both include policy, finding severity and view, rule and detector fingerprints, engine version, and coverage counters. Reports omit matched bytes. Library callers decide whether to persist the result.
 - **No lock-in.** MIT-licensed, the rules are YARA you can read, and candidate rules block only once you promote them.
 
 **For engineering**

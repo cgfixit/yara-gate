@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from yara_gate.models import DOCUMENT_HOLD, ScanPolicy, ScanResult, Verdict
+from yara_gate.models import DOCUMENT_HOLD, UNKNOWN_SHA256, ScanPolicy, ScanResult, Verdict
 from yara_gate.release import (
     apply_release,
     release_key,
@@ -302,7 +302,7 @@ def _finish_pending_intake(
             result = apply_release(result, home.root)
     else:
         result = ScanResult(
-            sha256="0" * 64,
+            sha256=UNKNOWN_SHA256,
             verdict=Verdict.incomplete,
             incomplete_reason=reason,
             path=str(placed),

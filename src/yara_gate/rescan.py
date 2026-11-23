@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 
-from yara_gate.models import ScanPolicy, ScanResult, Verdict
+from yara_gate.models import UNKNOWN_SHA256, ScanPolicy, ScanResult, Verdict
 from yara_gate.quarantine import (
     _UNREAD_ATTRIBUTES,
     GatePaths,
@@ -121,7 +121,7 @@ def _rescan_slot(
             os.close(fd)
     except (IntakeRejected, OSError) as exc:
         result = ScanResult(
-            sha256="0" * 64,
+            sha256=UNKNOWN_SHA256,
             verdict=Verdict.incomplete,
             incomplete_reason=exc.reason
             if isinstance(exc, IntakeRejected)

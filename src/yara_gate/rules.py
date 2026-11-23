@@ -74,7 +74,6 @@ _GUARD_FORMAT = "3"
 HIDDEN_SUFFIX = "__placed"
 # The meta section of a rule body: from the brace to its strings or condition.
 _RULE_SECTION = re.compile(r"^[ \t]*(strings|condition):[ \t]*$", re.MULTILINE)
-_RULE_OPEN = re.compile(r"[ \t]+rule[ \t]+\w+[ \t]*\{|rule[ \t]+\w+[ \t]*\{")
 _GUARD_HEAD = re.compile(r"(?:(?:private|global)\s+)*rule\s+(\w+)")
 # The start of a rule, and the name it gives.
 _RULE_START = re.compile(r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+(\w+)", re.MULTILINE)
@@ -1258,13 +1257,6 @@ def _redirect_handler() -> type:
             return new
 
     return _PinnedRedirect
-
-
-def __getattr__(name: str) -> Any:
-    # Tests and callers reach the handler class as yara_gate.rules._PinnedRedirect.
-    if name == "_PinnedRedirect":
-        return _redirect_handler()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _github_token(url: str) -> str | None:

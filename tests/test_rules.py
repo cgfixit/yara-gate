@@ -23,7 +23,7 @@ from yara_gate.rules import (
     RulesLock,
     _allowed_url,
     _bytes,
-    _PinnedRedirect,
+    _redirect_handler,
     _rule_key,
     _swap_vendor,
     _vendor_member,
@@ -163,7 +163,7 @@ def test_install_verifies_lock_sha256_and_keeps_old_on_mismatch(tmp_path: Path) 
 
 
 def test_redirect_to_disallowed_host_is_refused() -> None:
-    handler = _PinnedRedirect()
+    handler = _redirect_handler()()
     request = urllib.request.Request(
         "https://github.com/YARAHQ/yara-forge/releases/download/x/y.zip"
     )
@@ -856,7 +856,7 @@ def test_token_not_forwarded_on_redirect_to_other_host() -> None:
     request = urllib.request.Request("https://api.github.com/repos/org/repo")
     request.add_header("Authorization", "Bearer sent-token-value")
     request.add_unredirected_header("Authorization", "Bearer sent-token-value")
-    handler = _PinnedRedirect()
+    handler = _redirect_handler()()
     moved = handler.redirect_request(
         request,
         None,

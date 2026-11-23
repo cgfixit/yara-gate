@@ -164,10 +164,10 @@ def manifest_text(manifest: dict[str, Any]) -> str:
     return json.dumps(manifest, indent=1, sort_keys=True, ensure_ascii=True) + "\n"
 
 
-def load_manifest(path: Path = MANIFEST) -> tuple[dict[str, Any], str]:
+def load_manifest() -> tuple[dict[str, Any], str]:
     """The packaged manifest and the SHA-256 of its bytes."""
     try:
-        raw = path.read_bytes()
+        raw = MANIFEST.read_bytes()
         manifest = json.loads(raw)
     except (OSError, ValueError) as exc:
         raise KitError("manifest missing or unreadable") from exc
@@ -286,7 +286,6 @@ def agreement(
     rules_dir: Path,
     policy: ScanPolicy = ScanPolicy.agent_document,
     timeout_s: int = 30,
-    kill_after_s: float | None = None,
 ) -> Iterator[dict[str, Any]]:
     """One record per capture line: the scan of the extraction beside the scan of its fixture.
 
@@ -302,7 +301,6 @@ def agreement(
         policy=policy,
         rules_dir=rules_dir,
         timeout_s=timeout_s,
-        kill_after_s=kill_after_s,
         timings=False,
     ):
         gate = envelope["gate"]

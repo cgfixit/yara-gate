@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from yara_gate.models import Finding, ScanResult, Verdict
+from yara_gate.models import UNKNOWN_SHA256, Finding, ScanResult, Verdict
 from yara_gate.quarantine import (
     _UNREAD_ATTRIBUTES,
     GatePaths,
@@ -139,7 +139,7 @@ def held_items(home: GatePaths, *, since: int | None = None) -> list[dict[str, A
                     if (
                         unknown is not None
                         and unknown[0].path in paths
-                        and unknown[0].sha256 == "0" * 64
+                        and unknown[0].sha256 == UNKNOWN_SHA256
                         and unknown[0].verdict is Verdict.incomplete
                     ):
                         report = unknown
@@ -149,7 +149,7 @@ def held_items(home: GatePaths, *, since: int | None = None) -> list[dict[str, A
                             candidate.path in paths
                             and (
                                 candidate.sha256 == identifier
-                                or candidate.sha256 == "0" * 64
+                                or candidate.sha256 == UNKNOWN_SHA256
                                 and candidate.verdict is Verdict.incomplete
                             )
                             and (report is None or modified > report[1])
@@ -203,7 +203,7 @@ def _row(
         row.update(
             identifier=identifier or result.sha256,
             sha256=result.sha256
-            if disposition != "rejected" and result.sha256 != "0" * 64
+            if disposition != "rejected" and result.sha256 != UNKNOWN_SHA256
             else None,
             policy=result.policy.value,
             policy_reason=result.policy_reason,

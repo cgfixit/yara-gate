@@ -12,7 +12,7 @@ import pytest
 
 from yara_gate.content import MAX_EXTRACT_BYTES, Budget, ContentLimit, PdfObjects, pdf_streams
 from yara_gate.heuristics import PdfRawObjects
-from yara_gate.pdfannotations import _text, pdf_annotation_texts
+from yara_gate.pdfannotations import _text, pdf_string_texts
 from yara_gate.report import write_reports
 from yara_gate.scanner import scan_bytes
 
@@ -51,7 +51,7 @@ def pdf(*bodies: bytes) -> bytes:
 
 def read(data: bytes, budget: Budget | None = None) -> list[str]:
     budget = budget or Budget(time.monotonic() + 30)
-    return pdf_annotation_texts(data, PdfObjects(data, budget), budget)
+    return pdf_string_texts(data, PdfObjects(data, budget), budget).annotations
 
 
 @pytest.mark.parametrize("mode", ["hex", "octal", "utf16", "utf8"])

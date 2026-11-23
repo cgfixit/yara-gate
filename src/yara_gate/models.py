@@ -41,6 +41,9 @@ INGEST_HOLD = "agent-ingest holds advisory and note findings"
 DOCUMENT_HOLD = "agent-document holds advisory findings"
 DOCUMENT_RELEASE = "agent-document hold released by review"
 DOCUMENT_NOTES = "agent-document records note findings"
+# The sha256 a report carries when its bytes are not known: changed or unreadable during
+# intake, too large to hash, or a scan that failed before reading them.
+UNKNOWN_SHA256 = "0" * 64
 
 
 class FindingSource(StrEnum):

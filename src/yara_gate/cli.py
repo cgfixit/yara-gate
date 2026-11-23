@@ -18,6 +18,8 @@ from yara_gate import __version__
 from yara_gate.models import ScanPolicy, ScanResult, Verdict, exit_code
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from yara_gate.quarantine import GatePaths
     from yara_gate.rules import RulesLock
 
@@ -558,26 +560,12 @@ def rules_install(
     rules: Path | None = typer.Option(None, "--rules"),
 ) -> None:
     """Install the packs named in rules.lock. Refuses to run without --allow-network."""
-    from yara_gate.rules import compile_sources, default_rules_dir
+    from yara_gate.rules import default_rules_dir
 
     if not allow_network:
         typer.echo("refusing: pass --allow-network", err=True)
         raise typer.Exit(code=2)
-    root = rules or default_rules_dir()
-    try:
-        lock = install_packs(root)
-        _rules, skipped, error, compiled, skip_count = compile_sources(root)
-    except Exception as exc:
-        _echo_incomplete(exc)
-    for pack in lock.packs:
-        typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
-    _echo_shadows(skipped)
-    _echo_unguarded()
-    typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
-    if error:
-        _echo_local_failures(error)
-        typer.echo(error, err=True)
-        raise typer.Exit(code=2)
+    _download_and_report(rules or default_rules_dir(), install_packs)
 
 
 @rules_app.command("update")
@@ -586,14 +574,24 @@ def rules_update(
     rules: Path | None = typer.Option(None, "--rules"),
 ) -> None:
     """Download pinned vendor packs. Refuses to run without --allow-network."""
-    from yara_gate.rules import compile_sources, default_rules_dir
+    from yara_gate.rules import default_rules_dir
 
     if not allow_network:
         typer.echo("refusing: pass --allow-network", err=True)
         raise typer.Exit(code=2)
-    root = rules or default_rules_dir()
+    _download_and_report(rules or default_rules_dir(), update_packs)
+
+
+def _download_and_report(root: Path, download: Callable[[Path], RulesLock]) -> None:
+    """Run one pack download, compile the tree it left, and print what it holds.
+
+    ``rules install``, ``rules update``, and ``setup`` all end here, so they report alike and exit
+    2 alike: on a download or compile error, and when a local rule file fails.
+    """
+    from yara_gate.rules import compile_sources
+
     try:
-        lock = update_packs(root)
+        lock = download(root)
         _rules, skipped, error, compiled, skip_count = compile_sources(root)
     except Exception as exc:
         _echo_incomplete(exc)
@@ -619,27 +617,14 @@ def setup(
     locked URLs only, sha256 per pack, and a swap only after the staged rules compile. With the
     recorded vendor files present it does not touch the network unless ``--force`` is given.
     """
-    from yara_gate.rules import compile_sources, default_rules_dir
+    from yara_gate.rules import default_rules_dir
 
     root = rules or default_rules_dir()
     if not force and _vendor_installed(root):
         typer.echo(f"already set up: {root / 'vendor'} (pass --force to download again)")
         return
     typer.echo("downloading the vendor packs pinned in rules.lock")
-    try:
-        lock = install_packs(root)
-        _rules, skipped, error, compiled, skip_count = compile_sources(root)
-    except Exception as exc:
-        _echo_incomplete(exc)
-    for pack in lock.packs:
-        typer.echo(f"{pack.name} pin={pack.pin} sha256={pack.sha256}")
-    _echo_shadows(skipped)
-    _echo_unguarded()
-    typer.echo(f"compiled_rules={compiled} skipped_rules={skip_count}")
-    if error:
-        _echo_local_failures(error)
-        typer.echo(error, err=True)
-        raise typer.Exit(code=2)
+    _download_and_report(root, install_packs)
     typer.echo("set up: scans now use bundled and vendor rules and stay offline")
 
 
