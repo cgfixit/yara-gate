@@ -21,8 +21,10 @@ yara-gate conform
 
 It builds 94 inert fixtures from the installed package: every pair of the
 [demo catalog](../src/yara_gate/showcase.py) (an attack beside a benign near-twin, across
-messages, web pages, PDFs, Office files, archives, tool results, and repository files), and a
-PDF pair whose page content the gate cannot decode, for the
+messages, web pages, PDFs, Office files, archives, tool results, and repository files), the
+catalog's two scans that cannot finish (a JSON tool document past the structure limit and a 7z
+archive the scanner does not open, both incomplete under every policy), and a PDF pair whose
+page content the gate cannot decode, for the
 [`pdf_content_unread` route](integrations.md#pdfs-and-other-compressed-documents). It then:
 
 1. Checks each fixture's SHA-256 against the packaged manifest
