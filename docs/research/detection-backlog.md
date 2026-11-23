@@ -446,8 +446,8 @@ triggered the defended tool, 2.4%. NotInject's 339 benign prompts give one note 
 
 A lexical gate's recall on paraphrase corpora is a floor to report, not a target to tune.
 
-**Engine.** This checkout locks YARA-X 1.23.0 in `uv.lock`. Check upstream releases when planning an upgrade; the lock does not establish which release is newest.
-YARA-X 1.24.0 (released November 20) passed every check in this tree on November 23, and no recorded answer moved ([record](2026-11-23-yara-x-and-semantic-methods.md#1-yara-x-1240)); the lock was not changed.
+**Engine.** This checkout locks YARA-X 1.24.0 in `uv.lock`. Check upstream releases when planning an upgrade; the lock does not establish which release is newest.
+YARA-X 1.24.0 (released November 20) passed every check in this tree on November 23 in a scratch environment, and no recorded answer moved ([record](2026-11-23-yara-x-and-semantic-methods.md#1-yara-x-1240)); the lock then moved to it with the same checks on the lock itself ([record](../verification/2026-11-23-yara-x-1.24.0.md)).
 Run `docs/research/probe_yara_compat.py` on the new engine: it fails when a recorded answer
 on a rule written for YARA 4.x moves
 ([record](../verification/2026-11-22-classic-yara-rules.md)).
