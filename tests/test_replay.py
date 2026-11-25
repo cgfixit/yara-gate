@@ -4,7 +4,7 @@ import io
 import json
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -244,6 +244,8 @@ def test_cli_prints_envelopes_then_a_summary_and_never_exits_1(
     assert records[2]["proposed_decision"] == {"admit": 1, "hold": 1}
     assert ORDER not in held.stdout
     assert runner.invoke(app, args).stdout == held.stdout
+    required = runner.invoke(app, [*args, "--require-complete"])
+    assert (required.exit_code, required.stdout, required.stderr) == (0, held.stdout, "")
     piped = runner.invoke(app, ["replay", "-", *args[2:]], input=capture.read_bytes())
     assert piped.stdout == held.stdout
 
@@ -251,8 +253,52 @@ def test_cli_prints_envelopes_then_a_summary_and_never_exits_1(
     failed = runner.invoke(app, args)
     assert failed.exit_code == 2
     assert json.loads(failed.stdout.splitlines()[-1])["status"]["failed"] == 1
+    required = runner.invoke(app, [*args, "--require-complete"])
+    assert (required.exit_code, required.stdout) == (2, failed.stdout)
+    assert "failed=1" in required.stderr
     missing = runner.invoke(app, ["replay", str(tmp_path / "absent.jsonl")])
     assert missing.exit_code == 2 and "capture unreadable" in missing.output
+
+
+@pytest.mark.parametrize("case", ["empty", "truncated", "mixed"])
+def test_require_complete_rejects_unusable_captures(
+    case: str, rules_copy: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    added_rule = rules_copy / "local" / "zz_replay_identity_control.yar"
+
+    def changing_rules(*args: Any, **kwargs: Any) -> Iterator[dict[str, Any]]:
+        items = replay_capture(*args, **kwargs)
+        yield next(items)
+        added_rule.write_text("rule replay_identity_control { condition: false }\n")
+        yield from items
+
+    capture = b"\n" if case == "empty" else line(text=BENIGN)
+    if case == "truncated":
+        added_rule.write_text("not a rule\n")
+    if case == "mixed":
+        capture += line(text=BENIGN)
+        monkeypatch.setattr(replay, "replay_capture", changing_rules)
+
+    args = ["replay", "-", "--rules", str(rules_copy), "--no-timings"]
+    runner = CliRunner()
+    legacy = runner.invoke(app, args, input=capture)
+    assert (legacy.exit_code, legacy.stderr) == (0, "")
+    if case == "mixed":
+        added_rule.unlink()
+
+    required = runner.invoke(app, [*args, "--require-complete"], input=capture)
+    assert (required.exit_code, required.stdout) == (2, legacy.stdout)
+    summary = json.loads(required.stdout.splitlines()[-1])
+    if case == "empty":
+        assert summary["items"] == 0
+        assert "items=0" in required.stderr
+    elif case == "truncated":
+        assert summary["status"]["truncated"] == 1
+        assert "truncated=1" in required.stderr
+    else:
+        assert summary["status"]["complete"] == 2
+        assert summary["mixed_identities"]
+        assert "identities=2" in required.stderr
 
 
 def test_the_default_deadline_and_the_child_command(

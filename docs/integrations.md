@@ -833,15 +833,19 @@ quarter off a ten-snippet replay on a Linux container
 `--no-timings` leaves the seconds out, so two runs over the same capture with the same
 rules and detector print the same bytes.
 
-The exit code is 0 when every item got a gate record and 2 when one did not. It is never
-1: a proposed hold is an observation here, not a verdict. A capture that cannot be read
-(including standard input closed at start), standard output that stops taking records, and
-an error replay did not expect (`incomplete: <Type>`) also exit 2. Exit 0 does not mean every item
-was fully scanned: a missing rules directory makes every item `truncated` and still exits
-0, so read `status` in the summary before using a run. Like any scan, a replay fills the
-compiled-rule cache under the user cache directory; it writes nothing else. Do not use this command to admit
-content. An envelope describes a capture; admission uses a fresh `scan` or `scan_bytes`
-record for the bytes being read.
+By default, replay exits 0 when every item got a gate record, including a `truncated`
+record, and exits 2 if an item failed. Unreadable input, unwritable output, and unexpected
+errors also exit 2. Proposed holds are observations, and replay never exits 1.
+
+For evaluation, pass `--require-complete` to require a nonempty capture with every item
+`complete` and exactly one identity. The identity uses the detector, rules, versions and
+counts listed above. Items can still specify different policies. A run that fails this
+check exits 2 and prints the item, failed, truncated, and identity counts on stderr.
+Stdout keeps the same JSON Lines envelopes and summary for diagnosis.
+
+Like any scan, a replay can fill the compiled-rule cache under the user cache directory.
+An envelope describes a capture. Admission uses a fresh `scan` or `scan_bytes` record for
+the bytes being read.
 
 A caller that already holds bytes in Python can use the same core:
 

@@ -269,17 +269,21 @@ def replay(
     no_timings: bool = typer.Option(
         False, "--no-timings", help="Leave seconds out, so two runs print the same bytes."
     ),
+    require_complete: bool = typer.Option(
+        False,
+        "--require-complete",
+        help="Exit 2 unless a nonempty capture completes under one scanner identity.",
+    ),
 ) -> None:
     """Scan captured model input and print what the gate would decide. Observe only.
 
     One JSON envelope per captured item, then a summary. Nothing is admitted, held, or
-    moved, and no report is written. Exit 0 when every item got a gate record and 2 when
-    one did not; never 1.
+    moved, and no report is written. By default, exit 0 when every item got a gate record
+    and 2 when one did not. With --require-complete, exit 2 for an unusable evaluation run.
     """
-    from yara_gate.replay import FAILED, Tally, replay_capture
+    from yara_gate.replay import FAILED, TRUNCATED, Tally, replay_capture
 
     tally = Tally()
-    failed = False
     try:
         with _capture_input(capture) as handle:
             for envelope in replay_capture(
@@ -290,7 +294,6 @@ def replay(
                 timings=not no_timings,
             ):
                 tally.add(envelope)
-                failed = failed or envelope["status"] == FAILED
                 _print_record(envelope)
         _print_record(tally.result())
     except _OutputLost as exc:
@@ -302,6 +305,16 @@ def replay(
         # Replay exits 0 or 2, never 1: an error it did not expect is still no answer.
         typer.echo(f"incomplete: {exc.__class__.__name__}", err=True)
         raise typer.Exit(code=2) from exc
+    failed = tally.status[FAILED]
+    truncated = tally.status[TRUNCATED]
+    identities = len(tally.identities)
+    if require_complete and (not tally.items or failed or truncated or identities != 1):
+        typer.echo(
+            f"replay incomplete: items={tally.items} failed={failed} "
+            f"truncated={truncated} identities={identities}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     raise typer.Exit(code=2 if failed else 0)
 
 

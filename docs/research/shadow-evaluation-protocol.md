@@ -104,7 +104,7 @@ identifier are refused, so a typo cannot silently drop a field. The full key lis
 ## Running a condition
 
 ```sh
-yara-gate replay capture.jsonl --rules RULES > gate-only.run1.jsonl
+yara-gate replay capture.jsonl --rules RULES --require-complete > gate-only.run1.jsonl
 ```
 
 - Record the source revision beside the output. The summary carries `ruleset_sha256`,
@@ -113,12 +113,13 @@ yara-gate replay capture.jsonl --rules RULES > gate-only.run1.jsonl
   old one.
 - `--no-timings` prints the same bytes for the same capture and detector. Use it to confirm a
   run is reproducible; use a timed run for the latency budget.
-- Exit 0 means every item got a gate record. Exit 2 means one did not: fix the capture or the
-  environment and run again, because a failed item is missing from every rate.
-- Use a run for rates only when the summary has zero `failed` and `truncated` items, one
-  identity, and `mixed_identities: false`. A complete reply needs both version fields, both
-  digests, and both rule counts. Incomplete replies can lack provenance when compilation
-  fails and still produce exit 0.
+- With `--require-complete`, exit 0 confirms a nonempty capture, zero `failed` and
+  `truncated` items, and one identity (`mixed_identities: false`). A complete reply
+  needs both version fields, both digests, and both rule counts. If replay exits 2,
+  inspect stderr and any summary, correct the capture or environment, and rerun before
+  calculating rates.
+- Verify task coverage and label denominators against the frozen task list before reporting
+  results. Verify that identities agree across the runs you compare.
 
 ## Decision report
 
@@ -128,4 +129,4 @@ outbound query checks, and claim-support checks are tracked in CG-agent-harness.
 
 ## Changes
 
-None since 2026-11-20.
+2026-11-24. Use the opt-in replay completeness check to enforce the existing within-run criteria before scoring. The conditions, pilot size, and budgets are unchanged.
