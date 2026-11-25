@@ -101,6 +101,37 @@ identifier are refused, so a typo cannot silently drop a field. The full key lis
 - Keep query strings, tokens, and personal identifiers out of `source_id`; it is copied
   into the output.
 
+### Harness capture-first slice
+
+Owner decisions of November 25, 2026, under
+[Harness #984](https://github.com/cgfixit/CG-agent-harness/issues/984): capture/replay
+first for chat search listings and fetched passages, with the capture flag shipped off.
+Use an isolated single-account evaluation home and synthetic private facts. Raw captures
+stay private; never attach them to issues, PRs, or public demo recordings.
+
+Capture the final serialized tool-result strings after passage selection and budget fitting,
+for successful model calls. Tag search listings `agent-ingest` and fetched page/PDF passages
+`agent-document`. Compare both existing policies offline before choosing enforcement.
+This slice does not cover `/browse`, raw HTML, restored evidence, `/web` context, or
+research/digest model calls. Record those gaps; a successful smoke replay does not complete
+the 200-task qualification or the consumer outcome measurement in #294.
+
+Harness assigns opaque source identifiers and no ground-truth labels. Reconcile the
+capture with the task manifest, add the author's labels, and account for capture failures
+before calculating rates. A capture failure is missing evidence, never a clean scan.
+Record the Harness revision, binary hash, model tag and extractor version beside each run.
+Do not use an extracted-page digest as `original_sha256` for a source file it does not name.
+
+An explicit `policy` in a capture line takes precedence over replay's `--policy` default.
+For a paired policy comparison, make private copies of the same capture and explicitly
+set every line's policy to the condition being measured. Keep the text bytes, hashes,
+source identifiers and labels unchanged. Check identical item coverage and scanner
+identities across conditions; separate policy decisions from detector findings.
+
+Report benign would-holds separately from actual task-completion loss: observe-only runs
+do not enforce holds. Also report p50 and p95 per tool call; no new threshold is set here.
+The frozen task count, three runs, completion budget and per-item latency budget remain.
+
 ## Running a condition
 
 ```sh
@@ -130,3 +161,7 @@ outbound query checks, and claim-support checks are tracked in CG-agent-harness.
 ## Changes
 
 2026-11-24. Use the opt-in replay completeness check to enforce the existing within-run criteria before scoring. The conditions, pilot size, and budgets are unchanged.
+
+2026-11-25. Record the owner's capture-first scope and per-channel mapping, the paired
+policy comparison, capture reconciliation and explicit coverage gaps. The frozen
+qualification conditions, pilot size and budgets are unchanged.
