@@ -67,3 +67,51 @@ Both incomplete Quartz files have an invalid cross-reference row. A pypdf
 rewrite retained the extracted labels and scanned clean. The separate
 [Quartz issue](https://github.com/cgfixit/yara-gate/issues/317) tracks that
 compatibility finding. It does not provide evidence for shipping a legacy CMap.
+
+## Quartz cross-reference follow-up
+
+On 2026-11-24, two runs of the Quartz recipe above on macOS 27.2.1
+(build 26B131) and Swift 6.4.2 produced the same failure for PingFang SC and
+PingFang TC. Each PDF 1.3 export had a classic cross-reference entry marking
+object 6, generation 0, in use at byte 0. Byte 0 begins the PDF header,
+and no matching object header appeared elsewhere. The Japanese, Korean,
+and an additional English Helvetica export had no such row.
+[ISO 32000-1 §7.5.4](https://udp.adobe.io/document-services/docs/assets/35e4369068f86065372c18787171a17e/PDF_ISO_32000-1.pdf)
+defines the in-use offset as the position of the indirect object's beginning.
+
+PDFium (pypdfium2 5.15.2) and pypdf 7.1.1 extracted the intended simplified
+and traditional Chinese labels from the originals. Default pypdf discarded
+the bad row with a warning. Preview painted both expected labels. A pypdf
+`PdfWriter(clone_from=reader)` rewrite to a separate file removed the bad
+row and preserved the expected text in both extraction libraries. For
+Japanese and Korean, PDFium extracted the intended labels and pypdf returned
+different code points.
+
+On `e278c53a22dc8f329b02fdfc3119ecce37124a6b`, the locked Python 3.12.13
+environment used YARA-X 1.24.0 with all 89 bundled rules and zero rule files
+skipped. `scan_file` and `yara-gate scan --json --policy agent-document` on
+disposable homes and rules agreed on verdict, reason, and SHA-256. Each CLI
+case checked the stored JSON report and the location of the identical bytes.
+
+| Input | Result under `agent-document` | Inbox disposition |
+| --- | --- | --- |
+| Raw simplified and traditional Chinese exports, both runs | Incomplete, exit 2, `pdf xref malformed` | Quarantine |
+| Both pypdf rewrites | Clean, exit 0, no findings | Clean |
+| English Quartz export | Clean, exit 0, no findings | Clean |
+| Japanese and Korean Quartz exports | Advisory, exit 0, `heuristic_pdf_text_unmapped` note | Clean |
+| Malformed `startxref` control | Incomplete, exit 2, `pdf xref malformed` | Quarantine |
+| Valid incremental fixture from `tests/test_pdfxref.py` | Advisory, exit 0, annotation finding | Clean |
+| Existing classic, Flate, predictor, hybrid, and incremental stream-offset fixtures | Incomplete, exit 2, `pdf annotation xref offset inside stream` | Quarantine |
+
+The live loopback workbench labels the built-in merged-PDF finding advisory
+with exit 0 under `agent-document` and block with exit 1 under
+`agent-ingest`. Its benign twin is clean under both policies, and the
+unsupported-archive example displays incomplete with exit 2. The workbench
+runs catalog PDFs. The original Quartz files and rewrites went through the
+file-scanning CLI and library.
+
+Recovery by these readers establishes that the two pages remain readable.
+It gives no evidence that a general exception for zero-offset in-use entries
+would account for every object a reader might recover. Preserve the
+fail-closed check and [rescan a trusted replacement](../../user-guide.md#quartz-pdfs-with-malformed-cross-references).
+The prevalence of the malformed row in other Quartz exports is unknown.

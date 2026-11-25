@@ -250,6 +250,19 @@ After you upgrade `yara-gate`, `yara-gate conform` checks the new install agains
 and expected verdicts shipped inside it: exit 0 when nothing changed, 1 when a verdict
 did, 2 when it could not run. See the [conformance kit](docs/conformance.md).
 
+### Quartz PDFs with malformed cross-references
+
+A PDF can open normally in Preview and still scan incomplete with
+`pdf xref malformed` (exit 2). Some macOS Core Graphics exports list an
+in-use object at byte zero, where the PDF header begins. An inbox copy
+stays in quarantine even when the visible page looks ordinary.
+
+Ask the producer for a fresh export, or have an authorized operator rewrite
+a trusted document into a separate file. Check that the replacement contains
+the expected pages and text, then run `yara-gate scan` on that file under the
+intended policy. Apply the new result to the replacement bytes only.
+[Measured Quartz exports and rewrite results](docs/verification/2026-11-20-cjk-generator-inventory.md#quartz-cross-reference-follow-up).
+
 ## 9. Try a verdict in the browser
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
