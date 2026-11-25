@@ -1,14 +1,14 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 93 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 45 attacks, their 45 benign
-near-twins, and three unfinished scans. The default workflow demonstrates a
-model-directed ranking request reconstructed from an RSS description. Other pairs
+GitHub Pages replays real scanner results for 95 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 46 attacks, their 46 benign
+near-twins, and three unfinished scans. The default workflow compares margin annotations in a synthetic PDF 1.3 print proof
+with the unused cross-reference entry seen in Quartz exports. Other pairs
 cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
 descriptions. The page shows the scanner revision, capture time, rule coverage,
 and engine version.
 
-The page opens with a fictional procurement task and its recorded policy comparison.
+The page opens with the print proof, a workflow selector, and links to the selected outcome, catalog totals, and full gallery.
 Below the workflow, a reader panel sets
 what six files hold beside what a reader shows: the span around a bold word, the XML
 comment between two words, a sentence kept on the slide master, a PDF `TJ` array whose
@@ -68,7 +68,7 @@ checks.
 
 ## Guided workflows
 
-Twenty fictional tasks open directly beside their recorded outcome: vendor comparison
+The selector opens 21 fictional tasks, including print proof review and vendor comparison
 (a ranking directive rebuilt from escaped HTML in an RSS description), supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
@@ -84,17 +84,14 @@ handoff (forwarding versus refusing to forward), project handoff (a persistent a
 bypass versus preserving approval), and an inspection limit (65 nested JSON arrays).
 The last is a single incomplete case without an attack phrase or benign twin. It shows
 that a legitimate input can also exceed the scanner's budget.
-A four-step guide connects the fictional input to evidence, policy, and the caller's
-same-byte enforcement responsibility; no downstream agent or disposition is simulated.
 Senders use reserved example addresses; the context is illustrative, and only the
-fixed synthetic fixture is scanned. Workflow buttons start with `agent-ingest`;
-visitors can compare its twin and change policy without leaving the evidence.
-The full 45-pair catalog and the three unfinished scans remain under an expandable section.
+fixed synthetic fixture is scanned. The initial policy is `agent-ingest`. Switching workflows or opening a twin preserves the selected policy.
+The full 46-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
-The local workbench offers the same twenty shortcuts and the same catalog: both read
+The local workbench offers twenty shortcuts and the full catalog. Both demos use
 [`src/yara_gate/showcase.py`](../src/yara_gate/showcase.py), so the two demos cannot
-list different pairs. Both demos open with the vendor feed. The paired outcomes show the exact synthetic directives,
+list different pairs. The local workbench opens with the vendor feed. The paired outcomes show the exact synthetic directives,
 and the ranking request produces an advisory finding in `feed-text` under all three policies.
 Selecting a shortcut clears the previous result and prepares a sample with `agent-ingest`; **Scan sample** runs the real scanner, **Scan pair side
 by side** scans the attack and its twin under the same policy, and **Run every pair**
@@ -229,13 +226,14 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 93 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 95 inert
 examples, recorded with 89 bundled rules and YARA-X 1.24.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
 | --- | --- | --- |
+| Document | A synthetic print proof with a Quartz-style unused cross-reference entry and an instruction in its margin | The same layout with an ordinary caption correction |
 | Web page | An RSS description uses escaped HTML to split the model address from a request to rank the vendor first | The same support terms, markup, and model address with a request to compare published support hours |
 | Document | A PDF annotation with UTF-16BE hexadecimal instructions | The same encoded annotation with an ordinary revision note |
 | Document | An RTF override split by formatting and encoded letters | The same formatted RTF with an ordinary revision note |
@@ -343,7 +341,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 93 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 95 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

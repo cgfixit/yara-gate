@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "336e1d76f5019b4471222264954927ce122bbdc4",
-  "captured_at": "2026-11-23T01:08:21+00:00",
+  "source_revision": "7024cb02d39b60cece48b685d720e20768cd2b32",
+  "captured_at": "2026-11-25T15:25:57+00:00",
   "cases": [
     {
       "id": "note",
@@ -7740,6 +7740,182 @@
             "format-controls-removed": 1
           },
           "bytes_scanned": 126,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "print_proof_instruction",
+      "kind": "detection",
+      "channel": "Document",
+      "pair": "print_proof_revision",
+      "title": "A print proof with an instruction in the margin",
+      "description": "A synthetic PDF 1.3 has an unused Quartz-style cross-reference entry. Its margin annotation asks the reader to ignore previous instructions.",
+      "results": {
+        "default": {
+          "sha256": "bde5a11d0cb9a22bc2b2a0e00a071e4e8e5ec9f6e54e2499593993c7c03e03fa",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 12,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 678,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "bde5a11d0cb9a22bc2b2a0e00a071e4e8e5ec9f6e54e2499593993c7c03e03fa",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 12,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 678,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "bde5a11d0cb9a22bc2b2a0e00a071e4e8e5ec9f6e54e2499593993c7c03e03fa",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_prompt_injection_phrases",
+              "offset": 12,
+              "length": 28,
+              "severity": "note",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-annotation"
+            }
+          ],
+          "advisory": false,
+          "note": true,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document records note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 678,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "print_proof_revision",
+      "kind": "control",
+      "channel": "Document",
+      "pair": "print_proof_instruction",
+      "title": "The same proof with a copy editor\u2019s note",
+      "description": "The PDF structure and annotation encoding are identical. The note asks the reader to use the revised caption on page one.",
+      "results": {
+        "default": {
+          "sha256": "8142b4a4202bcf1dea21321cfff5f42600277fba8c70904f5baf67000a7c5226",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 713,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "8142b4a4202bcf1dea21321cfff5f42600277fba8c70904f5baf67000a7c5226",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 713,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "8142b4a4202bcf1dea21321cfff5f42600277fba8c70904f5baf67000a7c5226",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "9e53d1a826c753067cb2eef89d2a200944b6283aa5e5b20cf01944941a7309f1",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1
+          },
+          "bytes_scanned": 713,
           "exit_code": 0
         }
       }
