@@ -569,6 +569,9 @@ def _css_declarations(style: str) -> dict[str, str] | None:
         return None
     found: dict[str, str] = {}
     weighted: set[str] = set()
+    # The keys of found not in weighted: what a later "all" without !important removes. Kept
+    # as the loop goes, so a run of "all" after many !important declarations stays linear.
+    loose: set[str] = set()
     for part in parts:
         name, colon, value = part.partition(":")
         if not colon:
@@ -586,16 +589,25 @@ def _css_declarations(style: str) -> dict[str, str] | None:
         if name == "all":
             # Everything declared so far goes back to its initial or inherited value. The entry
             # stays so the reader knows nothing is inherited that it can rely on.
-            for earlier in [key for key in found if important or key not in weighted]:
-                del found[earlier]
+            if important:
+                found.clear()
+            else:
+                for earlier in loose:
+                    del found[earlier]
+            loose = {name}
             found[name] = value
             continue
         for longhand in _CSS_SHORTHANDS.get(name, ()):
             if important or longhand not in weighted:
                 found.pop(longhand, None)
+                loose.discard(longhand)
         if important:
             weighted.add(name)
             weighted.update(_CSS_SHORTHANDS.get(name, ()))
+            loose.difference_update(_CSS_SHORTHANDS.get(name, ()))
+            loose.discard(name)
+        else:
+            loose.add(name)
         found[name] = value
     return found
 

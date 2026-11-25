@@ -626,6 +626,13 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
     prefix, suffix = b'<!doctype html><html><body><p style="', b'">x</p></body></html>'
     count, rest = divmod(SIZE - len(prefix) - len(suffix), 4)
     yield "html-style-parens.html", prefix + b"x:(;" * count + b" " * rest + suffix, None
+    # One style attribute: 2 MiB of distinct !important declarations, then 2 MiB of "all".
+    # Each "all" walked every !important entry still kept, which no deadline check
+    # interrupts: past 120 s here.
+    weighted = b";".join(b"p%07d:x!important" % n for n in range((SIZE // 2) // 19))
+    body = weighted + b";all:y" * ((SIZE // 2) // 6)
+    room = SIZE - len(prefix) - len(suffix)
+    yield "html-style-all.html", prefix + body[:room].ljust(room) + suffix, None
     # One tool description that starts a phrase and then runs 4 MiB of spaces: each space in
     # the description pattern is a run of whitespace, read once.
     prefix, suffix = b'{"tools":[{"name":"a","description":"x do not tell', b' y"}]}'
