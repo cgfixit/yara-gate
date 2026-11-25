@@ -52,8 +52,10 @@ the function returns is unchanged, including the order of its keys.
   locked virtual environment (11,881 files, 217,131 attributes) gave identical results.
 - `docs/research/probe_html_hidden_browser.py` against Chromium 158.0.8127.36: the 447
   directed documents and 3,000 generated ones (seed 7) gave the same counts in every category
-  on the base and on the change. Each set has one unsound marker, a `noscript` inside a
-  `display:none` element. It is the same on the base and is not touched here.
+  on the base and on the change. That run rendered with scripting off (`ORACLE_JS` unset),
+  so each set showed one unsound marker, a `noscript` inside a `display:none` element. With
+  scripting on, which the reader assumes, both sets have none; see the
+  [`noscript` oracle record](2026-11-25-html-hidden-noscript-oracle.md).
 - `check_worst_case_timing.py --case html-style-all.html`: killed at the watchdog on the
   base, 1.28 s and clean on the change. The full run passed all 106 inputs; the slowest took
   5.5 s.
