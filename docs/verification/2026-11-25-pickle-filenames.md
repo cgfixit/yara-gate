@@ -3,7 +3,8 @@
 Date: November 25, 2026 (ET). Base: `origin/main` at `c8519c5`. Candidate: this
 branch's `src/yara_gate/heuristics.py`, SHA-256
 `9d7d8e7a629eb6383161511767af07e2ecd8ea04bd1bc9a32f36c4a89a8dc304`. macOS 27.2.1 arm64, Python 3.12.12, locked YARA-X 1.24.0,
-89 bundled local rules, zero skipped rule files, no vendor packs. All inputs were
+89 bundled local rules, zero skipped rule files, no vendor packs. Installed detector:
+`49acd163df3db680eb2a14e967a6e2ec2d3fd061e621f20ceaf7a997a9c7221d`. All inputs were
 inert; no pickle was loaded, no sample command was executed, and no sample URL
 was fetched.
 
@@ -110,6 +111,12 @@ disposable local rules tree. Computer Use used the in-app browser on loopback:
 
 This repository delivers a CLI/library and browser demos, not a macOS `.app`.
 The browser run is live scanner evidence; the static Pages replay is separate.
+Its painted JSON named the same detector digest as the installed CLI. After
+commit `e621312`, the Pages recorder matched all 279 reviewed outcomes. The
+supported four-file build validated the existing curated recordings; Computer
+Use selected Inspection limit and showed recorded incomplete/2 under all three
+policies. That page still labels the original curated recording revision; it is
+not presented as a live scan of this candidate.
 
 ## Reproducible checks and limits
 
@@ -125,7 +132,18 @@ The browser run is live scanner evidence; the static Pages replay is separate.
 
 The sandbox initially refused the loopback listener; the unchanged installed
 command ran with authorized access. The Pages recorder correctly refused the
-uncommitted scanner tree; recording follows the implementation commit. No gate
+uncommitted scanner tree, then passed after the implementation commit. No gate
 was disabled. Native Windows, vendor packs, live consumers, broader regression
 coverage and production false-positive rates are not established by these runs.
 Keep #322 open for the deferred Windows script-rule item after this fix merges.
+
+## Overlap and artifact refresh
+
+Trial merges on November 25 were clean against `main` `c8519c5` and against
+#356 head `b8d588b`. Both branches edit different sections of README.md. On the
+combined tree, Ruff, actionlint 1.7.12 and locked zizmor offline/pedantic passed,
+and the wheel built successfully. This does not replace each PR's hosted checks.
+
+The original operator checkout has widespread unstaged deletions. Its source,
+index and local main were preserved; its origin refs were refreshed. Work and
+verification use the isolated clone and installed wheel described above.
