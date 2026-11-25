@@ -18,8 +18,7 @@ directed case is "noscript inside hidden div":
 
 The browser was recorded drawing `MARK1` (`shown:16`), while
 `yara_gate.htmlhidden.html_hidden_texts` called it hidden. The same marker is in the
-inline style `all` record of the open pull request cgfixit/yara-gate#362, which leaves it
-alone.
+[inline style `all`](2026-11-25-css-all-linear.md) record, which leaves it alone.
 
 ## What it was
 
