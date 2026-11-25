@@ -223,6 +223,8 @@ These are detected examples at the recorded revision, including previously fixed
 
 ## Verification and CI
 
+When changing Office text extraction, run the [OpenDocument and OOXML reader probes](docs/research/README.md#scripts) to compare the gate’s text views with text from installed document readers.
+
 The [CI workflow](.github/workflows/ci.yml) runs lint, type checks, rule compilation (including that each generated rule file matches its template) and boundary checks, synthetic precision checks, direct runtime probes (intake and rule coverage, known detection gaps, and each rule under a small match cap), a [4 MiB worst-case timing tripwire](docs/verification/worst-case-timing.md), selftest, and pytest on macOS 15. A separate Windows job (`windows-latest`) covers rule, scan-only, intake, reviewed-release, rescan, and held-index checks. Linux runs in the [Pages workflow](.github/workflows/demo-results-page.yml), which re-records the demo catalog with the real scanner on Ubuntu 24.04. A third workflow, [`independent-verdict`](.github/workflows/independent-verdict.yml), fails a pull request while it carries the `verification-pending` label. Actions are pinned to commit SHAs; only the Pages deployment job receives Pages/OIDC write permissions. CodeQL runs through GitHub's default setup on Python, Actions, and JavaScript. See [Actions](https://github.com/cgfixit/yara-gate/actions) for current status and the [dated verification records](docs/verification/) for source-specific evidence.
 
 ```bash
