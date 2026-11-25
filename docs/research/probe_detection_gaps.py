@@ -93,6 +93,8 @@ class Case:
     name: str
     data: bytes
     want: str
+    # Expected verdicts under default, agent-ingest, and agent-document, in that order.
+    want_verdicts: tuple[str, str, str] | None = None
 
 
 def zipped(members: dict[str, bytes], method: int = zipfile.ZIP_DEFLATED) -> bytes:
@@ -2580,6 +2582,9 @@ def backlog_cases() -> list[Case]:
     yet). The probe turns STALE when one starts to hold, so the fix removes the marker and
     updates the backlog in the same change.
     """
+    clean = ("clean", "clean", "clean")
+    note = ("advisory", "block", "advisory")
+    advisory = ("advisory", "block", "block")
     hidden_rule = "agent_hidden_html"
     mcp = "heuristic_mcp_hidden_instruction"
     reduce = "heuristic_pickle_reduce"
@@ -2875,6 +2880,7 @@ def backlog_cases() -> list[Case]:
             "a.html",
             page(f'<p style="display:none">{PHRASE}</p>'),
             hidden_rule,
+            advisory,
         ),
         Case(
             "B3",
@@ -2882,6 +2888,7 @@ def backlog_cases() -> list[Case]:
             "a.html",
             page(f'<div data-note="{PHRASE}">Welcome.</div>'),
             HIDDEN_TEXT,
+            advisory,
         ),
         Case(
             "B3",
@@ -2889,6 +2896,7 @@ def backlog_cases() -> list[Case]:
             "a.html",
             page(f'<p style="opacity:0">{PHRASE}</p>'),
             HIDDEN_TEXT,
+            advisory,
         ),
         Case(
             "B3",
@@ -2896,13 +2904,23 @@ def backlog_cases() -> list[Case]:
             "a.html",
             page(f'<p style="color:#ffffff">{PHRASE}</p>'),
             f"{PHRASE_RULE} without {HIDDEN_TEXT}",
+            note,
         ),
         Case(
-            "backlog",
+            "B3",
+            "backlog html white text, ordinary label (benign)",
+            "a.html",
+            page('<p style="color:#ffffff">Quarterly figures</p>'),
+            "clean",
+            clean,
+        ),
+        Case(
+            "B3",
             "backlog html data attribute, ordinary text (benign)",
             "a.html",
             page('<div data-note="Quarterly figures">Welcome.</div>'),
             "clean",
+            clean,
         ),
         # B4: bytes hidden as a run of zero-width characters, one bit each. Two notes today.
         Case(
@@ -2945,6 +2963,26 @@ def backlog_cases() -> list[Case]:
             "\u06a9\u062a\u0627\u0628\u200c\u0647\u0627\n".encode(),
             "clean",
         ),
+        # A captured redraw preserves the earlier bytes. The scanner has no viewport state.
+        *(
+            Case(
+                "B5",
+                f"backlog terminal {action}, {label}",
+                "build.log",
+                data + redraw,
+                want,
+                verdicts,
+            )
+            for action, redraw in (
+                ("erase line", b"\r\x1b[2KBuild complete.\n"),
+                ("cursor up and overwrite", b"\n\x1b[1A\rBuild complete.\n"),
+                ("clear screen", b"\x1b[2J\x1b[HBuild complete.\n"),
+            )
+            for label, data, want, verdicts in (
+                ("phrase", PHRASE.encode(), f"{PHRASE_RULE} without {HIDDEN_TEXT}", note),
+                ("ordinary progress", b"Building package 1 of 2.", "clean", clean),
+            )
+        ),
         # B5 boundary: SGR conceal is outside the overwrite and clear experiment.
         Case(
             "B5",
@@ -2952,6 +2990,7 @@ def backlog_cases() -> list[Case]:
             "a.log",
             f"build ok\n\x1b[8m{PHRASE}\x1b[0m\n".encode(),
             f"{PHRASE_RULE} without {HIDDEN_TEXT}",
+            note,
         ),
         # B6: a binding.gyp command expansion that runs a script and discards its output.
         Case(
@@ -2961,38 +3000,43 @@ def backlog_cases() -> list[Case]:
             b'{"targets":[{"target_name":"stub","sources":'
             b'["<!(node index.js > /dev/null 2>&1 && echo stub.c)"]}]}',
             "dev_gyp_command_expansion",
+            advisory,
         ),
         Case(
-            "backlog",
+            "B6",
             "backlog gyp include lookup (benign)",
             "binding.gyp",
             b'{"targets":[{"target_name":"a","include_dirs":'
             b'["<!(node -p \\"require(\'node-addon-api\').include_dir\\")"]}]}',
             "clean",
+            clean,
         ),
         # The nearest benign shapes in real addons: && inside a node -p test (nodegit), and
         # 2>&1 piped on to another command (fibers). Both stay clean.
         Case(
-            "backlog",
+            "B6",
             "backlog gyp && inside a node -p test (benign)",
             "binding.gyp",
             b'{"variables":{"is_IBMi%":"<!(node -p \\"os.platform() == \'aix\' && '
             b"os.type() == 'OS400' ? 1 : 0\\\")\"}}",
             "clean",
+            clean,
         ),
         Case(
-            "backlog",
+            "B6",
             "backlog gyp 2>&1 piped to grep (benign)",
             "binding.gyp",
             b"{'variables':{'USE_MUSL':'<!(ldd --version 2>&1 | head -n1 | grep musl | wc -l)'}}",
             "clean",
+            clean,
         ),
         Case(
-            "backlog",
+            "B6",
             "backlog gyp expansion quoted in a README (boundary)",
             "README.md",
             b'Miasma wrote "<!(node index.js > /dev/null 2>&1 && echo stub.c)" in binding.gyp.',
             "clean",
+            clean,
         ),
         # B7: a font dictionary read to its own end. One that writes /ToUnicode twice is read
         # through each key: pypdf keeps the first, poppler, PDFium, and pdfminer.six the last.
@@ -3245,6 +3289,7 @@ def backlog_cases() -> list[Case]:
             "a.pdf",
             font_page(ucs2(PHRASE), (6, cjk), *cjk_descendant),
             PHRASE_RULE,
+            note,
         ),
         Case(
             "B8",
@@ -3252,6 +3297,7 @@ def backlog_cases() -> list[Case]:
             "a.pdf",
             font_page(ucs2(twin), (6, cjk), *cjk_descendant),
             "clean",
+            clean,
         ),
         Case(
             "B8",
@@ -3259,6 +3305,7 @@ def backlog_cases() -> list[Case]:
             "a.pdf",
             before_a_map(PHRASE),
             PHRASE_RULE,
+            note,
         ),
         *(
             Case(
@@ -3269,6 +3316,7 @@ def backlog_cases() -> list[Case]:
                     ucs2(PHRASE), (6, cjk.replace(b"UniGB-UCS2-H", name.encode())), *cjk_descendant
                 ),
                 PHRASE_RULE,
+                note,
             )
             for name in ("UniJIS-UCS2-HW-H", "UniKS-UTF16-V", "UniCNS-UTF16-H")
         ),
@@ -3282,6 +3330,7 @@ def backlog_cases() -> list[Case]:
                 ucs2(PHRASE), (6, cjk.replace(b"UniGB-UCS2-H", b"GBK-EUC-H")), *cjk_descendant
             ),
             unmapped,
+            note,
         ),
         Case(
             "B8",
@@ -3291,6 +3340,7 @@ def backlog_cases() -> list[Case]:
                 ucs2(PHRASE), (6, cjk.replace(b"UniGB-UCS2-H", b"Identity-H")), *cjk_descendant
             ),
             unmapped,
+            note,
         ),
         Case(
             "B8",
@@ -3298,6 +3348,7 @@ def backlog_cases() -> list[Case]:
             "a.pdf",
             before_a_map(twin),
             "clean",
+            clean,
         ),
         Case("#322.2", "pickle protocol 2 control", "model.pkl", b"\x80\x02" + pickled, reduce),
         Case("#322.2", "pickle protocol 0 call", "model.pkl", pickled, reduce),
@@ -6245,13 +6296,20 @@ def main() -> None:
             status = "ok" if ok and gap is None else f"open {gap}" if gap and not ok else "FAIL"
             if gap and ok:
                 status = f"STALE {gap}"
+            if status.startswith(("FAIL", "STALE")):
+                failures.append(f"{case.label}: {status} (want {case.want})")
+            observed = (verdict, *verdicts)
+            if case.want_verdicts is not None and observed != case.want_verdicts:
+                status = "FAIL policy"
+                failures.append(
+                    f"{case.label}: expected default/ingest/document {case.want_verdicts}, "
+                    f"got {observed}"
+                )
             print(
                 f"{status:12} {case.group:7} {case.label:40} default={verdict:10} "
                 f"ingest={verdicts[0]:10} document={verdicts[1]:10} "
                 f"reason={reason} findings={sorted(found)}"
             )
-            if status.startswith(("FAIL", "STALE")):
-                failures.append(f"{case.label}: {status} (want {case.want})")
         by_name = {case.label: case for case in cases()}
         intake = {
             "control.zip": by_name["zip control"].data,

@@ -124,7 +124,9 @@ built the same day as advisory YARA rules; their probe cases now hold, and the
   scrollback. Revisit for a producer that supplies the display state and defines what an
   agent or viewer reads, with a representative gain and benign redraw controls.
 - **Scope.** The [published MCP terminal examples](https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/)
-  cover redraw, colour and links. The existing conceal fixture checks text folding.
+  cover redraw, colour and links. The CI probe scans line erase, cursor-up overwrite and
+  screen clear, each after an override phrase and after ordinary build progress. It checks the
+  resulting verdict under all three policies. A separate conceal fixture checks text folding.
   Colour, links and conceal were outside the overwrite and clear experiment.
 
 ### B6. `binding.gyp` command expansion that discards its output
