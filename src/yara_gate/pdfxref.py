@@ -33,6 +33,8 @@ _TRAILER_END = frozenset({b"startxref"})
 _STARTXREF = re.compile(rb"startxref(?:[\x00\t\n\x0b\f\r ]++|%[^\r\n]*+)*+(?:([0-9]++)|([+\-.]))?")
 _START_WINDOW = 8192
 _ENTRY = re.compile(rb"(\d{10}) (\d{5}) ([nf])(?: \n|\r\n| \r)")
+_CLASSIC_TAIL = re.compile(rb"startxref\n([0-9]{1,10})\n%%EOF\n?\Z")
+_ONE_SUBSECTION = re.compile(rb"xref\n0 ([1-9][0-9]{0,5})\n")
 
 
 class XrefUse(Enum):
@@ -174,6 +176,63 @@ def xref_file_offsets(
     return None if tables is None else tables.offsets
 
 
+def classic_offsets_without_placeholder(
+    data: bytes, budget: Budget
+) -> tuple[int, dict[int, int]] | None:
+    """Table offset and all non-placeholder object offsets for the Quartz PDF 1.3 shape.
+
+    A caller must still prove that the placeholder is absent and unreferenced, and that
+    each other row agrees with the actual object layout.
+    """
+    if not data.startswith(b"%PDF-1.3\n"):
+        return None
+    tail = data.find(b"startxref")
+    match = _CLASSIC_TAIL.fullmatch(data, tail) if tail >= 0 else None
+    if match is None:
+        return None
+    at = int(match.group(1))
+    head = _ONE_SUBSECTION.match(data, at)
+    if head is None or data[at - 1 : at] != b"\n":
+        return None
+    count = int(head.group(1))
+    trailer_at = head.end() + 20 * count
+    if (
+        not 0 < tail - trailer_at <= 65536
+        or not data.startswith(b"trailer\n", trailer_at)
+        or not data.startswith(b"0000000000 65535 f \n", head.end())
+    ):
+        return None
+    table, trailer = _classic(data, at, budget, strict_trailer=True)
+    if trailer.keys() - {b"/Size", b"/Root", b"/Info", b"/ID"} or trailer.get(
+        b"/Size"
+    ) != head.group(1):
+        return None
+    offsets: dict[int, int] = {}
+    placeholders = 0
+    for number, entry in table.items():
+        if number % 4096 == 0:
+            budget.check()
+        if number == 0:
+            continue
+        if entry.use is not XrefUse.RESOLVED or entry.generation != 0 or entry.offset >= at:
+            return None
+        if entry.offset == 0:
+            placeholders += 1
+        else:
+            offsets[number] = entry.offset
+    root = trailer.get(b"/Root")
+    info = trailer.get(b"/Info")
+    if (
+        placeholders != 1
+        or not isinstance(root, tuple)
+        or root[1] != 0
+        or root[0] not in offsets
+        or (info is not None and (not isinstance(info, tuple) or info[1] or info[0] not in offsets))
+    ):
+        return None
+    return at, offsets
+
+
 @dataclass
 class _Listed:
     """Every entry of every section walked, for ``XrefTables``."""
@@ -236,7 +295,7 @@ def _section(
 
 
 def _classic(
-    data: bytes, at: int, budget: Budget
+    data: bytes, at: int, budget: Budget, *, strict_trailer: bool = False
 ) -> tuple[dict[int, XrefEntry], dict[bytes, PdfValue]]:
     pos = at + len(b"xref")
     if pos >= len(data) or data[pos : pos + 1] not in b"\r\n \t":
@@ -269,7 +328,7 @@ def _classic(
                 entries[start + index] = XrefEntry(XrefUse.FREE, 0, generation)
             pos += 20
         total += count
-    trailer = _trailer(data, pos + len(b"trailer"))
+    trailer = _trailer(data, pos + len(b"trailer"), strict=strict_trailer)
     return entries, trailer
 
 
@@ -410,7 +469,7 @@ def _integer(raw: bytes) -> int:
     return int.from_bytes(raw, "big") if raw else 0
 
 
-def _trailer(data: bytes, pos: int) -> dict[bytes, PdfValue]:
+def _trailer(data: bytes, pos: int, *, strict: bool = False) -> dict[bytes, PdfValue]:
     """The trailer dictionary at ``data[pos:]``.
 
     The lexer stops at the ``startxref`` that follows the dictionary. A linearized file's
@@ -421,10 +480,10 @@ def _trailer(data: bytes, pos: int) -> dict[bytes, PdfValue]:
     if not tokens or tokens[0] != b"<<":
         raise ContentLimit("pdf xref malformed")
     try:
-        value, _used = _pdf_value(tokens, 0)
+        value, used = _pdf_value(tokens, 0, reject_duplicates=strict)
     except (IndexError, ValueError) as exc:
         raise ContentLimit("pdf xref malformed") from exc
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or (strict and used != len(tokens)):
         raise ContentLimit("pdf xref malformed")
     return value
 

@@ -115,3 +115,33 @@ It gives no evidence that a general exception for zero-offset in-use entries
 would account for every object a reader might recover. Preserve the
 fail-closed check and [rescan a trusted replacement](../../user-guide.md#quartz-pdfs-with-malformed-cross-references).
 The prevalence of the malformed row in other Quartz exports is unknown.
+
+### Scanning the original Quartz exports
+
+The follow-up for [#317](https://github.com/cgfixit/yara-gate/issues/317)
+validates the observed PDF 1.3 layout before treating one in-use row at
+offset zero as an unused slot. It requires a single classic table and
+exact agreement with the remaining object headers. The layout pass must
+account for every reference and find no definition for that object.
+The native scanner then continues on the original bytes with the existing
+file-wide font reading.
+
+Both original exports and both repeated exports scanned clean with exit 0
+under all three policies in an installed candidate wheel. Each reported a
+`pdf-text` view, no findings, and the SHA-256 of the original bytes. The
+bad-pointer control and five stream-offset controls still exited 2 and
+stayed in quarantine under all three policies. The prior rewrite, ordinary
+Quartz, and valid incremental results stayed consistent with each policy.
+The CLI and library agreed on all 48 observations. The CLI check also
+compared the JSON on disk and the SHA-256 of the bytes at their final
+destination.
+
+Python 3.12.13, YARA-X 1.24.0, 89 bundled rules, zero skipped. Candidate
+detector SHA-256 `21db8ce0601b0896af7039d2908cbcc8f9b728c8d346d200177f30691ec66748`.
+The xref regressions passed 49 cases. The bundled conformance kit passed
+282 checks with no changed verdicts or findings. The page-map agreement
+probe had zero narrowing misses against PDFium and pypdf in 141 fixtures
+and 532 cases selected from 15,000 fuzz mutations. The packaged loopback
+workbench displayed the expected merged PDF pair and incomplete archive
+result with the same detector identity. The file CLI and library scanned
+the actual Quartz exports.

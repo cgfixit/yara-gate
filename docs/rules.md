@@ -467,12 +467,15 @@ malformed, so the scan is incomplete, not truncated. Flate output is
 charged to the shared 500MB budget, and a stream `pdf_streams` already inflated
 is not inflated again.
 
-The in-use row at offset zero seen in two Quartz exports is an example of
-`pdf xref malformed`. It points to the file header, while `startxref 0`
-above describes a pointer to a cross-reference section. ISO 32000-1 §7.5.4
-requires the in-use row to point to the beginning of the indirect object.
-A viewer's recovery can display a page despite the malformed row. See
-[the Quartz reader comparison](verification/2026-11-20-cjk-generator-inventory.md#quartz-cross-reference-follow-up).
+Some Quartz PDF 1.3 exports mark one unused object in use at byte zero.
+ISO 32000-1 §7.5.4 requires that row to point to the beginning of the
+indirect object. The scanner accepts this one shape when a single complete
+classic table lists every object at its actual header, the zero-offset
+object has no definition or reference, and the file has no object streams.
+The proof uses the bounded layout parser and leaves page text on the
+file-wide font reading. A second bad row, an unmatched header, an unresolved
+reference, or an ambiguous table keeps the scan incomplete. See
+[the Quartz reader comparison](verification/2026-11-20-cjk-generator-inventory.md#scanning-the-original-quartz-exports).
 
 Rich text `/RC` and filters the existing object-stream reader does not support
 remain outside this view; form-field values are read as `pdf-string`, below. A recognized annotation with an

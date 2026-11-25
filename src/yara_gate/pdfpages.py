@@ -91,7 +91,7 @@ from yara_gate.content import (
     _pdf_tokens,
     _pdf_value,
 )
-from yara_gate.pdfxref import xref_tables
+from yara_gate.pdfxref import classic_offsets_without_placeholder, xref_tables
 
 Ref = tuple[int, int]
 # name (without the slash) -> the font objects it can mean in one content stream
@@ -458,6 +458,38 @@ def _layout(data: bytes, objects: PdfObjects, budget: Budget) -> _Layout | None:
         if match.end() not in opened:
             return None
     return _Layout(items, starts, streams, found)
+
+
+def unreferenced_classic_placeholder(
+    data: bytes, objects: PdfObjects, budget: Budget, last_stream_end: int
+) -> bool:
+    """Prove the unused row cannot supply a second interpretation of any PDF object."""
+    classic = classic_offsets_without_placeholder(data, budget)
+    if classic is None:
+        return False
+    at, offsets = classic
+    # The plain layout cannot attest to member definitions inside an object stream.
+    if at < last_stream_end or b"/ObjStm" in data:
+        return False
+    layout = _layout(data, objects, budget)
+    if layout is None or len(layout.objects) != len(offsets):
+        return False
+    for count, (offset, item) in enumerate(layout.starts.items()):
+        if count % 4096 == 0:
+            budget.check()
+        if (
+            offsets.get(item.number) != offset
+            or item.generation != 0
+            or item.escaped
+            or item.stop > at
+        ):
+            return False
+    for count, number in enumerate(layout.found.references):
+        if count % 4096 == 0:
+            budget.check()
+        if number not in offsets:
+            return False
+    return True
 
 
 def _after_a_number(data: bytes, at: int) -> bool:
