@@ -56,7 +56,7 @@ const sources = {
 };
 const folded = '+text-folded';
 const byId = new Map(recording.cases.map((item) => [item.id, item]));
-const state = { example: 'vendor_feed_ranking', policy: 'agent-ingest', channel: 'All', method: 'All' };
+const state = { example: 'print_proof_instruction', policy: 'agent-ingest', channel: 'All', method: 'All' };
 
 // How an attack was caught, read from its recorded agent-ingest findings: which view or check
 // produced a finding that the bytes as sent did not. Nothing here is labelled by hand. One PDF
@@ -109,6 +109,9 @@ function methodsOf(item) {
 
 // Fictional context only. Decisions always come from the selected fixture's recording.
 const stories = [
+  { id: 'print_proof_instruction', label: 'Print proof review', title: 'Read the margin note on a print proof',
+    brief: 'Both synthetic PDFs contain the same unused entry in their cross-reference table, a layout seen in Quartz exports. The scanner can account for that entry and read the annotation. Compare the instruction with the editor’s caption correction.',
+    sender: 'Example print desk', task: 'Publishing · proof review', file: 'proof.pdf' },
   { id: 'vendor_feed_ranking', label: 'Vendor comparison', title: 'Compare vendors for a support contract',
     brief: 'A procurement assistant compares response commitments and renewal terms before making a shortlist. Both feeds say Northbridge offers a four-hour support response and renews in February. Check what each version tries to add to the evaluation.',
     sender: 'northbridge.example.invalid · fictional RSS feed', task: 'Procurement · shortlist from published terms', file: 'vendor-updates.xml' },
@@ -171,25 +174,16 @@ const stories = [
     sender: 'reports@example.invalid', task: 'Analytics · export summary', file: 'totals.xlsx' }
 ];
 
-function storyButtons() {
-  for (const story of stories) {
-    const button = text($('stories'), 'button', story.label, 'story-button');
-    button.type = 'button';
-    button.dataset.example = story.id;
-    button.addEventListener('click', () => {
-      state.policy = 'agent-ingest';
-      select(story.id, false);
-      $('story-title').focus();
-    });
-  }
+function workflowPicker() {
+  const picker = $('stories');
+  for (const story of stories) text(picker, 'option', story.label).value = story.id;
+  picker.addEventListener('change', () => select(picker.value, false));
 }
 
 function storyContext(example) {
   const story = stories.find((item) => item.id === example.id || item.id === example.pair);
   $('story-context').hidden = !story;
-  for (const button of document.querySelectorAll('.story-button')) {
-    button.setAttribute('aria-pressed', String(button.dataset.example === story?.id));
-  }
+  $('stories').value = story?.id || '';
   if (!story) return;
   $('story-title').textContent = story.title;
   $('story-brief').textContent = story.brief;
@@ -534,7 +528,10 @@ function render() {
 scoreboard();
 strip();
 depth();
-storyButtons();
+workflowPicker();
+document.querySelector('.jump-links a[href="#catalog"]').addEventListener('click', () => {
+  $('catalog').open = true;
+});
 for (const button of document.querySelectorAll('.seen-open')) {
   button.addEventListener('click', () => {
     state.policy = 'agent-ingest';
