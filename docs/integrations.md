@@ -9,7 +9,10 @@ the user's home prefix; other path components remain visible.
 
 The digest-named JSON and SARIF are latest-report views. The SARIF run's
 `properties` carry the JSON report's fields, `detector_sha256` included, so a
-consumer that reads only SARIF can key admissions on the same identity. Each
+consumer that reads only SARIF can key admissions on the same identity. Read
+`runs[0].properties.path` for the scanned path even when `results` is empty.
+It uses the same home-prefix redaction as JSON. Other directory and file names
+can identify the input when you share a clean or incomplete report. Each
 saved scan also writes `reports/events/<scan-id>.json` before relocation, with
 `schema_version`, `scan_id`, and UTC `recorded_at` alongside the compact report.
 Events can exist before a pending move completes. Use the returned record and

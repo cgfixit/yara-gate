@@ -145,8 +145,7 @@ def test_reports_record_what_ran(tmp_path: Path, rules_copy: Path) -> None:
 
 
 def test_sarif_run_properties_are_the_json_report_fields(tmp_path: Path, rules_copy: Path) -> None:
-    """SARIF and JSON describe the same scan: the run properties are the JSON report's fields,
-    less the two SARIF keeps in its own structure (the results and the artifact location)."""
+    """A SARIF run identifies the scanned input even when it has no result locations."""
     from yara_gate.scanner import scan_bytes
 
     cases = {
@@ -156,12 +155,16 @@ def test_sarif_run_properties_are_the_json_report_fields(tmp_path: Path, rules_c
     }
     for label, (data, name) in cases.items():
         result = scan_bytes(data, name=name, rules_dir=rules_copy, policy=ScanPolicy.agent_ingest)
+        result = replace(result, path=str(Path.home() / name))
         assert result.verdict.value == label
         sarif_path, js = write_reports(tmp_path / label, result)
         compact = json.loads(js.read_text(encoding="utf-8"))
-        properties = json.loads(sarif_path.read_text(encoding="utf-8"))["runs"][0]["properties"]
-        assert set(properties) == set(compact) - {"findings", "path"}, label
-        assert all(properties[key] == compact[key] for key in properties), label
+        run = json.loads(sarif_path.read_text(encoding="utf-8"))["runs"][0]
+        properties = run["properties"]
+        assert properties == {key: value for key, value in compact.items() if key != "findings"}
+        assert properties["path"] == str(Path("~") / name)
+        if label in {"clean", "incomplete"}:
+            assert run["results"] == []
         assert properties["detector_sha256"] == result.detector_sha256, label
 
 
