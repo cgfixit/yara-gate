@@ -10,7 +10,8 @@
 //
 // Every request is aborted, so nothing a document names is fetched. Scripting is on only
 // with ORACLE_JS=1, which is what a person's browser does and what decides how a noscript
-// body is parsed; leave it unset for documents made from files you did not write.
+// body is parsed; leave it unset for documents made from files you did not write. The
+// result records which it was under "__oracle".
 // Needs Node and Playwright with a Chromium build. Not run by CI.
 const fs = require('fs');
 const { chromium } = require('playwright');
@@ -145,6 +146,8 @@ function oracle() {
     if (++n % 500 === 0) process.stderr.write(`${n}/${cases.length}\n`);
   }
   await browser.close();
+  // How the documents were rendered, so compare can tell a noscript body parsed as markup.
+  results.__oracle = { chromium: version, scripting: process.env.ORACLE_JS === '1' };
   fs.writeFileSync(process.argv[3], JSON.stringify(results));
   console.log(`rendered ${n} documents with Chromium ${version}`);
 })();

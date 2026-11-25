@@ -20,7 +20,9 @@ doctype); ``real`` puts markers into HTML files that are already on the machine,
 hidden element of ours around some of them. Not run by CI: it needs Node, Playwright, and a
 Chromium build. Run ``real`` with ``ORACLE_JS`` unset, so nothing in those files is executed;
 the generated documents hold no script that does anything, and the oracle aborts every
-request either way.
+request either way. The oracle records whether scripting was on. Without it, a ``noscript``
+body is markup to the browser and text to the reader, so ``compare`` leaves out every document
+that has one and says how many, as ``real`` does when it writes them.
 
 See docs/verification/2026-11-10-hidden-html-text.md for what was measured with it.
 """
@@ -38,6 +40,7 @@ from yara_gate.htmlhidden import html_hidden_texts
 
 DATA = json.loads(Path(__file__).with_name("html-hidden-probes.json").read_text("utf-8"))
 MARK = re.compile(r"MARK\d+(?= lorem)")
+NOSCRIPT = re.compile(r"(?i)<noscript")
 HEAD = "<!doctype html><html><head><title>t</title></head><body>"
 SR_ONLY = (
     "<style>.sr-only,.visually-hidden{position:absolute;width:1px;height:1px;padding:0;"
@@ -300,7 +303,17 @@ def compare(cases: list[dict[str, str]], drawn: dict[str, dict[str, str]], show:
     agree_hidden = agree_shown = errors = 0
     unsound: list[tuple[str, str, str, str]] = []
     cautious: Counter[str] = Counter()
+    oracle: dict[str, object] = dict(drawn.get("__oracle", {}))
+    scripting = oracle.get("scripting")
+    print(f"oracle: Chromium {oracle.get('chromium', '?')}, scripting {scripting}")
+    if scripting is None:
+        print("  the drawn file does not say whether scripting was on; noscript documents kept")
+    noscript = 0
     for case in cases:
+        if scripting is False and NOSCRIPT.search(case["html"]):
+            # The reader reads a noscript body the way a browser with scripting on does.
+            noscript += 1
+            continue
         seen = drawn.get(case["id"], {"__error": "not rendered"})
         if "__error" in seen:
             errors += 1
@@ -322,6 +335,8 @@ def compare(cases: list[dict[str, str]], drawn: dict[str, dict[str, str]], show:
                 cautious[verdict.split(":")[0]] += 1
     total = agree_hidden + agree_shown + len(unsound) + sum(cautious.values())
     print(f"documents {len(cases)} (not rendered {errors}); marked texts {total}")
+    if noscript:
+        print(f"  left out with scripting off, a noscript in the document: {noscript}")
     print(f"  hidden to both {agree_hidden}; shown to both {agree_shown}")
     print(f"  reader shown, browser hides it {sum(cautious.values())}: {dict(cautious)}")
     print(f"  UNSOUND, reader hidden and browser draws it: {len(unsound)}")
