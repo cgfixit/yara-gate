@@ -41,7 +41,14 @@ PHRASE_RULES = frozenset(
     }
 )
 HIDDEN_RULES = frozenset({"agent_hidden_html", "heuristic_hidden_text"})
-IDENTITY = ("ruleset_sha256", "detector_sha256", "engine_version", "tool_version", "compiled_rules")
+IDENTITY = (
+    "ruleset_sha256",
+    "detector_sha256",
+    "engine_version",
+    "tool_version",
+    "compiled_rules",
+    "skipped_rule_files",
+)
 _RULES: Path | None = None
 
 
@@ -72,13 +79,16 @@ def scan_page(page: tuple[str, str]) -> dict[str, Any]:
             wall_seconds=0.0,
         )
         row["policies"][policy] = {
+            "identity": {key: report[key] for key in IDENTITY},
             "verdict": report["verdict"],
             "incomplete_reason": report["incomplete_reason"],
             "decision": proposed_decision(scan, policy),
             "findings": sorted({(f["rule_id"], f["severity"]) for f in report["findings"]}),
             "scan_seconds": report["scan_seconds"],
         }
-        row["identity"] = {key: report[key] for key in IDENTITY}
+    # Keep the common identity for existing records consumers only when both scans agree.
+    first, second = (row["policies"][policy]["identity"] for policy in POLICIES)
+    row["identity"] = first if first == second else None
     return row
 
 
@@ -94,8 +104,6 @@ def candidate_holds(record: dict[str, Any]) -> bool:
 
 def wilson(hits: int, total: int) -> tuple[float, float]:
     """The 95% Wilson interval for ``hits`` of ``total``, in percent."""
-    if not total:
-        return (0.0, 0.0)
     z = 1.959964
     p = hits / total
     centre = p + z * z / (2 * total)
@@ -105,14 +113,32 @@ def wilson(hits: int, total: int) -> tuple[float, float]:
 
 
 def _rate(hits: int, total: int) -> str:
+    if not total:
+        return "n/a (no pages with this label)"
     low, high = wilson(hits, total)
-    share = 100 * hits / total if total else 0.0
+    share = 100 * hits / total
     return f"{hits:,} of {total:,}, {share:.1f}% ({low:.1f} to {high:.1f})"
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    from yara_gate.replay import _identified
+
     attack = [row for row in rows if row["label"] == "yes"]
     benign = [row for row in rows if row["label"] == "no"]
+    records = [row["policies"][policy] for row in rows for policy in POLICIES]
+    identities = sorted({json.dumps(record["identity"], sort_keys=True) for record in records})
+    unidentified = sum(not _identified(record["identity"]) for record in records)
+    incomplete = sum(record["verdict"] == "incomplete" for record in records)
+    summary = {
+        "pages": len(rows),
+        "attack": len(attack),
+        "benign": len(benign),
+        "identities": identities,
+        "incomplete": incomplete,
+        "unidentified": unidentified,
+    }
+    if incomplete or unidentified or len(identities) != 1:
+        return summary
     rules: dict[str, Any] = {}
     for name in (*POLICIES, "candidate"):
         policy = "agent-document" if name == "candidate" else name
@@ -141,15 +167,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     seconds = sorted(row["policies"]["agent-document"]["scan_seconds"] for row in rows)
     return {
-        "pages": len(rows),
-        "attack": len(attack),
-        "benign": len(benign),
-        "identities": sorted({json.dumps(row["identity"], sort_keys=True) for row in rows}),
-        "incomplete": sum(
-            row["policies"][policy]["verdict"] == "incomplete"
-            for row in rows
-            for policy in POLICIES
-        ),
+        **summary,
         "read_rules": rules,
         "hidden_html_attack": sum(map(hidden, attack)),
         "hidden_html_benign": sum(map(hidden, benign)),
@@ -183,6 +201,11 @@ def main() -> int:
     pages = list(
         zip(table.column("content").to_pylist(), table.column("label").to_pylist(), strict=True)
     )[: args.limit]
+    if not pages or (args.limit is not None and args.limit < 1):
+        parser.error("select at least one page")
+    for number, (content, label) in enumerate(pages, start=1):
+        if not isinstance(content, str) or label not in ("yes", "no"):
+            parser.error(f"row {number} requires text content and a yes/no label")
     file_digest = hashlib.sha256(args.parquet.read_bytes()).hexdigest()
     with tempfile.TemporaryDirectory(prefix="yara-gate-web-") as tmp:
         rules = Path(tmp) / "rules"
@@ -200,11 +223,17 @@ def main() -> int:
     for identity in summary["identities"]:
         print(f"identity {identity}")
     print(f"incomplete scans {summary['incomplete']}")
+    if "read_rules" not in summary:
+        print(f"scans without usable identity {summary['unidentified']}")
+        print("rates withheld: all scans must complete with one usable identity", file=sys.stderr)
+        return 2
     for name, scored in summary["read_rules"].items():
         print(f"{name}:")
         print(f"  attack held  {_rate(scored['attack_held'], summary['attack'])}")
         print(f"  benign held  {_rate(scored['benign_held'], summary['benign'])}")
-        print(f"  precision    {scored['precision']}%")
+        precision = scored["precision"]
+        display = f"{precision}%" if precision is not None else "n/a (no holds)"
+        print(f"  precision    {display}")
         for cause, count in scored["benign_hold_causes"]:
             print(f"    benign cause {count:>5}  {cause}")
     print(
@@ -213,7 +242,7 @@ def main() -> int:
     )
     print(f"benign pages with a phrase finding: {summary['benign_with_phrase_finding']:,}")
     print(f"scan seconds per page (agent-document): {summary['scan_seconds']}")
-    return 2 if summary["incomplete"] or len(summary["identities"]) != 1 else 0
+    return 0
 
 
 if __name__ == "__main__":
