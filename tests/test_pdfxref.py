@@ -244,6 +244,63 @@ def test_malformed_xref_is_incomplete(rules_copy: Path) -> None:
     assert result.incomplete_reason == "pdf xref malformed"
 
 
+def _classic_with_placeholder() -> bytes:
+    data = _benign("classic").replace(b"%PDF-1.5", b"%PDF-1.3", 1)
+    body, table = data.split(b"xref\n", 1)
+    rows, trailer = table.split(b"trailer\n", 1)
+    tail, _, _ = trailer.partition(b"startxref\n")
+    # Quartz writes an unused, generation-zero object as an in-use row pointing to byte zero.
+    table = (
+        b"xref\n"
+        + rows.replace(b"0 6\n", b"0 7\n", 1)
+        + b"0000000000 00000 n \ntrailer\n"
+        + tail.replace(b"/Size 6", b"/Size 7", 1)
+    )
+    return _finish(bytearray(body), table)
+
+
+def test_classic_unused_placeholder_preserves_annotation(rules_copy: Path) -> None:
+    expected = _scan(_benign("classic"), rules_copy)
+    assert expected.verdict.value == "advisory"
+    result = _scan(_classic_with_placeholder(), rules_copy)
+    assert result.verdict == expected.verdict
+    assert result.incomplete_reason is None
+    assert result.findings == expected.findings
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (b"/Root 1 0 R", b"/Root 6 0 R"),
+        (b"/Root 1 0 R", b"/Root 1 0 R /Info 6 0 R"),
+        (b"/Annots [5 0 R]", b"/Annots [6 0 R]"),
+        (b"5 0 obj", b"6 0 obj"),
+        (b"/Size 7", b"/Size 8"),
+        (b"/Size 7", b"/Size 7 /Size 7"),
+        (b"/Size 7", b"/Size 7 /Prev 10"),
+        (b"%PDF-1.3", b"%PDF-1.5"),
+    ],
+)
+def test_classic_placeholder_with_other_ambiguity_is_incomplete(
+    old: bytes, new: bytes, rules_copy: Path
+) -> None:
+    data = _classic_with_placeholder()
+    assert old in data
+    result = _scan(data.replace(old, new, 1), rules_copy)
+    assert result.verdict.value == "incomplete"
+    assert result.incomplete_reason == "pdf xref malformed"
+
+
+def test_classic_placeholder_does_not_excuse_a_second_bad_row(rules_copy: Path) -> None:
+    data = _classic_with_placeholder()
+    old = b"%010d 00000 n \n" % data.index(b"5 0 obj")
+    # One control has two zero-offset rows. The other row points to the wrong real header.
+    for offset in (0, data.index(b"4 0 obj")):
+        result = _scan(data.replace(old, b"%010d 00000 n \n" % offset, 1), rules_copy)
+        assert result.verdict.value == "incomplete"
+        assert result.incomplete_reason == "pdf xref malformed"
+
+
 def test_unsupported_xref_filter_is_incomplete(rules_copy: Path) -> None:
     data = _benign("flate").replace(b"/FlateDecode", b"/LZWDecode ")
     result = _scan(data, rules_copy)
