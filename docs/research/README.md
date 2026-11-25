@@ -62,6 +62,8 @@ the November 10 spellings.
 
 ## Scripts
 
+The OpenDocument and OOXML probes use the [same phrase checks](office_reader_phrase.py). A single wrapped line can still contain the fixture sentence. A blank line between its words breaks it. A `MISS` fails the probe. A `wide` row means the gate’s view contains the sentence and none of the available readers showed it. Check the reader columns for unread fixtures when interpreting those rows.
+
 | Script | Run by CI | What it does |
 | --- | --- | --- |
 | [probe_rule_coverage.py](probe_rule_coverage.py) | Yes, `--verify` | Real library and CLI scans of the data files and built-in cases, with intake and disposition in disposable homes |
