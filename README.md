@@ -143,7 +143,7 @@ flowchart LR
 - **Oversized files never get a fake identity.** The 100 MiB limit is checked before hashing or copying; oversized entries move intact to `_rejected/` with `rejected-<token>` reports. Oversized in-place or stdin scans report a digest of 64 zeroes, never a truncated hash.
 - **Interrupted intake recovers.** The next watcher start or inbox scan retries a recorded quarantine copy with its original name, policy, rules root, and timeout.
 - **Paths outside the inbox are scanned in place**, never moved. A symlinked file is incomplete unless `--follow-symlinks` is given; a symlinked directory is never followed.
-- **Never make a sync client's folder the inbox:** intake removes the inbox copy, and the client would propagate that deletion. Copy files out instead, as [sync_folder_gate.py](docs/examples/sync_folder_gate.py) does. On macOS, `install-agent` writes (but does not load) a launchd plist that runs `watch`.
+- **Never make a sync client's folder the inbox:** intake removes the inbox copy, and the client would propagate that deletion. Use the [sync-folder example](docs/examples/sync_folder_gate.py) to stage a private copy. On Windows, a source replaced between the identity check and the open is skipped until the next pass. See [staging and retry behavior](docs/integrations.md#synced-folders-dropbox-onedrive-icloud-drive). On macOS, `install-agent` writes (but does not load) a launchd plist that runs `watch`.
 
 ## What this catches, and what it does not
 

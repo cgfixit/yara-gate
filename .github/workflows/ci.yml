@@ -180,6 +180,9 @@ jobs:
       - name: Inbox intake without O_NOFOLLOW
         run: uv run python docs/verification/check_intake.py
 
+      - name: Sync-folder staging on Windows
+        run: uv run pytest -q tests/test_sync_folder_gate.py
+
       # The same fixture bytes and verdicts as the macOS job, from a Windows build.
       - name: Conformance kit
         run: uv run yara-gate conform
