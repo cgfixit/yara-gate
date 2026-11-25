@@ -154,7 +154,8 @@ directly should use the hook's `--bytes PATH` mode and consume stdout only after
 To see what the gate would decide about text an agent already received, without admitting,
 holding, or moving anything, use `yara-gate replay CAPTURE.jsonl`. It reads a capture of
 the exact text handed to a model, prints one record per item, and exits 0 or 2, never 1.
-The capture format is in
+Add `--require-complete` for an evaluation run that needs at least one item, complete
+scans, and a single scanner identity. The capture format is in
 [replaying captured model input](docs/integrations.md#replaying-captured-model-input).
 
 ## 5. Read a report
