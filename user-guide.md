@@ -202,6 +202,8 @@ MCP, notebook, and Keras readers also enforce a [JSON structure budget](docs/rul
 
 If the verdict is `incomplete`, read `incomplete_reason`. Typical reasons are `file exceeds 100MB`, `archive depth exceeds 3`, `archive members exceed 1000`, `archive unreadable or encrypted`, `encrypted pdf`, `encrypted office file`, `pickle exceeds walk limit`, `mcp json exceeds walk limit` (MCP-shaped JSON too large or deep to walk whole), `pdf cmap entries exceed 524288`, `pdf cmap tokens exceed 1572864`, `timeout`, `match cap reached` (a string had more matches than YARA-X records, so a match after them may be unread; [limits](docs/rules.md#limits)), `no rules compiled`, `yara-x missing`, and `unreadable file`. A folder scan also reports `symlink not followed` for a symlinked file or directory outside the inbox, and `directory not readable` for a subdirectory it cannot list. Leave that file in quarantine. Do not copy it to `clean/` yourself.
 
+Pickle opcode inspection applies under every filename. Protocols 0 and 1 need no header, so renaming a stream to `.bin`, `.joblib`, `.txt`, or a name without a suffix does not bypass it. A dangerous bare stream blocks even when intended as a text example. More than 1,000,000 consecutive pushing opcodes (for example, repeated `N`, `]`, or `)`) hit the unchanged stack limit and produce `pickle exceeds walk limit`, including in text files. [Measured boundaries](docs/verification/2026-11-25-pickle-filenames.md).
+
 A reader limit such as `text pieces exceed 100000` or a deadline can stop a scan midway.
 The report keeps findings from pieces already matched. Pending pieces, including any
 folded spellings that were queued for a later pass, can be absent. Exit 2 and the

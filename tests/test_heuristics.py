@@ -571,6 +571,11 @@ _PROTO0_CALL = b"cos\nsystem\n(S'true'\ntR."
     ("name", "data"),
     [
         ("model.pkl", _PROTO0_CALL),
+        ("model.bin", _PROTO0_CALL),
+        ("model.joblib", b"cos\nsystem\n(U\x04truetR."),
+        ("notes.txt", _PROTO0_CALL),
+        ("notes", _PROTO0_CALL),
+        ("legacy.bin", b"\x80\x02K\x01." + _PROTO0_CALL),
         ("model.pickle", b"(S'true'\nios\nsystem\n."),
         ("model.pth", b"(cos\nsystem\nS'true'\no."),
         ("model.ckpt", b"cos\nsystem\n(U\x04truetR."),
@@ -582,7 +587,7 @@ _PROTO0_CALL = b"cos\nsystem\n(S'true'\ntR."
 def test_pickle_protocols_without_a_proto_opcode_are_walked(name: str, data: bytes) -> None:
     from yara_gate import heuristics
 
-    findings, error = heuristics.pickle_reduce_findings(Path(name), data)
+    findings, error = heuristics.heuristic_findings(Path(name), data)
     assert [finding.rule_id for finding in findings] == ["heuristic_pickle_reduce"]
     assert error is None
 
@@ -597,15 +602,12 @@ def test_pickle_protocols_without_a_proto_opcode_are_walked(name: str, data: byt
         ("tutor.pt", b"Bem-vindo ao tutorial. (Leia com calma.)\n"),
         ("legacy.pt", b"\x80\x02K\x01." + bytes(range(256))),
         ("empty.pkl", b""),
-        # Without a header the bytes say nothing, and the name is not a pickle's.
-        ("notes.txt", _PROTO0_CALL),
-        ("notes", _PROTO0_CALL),
     ],
 )
 def test_pickle_walk_without_a_proto_opcode_reports_only_a_call(name: str, data: bytes) -> None:
     from yara_gate import heuristics
 
-    assert heuristics.pickle_reduce_findings(Path(name), data) == ([], None)
+    assert heuristics.heuristic_findings(Path(name), data) == ([], None)
 
 
 def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -615,7 +617,7 @@ def test_pickle_walk_limit_is_incomplete(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(heuristics, "_PICKLE_MAX_OPS", 50)
     data = pickle.dumps(list(range(100)), protocol=4)
-    findings, error = heuristics.pickle_reduce_findings(Path("big.pkl"), data)
+    findings, error = heuristics.pickle_reduce_findings(data)
     assert findings == []
     assert error == "pickle exceeds walk limit"
     _, reason = heuristic_findings(Path("big.pkl"), data)
@@ -635,7 +637,7 @@ def test_pickle_memo_and_stack_caps_are_incomplete(
     from yara_gate import heuristics
 
     monkeypatch.setattr(heuristics, cap, 50)
-    findings, error = heuristics.pickle_reduce_findings(Path("m.pkl"), data)
+    findings, error = heuristics.pickle_reduce_findings(data)
     assert findings == []
     assert error == "pickle exceeds walk limit"
 
@@ -655,7 +657,7 @@ def test_pickle_walk_calls_the_deadline_check() -> None:
 
     data = b"\x80\x04" + b"N0" * 10_000 + b"."
     with pytest.raises(Deadline):
-        heuristics.pickle_reduce_findings(Path("m.pkl"), data, check)
+        heuristics.pickle_reduce_findings(data, check)
     assert len(calls) == 2
 
 
