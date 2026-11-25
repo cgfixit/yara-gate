@@ -13,8 +13,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 MARKER = "OUTSIDE-FOLDER-INERT-MARKER"
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="the swaps need POSIX links and FIFOs")
-
 
 def _example() -> ModuleType:
     path = ROOT / "docs" / "examples" / "sync_folder_gate.py"
@@ -44,6 +42,7 @@ def _vanish(victim: Path, outside: Path) -> None:
     victim.unlink()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="these swaps use POSIX links and FIFOs")
 @pytest.mark.parametrize("beneath", [True, False], ids=["openat", "lstat-then-open"])
 @pytest.mark.parametrize("swap", [_to_link, _parent_to_link, _to_fifo, _vanish])
 def test_an_entry_swapped_after_listing_is_not_read(
@@ -108,3 +107,35 @@ def test_a_settled_regular_file_is_still_staged_and_allowed(
     assert len(copies) == 1
     assert copies[0].read_text(encoding="utf-8") == "an ordinary note\n"
     assert note.read_text(encoding="utf-8") == "an ordinary note\n"
+
+
+def test_staging_retries_a_regular_replacement_on_the_next_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    example = _example()
+    # Exercise the same fallback on POSIX that runs natively on Windows.
+    monkeypatch.setattr(example, "_OPEN_BENEATH", False)
+    sync = tmp_path / "sync"
+    sync.mkdir()
+    note = sync / "note.txt"
+    note.write_bytes(b"Monday")
+    updated = sync / "updated.tmp"
+    updated.write_bytes(b"Friday")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    lstat = Path.lstat
+
+    def finish_sync(path: Path) -> os.stat_result:
+        info = lstat(path)
+        if path == note:
+            updated.replace(note)
+        return info
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "lstat", finish_sync)
+        with pytest.raises(example._NotRead):
+            example._stage(sync, note, staging)
+
+    assert list(staging.iterdir()) == []
+    staged = example._stage(sync, note, staging)
+    assert staged is not None and staged.read_bytes() == b"Friday"

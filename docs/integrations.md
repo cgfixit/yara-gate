@@ -261,11 +261,14 @@ directory the gate owns, and reads only what the gate allowed:
    mtime, then copy it under its original basename in private, unwatched staging.
    Reject files over 100 MiB before copying and cap the copy at 100 MiB even if
    the source grows. Compare the source's size
-   and mtime again after the copy and drop the copy if they changed. Read the
-   entry through one descriptor opened without following a link, reached through
-   each directory the same way, and take its type, size, and times from that
-   descriptor: the entry was listed earlier, and a link put in its place since
-   then would otherwise be followed out of the sync folder into `allowed/`.
+   and mtime again after the copy and drop the copy if they changed. On systems with descriptor-relative no-follow opens, open each
+   directory and the file without following links. On Windows the example checks
+   the named file before opening it, compares its identity with the open handle,
+   and checks that the resolved path is inside the sync folder before copying.
+   If a sync client replaces the regular file between that check and the open,
+   the example skips it for this pass. Run the example again to scan the settled
+   replacement. The Windows checks are separate operations. See the
+   [platform limits](verification/2026-11-22-sync-example-link-swap.md#what-this-does-not-cover).
 3. Scan the staged copy with `yara-gate scan STAGED --json --policy POLICY
    --home GATE_REPORTS --rules RULES`, and allow it only on exit 0, exactly one
    record, that policy's read rule, and a record `sha256` equal to the SHA-256 of the
