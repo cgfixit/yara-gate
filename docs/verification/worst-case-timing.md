@@ -1,6 +1,6 @@
 # Worst-case scan timing tripwire
 
-[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 105 deterministic
+[`check_worst_case_timing.py`](check_worst_case_timing.py) scans 106 deterministic
 inert inputs of exactly 4 MiB with the real `scan_bytes` API and a disposable copy
 of bundled local rules. The CI step runs on macOS 15 (Ubuntu was dropped from the full check on November 15,
 2026), after the detection-gap probe. It has a ten-minute job-step limit, raised from five on November 15,
@@ -189,3 +189,13 @@ One input was added with the change that reads
 2.6 s, and 1.7 s on `main`, best of two on a quiet machine. All 105 passed on Linux
 x86_64, Python 3.12.3; the slowest took 6.8 s (`pdf-encrypt-tokens.pdf`), and the scans
 summed 232 s.
+
+## November 25, 2026: one style attribute of `!important` declarations and `all`
+
+One input was added with the [inline style `all`](2026-11-25-css-all-linear.md) change: one
+style attribute of 2 MiB of distinct `!important` declarations followed by 2 MiB of `all:y`
+(`html-style-all.html`). Each `all` walked every `!important` entry still kept, which no
+deadline check interrupts. On `main` the worker was killed at the watchdog, and 1.1 MiB of
+the same shape took 79 s against the 30 s deadline. With the change the input took 1.3 s. All 106 passed on Linux x86_64,
+Python 3.12.3; the slowest took 5.5 s (`pdf-font-readings-winansi.pdf`), and the scans summed
+193 s.
