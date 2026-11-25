@@ -10,6 +10,12 @@ Run these from the repository root.
 
 - [`build_conformance.py`](build_conformance.py) scans every fixture of the [conformance kit](../docs/conformance.md) with a disposable copy of the bundled rules and writes `src/yara_gate/conformance.json`. It refuses when a scan disagrees with the verdict the catalog lists; `--check` writes nothing and exits 1 when the file is stale. A changed manifest needs a row in the guide's change list.
 
+## Harness replay
+
+- [`check_harness_replay.py`](check_harness_replay.py) reconciles the frozen task
+  manifest and capture receipts with both policy outputs from each of three
+  runs. See the [protocol and file formats](../docs/research/shadow-evaluation-protocol.md#checking-the-harness-replay).
+
 ## Demo build and deployment
 
 See [Pages demo](../docs/pages-demo.md) for the recording, review, and deployment workflow; the published site replays results and does not scan files.

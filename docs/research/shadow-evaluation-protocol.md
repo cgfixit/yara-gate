@@ -152,6 +152,43 @@ yara-gate replay capture.jsonl --rules RULES --require-complete > gate-only.run1
 - Verify task coverage and label denominators against the frozen task list before reporting
   results. Verify that identities agree across the runs you compare.
 
+## Checking the Harness replay
+
+Use the repository's [reconciliation script](../../scripts/check_harness_replay.py)
+before calculating rates. Run it from the matching yara-gate checkout with the
+locked environment. It reads the task list, the per-run capture receipts, and
+the six strict replay outputs. Keep the input files private.
+
+- Write the frozen manifest as one JSON object per line. Each row has a unique
+  `task_id`, a `label` of `benign` or `attack`, a `split` of `development` or
+  `locked`, and a `source_group`. Attack tasks require an `attack_family`.
+  If a benign quotation belongs to a known attack family, record it there too
+  so the family stays in one split. Use opaque group names.
+- For each run, export all `web_capture` audit receipts, including failed
+  writes, and join each to its `task_id` using the task runner's record of
+  which task produced it. The script uses `task_id`, `source_id`, `channel`,
+  `text_sha256`, and `written`. Preserve the audit values when assigning
+  task IDs. A task can have several receipts.
+- Use replay outputs from successful `--require-complete` calls. Apply the
+  author's labels and set explicit policies when making the two capture copies.
+  Order within the replay is immaterial.
+
+```sh
+uv run python scripts/check_harness_replay.py tasks.jsonl \
+  --run receipts-1.jsonl ingest-1.jsonl document-1.jsonl \
+  --run receipts-2.jsonl ingest-2.jsonl document-2.jsonl \
+  --run receipts-3.jsonl ingest-3.jsonl document-3.jsonl
+```
+
+Exit 0 prints task denominators by split and label, capture denominators by
+run and label, and the common scanner identity. Exit 2 means the files cannot
+support a comparison. Reconcile the run and stage named on stderr first.
+The script compares the supplied receipts with both replay outputs and checks
+the reported hashes, channel, labels, policy, scan provenance, and identity.
+The task runner still establishes which task produced each receipt, whether
+every receipt was exported, and when the runs took place. Record source
+revisions and Harness outcomes separately for the decision report.
+
 ## Decision report
 
 For each component, one of: enforce, keep observing, or drop, against the budgets above,
@@ -165,3 +202,6 @@ outbound query checks, and claim-support checks are tracked in CG-agent-harness.
 2026-11-25. Record the owner's capture-first scope and per-channel mapping, the paired
 policy comparison, capture reconciliation and explicit coverage gaps. The frozen
 qualification conditions, pilot size and budgets are unchanged.
+
+2026-11-25. Add an executable check for the existing task coverage, capture receipt,
+and paired replay identity requirements.
