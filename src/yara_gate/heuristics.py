@@ -64,7 +64,7 @@ def heuristic_findings(
     """Structural findings and an incomplete reason; ``check`` enforces the scan deadline."""
     findings = pdf_findings(data, objects, check)
     findings.extend(embedded_findings(data, check))
-    pickled, pickle_error = pickle_reduce_findings(path, data, check)
+    pickled, pickle_error = pickle_reduce_findings(data, check)
     findings.extend(pickled)
     findings.extend(model_header_findings(path, data))
     keras, keras_error = keras_config_findings(path, data, check)
@@ -1132,15 +1132,14 @@ _HIDDEN_INSTRUCTION = re.compile(
 
 
 def pickle_reduce_findings(
-    path: Path, data: bytes, check: Callable[[], None] | None = None
+    data: bytes, check: Callable[[], None] | None = None
 ) -> tuple[list[Finding], str | None]:
     """A call to a dangerous global, or an incomplete reason when the walk cannot finish.
 
+    Every filename is inspected: protocols 0 and 1 have no identifying header.
     ``check`` is called every few thousand opcodes; the scanner passes its deadline check,
     which raises when the scan's time is up.
     """
-    if not _pickle_candidate(path, data):
-        return [], None
     try:
         offset = _pickle_reduce_offset(data, check)
     except _PickleLimit:
@@ -1494,15 +1493,6 @@ def _block(rule_id: str) -> Finding:
 
 def _advisory(rule_id: str) -> Finding:
     return Finding(rule_id=rule_id, severity=Severity.advisory, source=FindingSource.heuristic)
-
-
-def _pickle_candidate(path: Path, data: bytes) -> bool:
-    # Protocols 0 and 1 write no PROTO opcode, so nothing in the bytes says such a stream is a
-    # pickle: under a pickle's name the walk starts whatever the first byte is. A loader runs
-    # `cos\nsystem\n(S'...'\ntR.` as it runs the protocol 2 spelling.
-    if path.suffix.lower() in {".pkl", ".pickle", ".pt", ".pth", ".ckpt"}:
-        return bool(data)
-    return len(data) >= 2 and data[0] == 0x80 and data[1] <= 5
 
 
 # About 0.6 µs an opcode on a laptop, so the cap stays well inside the 30 s scan deadline.

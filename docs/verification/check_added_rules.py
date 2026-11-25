@@ -166,7 +166,7 @@ def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
             b"\x80\x02c__builtin__\ngetattr\n)R.",
             "heuristic_pickle_reduce",
         ),
-        # Protocols 0 and 1 write no PROTO opcode: only the name says the bytes are a pickle.
+        # Protocols 0 and 1 write no PROTO opcode; the name cannot gate inspection.
         ("proto0-global.pkl", _PROTO0_CALL, "heuristic_pickle_reduce"),
         ("proto0-inst.pickle", b"(S'true'\nios\nsystem\n.", "heuristic_pickle_reduce"),
         ("proto0-obj.pth", b"(cos\nsystem\nS'true'\no.", "heuristic_pickle_reduce"),
@@ -187,8 +187,11 @@ def _pickle_walker_cases() -> list[tuple[str, bytes, str | None]]:
         ("proto0-benign-call.pkl", b"cos.path\njoin\n(S'a'\nS'b'\ntR.", None),
         ("proto0-quoted.pkl", b"The classic payload is:\n\n" + _PROTO0_CALL + b"\n", None),
         ("paths.pth", b"./src\n../lib\n", None),
-        # No header and no pickle's name: the same bytes are text, and stay unwalked.
-        ("proto0-as-text.txt", _PROTO0_CALL, None),
+        ("proto0-as-text.txt", _PROTO0_CALL, "heuristic_pickle_reduce"),
+        ("proto0-other.bin", _PROTO0_CALL, "heuristic_pickle_reduce"),
+        ("proto0-bare", _PROTO0_CALL, "heuristic_pickle_reduce"),
+        ("proto1.joblib", b"cos\nsystem\n(U\x04truetR.", "heuristic_pickle_reduce"),
+        ("proto0-quoted.txt", b"Example only:\n" + _PROTO0_CALL, None),
     ]
     for protocol in (0, 1, 2, 3, 4, 5):
         hits.append(
