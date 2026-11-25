@@ -1039,7 +1039,7 @@ def pptx_master_benign() -> bytes:
     return _pptx_master("Confidential: ", "internal use only, spring review.")
 
 
-def _annotation_pdf(text: str) -> bytes:
+def _annotation_pdf(text: str, *, quartz_placeholder: bool = False) -> bytes:
     contents = (b"\xfe\xff" + text.encode("utf-16-be")).hex().encode("ascii")
     objects = (
         b"<< /Type /Catalog /Pages 2 0 R >>",
@@ -1047,16 +1047,24 @@ def _annotation_pdf(text: str) -> bytes:
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Annots [4 0 R] >>",
         b"<< /Type /Annot /Subtype /Text /Rect [72 700 96 724] /Contents <" + contents + b"> >>",
     )
-    output = bytearray(b"%PDF-1.7\n")
+    output = bytearray(b"%PDF-1.3\n" if quartz_placeholder else b"%PDF-1.7\n")
     offsets = [0]
     for number, body in enumerate(objects, 1):
         offsets.append(len(output))
         output += b"%d 0 obj\n" % number + body + b"\nendobj\n"
     xref = len(output)
-    output += b"xref\n0 5\n0000000000 65535 f \n"
+    size = len(objects) + 1 + int(quartz_placeholder)
+    output += b"xref\n0 %d\n0000000000 65535 f \n" % size
     output += b"".join(b"%010d 00000 n \n" % n for n in offsets[1:])
-    output += b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+    if quartz_placeholder:
+        output += b"0000000000 00000 n \n"
+    output += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, xref)
     return bytes(output)
+
+
+def quartz_print_proof(annotation: str) -> bytes:
+    """A synthetic PDF 1.3 print proof with one unused Quartz-style xref entry."""
+    return _annotation_pdf(annotation, quartz_placeholder=True)
 
 
 def pdf_annotation_override() -> bytes:

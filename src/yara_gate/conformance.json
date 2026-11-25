@@ -3502,6 +3502,90 @@
    "source": "showcase"
   },
   {
+   "bytes": 637,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-annotation"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-annotation"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_prompt_injection_phrases"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-annotation"
+     ]
+    }
+   },
+   "id": "print_proof_instruction",
+   "kind": "detection",
+   "name": "proof.pdf",
+   "pair": "print_proof_revision",
+   "sha256": "bde5a11d0cb9a22bc2b2a0e00a071e4e8e5ec9f6e54e2499593993c7c03e03fa",
+   "source": "showcase"
+  },
+  {
+   "bytes": 665,
+   "channel": "Document",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "print_proof_revision",
+   "kind": "control",
+   "name": "proof.pdf",
+   "pair": "print_proof_instruction",
+   "sha256": "8142b4a4202bcf1dea21321cfff5f42600277fba8c70904f5baf67000a7c5226",
+   "source": "showcase"
+  },
+  {
    "bytes": 431,
    "channel": "Web page",
    "expected": {
