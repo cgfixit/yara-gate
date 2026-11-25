@@ -16,7 +16,7 @@ from yara_gate.content import (
     _pdf_value,
 )
 from yara_gate.heuristics import _PDF_LEX, _decode_pdf_name
-from yara_gate.pdfpages import _LENGTH
+from yara_gate.pdfpages import _LENGTH, unreferenced_classic_placeholder
 from yara_gate.pdftext import _literal
 from yara_gate.pdfxref import xref_file_offsets
 
@@ -342,9 +342,9 @@ def _reject_xref_inside(
     data: bytes,
     spans: list[tuple[int, int]],
     budget: Budget,
-    decoded: dict[int, bytes | None] | None = None,
+    objects: PdfObjects,
 ) -> None:
-    offsets = xref_file_offsets(data, budget, decoded)
+    offsets = xref_file_offsets(data, budget, objects.decoded)
     if not offsets:
         return
     for offset in offsets:
@@ -353,6 +353,10 @@ def _reject_xref_inside(
                 raise ContentLimit("pdf annotation xref offset inside stream")
         window = data[offset : offset + 64] if 0 <= offset < len(data) else b""
         if _OBJECT_AT.match(window) is None:
+            if offset == 0 and unreferenced_classic_placeholder(
+                data, objects, budget, spans[-1][1] if spans else 0
+            ):
+                continue
             raise ContentLimit("pdf xref malformed")
 
 
@@ -464,7 +468,7 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
     arrays: Arrays = {}
     collect(_dictionaries(data, objects, budget, strings, spans, arrays))
     _reject_headers_inside(data, spans)
-    _reject_xref_inside(data, spans, budget, objects.decoded)
+    _reject_xref_inside(data, spans, budget, objects)
     for number, source in objects.stream_members():
         body = bytes(source)
         first = next(_tokens(body, budget), (b"", 0))[0]
