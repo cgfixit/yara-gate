@@ -1,10 +1,10 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 97 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 47 attacks, their 47 benign
+GitHub Pages replays real scanner results for 103 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 50 attacks, their 50 benign
 near-twins, and three unfinished scans. The default workflow compares margin annotations in a synthetic PDF 1.3 print proof
-with the unused cross-reference entry seen in Quartz exports. Other pairs
-cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
+with the unused cross-reference entry seen in Quartz exports. Three pairs compare PDF form tooltips, unselected dropdown labels, and UTF-32 text exports.
+Other pairs cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
 descriptions. The page shows the scanner revision, capture time, rule coverage,
 and engine version.
 
@@ -68,7 +68,7 @@ checks.
 
 ## Guided workflows
 
-The selector opens 21 fictional tasks, including print proof review and vendor comparison
+The selector opens 24 fictional tasks, including print proof review and vendor comparison
 (a ranking directive rebuilt from escaped HTML in an RSS description), supplier review
 (Excel comments), build triage (terminal escapes), design handoff (SVG CDATA),
 model intake (pickle calls), repository intake (dev-container host commands), tool
@@ -79,14 +79,15 @@ white background), diagram review (a diagram label that frames another page),
 chat intake (zero-width characters in a message), proposal review (a bold word
 in an OpenDocument file), inbox triage (an email behind long relay headers), and data
 export (a workbook written with the `x:` prefix).
-The additional tasks cover account recovery (a relay request after a refusal), tool
+The additional tasks cover PDF tooltip review, PDF dropdown review, UTF-32 text intake,
+account recovery (a relay request after a refusal), tool
 handoff (forwarding versus refusing to forward), project handoff (a persistent approval
 bypass versus preserving approval), and an inspection limit (65 nested JSON arrays).
 The last is a single incomplete case without an attack phrase or benign twin. It shows
 that a legitimate input can also exceed the scanner's budget.
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. The initial policy is `agent-ingest`. Switching workflows or opening a twin preserves the selected policy.
-The full 47-pair catalog and the three unfinished scans remain under an expandable section.
+The full 50-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers twenty shortcuts and the full catalog. Both demos use
@@ -226,7 +227,7 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 97 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 103 inert
 examples, recorded with 89 bundled rules and YARA-X 1.24.0, without vendor packs.
 Each deployment refreshes the revision and time. See the [PowerShell alias-list verification](verification/2026-11-26-powershell-alias-lists.md), the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
@@ -348,7 +349,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 97 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 103 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

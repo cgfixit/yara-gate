@@ -1084,6 +1084,40 @@ def _annotation_pdf(text: str, *, quartz_placeholder: bool = False) -> bytes:
     return bytes(output)
 
 
+def pdf_form_label(label: str, *, choice: bool = False) -> bytes:
+    """A one-page form with a hex-encoded tooltip or unselected dropdown label."""
+    encoded = b"<FEFF" + label.encode("utf-16-be").hex().encode("ascii") + b">"
+    field = (
+        b"/FT /Ch /Ff 131072 /V (Standard) /Opt [(Standard) [(extended) " + encoded + b"]]"
+        if choice
+        else b"/FT /Tx /V (Draft) /TU " + encoded
+    )
+    page = b"BT /F1 12 Tf 72 720 Td (Vendor evaluation form) Tj ET"
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [6 0 R] "
+        b"/DA (/F1 12 Tf 0 g) /DR << /Font << /F1 5 0 R >> >> >> >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> /Annots [6 0 R] >>",
+        b"<< /Length %d >>\nstream\n" % len(page) + page + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Annot /Subtype /Widget /T (vendor) /Rect [72 650 480 682] /P 3 0 R "
+        + field
+        + b" >>",
+    )
+    output = bytearray(b"%PDF-1.7\n")
+    offsets = []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(output))
+        output += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    xref = len(output)
+    size = len(objects) + 1
+    output += b"xref\n0 %d\n0000000000 65535 f \n" % size
+    output += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    output += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (size, xref)
+    return bytes(output)
+
+
 def quartz_print_proof(annotation: str) -> bytes:
     """A synthetic PDF 1.3 print proof with one unused Quartz-style xref entry."""
     return _annotation_pdf(annotation, quartz_placeholder=True)

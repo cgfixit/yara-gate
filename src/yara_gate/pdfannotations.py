@@ -361,6 +361,7 @@ def _reject_xref_inside(
 
 
 _FIELD_MARKS = (b"/FT", b"/T", b"/Parent", b"/Kids")
+_FIELD_TYPES = (b"/Btn", b"/Tx", b"/Ch", b"/Sig")
 # The document information strings pdfinfo, pypdf, and PyMuPDF show. /Title is also an
 # outline item's label, and a reader lists every outline title.
 _SHOWN_KEYS = (b"/Title", b"/Author", b"/Subject", b"/Keywords", b"/Creator", b"/Producer")
@@ -381,6 +382,16 @@ def _shown_values(entry: dict[bytes, PdfValue]) -> Iterator[PdfValue]:
             yield from value
         else:
             yield value
+
+
+def _option_labels(options: list[PdfValue]) -> Iterator[PdfValue]:
+    """A choice field shows the second string of an export/display pair (ISO 32000-1, 12.7.4.4)."""
+    for option in options:
+        if isinstance(option, list):
+            if len(option) == 2:
+                yield option[1]
+        else:
+            yield option
 
 
 def _array_items(
@@ -418,7 +429,7 @@ def _property_list(entry: dict[bytes, PdfValue]) -> bool:
 class PdfStrings(NamedTuple):
     # Annotation /Contents (``pdf-annotation``).
     annotations: list[str]
-    # Form field values, document information strings, outline titles (``pdf-string``).
+    # Form field values and labels, document information strings, outline titles (``pdf-string``).
     shown: list[str]
     # /ActualText of a property list outside a content stream (``pdf-actual-text``).
     actual: list[str]
@@ -426,8 +437,8 @@ class PdfStrings(NamedTuple):
 
 def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStrings:
     """Annotation /Contents text (``pdf-annotation``), the other text strings a reader shows
-    (``pdf-string``): form field values, document information strings, outline titles; and
-    the /ActualText of property lists written as objects, which a page's ``/Span /MC0 BDC``
+    (``pdf-string``): form field values and labels, document information strings, and outline
+    titles. Also read the /ActualText of property lists that a page's ``/Span /MC0 BDC``
     names from its /Properties (``pdf-actual-text``).
 
     All come from one pass over the file's dictionaries. An annotation string that does not
@@ -443,6 +454,14 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
     shown: list[PdfValue] = []
     actual: list[PdfValue] = []
     strings: dict[tuple[int, int], list[bytes]] = {}
+    labels: dict[bytes | tuple[int, int], None] = {}
+    option_arrays: set[tuple[int, int]] = set()
+
+    def label(value: PdfValue) -> None:
+        if isinstance(value, (bytes, tuple)):
+            labels[value] = None
+        if len(labels) > MAX_TEXT_PIECES:
+            raise ContentLimit("text pieces exceed 100000")
 
     def collect(entries: Iterator[dict[bytes, PdfValue]]) -> None:
         for entry in entries:
@@ -451,6 +470,18 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
             shown.extend(_shown_values(entry))
             if b"/ActualText" in entry and _property_list(entry):
                 actual.append(entry[b"/ActualText"])
+            field_type = entry.get(b"/FT")
+            widget = entry.get(b"/Subtype") == b"/Widget" and _annotation(entry)
+            if widget or (field_type in _FIELD_TYPES and b"/T" in entry):
+                if b"/TU" in entry:
+                    label(entry[b"/TU"])
+                if field_type == b"/Ch":
+                    options = entry.get(b"/Opt")
+                    if isinstance(options, list):
+                        for option in _option_labels(options):
+                            label(option)
+                    elif isinstance(options, tuple):
+                        option_arrays.add(options)
             if len(values) + len(shown) + len(actual) > MAX_TEXT_PIECES:
                 raise ContentLimit("text pieces exceed 100000")
 
@@ -522,6 +553,31 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
         for item in found:
             if isinstance(item, bytes) and item[:1] in (b"(", b"<") and item[:2] != b"<<":
                 append(texts, _shown_text(item))
+    for key in sorted(option_arrays):
+        budget.check()
+        for option_tokens in arrays.get(key, []):
+            if option_tokens is None:
+                raise ContentLimit("pdf string array exceeds 100000 tokens")
+            try:
+                options, _ = _pdf_value([b"[", *option_tokens, b"]"], 0)
+            except (ValueError, IndexError):
+                continue
+            if isinstance(options, list):
+                for option in _option_labels(options):
+                    label(option)
+    seen_labels = set(texts)
+    for value in labels:
+        budget.check()
+        values_to_read = strings.get(value, []) if isinstance(value, tuple) else [value]
+        for token in values_to_read:
+            if token[:1] in (b"(", b"<") and token[:2] != b"<<":
+                try:
+                    text = _shown_text(token)
+                except ContentLimit:
+                    continue  # An invalid optional label must not invalidate an existing reading.
+                if text not in seen_labels:
+                    seen_labels.add(text)
+                    append(texts, text)
     replacements: list[str] = []
     for value in dict.fromkeys(actual):
         budget.check()

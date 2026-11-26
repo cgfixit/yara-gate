@@ -19,7 +19,7 @@ or moved, and no gate home is used.
 yara-gate conform
 ```
 
-It builds 98 inert fixtures from the installed package: every pair of the
+It builds 104 inert fixtures from the installed package: every pair of the
 [demo catalog](../src/yara_gate/showcase.py) (an attack beside a benign near-twin, across
 messages, web pages, PDFs, Office files, archives, tool results, and repository files), the
 catalog's two scans that cannot finish (a JSON tool document past the structure limit and a 7z
@@ -42,7 +42,7 @@ page content the gate cannot decode, for the
 | 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing or damaged, a scan that should answer was incomplete, an agreement line gave no record, standard output could not be written, or an error the kit did not expect (`incomplete: <Type>`) |
 
 Standard output is JSON Lines; standard error carries one line for a person
-(`CONFORM PASS: 98 fixtures, 294 checks, …`).
+(`CONFORM PASS: 104 fixtures, 312 checks, …`).
 
 | Record | When | Fails the run |
 | --- | --- | --- |
@@ -146,3 +146,4 @@ shows.
 | 2026-11-21 | unchanged | Agreement output only: a `failed` line whose extraction was scanned (an unknown fixture id, an `original_sha256` that is not the fixture's, or `fixture was not scanned`) now gives `"decision": "hold"` on its `extraction` side instead of the extraction's own `admit`. Its verdict and rule ids are unchanged. A committed `agreement.jsonl` that holds such a line changes on that field only; the run still exits 2 |
 | 2026-11-25 | `8a4f1594a812a558` | Added two synthetic Quartz-style print proofs. The margin instruction produces a note in `pdf-annotation`; the copy editor’s revision is clean under every policy. Existing fixtures retain their bytes and outcomes. |
 | 2026-11-26 | `f918ea119da51298` | Two fixtures added, no fixture moved: `ps_download_run`, a PowerShell bootstrap script that passes a download straight to `iex` (`script_download_execute`, an advisory: held by both agent policies), and its near-twin `ps_alias_table`, a highlighter's alphabetical alias table that names `iex` ahead of `irm` and `iwr` with only other aliases between them, clean under every policy. A gate older than this manifest reports that twin as `script_download_execute`; the [record](verification/2026-11-26-powershell-alias-lists.md) has the change |
+| 2026-11-26 | `0c6ec8989324b7c6` | Added the PDF tooltip, PDF choice label, and UTF-32 text pairs. Each ranking instruction holds under both agent policies. All nine policy recordings of their benign twins are clean, and existing fixtures keep their bytes and outcomes. |

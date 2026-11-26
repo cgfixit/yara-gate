@@ -1556,6 +1556,16 @@ def decoded_text(name: str, data: bytes, budget: Budget) -> tuple[str, str]:
     return text, "raw"
 
 
+def bom_utf32_text(data: bytes) -> str | None:
+    """Read complete UTF-32 text identified by its four-byte byte order mark."""
+    if data.startswith((codecs.BOM_UTF32_BE, codecs.BOM_UTF32_LE)):
+        try:
+            return data.decode("utf-32")
+        except UnicodeError:
+            pass  # The same prefix can begin UTF-16LE text whose first character is NUL.
+    return None
+
+
 def declared_codec(name: str, data: bytes, budget: Budget) -> str:
     """The codec a browser reads ``data`` through by the charset it declares, or "".
 
@@ -1818,18 +1828,16 @@ def text_views(
 ) -> Iterator[tuple[str, bytes]]:
     """Return UTF-8 derived views, keeping their offsets separate from raw bytes.
 
-    The views are read from the text ``decoded_text`` gives, which is the file transcoded
-    when it is UTF-16 or declares a legacy charset; one stray byte in UTF-8 is U+FFFD and does
-    not switch off every derived view. A caller that has already decoded ``data`` passes
-    that reading as ``known``.
+    The views use ``decoded_text`` unless the caller supplies a reading as ``known``.
+    The scanner also supplies the reading from a validated UTF-32 byte order mark.
     """
-    if sniff(data) != "text":
+    if known is None and sniff(data) != "text":
         return
     try:
         text, reading = known or decoded_text(name, data, budget)
     except UnicodeError:
         raise ContentLimit("invalid UTF-16 text") from None
-    if reading in {"decoded-utf16", "decoded-charset"}:
+    if reading in {"decoded-utf16", "decoded-utf32", "decoded-charset"}:
         yield reading, _derived(text, budget)
     unescaped = html.unescape(text)
     if unescaped != text:
