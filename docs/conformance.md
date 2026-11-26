@@ -19,7 +19,7 @@ or moved, and no gate home is used.
 yara-gate conform
 ```
 
-It builds 98 inert fixtures from the installed package: every pair of the
+It builds 104 inert fixtures from the installed package: every pair of the
 [demo catalog](../src/yara_gate/showcase.py) (an attack beside a benign near-twin, across
 messages, web pages, PDFs, Office files, archives, tool results, and repository files), the
 catalog's two scans that cannot finish (a JSON tool document past the structure limit and a 7z
@@ -42,7 +42,7 @@ page content the gate cannot decode, for the
 | 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing or damaged, a scan that should answer was incomplete, an agreement line gave no record, standard output could not be written, or an error the kit did not expect (`incomplete: <Type>`) |
 
 Standard output is JSON Lines; standard error carries one line for a person
-(`CONFORM PASS: 98 fixtures, 294 checks, …`).
+(`CONFORM PASS: 104 fixtures, 312 checks, …`).
 
 | Record | When | Fails the run |
 | --- | --- | --- |
