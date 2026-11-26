@@ -3538,6 +3538,7 @@ _SCOPE_RAW_END = {
     name.encode(): re.compile(rb"</" + name.encode() + rb"[ \t\r\n\f]*>", re.I)
     for name in (*_HTML_RAW_TEXT, "xmp", "iframe", "noembed", "noframes")
 }
+_SCOPE_SVG_SELF = re.compile(rb"<svg\b[^<>]{0,4096}?/>", re.I)
 _SCOPE_MATH_END = re.compile(rb"</math[ \t\r\n\f]*>", re.I)
 _SCOPE_AMBIGUOUS = frozenset({b"foreignobject", b"select", b"plaintext", b"noscript", b"math"})
 
@@ -3601,6 +3602,10 @@ def svg_scope_proven(data: bytes) -> bool:
             continue
         if name in _SCOPE_AMBIGUOUS or (name == b"title" and stack):
             return False
+        if not closing and name in _SCOPE_RAW_END and b"desc" in stack:
+            # An svg desc is an HTML integration point, so a raw-text start tag inside one makes
+            # an HTML parser read on as text to its end tag, which this walk does not follow.
+            return False
         if marker.start() < position:
             if (
                 marker.start() != start
@@ -3612,6 +3617,10 @@ def svg_scope_proven(data: bytes) -> bool:
                 if re.fullmatch(rb"</svg[ \t\r\n\f]*>", lexeme, re.I) is None:
                     return False
             elif lexeme.endswith(b"/>") != bool(self_close):
+                return False
+            elif (early := _SCOPE_SVG_SELF.match(lexeme)) is not None and early.end() < len(lexeme):
+                # The rules count `<svg` up to its first `/>` as a self-closing svg. One inside a
+                # quoted value (`<svg a="/>">`) would close an svg that a browser keeps open.
                 return False
             marker = _SVG_MARKER.search(data, position)
         if stack or name == b"svg":

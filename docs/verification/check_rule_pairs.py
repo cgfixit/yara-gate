@@ -495,6 +495,27 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"<p><svg></+</svg>><script>void 0</script></svg>",
             b"<p><svg></svg></+ x><script>void 0</script>",
         ),
+        # An svg desc is an HTML integration point: a raw-text tag inside one reads on as text,
+        # so a quoted end tag can hide `</svg>`. The proof declines; a desc of plain words keeps
+        # the narrow test.
+        (
+            "doc_svg_active",
+            b'<p><svg><desc><xmp></+</xmp a="></xmp></desc></svg>"><script>void 0</script>',
+            b"<p><svg><desc>Quarterly sales</desc></svg><script>void 0</script>",
+        ),
+        (
+            "doc_svg_active",
+            b"<p><svg><desc><xmp><!--</xmp><textarea>--></xmp></desc></svg></textarea>"
+            b"<script>void 0</script>",
+            b"<p><svg><desc><b>Quarterly</b> sales</desc></svg><script>void 0</script>",
+        ),
+        # The rules count `<svg` up to its first `/>` as self-closing, so `/>` inside a quoted
+        # value would close an svg a browser keeps open; a real self-closing svg stays narrow.
+        (
+            "doc_svg_active",
+            b'<p>x</p><svg a="/>"><script>void 0</script></svg>',
+            b'<p>x</p><svg a="x"/><script>void 0</script>',
+        ),
         (
             "doc_svg_event_handler",
             b'<a@example.invalid><svg><image href="x" onerror="void 0"/></svg>',
