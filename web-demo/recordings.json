@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "f9deba8dafdf7f46d2fe04d4562a8cbc55488630",
-  "captured_at": "2026-11-26T16:51:35+00:00",
+  "source_revision": "2efce897da511f99c989fcc53e86e3c34a74ca9b",
+  "captured_at": "2026-11-26T15:11:25+00:00",
   "cases": [
     {
       "id": "note",
@@ -3227,415 +3227,6 @@
             "comment-text": 1
           },
           "bytes_scanned": 524,
-          "exit_code": 0
-        }
-      }
-    },
-    {
-      "id": "syntax_page_svg_script",
-      "kind": "detection",
-      "channel": "Repository",
-      "pair": "syntax_file_svg_tags",
-      "title": "A help page whose inline logo carries a script",
-      "description": "A highlighter's help page credits its maintainer by a mail address in angle brackets, as editor files do, and its inline SVG logo holds a script. The script sits inside the svg element, so the active-SVG rule blocks it under every policy.",
-      "results": {
-        "default": {
-          "sha256": "895cee40ea12bb502d1355b4a3839e01d8503485ddb0d744b061a28e980593d5",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "raw"
-            },
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "text-folded"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "default",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "html-text": 1,
-            "text-folded": 1
-          },
-          "bytes_scanned": 705,
-          "exit_code": 1
-        },
-        "agent-ingest": {
-          "sha256": "895cee40ea12bb502d1355b4a3839e01d8503485ddb0d744b061a28e980593d5",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "raw"
-            },
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "text-folded"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-ingest",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "html-text": 1,
-            "text-folded": 1
-          },
-          "bytes_scanned": 705,
-          "exit_code": 1
-        },
-        "agent-document": {
-          "sha256": "895cee40ea12bb502d1355b4a3839e01d8503485ddb0d744b061a28e980593d5",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "raw"
-            },
-            {
-              "rule_id": "doc_svg_active",
-              "offset": 135,
-              "length": 4,
-              "severity": "block",
-              "source": "yara",
-              "member_path": [],
-              "view": "text-folded"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-document",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "html-text": 1,
-            "text-folded": 1
-          },
-          "bytes_scanned": 705,
-          "exit_code": 1
-        }
-      }
-    },
-    {
-      "id": "syntax_file_svg_tags",
-      "kind": "control",
-      "channel": "Repository",
-      "pair": "syntax_page_svg_script",
-      "title": "An editor syntax file that names svg and script",
-      "description": "An HTML syntax file whose patterns name the svg and script tags, as Vim's own does. Read the way a browser reads tags, nothing in it is a script inside an svg.",
-      "results": {
-        "default": {
-          "sha256": "1da1c13979ec4be02ab67c0678b957ff9024d9f095fc55425e6e62b23af3852d",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "default",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 806,
-          "exit_code": 0
-        },
-        "agent-ingest": {
-          "sha256": "1da1c13979ec4be02ab67c0678b957ff9024d9f095fc55425e6e62b23af3852d",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-ingest",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 806,
-          "exit_code": 0
-        },
-        "agent-document": {
-          "sha256": "1da1c13979ec4be02ab67c0678b957ff9024d9f095fc55425e6e62b23af3852d",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-document",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 806,
-          "exit_code": 0
-        }
-      }
-    },
-    {
-      "id": "word_dde_field",
-      "kind": "detection",
-      "channel": "Repository",
-      "pair": "dde_scanner_source",
-      "title": "A report template with a DDEAUTO field",
-      "description": "A Word file in a shared repository whose one field is a DDEAUTO instruction, which asks Word to start a program when the file opens. The command only echoes a word.",
-      "results": {
-        "default": {
-          "sha256": "f44d7929db108b3a013c7cbd6238a0fd242085fdb5267babc7e8676dd8d61700",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [
-                "zip:1"
-              ],
-              "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
-              "view": "raw"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "default",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 3,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 1657,
-          "exit_code": 1
-        },
-        "agent-ingest": {
-          "sha256": "f44d7929db108b3a013c7cbd6238a0fd242085fdb5267babc7e8676dd8d61700",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [
-                "zip:1"
-              ],
-              "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
-              "view": "raw"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-ingest",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 3,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 1657,
-          "exit_code": 1
-        },
-        "agent-document": {
-          "sha256": "f44d7929db108b3a013c7cbd6238a0fd242085fdb5267babc7e8676dd8d61700",
-          "verdict": "block",
-          "findings": [
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [
-                "zip:1"
-              ],
-              "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
-              "view": "raw"
-            }
-          ],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-document",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 3,
-          "views_scanned": {
-            "text-folded": 1
-          },
-          "bytes_scanned": 1657,
-          "exit_code": 1
-        }
-      }
-    },
-    {
-      "id": "dde_scanner_source",
-      "kind": "control",
-      "channel": "Repository",
-      "pair": "word_dde_field",
-      "title": "A DDE scanner's own source",
-      "description": "A script that lists the DDE fields of a Word file names the same namespace and field elements. It is program source, not a part Word reads, so it is clean.",
-      "results": {
-        "default": {
-          "sha256": "a8bc18b11067c46c1eb5f384363476de0b098139f90430955ec8570972b3baa4",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "default",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 457,
-          "exit_code": 0
-        },
-        "agent-ingest": {
-          "sha256": "a8bc18b11067c46c1eb5f384363476de0b098139f90430955ec8570972b3baa4",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-ingest",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 457,
-          "exit_code": 0
-        },
-        "agent-document": {
-          "sha256": "a8bc18b11067c46c1eb5f384363476de0b098139f90430955ec8570972b3baa4",
-          "verdict": "clean",
-          "findings": [],
-          "advisory": false,
-          "note": false,
-          "incomplete_reason": null,
-          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
-          "engine_version": "1.24.0",
-          "skipped_rule_files": 0,
-          "policy": "agent-document",
-          "policy_reason": null,
-          "compiled_rules": 89,
-          "tool_version": "0.2.0",
-          "units_scanned": 1,
-          "views_scanned": {},
-          "bytes_scanned": 457,
           "exit_code": 0
         }
       }
@@ -9214,6 +8805,546 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 78,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_tooltip_instruction",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "pdf_tooltip_control",
+      "title": "A PDF form tooltip asks for a ranking",
+      "description": "The field value is Draft. The alternate field name carries the instruction as UTF-16 hex.",
+      "results": {
+        "default": {
+          "sha256": "614731a145295c504cba696a805d2021e6ce881d0a61367d13f74d7bf21d2a24",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1074,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "614731a145295c504cba696a805d2021e6ce881d0a61367d13f74d7bf21d2a24",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1074,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "614731a145295c504cba696a805d2021e6ce881d0a61367d13f74d7bf21d2a24",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1074,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "pdf_tooltip_control",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "pdf_tooltip_instruction",
+      "title": "The PDF form tooltip asks for a comparison",
+      "description": "The same field has an ordinary label in the same encoding.",
+      "results": {
+        "default": {
+          "sha256": "3375f5d82618aeede0d0c7feeb836afde1589f08ebacf5665d7214caebea0607",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1049,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "3375f5d82618aeede0d0c7feeb836afde1589f08ebacf5665d7214caebea0607",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1049,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "3375f5d82618aeede0d0c7feeb836afde1589f08ebacf5665d7214caebea0607",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1049,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_choice_instruction",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "pdf_choice_control",
+      "title": "An unselected PDF dropdown label asks for a ranking",
+      "description": "The form opens with Standard selected. Another option shows the instruction in its label.",
+      "results": {
+        "default": {
+          "sha256": "99724e22fb4be0c39e6fdd12afb8728eccc05bb740d085173e68dea8b5c53239",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1118,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "99724e22fb4be0c39e6fdd12afb8728eccc05bb740d085173e68dea8b5c53239",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1118,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "99724e22fb4be0c39e6fdd12afb8728eccc05bb740d085173e68dea8b5c53239",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1118,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "pdf_choice_control",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "pdf_choice_instruction",
+      "title": "The PDF dropdown offers an ordinary comparison",
+      "description": "The selected value and export key are identical to those in the paired form.",
+      "results": {
+        "default": {
+          "sha256": "0395622f01690ef6c70a1072f4539a124ce09406b1deef3f9dc3036427b462cb",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1093,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "0395622f01690ef6c70a1072f4539a124ce09406b1deef3f9dc3036427b462cb",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1093,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "0395622f01690ef6c70a1072f4539a124ce09406b1deef3f9dc3036427b462cb",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1093,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "utf32_instruction",
+      "kind": "detection",
+      "channel": "Message",
+      "pair": "utf32_control",
+      "title": "A UTF-32 export asks for a ranking",
+      "description": "The text export starts with the UTF-32 big-endian byte order mark.",
+      "results": {
+        "default": {
+          "sha256": "fe10e60b58bfe2f61ea0a840b146766fc6cb94cb380b8fd641ed6e7b6586f70f",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "decoded-utf32"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 209,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "fe10e60b58bfe2f61ea0a840b146766fc6cb94cb380b8fd641ed6e7b6586f70f",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "decoded-utf32"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 209,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "fe10e60b58bfe2f61ea0a840b146766fc6cb94cb380b8fd641ed6e7b6586f70f",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "decoded-utf32"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 209,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "utf32_control",
+      "kind": "control",
+      "channel": "Message",
+      "pair": "utf32_instruction",
+      "title": "The UTF-32 export asks for a comparison",
+      "description": "The text export uses the same encoding and contains an ordinary instruction.",
+      "results": {
+        "default": {
+          "sha256": "0d9717b2f787f6189ea8e2bb44fb786cf8b18de597476f534337389d6e802c97",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 184,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "0d9717b2f787f6189ea8e2bb44fb786cf8b18de597476f534337389d6e802c97",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 184,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "0d9717b2f787f6189ea8e2bb44fb786cf8b18de597476f534337389d6e802c97",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "decoded-utf32": 1
+          },
+          "bytes_scanned": 184,
           "exit_code": 0
         }
       }
