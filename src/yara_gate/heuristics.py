@@ -1383,9 +1383,20 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
         return findings
     if b"altChunk" in data:
         findings.append(_advisory("heuristic_ooxml_altchunk"))
-    if b"DDE" in data and (b"instrText" in data or b"fldChar" in data):
+    # Word reads a field instruction from an XML part, and an XML part opens with a tag after an
+    # optional byte order mark and white space. Program source or a rule file that names the
+    # same three strings, such as a DDE detector's own code, is not a part Word can read.
+    if (
+        b"DDE" in data
+        and (b"instrText" in data or b"fldChar" in data)
+        and data.lstrip(_BEFORE_XML_PART)[:1] == b"<"
+    ):
         findings.append(_block("heuristic_ooxml_dde"))
     return findings
+
+
+# A UTF-8 byte order mark and white space, which may stand before a part's first tag.
+_BEFORE_XML_PART = b"\xef\xbb\xbf \t\r\n"
 
 
 # A JSON string, a comment opener, or a comma, for ``_jsonc``. A string holds no raw line break.
