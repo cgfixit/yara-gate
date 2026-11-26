@@ -1435,6 +1435,93 @@
    "source": "showcase"
   },
   {
+   "bytes": 152,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "script_download_execute"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "script_download_execute"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "script_download_execute"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "ps_download_run",
+   "kind": "detection",
+   "name": "bootstrap.ps1",
+   "pair": "ps_alias_table",
+   "sha256": "9a10671c14e0e8da668fdd1e7705701c9e0f262b80510222b7632b012471b54a",
+   "source": "showcase"
+  },
+  {
+   "bytes": 311,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "ps_alias_table",
+   "kind": "control",
+   "name": "aliases.py",
+   "pair": "ps_download_run",
+   "sha256": "430429dd8f0ad154d8787d1696cb3aac57779b20afa481cabb1596271ed3e21e",
+   "source": "showcase"
+  },
+  {
    "bytes": 134,
    "channel": "Attachment",
    "expected": {
