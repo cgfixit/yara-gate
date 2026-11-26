@@ -21,6 +21,7 @@ from yara_gate.content import (
     PdfObjects,
     PdfStream,
     _derived,
+    bom_utf32_text,
     comment_texts,
     config_unescaped_texts,
     content_units,
@@ -358,6 +359,9 @@ def _scan_file(
             unit_start = len(findings)
             path = Path(unit.name)
             kind = sniff(unit.data)
+            utf32 = bom_utf32_text(unit.data)
+            if kind == "unknown" and utf32 is not None:
+                kind = "text"
             extra: list[Finding] = []
             if unit.member_path:
                 # Every component: an Invoice.pdf.app bundle hides behind its inner file names.
@@ -417,6 +421,9 @@ def _scan_file(
             extra.extend(heuristic)
             decoded = _decoded_text(unit.name, unit.data, budget)
             readings = _readings(unit.data, decoded)
+            if utf32 is not None:
+                # Keep the existing reading when a little-endian mark also opens UTF-16.
+                readings.append((utf32, "decoded-utf32"))
             for text, view in readings:
                 for finding in [
                     *joiner_findings(text, budget.check),
@@ -803,7 +810,7 @@ def _reader_pieces(
     )
     yield from _with_folded_pieces("rtf-text", rtf_texts(unit.data, budget), budget)
     yield from _with_folded_pieces("pdf-annotation", strings.annotations, budget)
-    # A form field's value, a document information string, and an outline title.
+    # Form field values and labels, document information strings, and outline titles.
     yield from _with_folded_pieces("pdf-string", strings.shown, budget)
     # Both readings' pieces share their views, so a rule is reported once per view.
     for reading, _ in readings:
