@@ -1384,12 +1384,14 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
     if b"altChunk" in data:
         findings.append(_advisory("heuristic_ooxml_altchunk"))
     # Word reads a field instruction from an XML part, and an XML part opens with a tag after an
-    # optional byte order mark and white space. Program source or a rule file that names the
-    # same three strings, such as a DDE detector's own code, is not a part Word can read.
+    # optional byte order mark and white space. Text that opens with anything else, such as a
+    # DDE detector's own source, is not a part Word can read. A container is still read whole:
+    # a stored zip holds its parts' bytes, and the namespace address can stand in one part and
+    # the field in another (a Strict or character-referenced document.xml).
     if (
         b"DDE" in data
         and (b"instrText" in data or b"fldChar" in data)
-        and data.lstrip(_BEFORE_XML_PART)[:1] == b"<"
+        and (data.lstrip(_BEFORE_XML_PART)[:1] == b"<" or sniff(data) != "text")
     ):
         findings.append(_block("heuristic_ooxml_dde"))
     return findings

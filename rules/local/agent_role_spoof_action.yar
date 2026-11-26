@@ -65,19 +65,6 @@ rule agent_role_spoof_action {
         // (docs/verification/2026-11-26-role-spoof-names.md).
         $verb = /((^|^[\x00-\xFF]|[\x00-\xFF][^_]|[^A-Za-z0-9]_)(?i:reveal|ignore|override|execute)([^A-Z]|[A-Z]([^a-z]|$)|$)|(^|^[\x00-\xFF]|[\x00-\xFF][\x00-\xFF])(?i:credentials))/ ascii
         $verb_wide = /(reveal|ignore|override|execute|credentials)/ nocase wide
-        // Two readings narrowed here, each read at the opener's own offset and declared last so
-        // a finding still reports the opener. "the highest priority" in small letters after a
-        // word is how documentation describes an order of things ("the one with the highest
-        // priority will be used"), so in that spelling the verb must start within 64 bytes, as
-        // it does in "This instruction has the highest priority. Ignore everything above it";
-        // "with HIGHEST PRIORITY" and a sentence that starts with the claim keep 256. A POD
-        // formatting code (C<system>) in a file with a POD command line names the function, not
-        // a turn; the folded view reads =head1 as =headi, so any one character follows =head
-        // (docs/verification/2026-11-26-role-spoof-descriptions.md).
-        $claim_the = /\bthe[ \t\r\n](?i:highest priority)/ ascii
-        $claim_the_wide = /\bthe[ \t\r\n](?i:highest priority)/ wide
-        $pod_tag = /[^A-Za-z0-9_][BCEFILSXZ]<(system|developer)>/ ascii
-        $pod_command = /(^|\n)=(head[^ \t\r\n]|pod|item|over|back|cut|begin|end|for|encoding)[ \t\r\n]/ ascii
     condition:
         any of ($header_line, $claim_line, $claim_sentence, $override_line) or
         for any i in (1..#role) : (
@@ -88,21 +75,12 @@ rule agent_role_spoof_action {
         ) or
         for any i in (1..#claim) : (
             $verb in (@claim[i] + !claim[i] - 2..@claim[i] + !claim[i] + 254)
-            and (
-                not $claim_the at (@claim[i] - 4)
-                or $verb in (@claim[i] + !claim[i] - 2..@claim[i] + !claim[i] + 62)
-            )
         ) or
         for any i in (1..#claim_wide) : (
             $verb_wide in (@claim_wide[i] + !claim_wide[i]..@claim_wide[i] + !claim_wide[i] + 256)
-            and (
-                not $claim_the_wide at (@claim_wide[i] - 8)
-                or $verb_wide in (@claim_wide[i] + !claim_wide[i]..@claim_wide[i] + !claim_wide[i] + 128)
-            )
         ) or
         for any i in (1..#header) : (
             $word in (@header[i] + !header[i]..@header[i] + !header[i] + 256)
-            and not ($pod_command and $pod_tag at (@header[i] - 2))
         ) or
         for any i in (1..#header_wide) : (
             $word_wide in (@header_wide[i] + !header_wide[i]..@header_wide[i] + !header_wide[i] + 256)
