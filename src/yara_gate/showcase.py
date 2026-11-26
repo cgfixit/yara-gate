@@ -515,6 +515,55 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "syntax_page_svg_script",
+        "detection",
+        "Repository",
+        "syntax_file_svg_tags",
+        "A help page whose inline logo carries a script",
+        "A highlighter's help page credits its maintainer by a mail address in angle brackets, "
+        "as editor files do, and its inline SVG logo holds a script. The script sits inside "
+        "the svg element, so the active-SVG rule blocks it under every policy.",
+        "help.html",
+        samples.syntax_page_svg_script(),
+        BLOCK,
+    ),
+    _case(
+        "syntax_file_svg_tags",
+        "control",
+        "Repository",
+        "syntax_page_svg_script",
+        "An editor syntax file that names svg and script",
+        "An HTML syntax file whose patterns name the svg and script tags, as Vim's own does. "
+        "Read the way a browser reads tags, nothing in it is a script inside an svg.",
+        "html.vim",
+        samples.syntax_file_svg_tags(),
+        CLEAN,
+    ),
+    _case(
+        "word_dde_field",
+        "detection",
+        "Repository",
+        "dde_scanner_source",
+        "A report template with a DDEAUTO field",
+        "A Word file in a shared repository whose one field is a DDEAUTO instruction, which "
+        "asks Word to start a program when the file opens. The command only echoes a word.",
+        "report.docx",
+        samples.word_dde_field(),
+        BLOCK,
+    ),
+    _case(
+        "dde_scanner_source",
+        "control",
+        "Repository",
+        "word_dde_field",
+        "A DDE scanner's own source",
+        "A script that lists the DDE fields of a Word file names the same namespace and field "
+        "elements. It is program source, not a part Word reads, so it is clean.",
+        "fields.py",
+        samples.dde_scanner_source(),
+        CLEAN,
+    ),
+    _case(
         "svg_cdata_override",
         "detection",
         "Attachment",

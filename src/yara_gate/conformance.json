@@ -1522,6 +1522,177 @@
    "source": "showcase"
   },
   {
+   "bytes": 333,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "doc_svg_active"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw",
+      "text-folded"
+     ]
+    }
+   },
+   "id": "syntax_page_svg_script",
+   "kind": "detection",
+   "name": "help.html",
+   "pair": "syntax_file_svg_tags",
+   "sha256": "895cee40ea12bb502d1355b4a3839e01d8503485ddb0d744b061a28e980593d5",
+   "source": "showcase"
+  },
+  {
+   "bytes": 403,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "syntax_file_svg_tags",
+   "kind": "control",
+   "name": "html.vim",
+   "pair": "syntax_page_svg_script",
+   "sha256": "1da1c13979ec4be02ab67c0678b957ff9024d9f095fc55425e6e62b23af3852d",
+   "source": "showcase"
+  },
+  {
+   "bytes": 749,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "word_dde_field",
+   "kind": "detection",
+   "name": "report.docx",
+   "pair": "dde_scanner_source",
+   "sha256": "f44d7929db108b3a013c7cbd6238a0fd242085fdb5267babc7e8676dd8d61700",
+   "source": "showcase"
+  },
+  {
+   "bytes": 457,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "dde_scanner_source",
+   "kind": "control",
+   "name": "fields.py",
+   "pair": "word_dde_field",
+   "sha256": "a8bc18b11067c46c1eb5f384363476de0b098139f90430955ec8570972b3baa4",
+   "source": "showcase"
+  },
+  {
    "bytes": 134,
    "channel": "Attachment",
    "expected": {
