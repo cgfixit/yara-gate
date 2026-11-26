@@ -125,7 +125,7 @@ Two pairs join the shared catalog under **Repository**, one for each fix on this
 A third pair for the priority claim was recorded on the branch and removed with the rule
 change, since its twin is advisory on `main`.
 
-The catalog is 49 pairs and three unfinished scans (101 scenarios). The 97 cases carried over
+The catalog was 49 pairs and three unfinished scans (101 scenarios) on the branch; after `main` gained three pairs in #369 and was merged in (`446d5bd`), it is 52 pairs (107 scenarios), with `agent-ingest` holding 52 of 52, `agent-document` 27, the default policy blocking 6, the twins giving 0 findings in 156 recordings, and the manifest at 108 fixtures and 324 checks. Before that merge: The 97 cases carried over
 from `main` are unchanged. `agent-ingest` holds 49 of 49, `agent-document` 24, the default
 policy blocks 6, and the 49 twins give 0 findings in 147 recordings. The conformance manifest
 gains four fixtures and no fixture moved (171 lines added, none removed): 102 fixtures, 306

@@ -304,7 +304,7 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    hidden from the reader, invisible characters, disguised spelling, split across
    formatting, encoded, inside an archive or message, file structure, or a plain pattern. Under
    `agent-ingest` every attack is held and every twin is clean; `agent-document`
-   holds 25 of the 50 and records the rest as notes, and the default policy holds 4.
+   holds 27 of the 52 and records the rest as notes, and the default policy holds 6.
 3. Read the decision and original finding severities. Each finding says which
    check found it and in which view, in plain words. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and the ruleset and
