@@ -408,6 +408,13 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             "script_download_execute",
             {"raw", "text-folded"},
         ),
+        "syntax_page_svg_script": (
+            "syntax_file_svg_tags",
+            "doc_svg_active",
+            {"raw", "text-folded"},
+        ),
+        "word_dde_field": ("dde_scanner_source", "heuristic_ooxml_dde", {"raw"}),
+        "priority_order_note": ("priority_help_text", "agent_role_spoof_action", {"raw"}),
         "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
         "word_xml_comment_override": (
             "word_xml_comment_benign",
