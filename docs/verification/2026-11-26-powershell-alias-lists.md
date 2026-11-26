@@ -114,8 +114,8 @@ One run each, 1 MiB inputs, the rule file compiled alone with `yara_x`:
 | `iex (irm x)` on each line (matches) | 0.07 s | 0.07 s | 0.08 s | 0.08 s |
 | Ordinary prose | under 0.01 s | under 0.01 s | under 0.01 s | under 0.01 s |
 
-Per string on the `iex ` flood, base rule: `$powershell` 2.92 s, `$powershell_reverse` 3.86 s,
-every other string under 0.01 s. This is the profile the backlog's `iex ` flood row lacked. The
+Per string on the `iex ` flood, base rule, in an earlier run on the same machine (whole file
+6.74 s): `$powershell` 2.92 s, `$powershell_reverse` 3.86 s, every other string under 0.01 s. This is the profile the backlog's `iex ` flood row lacked. The
 change is not a fix for that row: a flood of `iex(` costs what it did, and `$powershell` is
 untouched.
 
