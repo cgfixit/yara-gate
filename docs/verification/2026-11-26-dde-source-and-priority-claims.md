@@ -154,7 +154,30 @@ under Checks.
 
 ## Checks
 
-BATTERY
+On `2c007b4`, which holds the final code (`f9deba8`) and this record:
+
+| Check | Result |
+| --- | --- |
+| `lint_rules.py` | 89 compiled and linted; vendor overrides (2) |
+| `check_rule_generator.py`, `check_rules_lock.py`, `uv lock --check` | passed |
+| `check_rule_pairs.py` | 120 rules passed, with the five pairs above |
+| `probe_match_cap.py` | 3,447 flooded texts over 84 rules, 0 blind spots, 0 fail |
+| `check_added_rules.py` | 271 plus 4 vendor-override cases |
+| `measure_precision.py --fail-over` (328 files) | exit 0, 0 incomplete |
+| `probe_rule_coverage.py --verify` | passed |
+| `probe_detection_gaps.py --verify` | exit 0 |
+| `check_worst_case_timing.py` | 106 adversarial inputs of 4 MiB, pass |
+| `check_scan_only.py`, `check_intake.py` | passed |
+| `yara-gate selftest` | pass |
+| `yara-gate conform`, `build_conformance.py --check` | 102 fixtures, 306 checks, 0 changes; manifest current |
+| `scripts/record_pages_demo.py`, `scripts/build_pages.py` | 101 scenarios x 3 policies; 303 recordings validated |
+| `check_text_controls.py`, `check_doc_links.py`, `zizmor --offline --pedantic` | passed |
+| Ruff, `ruff format --check`, `mypy --strict src scripts` | passed |
+
+`docs` and `web-demo` were scanned again with the text as it stands, through `5b8ad4d` and
+through this tree: of 232 files, `check_added_rules.py` and `check_rule_pairs.py` differ, each
+by `heuristic_ooxml_dde` alone. Every other difference in the full sweep came from text this
+branch edits, not from the code.
 
 ## What this does not show
 
