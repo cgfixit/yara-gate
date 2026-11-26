@@ -172,13 +172,13 @@ Each bogus comment and math element is read once to its end, so the walk stays l
 
 ## Checks
 
-On `e5ca3f9` (the change) and `a2153b9` (with this record), which hold the same `src` and
-rules:
+On `5b579f3` (the final code) and `0a86bc6` (with this record), which hold the same `src` and
+rules; the same battery passed on the first version, `e5ca3f9`, before the review:
 
 | Check | Result |
 | --- | --- |
-| `check_rule_pairs.py` | 120 rules passed, with the four pairs above |
-| `probe_match_cap.py` | 3,331 flooded texts over 84 rules, 0 blind spots, 0 fail |
+| `check_rule_pairs.py` | 120 rules passed, with the seven pairs above |
+| `probe_match_cap.py` | 3,399 flooded texts over 84 rules, 0 blind spots, 0 fail |
 | `check_added_rules.py` | 271 plus 4 vendor-override cases |
 | `measure_precision.py --fail-over` (328 files) | exit 0, 0 incomplete |
 | `probe_rule_coverage.py --verify` | passed |
