@@ -27,11 +27,15 @@ Before its `<svg>` the file holds 13 `<` bytes that the proof did not read:
 | `</+ … >`, `</\s* … >` | A bogus comment: `</` before anything but a letter or `>` opens one, and the next `>` closes it |
 | `<math>" end="</math>` | A MathML element holding only text, closed by its end tag |
 
-**Sourced, read** (html.spec.whatwg.org, the tokenization section's tag open, end tag open,
-tag name, and bogus comment states, and the tree construction rules for foreign content;
-not fetched in this session, so this is from the specification as known, and the browser runs
-below are what was checked). **Verified** in Chromium: with `DOMParser` the file's svg
-element holds only text, and its script elements lie outside it.
+**Sourced, read** (`html.spec.whatwg.org/multipage/parsing.html`, fetched November 26): the
+bogus comment state ends at `>` or the end of the input. **Sourced, located** on the same
+page, read only as a summary: the tag open state (a letter opens a tag, `/` an end tag, `!` a
+markup declaration, `?` a processing instruction, anything else is text), the end tag open
+state (a letter opens a tag, `>` is dropped, anything else opens a bogus comment), the tag name
+state (white space, `/`, or `>` ends the name; any other byte is part of it), and the foreign
+content rules. The browser runs below are what checks those readings. **Verified** in
+Chromium: with `DOMParser` the file's svg element holds only text, and its script elements lie
+outside it.
 
 ## The change
 
@@ -126,7 +130,27 @@ Each bogus comment and math element is read once to its end, so the walk stays l
 
 ## Checks
 
-BATTERY
+On `e5ca3f9` (the change) and `a2153b9` (with this record), which hold the same `src` and
+rules:
+
+| Check | Result |
+| --- | --- |
+| `check_rule_pairs.py` | 120 rules passed, with the four pairs above |
+| `probe_match_cap.py` | 3,331 flooded texts over 84 rules, 0 blind spots, 0 fail |
+| `check_added_rules.py` | 271 plus 4 vendor-override cases |
+| `measure_precision.py --fail-over` (328 files) | exit 0, 0 incomplete |
+| `probe_rule_coverage.py --verify` | passed |
+| `probe_detection_gaps.py --verify` | exit 0 |
+| `check_worst_case_timing.py` | 106 adversarial inputs of 4 MiB, pass |
+| `check_scan_only.py`, `check_intake.py` | passed |
+| `check_rule_generator.py`, `check_rules_lock.py`, `uv lock --check` | passed |
+| `yara-gate selftest` | pass |
+| `yara-gate conform`, `build_conformance.py --check` | 98 fixtures, 294 checks, 0 changes; manifest current |
+| `scripts/record_pages_demo.py --baseline web-demo/recordings.json` | 97 scenarios x 3 policies, outcomes match the baseline |
+| `check_text_controls.py`, `check_doc_links.py`, `zizmor --offline --pedantic` | passed |
+| Ruff, `ruff format --check`, `mypy --strict src scripts` | passed |
+
+No catalog fixture moves, so neither the conformance manifest nor the demo recordings change.
 
 ## Independent attempt to break it
 
@@ -134,8 +158,9 @@ REVIEW
 
 ## What this does not show
 
-- The specification sections were not fetched in this session; the browser runs are the
-  check, and they cover Chromium's parser only.
+- Of the specification, only the bogus comment state was read word for word; the other
+  states were located in a summary. The browser runs are the check, and they cover Chromium's
+  parser only: Firefox and WebKit were not run.
 - `DOMParser` parses with scripting off. The proof already declines `noscript`, the one
   element whose parsing that flag changes.
 - A file served as XML (`.xhtml`) is parsed by an XML parser, which stops at the first of
