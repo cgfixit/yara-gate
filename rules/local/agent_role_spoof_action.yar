@@ -47,22 +47,34 @@ rule agent_role_spoof_action {
         // word OVERRIDE, so "System override: enabled", SYSTEM_OVERRIDE, and an ADMIN NOTICE that a
         // parking rule is void stay clean, and so does an OVERRIDE header that names a flag.
         $override_line = /(^|[\r\n])[ \t]*[\[(]?(SYSTEM|ADMIN|ADMINISTRATOR|DEVELOPER|OPERATOR)[ \t]+OVERRIDE[^\r\n]{0,16}[:\]][^\r\n]{0,64}(?i:\b(all[ \t]+)?(the[ \t]+)?(previous|prior|earlier|above|original|existing|current)[ \t]+(rules|instructions|directives|guidelines|restrictions|prompts?|orders)[ \t]+(are|is|have been|were)[ \t]+(now[ \t]+|hereby[ \t]+)?(void|null|revoked|cancell?ed|rescinded|suspended|lifted|invalid|no longer[ \t]+(valid|in effect|active))\b|\bnew[ \t]+(instructions|directives|orders|task|objective)[ \t]*(follow\b|below\b|:))/ ascii wide
-        // The verbs the condition places after an opener. They are declared last so a finding
-        // reports an opener or a header line, not a verb that stands elsewhere in the text.
-        $verb = /(reveal|ignore|override|execute|credentials)/ nocase ascii
-        $verb_wide = /(reveal|ignore|override|execute|credentials)/ nocase wide
+        // The verbs the condition places after an opener. They are declared after the openers so
+        // a finding reports an opener or a header line where its first match decides, and $word
+        // before $verb so a verb that is a word of its own is reported as its own letters.
         $word = /\b(reveal|ignore|override|execute|credentials)\b/ nocase ascii
         $word_wide = /\b(reveal|ignore|override|execute|credentials)\b/ nocase wide
+        // $verb is one of the four verbs in any spelling but one, or the word credentials in
+        // any spelling. The one spelling left out is a verb inside a name: after a letter or
+        // digit and an underscore (b:sql_type_override), or running into a capital and a small
+        // letter (ignoreRoot). "The highest priority" beside such a name is a code comment. An
+        // inflected verb (executed, OVERRIDES), a verb glued to the next word
+        // (ignore_previous), a verb after an escaped line break (\nreveal), and aws_credentials
+        // count as before. After an opener a match holds the two bytes before its verb, so the
+        // condition reads the window two bytes early and the verb still starts 0 to 256 bytes
+        // after the opener. $verb_wide keeps every spelling: a UTF-16 pattern cannot read a
+        // neighbour outside Latin-1, and a verb beside a Chinese character has to stay a verb
+        // (docs/verification/2026-11-26-role-spoof-names.md).
+        $verb = /((^|^[\x00-\xFF]|[\x00-\xFF][^_]|[^A-Za-z0-9]_)(?i:reveal|ignore|override|execute)([^A-Z]|[A-Z]([^a-z]|$)|$)|(^|^[\x00-\xFF]|[\x00-\xFF][\x00-\xFF])(?i:credentials))/ ascii
+        $verb_wide = /(reveal|ignore|override|execute|credentials)/ nocase wide
     condition:
         any of ($header_line, $claim_line, $claim_sentence, $override_line) or
         for any i in (1..#role) : (
-            $verb in (@role[i] + !role[i]..@role[i] + !role[i] + 256)
+            $verb in (@role[i] + !role[i] - 2..@role[i] + !role[i] + 254)
         ) or
         for any i in (1..#role_wide) : (
             $verb_wide in (@role_wide[i] + !role_wide[i]..@role_wide[i] + !role_wide[i] + 256)
         ) or
         for any i in (1..#claim) : (
-            $verb in (@claim[i] + !claim[i]..@claim[i] + !claim[i] + 256)
+            $verb in (@claim[i] + !claim[i] - 2..@claim[i] + !claim[i] + 254)
         ) or
         for any i in (1..#claim_wide) : (
             $verb_wide in (@claim_wide[i] + !claim_wide[i]..@claim_wide[i] + !claim_wide[i] + 256)
@@ -76,7 +88,8 @@ rule agent_role_spoof_action {
         // YARA-X keeps the first 1,000,000 matches of a string and drops the rest without
         // notice. A full list of any string this condition places counts as an opener with
         // its verb, so a flood ahead of a match cannot hide it
-        // (docs/verification/2026-11-17-match-cap-rules.md). $word matches are $verb matches.
+        // (docs/verification/2026-11-17-match-cap-rules.md). Every $word match holds a $verb
+        // match: a word boundary is neither an underscore nor a letter.
         or (
             for any of ($role*, $claim, $claim_wide, $header, $header_wide, $verb*, $word*) : ( # >= 1000000 )
             and any of ($role*, $claim, $claim_wide, $header, $header_wide)
