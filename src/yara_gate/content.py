@@ -3526,8 +3526,10 @@ _HTML_RAW_TEXT = {
 _SVG_MARKER = re.compile(rb"</?svg\b", re.I)
 # Only accept unambiguous tag syntax for the YARA scope exception. In HTML an unquoted
 # value consumes a trailing slash, while a slash after a quoted value can close an SVG.
+# A tag name runs, as in the WHATWG tokenizer, to whitespace, a slash, or `>`, so a mail address
+# such as `<name@example.org>` is one element; a name holding `<` or NUL is left ambiguous.
 _SCOPE_TAG = re.compile(
-    rb"""<(/?)([a-zA-Z][a-zA-Z0-9:-]{0,63}+)(?:[ \t\r\n\f]++[^\s"'<>/=]++"""
+    rb"""<(/?)([a-zA-Z][^\x00\t\n\f\r /<>]{0,63}+)(?:[ \t\r\n\f]++[^\s"'<>/=]++"""
     rb"""(?:[ \t\r\n\f]*+=[ \t\r\n\f]*+(?:"[^"]*+"|'[^']*+'|[^\s"'=<>` ]++))?)*+"""
     rb"""[ \t\r\n\f]*+(/?)>"""
 )
@@ -3536,6 +3538,7 @@ _SCOPE_RAW_END = {
     name.encode(): re.compile(rb"</" + name.encode() + rb"[ \t\r\n\f]*>", re.I)
     for name in (*_HTML_RAW_TEXT, "xmp", "iframe", "noembed", "noframes")
 }
+_SCOPE_MATH_END = re.compile(rb"</math[ \t\r\n\f]*>", re.I)
 _SCOPE_AMBIGUOUS = frozenset({b"foreignobject", b"select", b"plaintext", b"noscript", b"math"})
 
 
@@ -3567,6 +3570,20 @@ def svg_scope_proven(data: bytes) -> bool:
         if (doctype := _SCOPE_DOCTYPE.match(data, start)) is not None:
             position = doctype.end()
             continue
+        after = data[start + 1 : start + 2]
+        if not after.isalpha() and after not in (b"/", b"!", b"?"):
+            # The tokenizer emits a `<` before any other byte as text: `<>`, `< `, `<[`.
+            position = start + 1
+            continue
+        after = data[start + 2 : start + 3]
+        if data.startswith(b"</", start) and not after.isalpha() and after != b">":
+            # `</` before anything but a letter or `>` opens a bogus comment that the next
+            # `>` closes; an svg tag inside it would be counted by the rules, so decline.
+            end = data.find(b">", start + 2)
+            if end < 0 or marker.start() < end:
+                return False
+            position = end + 1
+            continue
         tag = _SCOPE_TAG.match(data, start)
         if tag is None:
             return False
@@ -3574,6 +3591,14 @@ def svg_scope_proven(data: bytes) -> bool:
         closing, name, self_close = tag.groups()
         name = name.lower()
         lexeme = tag.group()
+        if name == b"math" and not closing and not self_close and not stack:
+            # A math element outside svg that holds only text and closes: the next `<` is its
+            # end tag, so nothing inside it is markup. Any other math stays ambiguous.
+            math_end = _SCOPE_MATH_END.match(data, data.find(b"<", position))
+            if math_end is None or marker.start() < math_end.end():
+                return False
+            position = math_end.end()
+            continue
         if name in _SCOPE_AMBIGUOUS or (name == b"title" and stack):
             return False
         if marker.start() < position:

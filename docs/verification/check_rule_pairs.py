@@ -471,6 +471,35 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"<html><svg><script></script></svg></html>",
             b"<html><svg><rect/></svg><script></script></html>",
         ),
+        # Text a browser reads as text, a mail address it reads as an element, and a math
+        # element holding only text no longer stop the scope proof (Vim's syntax/html.vim):
+        # a script inside the svg still fires, the svg in a syntax pattern does not.
+        (
+            "doc_svg_active",
+            b'" Maintainer: A <a@example.invalid>\nsyn match x "<>&]"\n'
+            b'syn region m start="<math>" end="</math>"\n<svg><script>void 0</script></svg>\n',
+            b'" Maintainer: A <a@example.invalid>\nsyn match x "<>&]"\n'
+            b'syn region m start="<math>" end="</math>"\nsyn region s start="<svg>" end="</svg>"\n'
+            b"syn region j start=+<script \\_[^>]*>+\n",
+        ),
+        # `</` before a byte that is not a letter opens a bogus comment the next `>` closes.
+        (
+            "doc_svg_active",
+            b"syn region t start=+</+ end=+>+\n<svg><g><script>void 0</script></g></svg>\n",
+            b"syn region t start=+</+ end=+>+\n<svg><g></g></svg><script>void 0</script>\n",
+        ),
+        # An svg end tag inside a bogus comment is not an end tag: the script is inside the svg,
+        # and the proof declines rather than count it.
+        (
+            "doc_svg_active",
+            b"<p><svg></+</svg>><script>void 0</script></svg>",
+            b"<p><svg></svg></+ x><script>void 0</script>",
+        ),
+        (
+            "doc_svg_event_handler",
+            b'<a@example.invalid><svg><image href="x" onerror="void 0"/></svg>',
+            b'<a@example.invalid><svg><rect/></svg><image src="x" onerror="void 0">',
+        ),
         # A handler body on an animation element; declarative animation with begin= stays clean.
         (
             "doc_svg_event_handler",
