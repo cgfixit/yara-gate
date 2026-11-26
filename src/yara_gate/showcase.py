@@ -487,6 +487,31 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "ps_download_run",
+        "detection",
+        "Repository",
+        "ps_alias_table",
+        "A setup script that runs what it downloads",
+        "A repository's PowerShell bootstrap script passes a download straight to iex: "
+        "iex (irm ...). Nothing is fetched; the address is an invalid example host.",
+        "bootstrap.ps1",
+        samples.powershell_bootstrap_fetch(),
+        HELD,
+    ),
+    _case(
+        "ps_alias_table",
+        "control",
+        "Repository",
+        "ps_download_run",
+        "An alias table that lists iex before irm",
+        "A syntax highlighter's table of PowerShell aliases in alphabetical order, so iex "
+        "comes before irm and iwr on one line with only other aliases between them. A list "
+        "of names gives iex no argument, so it is not a command.",
+        "aliases.py",
+        samples.powershell_alias_table(),
+        CLEAN,
+    ),
+    _case(
         "svg_cdata_override",
         "detection",
         "Attachment",

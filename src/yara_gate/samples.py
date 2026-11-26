@@ -604,6 +604,28 @@ def devcontainer_benign() -> bytes:
     return _devcontainer("mkdir -p .cache", "npm ci && uv sync --frozen")
 
 
+def powershell_bootstrap_fetch() -> bytes:
+    """A PowerShell setup script that hands a download straight to ``iex``."""
+    return (
+        b"# Workstation bootstrap for the Northbridge build tools.\n"
+        b"Set-StrictMode -Version Latest\n"
+        b"iex (irm https://get.northbridge.example.invalid/bootstrap.ps1)\n"
+    )
+
+
+def powershell_alias_table() -> bytes:
+    """A highlighter's alias table: alphabetical, so ``iex`` precedes ``irm`` and ``iwr``."""
+    return (
+        b"# Built-in aliases the PowerShell highlighter marks as commands.\n"
+        b"ALIASES = (\n"
+        b"    'gps gpv group gsn gsnp gsv gu gv gwmi h history icm iex ihy ii ipal ipcsv ipmo "
+        b"ipsn irm ise iwmi iwr kill lp '\n"
+        b"    'ls man md measure mi mount move mp mv nal ndr ni nmo npssc nsn nv ogv oh popd ps "
+        b"pushd pwd r rbp rcjb'\n"
+        b").split()\n"
+    )
+
+
 # The decoys below follow the cases in docs/research/probe_detection_gaps.py: an inert
 # override sentence that #167-#169 taught the scanner to read, and a benign twin of the same
 # shape. Text with control or invisible characters is built from escapes, never typed.
