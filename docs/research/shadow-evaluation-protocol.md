@@ -189,6 +189,34 @@ The task runner still establishes which task produced each receipt, whether
 every receipt was exported, and when the runs took place. Record source
 revisions and Harness outcomes separately for the decision report.
 
+### Scoring reconciled runs
+
+Add `--score` to the same command and use timed replay outputs. It scores
+each policy and run independently, with separate development and locked
+results for each label. Each rate gives the numerator, denominator, fraction,
+and 95% Wilson interval (also as fractions). A task counts as a proposed hold
+once if any of its captured items would hold. A finding on an item can still
+result in a proposed admit under the selected policy. Cohorts with no tasks or
+items have no rate.
+
+The latency distributions give the sample size, median (p50) and nearest-rank
+p95 for scanner time and for wall time including the replay process. Each item
+in this capture slice represents one successful tool result. A missing,
+non-finite, or negative time prevents scoring. An unfinished run must be
+reconciled before it is scored. Report failed attempts and unfinished items
+beside the final baseline.
+
+Wilson intervals on items are descriptive when multiple items come from one
+task. Use task-level denominators for task claims and keep the three repeated
+measurements separate. Report consumer completion, adverse outcomes and
+actual added latency from the controlled Harness runs. Offline replay
+latency is evidence for the scanner budget and does not measure an inline
+change to Harness.
+
+The [November 27 capture pilot](../verification/2026-11-27-harness-capture-pilot.md)
+records the public fetch, search, replay, and scoring checks that preceded the
+frozen evaluation.
+
 ## Decision report
 
 For each component, one of: enforce, keep observing, or drop, against the budgets above,
@@ -205,3 +233,5 @@ qualification conditions, pilot size and budgets are unchanged.
 
 2026-11-25. Add an executable check for the existing task coverage, capture receipt,
 and paired replay identity requirements.
+
+2026-11-27. Add optional scoring after full reconciliation.
