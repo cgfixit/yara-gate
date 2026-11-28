@@ -271,7 +271,7 @@ intended policy. Apply the new result to the replacement bytes only.
 
 Run `yara-gate demo` for the local scan workbench backed by the real scanner.
 Without a checkout, the [public recorded demo](https://cgfixit.github.io/yara-gate/)
-replays saved results for 107 inert examples, each of 52 attacks beside a benign
+replays saved results for 109 inert examples, each of 53 attacks beside a benign
 near-twin that scans clean; it scans nothing and accepts no content ([how it is built and published](docs/pages-demo.md)).
 
 ```bash
@@ -289,7 +289,7 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    the paste limit is 64 KiB. Pastes use the name `paste.txt`. Use the CLI/library
    with the original type/name for files, model inputs, and larger content.
    The list holds the catalog the public demo records, grouped by intake channel:
-   52 attacks paired with benign twins, including ranking directives found in RSS, PDF form
+   53 attacks paired with benign twins, including ranking directives found in RSS, PDF form
    tooltips and dropdown labels, and UTF-32 text. The catalog also has two scans that
    cannot finish: a 7z archive the scanner cannot open and a tool document past the JSON
    depth budget (incomplete under every policy). Other pairs include a PDF line in a
@@ -304,7 +304,7 @@ Open the printed `http://127.0.0.1:8765/` URL. Stop the server with Control-C. T
    hidden from the reader, invisible characters, disguised spelling, split across
    formatting, encoded, inside an archive or message, file structure, or a plain pattern. Under
    `agent-ingest` every attack is held and every twin is clean; `agent-document`
-   holds 27 of the 52 and records the rest as notes, and the default policy holds 6.
+   holds 28 of the 53 and records the rest as notes, and the default policy holds 7.
 3. Read the decision and original finding severities. Each finding says which
    check found it and in which view, in plain words. **Coverage & provenance**
    shows the loaded-rule count, skipped files, derived views, and the ruleset and

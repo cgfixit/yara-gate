@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "446d5bd2730a86b79d989a3c17a1b00c60d7534c",
-  "captured_at": "2026-11-26T17:20:32+00:00",
+  "source_revision": "7b0e622d05406866defbd003bd62c1e6adc52e79",
+  "captured_at": "2026-11-28T03:39:52+00:00",
   "cases": [
     {
       "id": "note",
@@ -3459,15 +3459,6 @@
                 "zip:1"
               ],
               "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
-              "view": "raw"
             }
           ],
           "advisory": false,
@@ -3501,15 +3492,6 @@
                 "zip:1"
               ],
               "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
-              "view": "raw"
             }
           ],
           "advisory": false,
@@ -3542,15 +3524,6 @@
               "member_path": [
                 "zip:1"
               ],
-              "view": "raw"
-            },
-            {
-              "rule_id": "heuristic_ooxml_dde",
-              "offset": null,
-              "length": null,
-              "severity": "block",
-              "source": "heuristic",
-              "member_path": [],
               "view": "raw"
             }
           ],
@@ -3636,6 +3609,191 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 457,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "word_dde_split_field",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "word_dde_prose_page",
+      "title": "A DDEAUTO field split across runs",
+      "description": "An emailed Word report whose field type is written across three runs, with a comment and a character reference inside the word. Word and LibreOffice join it into one DDEAUTO instruction. The command only echoes a word.",
+      "results": {
+        "default": {
+          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 2510,
+          "exit_code": 1
+        },
+        "agent-ingest": {
+          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 2510,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:1"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 2510,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "word_dde_prose_page",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "word_dde_split_field",
+      "title": "A report that explains DDE and numbers its page",
+      "description": "A training note that names DDE and DDEAUTO in its text and has an ordinary page-number field. Neither field is a DDE field, so it is clean.",
+      "results": {
+        "default": {
+          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1721,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1721,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 3,
+          "views_scanned": {
+            "ooxml-text": 1
+          },
+          "bytes_scanned": 1721,
           "exit_code": 0
         }
       }
