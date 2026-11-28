@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "eaf06385aa37fc821ec8df4f529636107b30382d",
-  "captured_at": "2026-11-28T03:12:46+00:00",
+  "source_revision": "403c7c4a73bd65939128d3643f75a9bf658b4734",
+  "captured_at": "2026-11-28T03:39:35+00:00",
   "cases": [
     {
       "id": "note",
@@ -9214,6 +9214,546 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 78,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "calendar_order",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "calendar_twin",
+      "title": "A calendar invitation asks for a ranking",
+      "description": "A scheduling client unfolds the event description before showing it.",
+      "results": {
+        "default": {
+          "sha256": "5f4575949dc57d0560b13048c4eefeb1dca71299878bf4086c0b5258326021c6",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "icalendar-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 573,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "5f4575949dc57d0560b13048c4eefeb1dca71299878bf4086c0b5258326021c6",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "icalendar-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 573,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "5f4575949dc57d0560b13048c4eefeb1dca71299878bf4086c0b5258326021c6",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "icalendar-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 573,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "calendar_twin",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "calendar_order",
+      "title": "A calendar invitation asks for a comparison",
+      "description": "A scheduling client unfolds the event description before showing it.",
+      "results": {
+        "default": {
+          "sha256": "d555c6f17fcee3fa6f9092636ba60103a8f981147b01c6b75cf4b6184746ca61",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 612,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "d555c6f17fcee3fa6f9092636ba60103a8f981147b01c6b75cf4b6184746ca61",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 612,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "d555c6f17fcee3fa6f9092636ba60103a8f981147b01c6b75cf4b6184746ca61",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "icalendar-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 612,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "contact_order",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "contact_twin",
+      "title": "A contact card asks for a ranking",
+      "description": "The contact note continues on the next physical line in the exported card.",
+      "results": {
+        "default": {
+          "sha256": "f5b372cd9fb209aae50835b8c748e00cd015bcdb208b4fddb5ed632485c39aff",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "vcard-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 155,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "f5b372cd9fb209aae50835b8c748e00cd015bcdb208b4fddb5ed632485c39aff",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "vcard-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 155,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "f5b372cd9fb209aae50835b8c748e00cd015bcdb208b4fddb5ed632485c39aff",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "vcard-text"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 155,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "contact_twin",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "contact_order",
+      "title": "A contact card asks for a comparison",
+      "description": "The contact note continues on the next physical line in the exported card.",
+      "results": {
+        "default": {
+          "sha256": "b7af39440e80635a57c163bd1c52b11df7e19cfd81f5ae152dab4e58628c15c6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 181,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "b7af39440e80635a57c163bd1c52b11df7e19cfd81f5ae152dab4e58628c15c6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 181,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "b7af39440e80635a57c163bd1c52b11df7e19cfd81f5ae152dab4e58628c15c6",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "vcard-text": 1
+          },
+          "bytes_scanned": 181,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "notebook_order",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "notebook_twin",
+      "title": "A notebook output asks for a ranking",
+      "description": "The saved HTML output formats part of the sentence in bold. The code cell is empty.",
+      "results": {
+        "default": {
+          "sha256": "8e9f9b32e778d735a0e9a425e0fc03a289b3f600d0d50a54ba5596c7570b4e82",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "notebook-html"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 423,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "8e9f9b32e778d735a0e9a425e0fc03a289b3f600d0d50a54ba5596c7570b4e82",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "notebook-html"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 423,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "8e9f9b32e778d735a0e9a425e0fc03a289b3f600d0d50a54ba5596c7570b4e82",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "notebook-html"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 423,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "notebook_twin",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "notebook_order",
+      "title": "A notebook output asks for a comparison",
+      "description": "The saved HTML output formats part of the sentence in bold. The code cell is empty.",
+      "results": {
+        "default": {
+          "sha256": "019ee67e554c1b3e0cfe9c2002380d765ca56f107bcdbd18e3c560d6ff5fb2de",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 462,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "019ee67e554c1b3e0cfe9c2002380d765ca56f107bcdbd18e3c560d6ff5fb2de",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 462,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "019ee67e554c1b3e0cfe9c2002380d765ca56f107bcdbd18e3c560d6ff5fb2de",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "notebook-html": 1,
+            "notebook-text": 1
+          },
+          "bytes_scanned": 462,
           "exit_code": 0
         }
       }
