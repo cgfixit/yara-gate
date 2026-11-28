@@ -1426,6 +1426,9 @@ _FIELD_MAX_TEXT = 1 << 20
 # How much of a field's instruction, nested ones included, is kept to look for the word in.
 _FIELD_WHOLE_KEPT = 1 << 16
 _FIELD_FEED = 1 << 16
+# The largest part the reader parses, and the longest tag in it.
+_FIELD_MAX_PART = 16 << 20
+_FIELD_LONG_TAG = re.compile(rb"<[^<>]{65536}")
 
 
 class _FieldStop(Exception):
@@ -1458,7 +1461,8 @@ def dde_field(data: bytes, check: Callable[[], None] | None = None) -> bool | No
     result, and instruction text outside any field is read on its own. Text that does not open
     with a tag after a byte order mark and white space is no part Word reads and is False. None
     when the part has a DOCTYPE, is not well-formed, or holds more fields or instruction text
-    than the reader follows: the byte test decides those.
+    than the reader follows, is over 16 MiB, or holds a tag over 64 KiB: the byte test
+    decides those.
     """
     head = data
     if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:4] in (b"<\x00?\x00", b"\x00<\x00?"):
@@ -1469,7 +1473,15 @@ def dde_field(data: bytes, check: Callable[[], None] | None = None) -> bool | No
         b"instrText" not in head and b"fldSimple" not in head
     ):
         return False
-    if b"<!DOCTYPE" in head or b"<!doctype" in head:
+    # expat holds an unfinished start tag and builds every attribute of a tag before the
+    # handler sees it, and calls Python once per element: a part past these sizes is left
+    # to the byte test rather than parsed.
+    if (
+        len(head) > _FIELD_MAX_PART
+        or b"<!DOCTYPE" in head
+        or b"<!doctype" in head
+        or _FIELD_LONG_TAG.search(head) is not None
+    ):
         return None
     fields: list[_Field] = []
     kinds: list[str] = []

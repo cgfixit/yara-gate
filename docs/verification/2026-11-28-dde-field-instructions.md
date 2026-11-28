@@ -59,8 +59,9 @@ each field's instruction as LibreOffice does:
 - A field whose instruction opens with a nested field holds when DDE or DDEAUTO stands in it
   as a word, since its type is the nested field's result. Instruction text outside any field
   is read on its own. Both are wider than LibreOffice, the safe direction.
-- A part with a DOCTYPE, one expat does not parse, or one past 64 nested fields or 1 MiB of
-  instruction text is not read by it: the byte test decides. A part's DTD is never read.
+- A part with a DOCTYPE, one expat does not parse, one over 16 MiB or holding a tag over
+  64 KiB, or one past 64 nested fields or 1 MiB of instruction text is not read by it: the
+  byte test decides. A part's DTD is never read.
 - Text that does not open with a tag after a byte order mark and white space is not read,
   the boundary of November 26.
 
@@ -245,6 +246,21 @@ attribute, which expat builds before the handler sees it. Both are under the 10 
 the timing check, which passed (Checks). The installed-file sweep above is the benign test.
 Whether a field that both `135992d` and the final code miss exists beyond the ones listed under
 "What this does not show" was not checked by anyone but the author after the first review.
+
+## Codex security review
+
+Codex's security review of `5809796` raised one advisory: expat holds an unfinished start tag
+and builds every attribute of a tag before the handler runs, so a part with one tag of a
+million attributes costs memory the scan does not bound. **Verified** here: a 2.35 MB `.docx`
+whose 11.89 MB `document.xml` holds such a tag and a `PAGE` field scanned clean on the branch
+in 3.96 s at 315 MB peak resident memory, against 3.01 s and 231 MB on `135992d`. The reader
+now leaves a part over 16 MiB, or one with a tag over 64 KiB, to the byte test without
+parsing it: the same file scans clean in 2.94 s at 231 MB, as on `135992d`. A tag of 300,000
+attributes and a part of 17 MiB return in 0.01 s. The rule pairs, the conformance kit, the
+45 review fixtures, the five LibreOffice batches (0 misses), and 30,000 generated parts against
+`135992d` (nothing held there is clean) give the results they gave before. A DDE field that only
+the reader sees (Strict, UTF-16, split, character-referenced) in a part over 16 MiB or beside a
+tag over 64 KiB is not held; the byte test still holds one it sees.
 
 ## What this does not show
 
