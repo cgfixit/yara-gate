@@ -215,7 +215,8 @@ change to Harness.
 
 The [November 27 capture pilot](../verification/2026-11-27-harness-capture-pilot.md)
 records the public fetch, search, replay, and scoring checks that preceded the
-frozen evaluation.
+frozen evaluation. The [controlled baseline](../verification/2026-11-27-harness-controlled-baseline.md)
+records the six measured runs and the limits of fixture-backed search.
 
 ## Decision report
 
