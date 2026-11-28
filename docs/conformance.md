@@ -19,7 +19,7 @@ or moved, and no gate home is used.
 yara-gate conform
 ```
 
-It builds 120 inert fixtures from the installed package: every pair of the
+It builds 122 inert fixtures from the installed package: every pair of the
 [demo catalog](../src/yara_gate/showcase.py) (an attack beside a benign near-twin, across
 messages, web pages, PDFs, Office files, archives, tool results, and repository files), the
 catalog's two scans that cannot finish (a JSON tool document past the structure limit and a 7z
@@ -42,7 +42,7 @@ page content the gate cannot decode, for the
 | 2 | The kit could not run or did not finish: a fixture's bytes changed, the manifest or the bundled rules are missing or damaged, a scan that should answer was incomplete, an agreement line gave no record, standard output could not be written, or an error the kit did not expect (`incomplete: <Type>`) |
 
 Standard output is JSON Lines; standard error carries one line for a person
-(`CONFORM PASS: 120 fixtures, 360 checks, …`).
+(`CONFORM PASS: 122 fixtures, 366 checks, …`).
 
 | Record | When | Fails the run |
 | --- | --- | --- |
@@ -150,3 +150,4 @@ shows.
 | 2026-11-26 | `760e3d2591bbed2d` | Four fixtures added, no fixture moved. Two attacks: `syntax_page_svg_script`, a help page credited to a mail address in angle brackets whose inline logo holds a script (`doc_svg_active`, a block), and `word_dde_field`, a Word file whose one field is a `DDEAUTO` instruction (`heuristic_ooxml_dde`, a block). Their near-twins, clean under every policy: `syntax_file_svg_tags`, an editor syntax file that names the svg and script tags, and `dde_scanner_source`, a DDE scanner's own source. A gate older than this manifest reports the two twins as `doc_svg_active` and `heuristic_ooxml_dde`; the [SVG record](verification/2026-11-26-svg-scope-text.md) and the [DDE record](verification/2026-11-26-dde-source-and-priority-claims.md) have the changes |
 | 2026-11-27 | `e639684d06c0bc2d` | Added three PDF pairs covering sticky-note subjects, field names, and pushbutton captions. The model-addressed ranking request produces an advisory in `pdf-string` and both agent policies hold it. Each ordinary comparison is clean. |
 | 2026-11-27 | `67448984eee4648b` | Added calendar, vCard and saved notebook HTML pairs. The three ranking requests are advisory under default and held under both agent policies. All three ordinary comparisons are clean. |
+| 2026-11-28 | `68392f1c22354e22` | Two fixtures added, no fixture moved: `word_dde_split_field`, a Word report whose DDEAUTO field type is split across three runs with a comment and a character reference (`heuristic_ooxml_dde`, a block), and its near-twin `word_page_split_field`, the same report with a page-number field split the same way, clean under every policy. A gate older than this manifest reports the attack as clean; the [record](verification/2026-11-28-dde-field-instructions.md) has the change |

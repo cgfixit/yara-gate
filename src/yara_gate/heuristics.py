@@ -12,8 +12,10 @@ import struct
 import unicodedata
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
+from xml.parsers import expat
 
 from yara_gate.filetype import OFFICE_EXTS, OLE, embedded_exec_offset, sniff
 from yara_gate.jsonbounds import JsonLimit, check_json_structure
@@ -69,7 +71,7 @@ def heuristic_findings(
     findings.extend(model_header_findings(path, data))
     keras, keras_error = keras_config_findings(path, data, check)
     findings.extend(keras)
-    findings.extend(ooxml_structure_findings(path, data))
+    findings.extend(ooxml_structure_findings(path, data, check))
     mcp, mcp_error = mcp_tool_findings(path, data, check)
     findings.extend(mcp)
     office, error = office_findings(path, data)
@@ -1372,14 +1374,22 @@ def _keras_unsafe(node: dict[object, object]) -> bool:
     )
 
 
-def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
+def ooxml_structure_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> list[Finding]:
     name = path.as_posix().lower()
     findings: list[Finding] = []
     if name.endswith("vbaproject.bin"):
         findings.append(_block("heuristic_ooxml_vba"))
     if "oleobject" in name:
         findings.append(_advisory("heuristic_ooxml_oleobject"))
+    # Each field's instruction is read (``dde_field``), which holds a DDE field whose bytes the
+    # test below does not see: a Strict, UTF-16, or character-referenced part names no
+    # transitional address.
+    field = dde_field(data, check)
     if b"http://schemas.openxmlformats.org" not in data:
+        if field:
+            findings.append(_block("heuristic_ooxml_dde"))
         return findings
     if b"altChunk" in data:
         findings.append(_advisory("heuristic_ooxml_altchunk"))
@@ -1387,8 +1397,8 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
     # optional byte order mark and white space. Text that opens with anything else, such as a
     # DDE detector's own source, is not a part Word can read. A container is still read whole:
     # a stored zip holds its parts' bytes, and the namespace address can stand in one part and
-    # the field in another (a Strict or character-referenced document.xml).
-    if (
+    # the field in another.
+    if field or (
         b"DDE" in data
         and (b"instrText" in data or b"fldChar" in data)
         and (data.lstrip(_BEFORE_XML_PART)[:1] == b"<" or sniff(data) != "text")
@@ -1399,6 +1409,179 @@ def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
 
 # A UTF-8 byte order mark and white space, which may stand before a part's first tag.
 _BEFORE_XML_PART = b"\xef\xbb\xbf \t\r\n"
+_WORD_NAMESPACES = frozenset(
+    {
+        "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+        "http://purl.oclc.org/ooxml/wordprocessingml/main",
+    }
+)
+_MARKUP_COMPATIBILITY = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+# A field whose type is DDE or DDEAUTO, in any case, after white space or no-break spaces.
+_DDE_TYPE = re.compile(r"[\s ]*+dde(?:auto)?(?![0-9A-Za-z_])", re.IGNORECASE)
+# DDE or DDEAUTO as a word anywhere in an instruction, for a field whose type is a nested
+# field's result.
+_DDE_WORD = re.compile(r"(?<![0-9A-Za-z_])dde(?:auto)?(?![0-9A-Za-z_])", re.IGNORECASE)
+_FIELD_MAX_DEPTH = 64
+_FIELD_MAX_TEXT = 1 << 20
+# How much of a field's instruction, nested ones included, is kept to look for the word in.
+_FIELD_WHOLE_KEPT = 1 << 16
+_FIELD_FEED = 1 << 16
+# The largest part the reader parses, and the longest tag in it.
+_FIELD_MAX_PART = 16 << 20
+_FIELD_LONG_TAG = re.compile(rb"<[^<>]{65536}")
+
+
+class _FieldStop(Exception):
+    """Ends the parse: a DDE field was found (``found``), or the reader's bound was met."""
+
+    def __init__(self, found: bool) -> None:
+        super().__init__()
+        self.found = found
+
+
+@dataclass
+class _Field:
+    instruction: list[str]
+    whole: list[str]
+    kept: int = 0
+    reading: bool = True
+    nested: bool = False
+    written: bool = False
+
+
+def dde_field(data: bytes, check: Callable[[], None] | None = None) -> bool | None:
+    """Whether an XML part holds a Word field whose type is DDE or DDEAUTO.
+
+    The part is parsed with expat, namespaces resolved, and each field's instruction is read
+    as LibreOffice reads it on import: the ``w:instr`` of a ``w:fldSimple``, and the character
+    data of a complex field's ``w:instrText`` (child elements and processing instructions
+    included, ``w:delInstrText`` and ``mc:Fallback`` left out) and of a ``w:t`` from its begin
+    to its separate or end character. A field whose instruction opens with a nested field
+    counts when DDE or DDEAUTO stands in it as a word, since its type is the nested field's
+    result, and instruction text outside any field is read on its own. Text that does not open
+    with a tag after a byte order mark and white space is no part Word reads and is False. None
+    when the part has a DOCTYPE, is not well-formed, or holds more fields or instruction text
+    than the reader follows, is over 16 MiB, or holds a tag over 64 KiB: the byte test
+    decides those.
+    """
+    head = data
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:4] in (b"<\x00?\x00", b"\x00<\x00?"):
+        big = data[:2] == b"\xfe\xff" or data[:1] == b"\x00"
+        head = data.decode("utf-16-be" if big else "utf-16-le", "replace").encode("utf-8")
+        head = head.removeprefix(b"\xef\xbb\xbf")
+    if head.lstrip(_BEFORE_XML_PART)[:1] != b"<" or (
+        b"instrText" not in head and b"fldSimple" not in head
+    ):
+        return False
+    # expat holds an unfinished start tag and builds every attribute of a tag before the
+    # handler sees it, and calls Python once per element: a part past these sizes is left
+    # to the byte test rather than parsed.
+    if (
+        len(head) > _FIELD_MAX_PART
+        or b"<!DOCTYPE" in head
+        or b"<!doctype" in head
+        or _FIELD_LONG_TAG.search(head) is not None
+    ):
+        return None
+    fields: list[_Field] = []
+    kinds: list[str] = []
+    stray: list[str] = []
+    counts = {"skip": 0, "instr": 0, "del": 0, "t": 0}
+    total = [0]
+
+    def decide(field: _Field) -> None:
+        if not field.reading:
+            return
+        field.reading = False
+        if _DDE_TYPE.match("".join(field.instruction)) or (
+            field.nested and _DDE_WORD.search("".join(field.whole))
+        ):
+            raise _FieldStop(True)
+
+    def keep(field: _Field, text: str) -> None:
+        room = _FIELD_WHOLE_KEPT - field.kept
+        if room > 0:
+            field.whole.append(text[:room])
+            field.kept += min(room, len(text))
+
+    def start(name: str, attributes: dict[str, str]) -> None:
+        uri, _, local = name.rpartition("}")
+        kind = "other"
+        if counts["skip"] or (uri == _MARKUP_COMPATIBILITY and local == "Fallback"):
+            kind = "skip"
+        elif uri in _WORD_NAMESPACES:
+            if local == "fldChar":
+                mark = attributes.get(uri + "}fldCharType")
+                if mark == "begin":
+                    if fields and fields[-1].reading and not fields[-1].written:
+                        fields[-1].nested = True
+                    fields.append(_Field([], []))
+                    if len(fields) > _FIELD_MAX_DEPTH:
+                        raise _FieldStop(False)
+                elif mark in ("separate", "end") and fields:
+                    decide(fields[-1])
+                    if mark == "end":
+                        done = fields.pop()
+                        if fields:
+                            keep(fields[-1], "".join(done.whole))
+            elif local == "fldSimple":
+                instr = attributes.get(uri + "}instr", "")
+                if _DDE_TYPE.match(instr):
+                    raise _FieldStop(True)
+            elif local == "instrText":
+                kind = "instr"
+            elif local == "delInstrText":
+                kind = "del"
+            elif local == "t":
+                kind = "t"
+        if kind != "other":
+            counts[kind] += 1
+        kinds.append(kind)
+
+    def end(name: str) -> None:
+        kind = kinds.pop()
+        if kind != "other":
+            counts[kind] -= 1
+        if kind == "instr" and not fields and stray:
+            text = "".join(stray)
+            stray.clear()
+            if _DDE_TYPE.match(text):
+                raise _FieldStop(True)
+
+    def text(value: str) -> None:
+        if counts["skip"] or counts["del"]:
+            return
+        if not counts["instr"] and not (counts["t"] and fields and fields[-1].reading):
+            return
+        total[0] += len(value)
+        if total[0] > _FIELD_MAX_TEXT:
+            raise _FieldStop(False)
+        if not fields:
+            stray.append(value)
+            return
+        field = fields[-1]
+        if field.reading:
+            field.instruction.append(value)
+            field.written = field.written or not value.isspace()
+        keep(field, value)
+
+    parser = expat.ParserCreate(namespace_separator="}")
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = text
+    try:
+        for offset in range(0, len(data), _FIELD_FEED):
+            if check is not None:
+                check()
+            parser.Parse(data[offset : offset + _FIELD_FEED], False)
+        parser.Parse(b"", True)
+        for field in reversed(fields):
+            decide(field)
+    except _FieldStop as stop:
+        return True if stop.found else None
+    except (expat.ExpatError, ValueError):
+        return None
+    return False
 
 
 # A JSON string, a comment opener, or a comma, for ``_jsonc``. A string holds no raw line break.

@@ -1,7 +1,7 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 119 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 58 attacks, their 58 benign
+GitHub Pages replays real scanner results for 121 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 59 attacks, their 59 benign
 near-twins, and three unfinished scans. The default workflow compares margin annotations in a synthetic PDF 1.3 print proof
 with the unused cross-reference entry seen in Quartz exports. Three pairs compare PDF form tooltips, unselected dropdown labels, and UTF-32 text exports.
 Other pairs cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
@@ -89,7 +89,7 @@ The last is a single incomplete case without an attack phrase or benign twin. It
 that a legitimate input can also exceed the scanner's budget.
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. The initial policy is `agent-ingest`. Switching workflows or opening a twin preserves the selected policy.
-The full 58-pair catalog and the three unfinished scans remain under an expandable section.
+The full 59-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers twenty shortcuts and the full catalog. Both demos use
@@ -229,9 +229,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 119 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 121 inert
 examples, recorded with 89 bundled rules and YARA-X 1.24.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [SVG scope verification](verification/2026-11-26-svg-scope-text.md), the [DDE source verification](verification/2026-11-26-dde-source-and-priority-claims.md), the [PowerShell alias-list verification](verification/2026-11-26-powershell-alias-lists.md), the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+Each deployment refreshes the revision and time. See the [DDE field verification](verification/2026-11-28-dde-field-instructions.md), the [SVG scope verification](verification/2026-11-26-svg-scope-text.md), the [DDE source verification](verification/2026-11-26-dde-source-and-priority-claims.md), the [PowerShell alias-list verification](verification/2026-11-26-powershell-alias-lists.md), the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -258,6 +258,7 @@ its benign twin.
 | Document | A glyph-id PDF with the key word in bold | The same fonts and layout with an ordinary sentence |
 | Attachment | A zip holding the override, followed by an ordinary invoice zip | The same two-archive layout with a receipt first |
 | Attachment | An SVG animation with an `onbegin` handler (an inert `void 0`) | The same animation started by `begin="0s"` |
+| Attachment | A Word report whose DDEAUTO field type is split across three runs, with a comment and a character reference inside the word (the command only echoes a word) | The same report with a page-number field split the same way |
 | Attachment | A synthetic executable header named as a PDF | A one-page PDF with no actions |
 | Model file | A torch-style checkpoint whose pickle calls `os.system` after building ordinary state | The same state rebuilt through `collections.OrderedDict` |
 | Repository | A `devcontainer.json` whose `initializeCommand` downloads and runs a script on the host | A host `mkdir` and installs inside the container |
@@ -353,7 +354,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 119 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 121 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs
