@@ -1693,6 +1693,90 @@
    "source": "showcase"
   },
   {
+   "bytes": 863,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_dde"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "word_dde_split_field",
+   "kind": "detection",
+   "name": "report.docx",
+   "pair": "word_dde_prose_page",
+   "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+   "source": "showcase"
+  },
+  {
+   "bytes": 925,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "word_dde_prose_page",
+   "kind": "control",
+   "name": "report.docx",
+   "pair": "word_dde_split_field",
+   "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+   "source": "showcase"
+  },
+  {
    "bytes": 134,
    "channel": "Attachment",
    "expected": {
