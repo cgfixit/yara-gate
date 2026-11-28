@@ -1200,14 +1200,33 @@ def word_dde_field() -> bytes:
 
 
 def _word_fields(paragraph: str) -> bytes:
-    """A Word file with one paragraph of the runs given, after a title paragraph."""
+    """A Word package that Word and LibreOffice open: content types, the package relationship,
+    and a document with one paragraph of the runs given after a title paragraph."""
     word = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    package = "http://schemas.openxmlformats.org/package/2006"
+    main = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    types = (
+        f'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="{package}/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+        'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/word/document.xml" ContentType="{main}"/></Types>'
+    )
+    root = (
+        f'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="{package}/relationships">'
+        '<Relationship Id="R1" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+        'relationships/officeDocument" Target="word/document.xml"/></Relationships>'
+    )
     document = (
-        f'<?xml version="1.0"?><w:document {word}><w:body><w:p><w:r><w:t>Quarterly vendor '
-        f"review.</w:t></w:r></w:p><w:p>{paragraph}</w:p></w:body></w:document>"
+        f'<?xml version="1.0" encoding="UTF-8"?><w:document {word}><w:body><w:p><w:r><w:t>'
+        f"Quarterly vendor review.</w:t></w:r></w:p><w:p>{paragraph}</w:p></w:body>"
+        "</w:document>"
     )
     return _stored_zip(
-        (("[Content_Types].xml", _OOXML_TYPES), ("word/document.xml", document.encode()))
+        (
+            ("[Content_Types].xml", types.encode()),
+            ("_rels/.rels", root.encode()),
+            ("word/document.xml", document.encode()),
+        )
     )
 
 
@@ -1224,14 +1243,14 @@ def word_dde_split_field() -> bytes:
     )
 
 
-def word_dde_prose_page() -> bytes:
-    """A report that explains DDE in its text and numbers its page with an ordinary field."""
+def word_page_split_field() -> bytes:
+    """The same report with an ordinary page-number field, its type split across three runs
+    with a comment and a character reference the way the DDE one is."""
     return _word_fields(
-        "<w:r><w:t>Training note: DDE and DDEAUTO fields can start programs, so the "
-        "gateway holds them.</w:t></w:r>"
-        '<w:r><w:t xml:space="preserve"> Page </w:t></w:r>'
         '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
-        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> pa</w:instrText></w:r>'
+        "<w:r><w:instrText>g<!-- revised -->&#101;</w:instrText></w:r>"
+        '<w:r><w:instrText xml:space="preserve"> \\* Arabic </w:instrText></w:r>'
         '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r>'
         '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
     )

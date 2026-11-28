@@ -891,8 +891,8 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
         ),
         # A field is read as LibreOffice reads it: a simple field's instr, and a complex field's
         # instruction runs joined, after UTF-16, character references, and comments, in any
-        # case and either namespace. Prose that names DDE beside a PAGE field, and a hyperlink
-        # whose address holds DDEAUTO, are no DDE field (both were held before).
+        # case and either namespace. A field whose type is a nested field's result counts when
+        # DDE stands in it as a word: "Hidden" and "Addendum" are not (independent review).
         (
             "heuristic_ooxml_dde",
             zipped(
@@ -902,9 +902,10 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             ),
             zipped(
                 "word/document.xml",
-                docx_xml + b"<w:r><w:t>The DDE protocol is in chapter 4.</w:t></w:r>"
-                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE '
-                b'</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF '
+                b"_Ref_Addendum \\h </w:instrText></w:r>"
+                b'<w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
             ),
         ),
         (
@@ -917,9 +918,11 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             ),
             zipped(
                 "word/document.xml",
-                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> '
-                b'HYPERLINK "https://example.invalid/DDEAUTO" </w:instrText></w:r><w:r>'
-                b'<w:fldChar w:fldCharType="end"/></w:r></w:document>',
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF '
+                b'Hidden_Clause </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>'
+                b"<w:r><w:instrText> \\* MERGEFORMAT </w:instrText></w:r>"
+                b'<w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
             ),
         ),
         (

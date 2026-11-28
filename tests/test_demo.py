@@ -414,7 +414,7 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
             {"raw", "text-folded"},
         ),
         "word_dde_field": ("dde_scanner_source", "heuristic_ooxml_dde", {"raw"}),
-        "word_dde_split_field": ("word_dde_prose_page", "heuristic_ooxml_dde", {"raw"}),
+        "word_dde_split_field": ("word_page_split_field", "heuristic_ooxml_dde", {"raw"}),
         "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
         "word_xml_comment_override": (
             "word_xml_comment_benign",
