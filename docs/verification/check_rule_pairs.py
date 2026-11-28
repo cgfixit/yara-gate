@@ -889,6 +889,63 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             zipped("word/document.xml", docx_xml + b"<w:instrText>DDE</w:instrText>"),
             zipped("word/document.xml", docx_xml + b"<w:t>hi</w:t>"),
         ),
+        # A field is read as LibreOffice reads it: a simple field's instr, and a complex field's
+        # instruction runs joined, after UTF-16, character references, and comments, in any
+        # case and either namespace. A field whose type is a nested field's result counts when
+        # DDE stands in it as a word: "Hidden" and "Addendum" are not (independent review).
+        (
+            "heuristic_ooxml_dde",
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:fldSimple w:instr=" DDEAUTO &quot;inert&quot; &quot;inert&quot; "/>'
+                b"</w:document>",
+            ),
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF '
+                b"_Ref_Addendum \\h </w:instrText></w:r>"
+                b'<w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+        ),
+        (
+            "heuristic_ooxml_dde",
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> DD'
+                b"</w:instrText></w:r><w:r><w:instrText>e<!-- x -->&#97;uto inert inert"
+                b'</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> REF '
+                b'Hidden_Clause </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>'
+                b"<w:r><w:instrText> \\* MERGEFORMAT </w:instrText></w:r>"
+                b'<w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+        ),
+        (
+            "heuristic_ooxml_dde",
+            _deflated(
+                "word/document.xml",
+                b"\xff\xfe"
+                + (
+                    '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://purl.oclc'
+                    '.org/ooxml/wordprocessingml/main"><w:fldSimple w:instr=" DDE inert inert "/>'
+                    "</w:document>"
+                ).encode("utf-16-le"),
+            ),
+            _deflated(
+                "word/document.xml",
+                b"\xff\xfe"
+                + (
+                    '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://purl.oclc'
+                    '.org/ooxml/wordprocessingml/main"><w:fldSimple w:instr=" PAGE "/>'
+                    "</w:document>"
+                ).encode("utf-16-le"),
+            ),
+        ),
         # A stored zip holds its parts' bytes. In a Strict document the namespace address in
         # [Content_Types].xml and the field in document.xml meet only in the outer file.
         (

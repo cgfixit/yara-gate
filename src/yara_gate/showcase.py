@@ -564,6 +564,32 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "word_dde_split_field",
+        "detection",
+        "Attachment",
+        "word_page_split_field",
+        "A DDEAUTO field split across runs",
+        "An emailed Word report whose field type is written across three runs, with a comment "
+        "and a character reference inside the word. Word and LibreOffice join it into one "
+        "DDEAUTO instruction. The command only echoes a word.",
+        "report.docx",
+        samples.word_dde_split_field(),
+        BLOCK,
+    ),
+    _case(
+        "word_page_split_field",
+        "control",
+        "Attachment",
+        "word_dde_split_field",
+        "The same report with a split page-number field",
+        "The same report whose page-number field type is split the same way, across three "
+        "runs with a comment and a character reference. It joins into PAGE, an ordinary "
+        "field, so it is clean.",
+        "report.docx",
+        samples.word_page_split_field(),
+        CLEAN,
+    ),
+    _case(
         "svg_cdata_override",
         "detection",
         "Attachment",

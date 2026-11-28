@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "403c7c4a73bd65939128d3643f75a9bf658b4734",
-  "captured_at": "2026-11-28T03:39:35+00:00",
+  "source_revision": "bc22bcbebaaac50f7197e7b94b1a7aa5528823ba",
+  "captured_at": "2026-11-28T05:00:48+00:00",
   "cases": [
     {
       "id": "note",
@@ -3636,6 +3636,197 @@
           "units_scanned": 1,
           "views_scanned": {},
           "bytes_scanned": 457,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "word_dde_split_field",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "word_page_split_field",
+      "title": "A DDEAUTO field split across runs",
+      "description": "An emailed Word report whose field type is written across three runs, with a comment and a character reference inside the word. Word and LibreOffice join it into one DDEAUTO instruction. The command only echoes a word.",
+      "results": {
+        "default": {
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 2
+          },
+          "bytes_scanned": 4138,
+          "exit_code": 1
+        },
+        "agent-ingest": {
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 2
+          },
+          "bytes_scanned": 4138,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [
+                "zip:2"
+              ],
+              "view": "raw"
+            }
+          ],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "text-folded": 2
+          },
+          "bytes_scanned": 4138,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "word_page_split_field",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "word_dde_split_field",
+      "title": "The same report with a split page-number field",
+      "description": "The same report whose page-number field type is split the same way, across three runs with a comment and a character reference. It joins into PAGE, an ordinary field, so it is clean.",
+      "results": {
+        "default": {
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 3737,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 3737,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 4,
+          "views_scanned": {
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
+          },
+          "bytes_scanned": 3737,
           "exit_code": 0
         }
       }
