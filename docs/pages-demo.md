@@ -1,7 +1,7 @@
 # Public recorded demo
 
-GitHub Pages replays real scanner results for 121 synthetic examples under
-`agent-ingest`, `agent-document`, and `default`: 59 attacks, their 59 benign
+GitHub Pages replays real scanner results for 123 synthetic examples under
+`agent-ingest`, `agent-document`, and `default`: 60 attacks, their 60 benign
 near-twins, and three unfinished scans. The default workflow compares margin annotations in a synthetic PDF 1.3 print proof
 with the unused cross-reference entry seen in Quartz exports. Three pairs compare PDF form tooltips, unselected dropdown labels, and UTF-32 text exports.
 Other pairs cover Office runs, PDF fonts, mail transfer encodings, invisible Unicode, and tool
@@ -89,7 +89,7 @@ The last is a single incomplete case without an attack phrase or benign twin. It
 that a legitimate input can also exceed the scanner's budget.
 Senders use reserved example addresses; the context is illustrative, and only the
 fixed synthetic fixture is scanned. The initial policy is `agent-ingest`. Switching workflows or opening a twin preserves the selected policy.
-The full 59-pair catalog and the three unfinished scans remain under an expandable section.
+The full 60-pair catalog and the three unfinished scans remain under an expandable section.
 The source revision and recording date are visible above the workflows.
 
 The local workbench offers twenty shortcuts and the full catalog. Both demos use
@@ -229,9 +229,9 @@ finding, an offset, a title) stops the deploy, and fails the pull request check 
 that, so a change to what the page claims always arrives as a reviewed commit. The
 published page names the exact `main` commit it was recorded from.
 
-The [committed baseline](../web-demo/recordings.json) (schema 2) holds 121 inert
+The [committed baseline](../web-demo/recordings.json) (schema 2) holds 123 inert
 examples, recorded with 89 bundled rules and YARA-X 1.24.0, without vendor packs.
-Each deployment refreshes the revision and time. See the [DDE field verification](verification/2026-11-28-dde-field-instructions.md), the [SVG scope verification](verification/2026-11-26-svg-scope-text.md), the [DDE source verification](verification/2026-11-26-dde-source-and-priority-claims.md), the [PowerShell alias-list verification](verification/2026-11-26-powershell-alias-lists.md), the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
+Each deployment refreshes the revision and time. See the [OLE object name verification](verification/2026-11-28-ooxml-oleobject-name.md), the [DDE field verification](verification/2026-11-28-dde-field-instructions.md), the [SVG scope verification](verification/2026-11-26-svg-scope-text.md), the [DDE source verification](verification/2026-11-26-dde-source-and-priority-claims.md), the [PowerShell alias-list verification](verification/2026-11-26-powershell-alias-lists.md), the [chat-template pair verification](verification/2026-11-21-demo-chat-template-pair.md), the [40-pair verification](verification/2026-11-12-demo-40-pairs.md), the [37-pair verification](verification/2026-11-11-demo-37-pairs.md), the [34-pair verification](verification/2026-11-10-demo-34-pairs.md), the [hidden-HTML and merged-PDF pairs verification](verification/2026-11-10-demo-html-merged-pdf.md), the [shared-catalog verification](verification/2026-11-10-demo-catalog.md), the [normalized-reader verification](verification/2026-11-07-normalized-reader-text.md) and [reader-pair verification](verification/2026-11-06-demo-reader-pairs.md). Each row is one attack and
 its benign twin.
 
 | Channel | Attack (held under `agent-ingest`) | Benign twin (clean under every policy) |
@@ -266,6 +266,7 @@ its benign twin.
 | Repository | A PowerShell bootstrap script that passes a download straight to `iex` (an invalid example address, never fetched) | A highlighter's alphabetical alias table, where `iex` precedes `irm` and `iwr` with only other aliases between them |
 | Repository | A help page credited to a mail address in angle brackets whose inline SVG logo holds a script (an inert `void 0`) | An editor's HTML syntax file whose patterns name the svg and script tags, as Vim's own does |
 | Repository | A Word report template whose one field is a `DDEAUTO` instruction (the command only echoes a word) | A DDE scanner's own source, which names the same namespace and field elements |
+| Repository | A compound file named `oleObject1.bin`, as an unzip of a Word package leaves it, whose one stream packages an inert note | An office suite's popup-menu file named `oleobject.xml`, as LibreOffice names its own |
 | Web page | A page whose inline SVG logo holds a script (an inert `void 0`) | The same page and logo with no script in the SVG, and a script of the page's own |
 | Tool result | An MCP `tools/list` result whose 58th description of 60 says to read a private key and not tell the user | The same 60 tools; the 58th description notes that results are cached |
 | Tool result | A page a browsing tool returned as text, which opens a Llama 3 system turn and orders the vendor listed first | The same page quoting the same opener in its model guide |
@@ -291,6 +292,11 @@ The three unfinished scans are an ordinary note scanned with a deliberately brok
 rule in a disposable tree, a 7z header (`unsupported archive`), and a synthetic tool
 document beyond the JSON depth budget (`mcp json exceeds structure limit`). All
 three are incomplete under every policy; no finding is required for a completeness hold.
+
+The pair added on November 28 shows the `heuristic_ooxml_oleobject` change of the same day.
+Scanned with the scanner as it was at `0480d67`, before it, the menu file was advisory and
+held under both agent policies, as the compound file is. The
+[OLE object name verification](verification/2026-11-28-ooxml-oleobject-name.md) records those runs.
 
 The pair added on November 26 shows the `script_download_execute` change of the same day.
 Scanned with the rules as they were at `ca68202`, before it, the alias table was advisory
@@ -354,7 +360,7 @@ uv sync --frozen
 uv run python scripts/record_pages_demo.py --output web-demo/recordings.json
 ```
 
-The recorder scans the 121 fixed inert inputs in memory with `scan_bytes`, under
+The recorder scans the 123 fixed inert inputs in memory with `scan_bytes`, under
 all three policies, against disposable copies of `rules/local` and
 `rules/rules.lock`; the broken-rule case gets its own copy with one invalid rule file.
 It refuses to write when a verdict, completeness state, or skip count differs

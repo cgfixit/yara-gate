@@ -1381,7 +1381,10 @@ def ooxml_structure_findings(
     findings: list[Finding] = []
     if name.endswith("vbaproject.bin"):
         findings.append(_block("heuristic_ooxml_vba"))
-    if "oleobject" in name:
+    # An OLE object is a compound file that a package keeps in an ``embeddings`` folder, or
+    # that an extractor dropped loose. A text file outside that folder whose name says
+    # ``oleobject`` (LibreOffice's own menu and toolbar files) embeds nothing.
+    if "oleobject" in name and ("embeddings" in name.split("/")[:-1] or sniff(data) != "text"):
         findings.append(_advisory("heuristic_ooxml_oleobject"))
     # Each field's instruction is read (``dde_field``), which holds a DDE field whose bytes the
     # test below does not see: a Strict, UTF-16, or character-referenced part names no

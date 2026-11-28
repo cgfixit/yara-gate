@@ -20,12 +20,16 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from yara_gate.models import exit_code
+from yara_gate.models import ScanPolicy, Verdict, exit_code
 from yara_gate.samples import hex_glyph_line_pdf, hex_outline_title_pdf, merged_pdf
 from yara_gate.scanner import scan_file
 
 REPO = Path(__file__).resolve().parents[2]
 FP_LIMIT = 0.02
+# Every file is also scanned under each policy, so the report can say how many distinct
+# benign files a policy holds. A per-rule limit does not bound that: several rules under
+# the limit can each hold a different file.
+POLICIES = (ScanPolicy.default, ScanPolicy.agent_ingest, ScanPolicy.agent_document)
 
 # Strings planted only in files tagged as documentary. Clean files must not contain them.
 PLANTED = {
@@ -747,6 +751,15 @@ class HitRow:
 
 
 @dataclass
+class HeldRow:
+    policy: str
+    files: int
+    rate: float
+    paths: list[str]
+    by_group: dict[str, int]
+
+
+@dataclass
 class PrecisionReport:
     revision: str
     yara_x: str
@@ -756,12 +769,16 @@ class PrecisionReport:
     incomplete: list[dict[str, str]]
     rows: list[HitRow]
     planted: dict[str, int]
+    held: list[HeldRow]
+    groups: dict[str, int]
 
 
 def measure(corpus: Path, planted: dict[str, int]) -> PrecisionReport:
     started = time.perf_counter()
     hits: dict[str, list[str]] = defaultdict(list)
     incomplete: list[dict[str, str]] = []
+    held: dict[str, list[str]] = {policy.value: [] for policy in POLICIES}
+    groups: dict[str, int] = defaultdict(int)
     files = 0
     with tempfile.TemporaryDirectory(prefix="yara-gate-precision-rules-") as directory:
         rules = _rules_copy(Path(directory))
@@ -778,6 +795,16 @@ def measure(corpus: Path, planted: dict[str, int]) -> PrecisionReport:
                 incomplete.append({"file": name, "reason": f"exit {exit_code(result)}"})
             for finding in result.findings:
                 hits[finding.rule_id].append(name)
+            groups[_group(name)] += 1
+            for policy in POLICIES:
+                outcome = result if policy is ScanPolicy.default else None
+                if outcome is None:
+                    outcome = scan_file(path, rules_dir=rules, policy=policy)
+                if outcome.incomplete_reason:
+                    reason = f"{policy.value}: {outcome.incomplete_reason}"
+                    incomplete.append({"file": name, "reason": reason})
+                elif outcome.verdict is Verdict.block:
+                    held[policy.value].append(name)
     elapsed = time.perf_counter() - started
     rows: list[HitRow] = []
     for rule_id, names in sorted(hits.items()):
@@ -812,7 +839,31 @@ def measure(corpus: Path, planted: dict[str, int]) -> PrecisionReport:
         incomplete=incomplete,
         rows=rows,
         planted=planted,
+        held=[
+            HeldRow(
+                policy=policy,
+                files=len(paths),
+                rate=round(len(paths) / files, 4) if files else 0.0,
+                paths=paths,
+                by_group=dict(sorted(_count_groups(paths).items())),
+            )
+            for policy, paths in held.items()
+        ],
+        groups=dict(sorted(groups.items())),
     )
+
+
+def _group(name: str) -> str:
+    """The corpus folder a file sits in, which stands for its channel (chat, pdf, code)."""
+    head, _, rest = name.partition("/")
+    return head if rest else "(top)"
+
+
+def _count_groups(paths: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for name in paths:
+        counts[_group(name)] += 1
+    return counts
 
 
 def markdown(report: PrecisionReport) -> str:
@@ -844,6 +895,22 @@ def markdown(report: PrecisionReport) -> str:
     for row in report.rows:
         flag = "yes" if row.over_limit else "no"
         lines.append(f"| `{row.rule_id}` | {row.files} | {row.fp_rate:.2%} | {flag} |")
+    lines.extend(
+        [
+            "",
+            "Distinct files each policy holds (verdict `block`), whichever rules hit them.",
+            "No limit applies here; the rule limit above does not bound this count.",
+            "",
+            "| Policy | Files held | Rate | Held by corpus folder |",
+            "| --- | ---: | ---: | --- |",
+        ]
+    )
+    for held in report.held:
+        folders = ", ".join(
+            f"{group} {count}/{report.groups.get(group, 0)}"
+            for group, count in held.by_group.items()
+        )
+        lines.append(f"| `{held.policy}` | {held.files} | {held.rate:.2%} | {folders or 'none'} |")
     lines.append("")
     return "\n".join(lines)
 

@@ -1777,6 +1777,90 @@
    "source": "showcase"
   },
   {
+   "bytes": 6144,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_oleobject"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_oleobject"
+     ],
+     "verdict": "block",
+     "views": [
+      "raw"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "heuristic_ooxml_oleobject"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "raw"
+     ]
+    }
+   },
+   "id": "extracted_ole_object",
+   "kind": "detection",
+   "name": "oleObject1.bin",
+   "pair": "office_menu_oleobject",
+   "sha256": "4484732ea6e1cc6405b2a55283e1635c85021f97e38e10cae176aeb675b99b6c",
+   "source": "showcase"
+  },
+  {
+   "bytes": 314,
+   "channel": "Repository",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "office_menu_oleobject",
+   "kind": "control",
+   "name": "oleobject.xml",
+   "pair": "extracted_ole_object",
+   "sha256": "f153069fe3ddbc3ad44f0a28aa40f467172fe93e16e41a41aa98f9d5b47d31d4",
+   "source": "showcase"
+  },
+  {
    "bytes": 134,
    "channel": "Attachment",
    "expected": {
