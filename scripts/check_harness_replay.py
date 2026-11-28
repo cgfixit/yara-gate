@@ -2,13 +2,25 @@
 
 import argparse
 import json
+import math
+import statistics
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from yara_gate.replay import _DIGEST, _IDENTITY, COMPLETE, SCHEMA_VERSION, _identified, _unique
+from yara_gate.replay import (
+    _DIGEST,
+    _IDENTITY,
+    ADMIT,
+    COMPLETE,
+    HOLD,
+    SCHEMA_VERSION,
+    _identified,
+    _unique,
+)
 
 POLICIES = ("agent-ingest", "agent-document")
 LABEL_COUNTS = {"attack": 100, "benign": 100}
@@ -81,11 +93,95 @@ def receipts(path: Path, tasks: dict[str, tuple[str, str]]) -> dict[str, tuple[s
     return index
 
 
+@dataclass(frozen=True, slots=True)
+class Observation:
+    task: str
+    held: bool
+    matched: bool
+    scan_seconds: float
+    wall_seconds: float
+
+
+def seconds(value: object, line: int, field: str) -> float:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not 0 <= value <= sys.float_info.max
+    ):
+        raise ValueError(f"line {line}: scoring requires finite, nonnegative {field}")
+    return float(value)
+
+
+def observe(row: dict[str, Any], gate: dict[str, Any], task: str, line: int) -> Observation:
+    decision = row.get("proposed_decision")
+    findings = gate.get("findings")
+    if decision not in (ADMIT, HOLD) or not isinstance(findings, list):
+        raise ValueError(f"line {line}: scoring requires a decision and findings list")
+    return Observation(
+        task,
+        decision == HOLD,
+        bool(findings),
+        seconds(gate.get("scan_seconds"), line, "scan_seconds"),
+        seconds(row.get("wall_seconds"), line, "wall_seconds"),
+    )
+
+
+def rate(count: int, total: int) -> dict[str, object]:
+    if total == 0:
+        return {"count": count, "total": total, "rate": None, "wilson_95": None}
+    # Standard Wilson score interval for a binomial proportion.
+    z = statistics.NormalDist().inv_cdf(0.975)
+    p = count / total
+    scale = 1 + z**2 / total
+    centre = (p + z**2 / (2 * total)) / scale
+    radius = z * math.sqrt((p * (1 - p) + z**2 / (4 * total)) / total) / scale
+    return {
+        "count": count,
+        "total": total,
+        "rate": p,
+        "wilson_95": [max(0.0, centre - radius), min(1.0, centre + radius)],
+    }
+
+
+def latency(values: list[float]) -> dict[str, int | float]:
+    ordered = sorted(values)
+    count = len(ordered)
+    lower = ordered[(count - 1) // 2]
+    upper = ordered[count // 2]
+    return {
+        "count": count,
+        "p50": lower + (upper - lower) / 2,
+        "p95": ordered[math.ceil(0.95 * count) - 1],
+    }
+
+
+def score(observations: list[Observation], tasks: dict[str, tuple[str, str]]) -> dict[str, object]:
+    by_cohort: dict[str, dict[str, object]] = {}
+    for split in SPLITS:
+        by_cohort[split] = {}
+        for label in LABEL_COUNTS:
+            task_ids = {task for task, group in tasks.items() if group == (label, split)}
+            items = [item for item in observations if item.task in task_ids]
+            by_cohort[split][label] = {
+                "items_with_findings": rate(sum(item.matched for item in items), len(items)),
+                "items_with_proposed_hold": rate(sum(item.held for item in items), len(items)),
+                "tasks_with_proposed_hold": rate(
+                    len({item.task for item in items if item.held}), len(task_ids)
+                ),
+            }
+    return {
+        "by_cohort": by_cohort,
+        "scan_seconds": latency([item.scan_seconds for item in observations]),
+        "wall_seconds": latency([item.wall_seconds for item in observations]),
+    }
+
+
 def replay(
     path: Path,
     policy: str,
     index: dict[str, tuple[str, str, str]],
     tasks: dict[str, tuple[str, str]],
+    observations: list[Observation] | None,
 ) -> tuple[dict[str, tuple[object, ...]], dict[str, Any]]:
     items: dict[str, tuple[object, ...]] = {}
     identity: dict[str, Any] = {}
@@ -127,6 +223,8 @@ def replay(
             raise ValueError(f"line {line}: scanner identity changed within a replay")
         identity = current
         items[source] = (gate.get("path"), *(row.get(key) for key in PROVENANCE))
+        if observations is not None:
+            observations.append(observe(row, gate, task, line))
     if items.keys() != index.keys():
         raise ValueError(f"replay is missing {len(index.keys() - items.keys())} receipts")
     if (
@@ -140,18 +238,23 @@ def replay(
     return items, identity
 
 
-def reconcile(manifest: Path, runs: list[list[Path]]) -> dict[str, object]:
+def reconcile(
+    manifest: Path, runs: list[list[Path]], *, scoring: bool = False
+) -> dict[str, object]:
     tasks = task_manifest(manifest)
     identity: dict[str, Any] = {}
     item_counts: list[dict[str, int]] = []
+    scores: list[dict[str, object]] = []
     for number, (receipt_file, ingest_file, document_file) in enumerate(runs, 1):
         stage = "receipts"
         try:
             index = receipts(receipt_file, tasks)
             stage = POLICIES[0]
-            ingest, ingest_identity = replay(ingest_file, stage, index, tasks)
+            ingest_items: list[Observation] | None = [] if scoring else None
+            ingest, ingest_identity = replay(ingest_file, stage, index, tasks, ingest_items)
             stage = POLICIES[1]
-            document, document_identity = replay(document_file, stage, index, tasks)
+            document_items: list[Observation] | None = [] if scoring else None
+            document, document_identity = replay(document_file, stage, index, tasks, document_items)
             stage = "comparison"
             if ingest != document:
                 raise ValueError("paired replay input provenance differs")
@@ -161,7 +264,11 @@ def reconcile(manifest: Path, runs: list[list[Path]]) -> dict[str, object]:
         except ValueError as exc:
             raise ValueError(f"run {number} ({stage}): {exc}") from None
         item_counts.append(dict(Counter(tasks[task][0] for task, _, _ in index.values())))
-    return {
+        if ingest_items is not None and document_items is not None:
+            scores.append(
+                {POLICIES[0]: score(ingest_items, tasks), POLICIES[1]: score(document_items, tasks)}
+            )
+    result: dict[str, object] = {
         "scanner": identity,
         "tasks_by_split": {
             split: dict(Counter(label for label, group in tasks.values() if group == split))
@@ -169,6 +276,9 @@ def reconcile(manifest: Path, runs: list[list[Path]]) -> dict[str, object]:
         },
         "items_by_label_per_run": item_counts,
     }
+    if scoring:
+        result["replay_scores_per_run"] = scores
+    return result
 
 
 def main() -> int:
@@ -183,11 +293,14 @@ def main() -> int:
         required=True,
         help="Audit receipts with task IDs, then both strict replay outputs. Supply three runs.",
     )
+    parser.add_argument(
+        "--score", action="store_true", help="Score complete, timed replays after reconciliation."
+    )
     args = parser.parse_args()
     if len(args.run) != 3:
         parser.error("supply exactly three --run groups")
     try:
-        result = reconcile(args.manifest, args.run)
+        result = reconcile(args.manifest, args.run, scoring=args.score)
     except UnicodeError:
         print("replay reconciliation failed: input is not UTF-8", file=sys.stderr)
         return 2

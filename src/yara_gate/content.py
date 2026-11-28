@@ -4340,7 +4340,9 @@ def markdown_texts(name: str, text: str, budget: Budget) -> list[str]:
 _NOTEBOOK_SUFFIX = ".ipynb"
 
 
-def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int, bool]]:
+def notebook_texts(
+    name: str, text: str, budget: Budget, *, html_outputs: list[str] | None = None
+) -> list[tuple[str, int, bool]]:
     """Each Jupyter cell source and text output, joined, with its line count and code flag.
 
     nbformat stores multiline text as a list of lines, so the raw and JSON-unescaped views see
@@ -4366,7 +4368,7 @@ def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int,
         return []
     items: list[tuple[str, int, bool]] = []
 
-    def add(value: object, code: bool) -> None:
+    def add(value: object, code: bool, *, html_output: bool = False) -> None:
         if isinstance(value, str):
             lines = [value]
         elif isinstance(value, list) and all(isinstance(line, str) for line in value):
@@ -4375,7 +4377,10 @@ def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int,
             return
         if len(items) >= MAX_TEXT_PIECES:
             raise ContentLimit("text pieces exceed 100000")
-        items.append(("".join(lines), len(lines), code))
+        joined = "".join(lines)
+        items.append((joined, len(lines), code))
+        if html_output and html_outputs is not None:
+            html_outputs.append(joined)
 
     for count, cell in enumerate(cells):
         if count % 4096 == 0:
@@ -4392,7 +4397,13 @@ def notebook_texts(name: str, text: str, budget: Budget) -> list[tuple[str, int,
             if isinstance(data, dict):
                 for mime, value in data.items():
                     if isinstance(mime, str) and mime.startswith("text/"):
-                        add(value, False)
+                        rich_html = (
+                            mime == "text/html"
+                            and document.get("nbformat") == 4
+                            and cell.get("cell_type") == "code"
+                            and output.get("output_type") in ("display_data", "execute_result")
+                        )
+                        add(value, False, html_output=rich_html)
     return items
 
 

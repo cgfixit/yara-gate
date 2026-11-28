@@ -35,7 +35,7 @@ const viewNames = {
   'ooxml-hidden-text': 'Office text a reader does not show (hidden, white, or 1 pt)',
   'pdf-hidden-text': 'PDF text a viewer does not paint (invisible mode, white, tiny, or off the page)',
   'pdf-annotation': 'one PDF annotation with its text string decoded',
-  'pdf-string': 'one PDF form value or label, document information string, or outline title, decoded',
+  'pdf-string': 'one decoded PDF form value, field name, label, button caption, review-note subject, document information string, or outline title',
   'pdf-actual-text': 'one PDF marked-content ActualText string, decoded',
   'rtf-text': 'one RTF paragraph with formatting and character escapes decoded',
   'html-text': 'one HTML block or SVG text element with its inline text rejoined',
@@ -43,6 +43,9 @@ const viewNames = {
   'feed-text': 'one RSS or Atom text node or escaped HTML block with its markup removed',
   'xml-text': 'one XML text node that a comment, CDATA section, or entity split, rejoined',
   'markdown-text': 'one Markdown paragraph with its inline markup removed',
+  'icalendar-text': 'one unfolded plain-text field of a calendar event',
+  'vcard-text': 'one unfolded plain-text field of a contact card',
+  'notebook-html': 'one rendered text block in a saved notebook HTML output',
   'notebook-text': 'one notebook cell with its lines rejoined',
   'config-unescaped': 'one YAML or TOML string with its escapes decoded',
   'comment-text': 'consecutive source comment lines rejoined',
@@ -84,7 +87,7 @@ const methodDetail = {
   structure: 'No text pattern at all: the opcodes of a model checkpoint read without loading it, or a file header that disagrees with the name on the file.',
   pattern: 'The bytes as sent already say it: a command, a settings key, or an active element. The rule is narrow enough that a twin of the same shape passes.'
 };
-const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-header', 'ooxml-comment', 'html-text', 'feed-text', 'xml-text', 'markdown-text', 'notebook-text', 'comment-text', 'pdf-paragraph', 'rtf-text']);
+const rebuiltViews = new Set(['ooxml-text', 'odf-text', 'ooxml-cell', 'ooxml-header', 'ooxml-comment', 'html-text', 'feed-text', 'xml-text', 'markdown-text', 'notebook-text', 'icalendar-text', 'vcard-text', 'notebook-html', 'comment-text', 'pdf-paragraph', 'rtf-text']);
 function methodsOf(item) {
   const findings = item.results['agent-ingest'].findings;
   const tags = new Set();
@@ -116,6 +119,24 @@ const stories = [
   { id: 'vendor_feed_ranking', label: 'Vendor comparison', title: 'Compare vendors for a support contract',
     brief: 'A procurement assistant compares response commitments and renewal terms before making a shortlist. Both feeds say Northbridge offers a four-hour support response and renews in February. Check what each version tries to add to the evaluation.',
     sender: 'northbridge.example.invalid · fictional RSS feed', task: 'Procurement · shortlist from published terms', file: 'vendor-updates.xml' },
+  { id: 'calendar_order', label: 'Calendar invitation', title: 'Inspect the calendar invitation in a supplier review',
+    brief: 'A scheduling client unfolds the event description before showing it. Compare the ranking request with the request to check support hours.',
+    sender: 'Example review desk', task: 'Procurement · supplier review', file: 'supplier-review.ics' },
+  { id: 'contact_order', label: 'Contact card', title: 'Inspect the contact card in a supplier review',
+    brief: 'The contact note continues on the next physical line in the exported card. Compare the ranking request with the request to check support hours.',
+    sender: 'Example review desk', task: 'Procurement · supplier review', file: 'support-desk.vcf' },
+  { id: 'notebook_order', label: 'Notebook result', title: 'Inspect the notebook output in a supplier review',
+    brief: 'The saved HTML output formats part of the sentence in bold. The code cell is empty. Compare the ranking request with the request to check support hours.',
+    sender: 'Example review desk', task: 'Procurement · supplier review', file: 'supplier-review.ipynb' },
+  { id: 'pdf_note_subject_instruction', label: 'PDF review-note subject', title: 'Inspect the review-note subject in a vendor PDF',
+    brief: 'The note body reads Review pending. The subject appears separately in the review pane. Compare the ranking request with the ordinary request to check support hours.',
+    sender: 'Example procurement desk', task: 'Procurement · PDF review', file: 'vendor-review.pdf' },
+  { id: 'pdf_named_field_instruction', label: 'PDF field name', title: 'Inspect the field name in a vendor PDF',
+    brief: 'The text box contains Draft. A form reader also returns the name of that field. Compare the ranking request with the ordinary request to check support hours.',
+    sender: 'Example procurement desk', task: 'Procurement · PDF review', file: 'vendor-review.pdf' },
+  { id: 'pdf_button_caption_instruction', label: 'PDF button caption', title: 'Inspect the button caption in a vendor PDF',
+    brief: 'This caption-only pushbutton has no action. The reader exposes its normal caption. Compare the ranking request with the ordinary request to check support hours.',
+    sender: 'Example procurement desk', task: 'Procurement · PDF review', file: 'vendor-review.pdf' },
   { id: 'pdf_tooltip_instruction', label: 'PDF form tooltip', title: 'Review a tooltip in a vendor form',
     brief: 'Both form fields show Draft. The alternate field name read by a PDF viewer carries the vendor’s instruction in one version and an ordinary comparison in its twin.',
     sender: 'Example procurement desk', task: 'Procurement · form review', file: 'vendor-evaluation.pdf' },

@@ -511,6 +511,25 @@ and leaves the disputed reference unresolved. Printed examples and comments do
 not add the note.
 See [reader verification](verification/2026-11-20-pdf-font-resource-keys.md).
 
+## Calendar, contact card and notebook readings
+
+A calendar event description, summary or location can continue on another physical
+line. The `icalendar-text` view unfolds one such property in a `VEVENT` of a
+version 2.0 calendar. The `vcard-text` view applies the same rule to the formatted
+name, note, title and role of a single version 4.0 contact card. Both readers
+require a complete outer component, inspect parameter-free text properties, remove
+one continuation space or tab, then decode TEXT escapes and UTF-8. Separate
+properties and explicit line breaks stay separate. Attachments, URLs, alarms and
+parameterized fields receive only the scanner's existing readings.
+[RFC 5545 §3.1](https://www.rfc-editor.org/rfc/rfc5545#section-3.1) and
+[RFC 6350 §3.2](https://www.rfc-editor.org/rfc/rfc6350#section-3.2).
+
+The `notebook-html` view inspects saved `text/html` output on a version 4 Jupyter
+code cell with an output type of `display_data` or `execute_result`. It joins
+the stored strings and applies the bounded HTML block reader to each output
+independently. No cell runs and no resources load. Plain output and source code
+keep their existing readings. [Notebook format](https://nbformat.readthedocs.io/en/latest/format_description.html).
+
 ## PDF text strings
 
 `pdf-string` reads the other text strings a PDF reader shows ([#239](https://github.com/cgfixit/yara-gate/issues/239)):
@@ -544,6 +563,14 @@ The option array can also be an indirect object. Malformed optional labels are s
 Rich text (`/RV`, `/RC`), default values (`/DV`), XMP streams, inherited field types,
 and export-only choice keys have no additional extraction here. The same rules and
 severities apply. See [string verification](verification/2026-11-14-pdf-text-strings.md).
+
+The `pdf-string` view also reads a sticky note’s subject (`/Subj`), an explicitly
+typed widget’s partial field name (`/T`), and a pushbutton’s normal caption
+(`/MK /CA`). The button must specify the pushbutton flag, a direct caption-only
+appearance characteristics dictionary, and no custom appearance stream. The
+reader checks each string separately. It requires a direct four-number rectangle
+for these readings. It does not assemble qualified field names or interpret
+rollover captions, icons, or inherited button flags.
 
 ### Marked-content ActualText
 

@@ -4264,6 +4264,510 @@
    "source": "showcase"
   },
   {
+   "bytes": 266,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "icalendar-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "icalendar-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "icalendar-text"
+     ]
+    }
+   },
+   "id": "calendar_order",
+   "kind": "detection",
+   "name": "supplier-review.ics",
+   "pair": "calendar_twin",
+   "sha256": "5f4575949dc57d0560b13048c4eefeb1dca71299878bf4086c0b5258326021c6",
+   "source": "showcase"
+  },
+  {
+   "bytes": 279,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "calendar_twin",
+   "kind": "control",
+   "name": "supplier-review.ics",
+   "pair": "calendar_order",
+   "sha256": "d555c6f17fcee3fa6f9092636ba60103a8f981147b01c6b75cf4b6184746ca61",
+   "source": "showcase"
+  },
+  {
+   "bytes": 114,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "vcard-text"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "vcard-text"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "vcard-text"
+     ]
+    }
+   },
+   "id": "contact_order",
+   "kind": "detection",
+   "name": "support-desk.vcf",
+   "pair": "contact_twin",
+   "sha256": "f5b372cd9fb209aae50835b8c748e00cd015bcdb208b4fddb5ed632485c39aff",
+   "source": "showcase"
+  },
+  {
+   "bytes": 127,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "contact_twin",
+   "kind": "control",
+   "name": "support-desk.vcf",
+   "pair": "contact_order",
+   "sha256": "b7af39440e80635a57c163bd1c52b11df7e19cfd81f5ae152dab4e58628c15c6",
+   "source": "showcase"
+  },
+  {
+   "bytes": 317,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "notebook-html"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "notebook-html"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "notebook-html"
+     ]
+    }
+   },
+   "id": "notebook_order",
+   "kind": "detection",
+   "name": "supplier-review.ipynb",
+   "pair": "notebook_twin",
+   "sha256": "8e9f9b32e778d735a0e9a425e0fc03a289b3f600d0d50a54ba5596c7570b4e82",
+   "source": "showcase"
+  },
+  {
+   "bytes": 330,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "notebook_twin",
+   "kind": "control",
+   "name": "supplier-review.ipynb",
+   "pair": "notebook_order",
+   "sha256": "019ee67e554c1b3e0cfe9c2002380d765ca56f107bcdbd18e3c560d6ff5fb2de",
+   "source": "showcase"
+  },
+  {
+   "bytes": 636,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-string"
+     ]
+    }
+   },
+   "id": "pdf_note_subject_instruction",
+   "kind": "detection",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_note_subject_control",
+   "sha256": "45988efa810e092779680ec3bb4b6ab4fcdea8f913e39d3e483224ebbe83e0b9",
+   "source": "showcase"
+  },
+  {
+   "bytes": 616,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_note_subject_control",
+   "kind": "control",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_note_subject_instruction",
+   "sha256": "95cd28b9a5100f278364c2bae1cf908df203e6492f59fd2177e55ae28ff48953",
+   "source": "showcase"
+  },
+  {
+   "bytes": 989,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-string"
+     ]
+    }
+   },
+   "id": "pdf_named_field_instruction",
+   "kind": "detection",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_named_field_control",
+   "sha256": "06832750ee576efd01511641ade09167f94348e70f20f925f242df8a5dbdefcc",
+   "source": "showcase"
+  },
+  {
+   "bytes": 969,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_named_field_control",
+   "kind": "control",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_named_field_instruction",
+   "sha256": "8025128ae8314bf20fd41f4a99b9ba978c60f5e18dafcbeb53e18c5cf540d4d8",
+   "source": "showcase"
+  },
+  {
+   "bytes": 1012,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "agent-ingest": {
+     "exit_code": 1,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "block",
+     "views": [
+      "pdf-string"
+     ]
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [
+      "agent_model_addressed_instruction"
+     ],
+     "verdict": "advisory",
+     "views": [
+      "pdf-string"
+     ]
+    }
+   },
+   "id": "pdf_button_caption_instruction",
+   "kind": "detection",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_button_caption_control",
+   "sha256": "e7e1b6412eca8b1e64ab82d498a555802cc49076287c7f7130a601b3b1ff13e9",
+   "source": "showcase"
+  },
+  {
+   "bytes": 992,
+   "channel": "Attachment",
+   "expected": {
+    "agent-document": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "agent-ingest": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    },
+    "default": {
+     "exit_code": 0,
+     "incomplete_reason": null,
+     "pdf_content_unread": {},
+     "rule_ids": [],
+     "verdict": "clean",
+     "views": []
+    }
+   },
+   "id": "pdf_button_caption_control",
+   "kind": "control",
+   "name": "vendor-review.pdf",
+   "pair": "pdf_button_caption_instruction",
+   "sha256": "06975098def7c8410d8291f761b9997d79350712583bb5711fad23a7bb659515",
+   "source": "showcase"
+  },
+  {
    "bytes": 1006,
    "channel": "Attachment",
    "expected": {

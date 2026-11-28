@@ -422,6 +422,19 @@ Revisit these proposals when new evidence addresses the reason in the table.
 | Read a zip that has local headers and no directory at all | It is held today as `archive unreadable or encrypted`. Reading it would turn a held file into a verdict; that relaxes a hold and is the maintainer's call ([record](../verification/2026-11-18-hidden-members-printer-setup.md)). The maintainer kept the hold on November 19 |
 | Exempt `PrinterSetup` only when its driver data is CUPS `JobData` text or a Windows `WNT3` block with a `DEVMODE` | Real files use more forms (4 bytes on macOS, none on some Windows builds) and at least three `WNT3` headers; 1,471 of 1,880 Windows blocks in OpenOffice.org and StarOffice files fit none of the documented ones and would be held. Where the `DEVMODE` parses, the driver's own `dmDriverExtra` bytes (to 29,916) are opaque by design, so a payload there passes a form check as it passes today ([record](../verification/2026-11-19-printer-setup-other-writers.md#requiring-the-driver-datas-form)) |
 
+PDF review surfaces verified on November 27 include sticky-note subjects, partial
+names of explicitly typed widgets, and normal captions on caption-only pushbuttons.
+MuPDF read the ordinary and model-addressed examples for each. Icon-only and
+custom button appearances are excluded because their rendered text can differ
+from the caption. See [the extraction boundaries](../rules.md#pdf-text-strings)
+and the PDF string cases in [the probe](probe_detection_gaps.py).
+
+Calendar events, contact cards and saved notebook HTML now have directed
+[reader probes](probe_detection_gaps.py). Parameterized organizer fields can
+change the value type, and notebook metadata or plain output can quote HTML as
+source. These contexts are excluded from the new views.
+[Supported fields and output types](../rules.md#calendar-contact-card-and-notebook-readings).
+
 ## Keeping the detector current
 
 **Chat-template tokens.** `agent_role_spoof_action` and `agent_fake_chat_marker` list role
