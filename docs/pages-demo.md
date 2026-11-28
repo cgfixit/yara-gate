@@ -256,7 +256,7 @@ its benign twin.
 | Document | A glyph-id PDF with the key word in bold | The same fonts and layout with an ordinary sentence |
 | Attachment | A zip holding the override, followed by an ordinary invoice zip | The same two-archive layout with a receipt first |
 | Attachment | An SVG animation with an `onbegin` handler (an inert `void 0`) | The same animation started by `begin="0s"` |
-| Attachment | A Word report whose DDEAUTO field type is split across three runs, with a comment and a character reference inside the word (the command only echoes a word) | A training note that names DDE and DDEAUTO in its text and numbers its page with an ordinary field |
+| Attachment | A Word report whose DDEAUTO field type is split across three runs, with a comment and a character reference inside the word (the command only echoes a word) | The same report with a page-number field split the same way |
 | Attachment | A synthetic executable header named as a PDF | A one-page PDF with no actions |
 | Model file | A torch-style checkpoint whose pickle calls `os.system` after building ordinary state | The same state rebuilt through `collections.OrderedDict` |
 | Repository | A `devcontainer.json` whose `initializeCommand` downloads and runs a script on the host | A host `mkdir` and installs inside the container |
