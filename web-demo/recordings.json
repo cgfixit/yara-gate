@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "446d5bd2730a86b79d989a3c17a1b00c60d7534c",
-  "captured_at": "2026-11-26T17:20:32+00:00",
+  "source_revision": "eaf06385aa37fc821ec8df4f529636107b30382d",
+  "captured_at": "2026-11-28T03:12:46+00:00",
   "cases": [
     {
       "id": "note",
@@ -9219,6 +9219,552 @@
       }
     },
     {
+      "id": "pdf_note_subject_instruction",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "pdf_note_subject_control",
+      "title": "A PDF review-note subject asks for a ranking",
+      "description": "The note body reads Review pending. The subject appears separately in the review pane.",
+      "results": {
+        "default": {
+          "sha256": "45988efa810e092779680ec3bb4b6ab4fcdea8f913e39d3e483224ebbe83e0b9",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 690,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "45988efa810e092779680ec3bb4b6ab4fcdea8f913e39d3e483224ebbe83e0b9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 690,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "45988efa810e092779680ec3bb4b6ab4fcdea8f913e39d3e483224ebbe83e0b9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 690,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "pdf_note_subject_control",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "pdf_note_subject_instruction",
+      "title": "A PDF review-note subject asks for a comparison",
+      "description": "The note body reads Review pending. The subject appears separately in the review pane.",
+      "results": {
+        "default": {
+          "sha256": "95cd28b9a5100f278364c2bae1cf908df203e6492f59fd2177e55ae28ff48953",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 665,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "95cd28b9a5100f278364c2bae1cf908df203e6492f59fd2177e55ae28ff48953",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 665,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "95cd28b9a5100f278364c2bae1cf908df203e6492f59fd2177e55ae28ff48953",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-annotation": 1,
+            "pdf-string": 1
+          },
+          "bytes_scanned": 665,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_named_field_instruction",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "pdf_named_field_control",
+      "title": "A PDF field name asks for a ranking",
+      "description": "The text box contains Draft. A form reader also returns the name of that field.",
+      "results": {
+        "default": {
+          "sha256": "06832750ee576efd01511641ade09167f94348e70f20f925f242df8a5dbdefcc",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1056,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "06832750ee576efd01511641ade09167f94348e70f20f925f242df8a5dbdefcc",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1056,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "06832750ee576efd01511641ade09167f94348e70f20f925f242df8a5dbdefcc",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1056,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "pdf_named_field_control",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "pdf_named_field_instruction",
+      "title": "A PDF field name asks for a comparison",
+      "description": "The text box contains Draft. A form reader also returns the name of that field.",
+      "results": {
+        "default": {
+          "sha256": "8025128ae8314bf20fd41f4a99b9ba978c60f5e18dafcbeb53e18c5cf540d4d8",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1031,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "8025128ae8314bf20fd41f4a99b9ba978c60f5e18dafcbeb53e18c5cf540d4d8",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1031,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "8025128ae8314bf20fd41f4a99b9ba978c60f5e18dafcbeb53e18c5cf540d4d8",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1031,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "pdf_button_caption_instruction",
+      "kind": "detection",
+      "channel": "Attachment",
+      "pair": "pdf_button_caption_control",
+      "title": "A PDF button caption asks for a ranking",
+      "description": "This caption-only pushbutton has no action. The reader exposes its normal caption.",
+      "results": {
+        "default": {
+          "sha256": "e7e1b6412eca8b1e64ab82d498a555802cc49076287c7f7130a601b3b1ff13e9",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1080,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "e7e1b6412eca8b1e64ab82d498a555802cc49076287c7f7130a601b3b1ff13e9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1080,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "e7e1b6412eca8b1e64ab82d498a555802cc49076287c7f7130a601b3b1ff13e9",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "agent_model_addressed_instruction",
+              "offset": 0,
+              "length": 34,
+              "severity": "advisory",
+              "source": "yara",
+              "member_path": [],
+              "view": "pdf-string"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1080,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "pdf_button_caption_control",
+      "kind": "control",
+      "channel": "Attachment",
+      "pair": "pdf_button_caption_instruction",
+      "title": "A PDF button caption asks for a comparison",
+      "description": "This caption-only pushbutton has no action. The reader exposes its normal caption.",
+      "results": {
+        "default": {
+          "sha256": "06975098def7c8410d8291f761b9997d79350712583bb5711fad23a7bb659515",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1055,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "06975098def7c8410d8291f761b9997d79350712583bb5711fad23a7bb659515",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1055,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "06975098def7c8410d8291f761b9997d79350712583bb5711fad23a7bb659515",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {
+            "pdf-string": 2,
+            "pdf-text": 1
+          },
+          "bytes_scanned": 1055,
+          "exit_code": 0
+        }
+      }
+    },
+    {
       "id": "pdf_tooltip_instruction",
       "kind": "detection",
       "channel": "Attachment",
@@ -9252,10 +9798,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1074,
+          "bytes_scanned": 1080,
           "exit_code": 0
         },
         "agent-ingest": {
@@ -9284,10 +9830,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1074,
+          "bytes_scanned": 1080,
           "exit_code": 1
         },
         "agent-document": {
@@ -9316,10 +9862,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1074,
+          "bytes_scanned": 1080,
           "exit_code": 1
         }
       }
@@ -9348,10 +9894,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1049,
+          "bytes_scanned": 1055,
           "exit_code": 0
         },
         "agent-ingest": {
@@ -9370,10 +9916,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1049,
+          "bytes_scanned": 1055,
           "exit_code": 0
         },
         "agent-document": {
@@ -9392,10 +9938,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1049,
+          "bytes_scanned": 1055,
           "exit_code": 0
         }
       }
@@ -9434,10 +9980,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1118,
+          "bytes_scanned": 1124,
           "exit_code": 0
         },
         "agent-ingest": {
@@ -9466,10 +10012,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1118,
+          "bytes_scanned": 1124,
           "exit_code": 1
         },
         "agent-document": {
@@ -9498,10 +10044,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1118,
+          "bytes_scanned": 1124,
           "exit_code": 1
         }
       }
@@ -9530,10 +10076,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1093,
+          "bytes_scanned": 1099,
           "exit_code": 0
         },
         "agent-ingest": {
@@ -9552,10 +10098,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1093,
+          "bytes_scanned": 1099,
           "exit_code": 0
         },
         "agent-document": {
@@ -9574,10 +10120,10 @@
           "tool_version": "0.2.0",
           "units_scanned": 1,
           "views_scanned": {
-            "pdf-string": 2,
+            "pdf-string": 3,
             "pdf-text": 1
           },
-          "bytes_scanned": 1093,
+          "bytes_scanned": 1099,
           "exit_code": 0
         }
       }
