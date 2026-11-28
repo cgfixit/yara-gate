@@ -415,10 +415,7 @@ def test_demo_showcase_samples_hold_attacks_and_pass_twins(rules_copy: Path) -> 
         ),
         "word_dde_field": ("dde_scanner_source", "heuristic_ooxml_dde", {"raw"}),
         "word_dde_split_field": ("word_page_split_field", "heuristic_ooxml_dde", {"raw"}),
-<<<<<<< HEAD
         "extracted_ole_object": ("office_menu_oleobject", "heuristic_ooxml_oleobject", {"raw"}),
-=======
->>>>>>> origin/claude/serene-brown-qb93an
         "odt_span_override": ("odt_span_benign", "agent_prompt_injection_phrases", {"odf-text"}),
         "word_xml_comment_override": (
             "word_xml_comment_benign",

@@ -40,11 +40,7 @@ For [CyClaw](https://github.com/cgfixit/CyClaw), gate synced files between stagi
 
 To measure the gate on a consumer's own traffic before enforcing it, `yara-gate replay CAPTURE.jsonl --rules RULES` scans a capture of the exact text a consumer handed its model and prints, per item, the gate's record, the decision its read rule gives, and the consumer's own decision beside it. It admits and holds nothing, writes no report, and exits 0 or 2, never 1. Each scan runs in a child process killed at a hard deadline, and an unusable worker record is `failed`. A complete record identifies the detector and rules that produced it. For evaluation runs, add `--require-complete` to make empty captures, unfinished scans, or mixed scanner identities exit 2. The Harness [protocol](docs/research/shadow-evaluation-protocol.md#harness-capture-first-slice) pairs private chat search and fetch captures under both policies. The [controlled Harness baseline](docs/verification/2026-11-27-harness-controlled-baseline.md) records the frozen runs and replay results. The [live follow-up](docs/verification/2026-11-27-harness-live-search-and-articles.md) covers keyed search, real articles, and a separate adaptive round. Use the [Harness replay reconciliation check](docs/research/shadow-evaluation-protocol.md#checking-the-harness-replay) to verify coverage and scanner identity, then add `--score` for rates and latency percentiles. See [replaying captured model input](docs/integrations.md#replaying-captured-model-input).
 
-<<<<<<< HEAD
 To notice when a gate upgrade changes an answer you rely on, `yara-gate conform` rebuilds 124 inert fixtures from the installed package, checks them against a hash-pinned manifest shipped with it, and scans each under all three policies with the bundled rules: exit 0 when every verdict and exit code is the recorded one, 1 when one changed, 2 when the kit could not run. `--agreement` sets a scan of the text your own extractor produced beside the scan of the file, so a finding your reader loses (hidden text is the usual one) is visible before your model reads it; a line it cannot compare is `failed` and never proposed as an admit. See the [conformance kit](docs/conformance.md).
-=======
-To notice when a gate upgrade changes an answer you rely on, `yara-gate conform` rebuilds 122 inert fixtures from the installed package, checks them against a hash-pinned manifest shipped with it, and scans each under all three policies with the bundled rules: exit 0 when every verdict and exit code is the recorded one, 1 when one changed, 2 when the kit could not run. `--agreement` sets a scan of the text your own extractor produced beside the scan of the file, so a finding your reader loses (hidden text is the usual one) is visible before your model reads it; a line it cannot compare is `failed` and never proposed as an admit. See the [conformance kit](docs/conformance.md).
->>>>>>> origin/claude/serene-brown-qb93an
 
 ## Why it's worth running
 
@@ -218,20 +214,12 @@ Captured November 12 at `0a5113a` with the then-87 bundled rules and no vendor p
 
 **[Open the public recorded demo →](https://cgfixit.github.io/yara-gate/)**
 
-<<<<<<< HEAD
 The Pages companion replays real scans of 123 inert examples under all three policies: 60 attacks, 60 benign twins, and three scans that could not finish (a broken local rule, a 7z archive, and a tool document past the JSON depth budget). The page shows the capture time, scanner revision, and engine for its replay. The [checked-in baseline](web-demo/recordings.json) is reviewed in Git.
-=======
-The Pages companion replays real scans of 121 inert examples under all three policies: 59 attacks, 59 benign twins, and three scans that could not finish (a broken local rule, a 7z archive, and a tool document past the JSON depth budget). The page shows the capture time, scanner revision, and engine for its replay. The [checked-in baseline](web-demo/recordings.json) is reviewed in Git.
->>>>>>> origin/claude/serene-brown-qb93an
 
 - **Review a print proof.** Switch between the instruction in a synthetic Quartz-style PDF annotation and an editor’s ordinary caption correction. Change the read policy to see when the instruction is held.
 - **Reader examples:** six files whose bytes differ from what a reader shows: a bold word in an OpenDocument file, an XML comment inside a Word sentence, text on a slide master, a PDF line spaced by kerning beside another font's map, a workbook whose every element is written `x:`, and a quoted-printable email body past 8 KiB of relay headers. The last three scanned clean under every policy before [#216](https://github.com/cgfixit/yara-gate/pull/216); the first three before [#213](https://github.com/cgfixit/yara-gate/pull/213).
 - **Pair strip and "how it was caught" cards:** every pair under the selected policy, then one card per detection method with attacks held, twins clean, and the views that read them, counted from the recorded findings. Cards open the catalog filtered to their pairs; the catalog also filters by intake channel.
-<<<<<<< HEAD
 - **Twins stay quiet:** all 60 twins are clean with no findings under all three policies (0 findings in 180 recordings). That is evidence for these examples; [measured precision](docs/rules.md#measured-precision) covers the separate benign corpus.
-=======
-- **Twins stay quiet:** all 59 twins are clean with no findings under all three policies (0 findings in 177 recordings). That is evidence for these examples; [measured precision](docs/rules.md#measured-precision) covers the separate benign corpus.
->>>>>>> origin/claude/serene-brown-qb93an
 
 These are detected examples at the recorded revision, including previously fixed gaps, not current bypasses. The site takes no inputs and has no scanner connection; GitHub receives hosting requests and logs visitor IP addresses. Each deployment re-records on the deployed commit and checks the results against the baseline. A merge to `main` publishes once every check on the merged commit is green (ci and CodeQL included); pull requests validate without deploying. See the [preview, privacy, and deployment guide](docs/pages-demo.md).
 
