@@ -176,8 +176,10 @@ An administrator's HTA that shells out, a console that links an intranet page, a
 
 The two fetch-and-launch rules scan the bytes of scripts and documents, including
 renamed files and supported text views. An introduction can exempt the matching
-`WScript.Shell` reference or downloader it introduces. Separate matching commands
-still report. Both rules keep advisory severity, which `agent-ingest` and
+`WScript.Shell` reference or downloader it introduces. The command rule also
+recognizes a rendered line-number gutter immediately before a downloader in
+extracted text. Separate matching commands still report. Both rules keep
+advisory severity, which `agent-ingest` and
 `agent-document` hold. Unmarked excerpts and legitimate installation scripts can
 still produce findings. These rules match lexical patterns and cannot establish
 whether a script or an excerpt is safe.

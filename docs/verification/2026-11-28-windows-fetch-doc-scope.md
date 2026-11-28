@@ -25,6 +25,8 @@ Both rules previously used a single documentary exemption for the scanned unit.
 The new conditions associate an introduction with its next matching reference:
 `WScript.Shell` for the script-host rule and the downloader for the command rule.
 The next reference starts a new scope. ASCII and UTF-16LE use separate lookups.
+The command rule also recognizes a line-number gutter immediately before the
+first downloader in an extracted, rendered code listing.
 The shell-and-run distance and the command-chain patterns stay the same. Both
 rule IDs stay advisory. A full match list can still produce an advisory rather
 than lose a finding due to the YARA-X cap.
@@ -57,11 +59,15 @@ and surrounding text to see the full evidence.
   and incomplete reasons. Neither affected rule fired on this set.
 - Seven independently authored pages were scanned as HTML and as text extracted
   with Python's `HTMLParser`, omitting scripts, styles, and page metadata.
-  The extracted Atlassian guide gained a `win_cmd_fetch_start` advisory for
-  actual installation instructions. The existing `script_download_execute`
-  finding kept its verdict advisory under default and block under both agent
-  policies. Its original HTML already reported the Windows rule. The other
-  13 representations kept the same Windows rule IDs and `agent-document` verdict.
+  The first draft, `c5e6d5b`, added a `win_cmd_fetch_start` advisory in the
+  extracted Atlassian guide. All three matched installation excerpts immediately
+  follow a rendered line-number gutter. Recognizing that local formatting
+  removes the added Windows finding in both the raw-text and folded-text views.
+  The existing `script_download_execute` finding still gives advisory under
+  default and block under both agent policies. The guide's original HTML still
+  reports both rule IDs. All 42 comparisons across the 14 representations and
+  three policies match `main` on finding IDs, severities, views, verdicts,
+  exit codes, and incomplete reasons.
   [Atlassian installation](https://developer.atlassian.com/platform/teamwork-graph/twg-cli/getting-started/installation/)
   · [Enclave downloads](https://docs.enclave.sidechannel.com/agent/downloads.html)
   · [Intel WSL setup](https://docs.openedgeplatform.intel.com/dev/edge-ai-suites/ai-suite-retail/loss-prevention/wsl2/wsl2-setup.html)
@@ -73,20 +79,27 @@ and surrounding text to see the full evidence.
   added both advisory rule IDs. It contains positive scanner fixtures and near-misses.
   The coverage probe passed the individual fixture expectations.
 
-The corpus comparison found no new benign holds. The added finding on the
-extracted Atlassian guide shows that users can see an extra advisory on
-legitimate documentation. The checks do not estimate a production rate or
-cover every Windows script or security write-up.
+The corpus comparison found no new benign findings or holds. The checks
+cover the sampled Windows scripts and documentation. A quotation outside
+the recognized formats can still receive an advisory.
 
 ## Runtime and browser checks
 
 - Rule lint, the fire and near-miss pairs, the match-cap probe, the rule coverage
   and detection-gap probes, and the installed `conform` command passed. The
-  match-cap probe compared 3,619 flooded inputs without a blind spot. The
+  match-cap probe compared 3,635 flooded inputs without a blind spot. The
   conformance kit matched all 372 outcomes.
 - The 4 MiB timing worker completed both quotation-heavy cases as clean in
   about one second each. The first MiB of each took about a quarter second.
   A direct 16 MiB scan of each case also completed clean within 10 seconds.
+- The numbered-listing follow-up passed 180 direct scans across all policies,
+  UTF-8 and UTF-16LE with and without BOM, LF and CRLF, and ZIP members. The
+  listing alone was clean for the command rule. A separate match before or
+  after it, a downloader mention between the numbering and the matching
+  command, and incomplete numbering all reported at the matching raw offset.
+  A separate inert match appended to the extracted guide also reported.
+  The 4 MiB numbered-listing timing case completed clean within its time and
+  scaling limits.
 - Computer Use verified the packaged loopback demo's Windows command hold,
   its clean quotation control, and the empty input path. All 122 live
   `agent-ingest` outcomes matched the catalog, with no findings on 60 benign

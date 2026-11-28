@@ -77,6 +77,10 @@ rule win_cmd_fetch_start {
         $downloader_wide = /\b(iwr|irm|Invoke-WebRequest|curl|wget|certutil|bitsadmin)\b/ nocase wide
         $doc = /(the following command|common lure|for example)[\s\S]{0,160}?\b(iwr|irm|Invoke-WebRequest|curl|wget|certutil|bitsadmin)\b/ nocase ascii
         $doc_wide = /(the following command|common lure|for example)[\s\S]{0,160}?\b(iwr|irm|Invoke-WebRequest|curl|wget|certutil|bitsadmin)\b/ nocase wide
+        // Text extracted from a rendered code listing can place its line-number gutter
+        // directly before its code. The gutter ends at the first downloader token.
+        $listing = /(^|\n)1\r?\n2\r?\n3\r?\n\r?\n[ \t]{0,8}\b(iwr|irm|Invoke-WebRequest|curl|wget|certutil|bitsadmin)\b/ nocase ascii
+        $listing_wide = /(^|\n)1\r?\n2\r?\n3\r?\n\r?\n[ \t]{0,8}\b(iwr|irm|Invoke-WebRequest|curl|wget|certutil|bitsadmin)\b/ nocase wide
     condition:
         $chain and (
             // A capped chain or downloader list can hide an undocumented chain.
@@ -87,14 +91,14 @@ rule win_cmd_fetch_start {
             )
             or for any i in (1..#downloader) : (
                 $chain at @downloader[i] and not (
-                    (i == 1 and $doc in (0..@downloader[i]))
-                    or (i > 1 and $doc in (@downloader[i - 1] + 1..@downloader[i]))
+                    (i == 1 and any of ($doc, $listing) in (0..@downloader[i]))
+                    or (i > 1 and any of ($doc, $listing) in (@downloader[i - 1] + 1..@downloader[i]))
                 )
             )
             or for any i in (1..#downloader_wide) : (
                 $chain at @downloader_wide[i] and not (
-                    (i == 1 and $doc_wide in (0..@downloader_wide[i]))
-                    or (i > 1 and $doc_wide in (@downloader_wide[i - 1] + 1..@downloader_wide[i]))
+                    (i == 1 and any of ($doc_wide, $listing_wide) in (0..@downloader_wide[i]))
+                    or (i > 1 and any of ($doc_wide, $listing_wide) in (@downloader_wide[i - 1] + 1..@downloader_wide[i]))
                 )
             )
         )

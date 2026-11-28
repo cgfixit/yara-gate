@@ -243,9 +243,9 @@ Expect an advisory, exit 0, on a long base64 blob in a text file, on hidden HTML
 Do not expect a block on a brand-new payload that no rule mentions. Updating the packs helps for signatures that have been published. It does not make YARA understand a file.
 
 For Windows fetch-and-launch checks, look at the matching combination in the
-report's view. One documentary introduction covers only the match it introduces.
-A separate combination can be advisory even in a real security write-up. Review
-the context before releasing a hold.
+report's view. A documentary introduction or recognized numbered listing covers
+its own match. A separate combination can be advisory even in a real security
+write-up. Review the context before releasing a hold.
 [Windows script-host rules](docs/rules.md#windows-script-host-and-document-checks)
 
 ## 8. When something looks wrong

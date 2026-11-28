@@ -303,9 +303,10 @@ detection-gap marker. See [the verification record](../verification/2026-11-16-c
 the whole-file exemption. Each rule associates a documentary introduction with
 one matching reference. One introduction can no longer clear a separate match
 in the same scanned unit. Quotation remains a lexical distinction. A local cue
-can still describe the indicator it introduces, and an unmarked excerpt can
-still be reported. Verifying whether text runs as code would require execution
-context the scanner does not have.
+can still describe the indicator it introduces. The command rule also recognizes
+the adjacent line-number gutter of a rendered code example. Unmarked excerpts
+can still be reported. Verifying whether text runs as code would require
+execution context the scanner does not have.
 [Verification and residuals](../verification/2026-11-28-windows-fetch-doc-scope.md)
 
 ## Considered and not planned

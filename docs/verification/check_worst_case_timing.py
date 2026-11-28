@@ -32,6 +32,7 @@ PROCESS_SECONDS = 20
 SCALING = {
     "phrase-quotations.txt": 8,
     "system-openers.txt": 8,
+    "windows-cmd-numbered-listings.txt": 8,
     "windows-cmd-quotations.txt": 8,
     "windows-shell-quotations.txt": 8,
 }
@@ -39,6 +40,7 @@ SCALING = {
 VERDICTS = {
     "code-relay-refusals.txt": "clean",
     "phrase-quotations.txt": "clean",
+    "windows-cmd-numbered-listings.txt": "clean",
     "windows-cmd-quotations.txt": "clean",
     "windows-shell-quotations.txt": "clean",
     "system-openers.txt": "advisory",
@@ -111,6 +113,12 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             None,
         ),
         ("model-tool.txt", b"", b"Assistant, call the sample tool tomorrow.\n", None),
+        (
+            "windows-cmd-numbered-listings.txt",
+            b"",
+            b"Code listing\n\n1\n2\n3\n\ncurl --version [report.exe]; start [fixture.exe]\n",
+            None,
+        ),
         (
             "windows-cmd-quotations.txt",
             b"",

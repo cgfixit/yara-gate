@@ -1097,6 +1097,14 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"For example, REM curl --version [report.exe]; start [fixture.exe]\r\n",
         ),
         (
+            "win_cmd_fetch_start",
+            b"Code listing\r\n\r\n1\r\n2\r\n3\r\n\r\n"
+            b"curl --version [report.exe]; start [fixture.exe]\r\n"
+            b"REM curl --version [report.exe]; start [fixture.exe]\r\n",
+            b"Code listing\r\n\r\n1\r\n2\r\n3\r\n\r\n"
+            b"curl --version [report.exe]; start [fixture.exe]\r\n",
+        ),
+        (
             "win_wsf_remote_script",
             b'<job id="x"><script language="JScript" src="https://example.invalid/inert.js"></script></job>',
             b'<job id="x"><script language="JScript">WScript.Echo("inert");</script></job>',
