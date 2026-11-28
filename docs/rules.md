@@ -75,16 +75,22 @@ disclosure, override, or mode-switch request (`System: reboot at 02:00` and
 words (`system message`, `developer message`, `highest priority`, `system prompt:`) each of
 the verbs `reveal`, `ignore`, `override`, and `execute` counts in any spelling but one:
 inside a name. A verb that follows a letter or digit and an underscore
-(`b:sql_type_override`), or that runs into a capital and a small letter (`ignoreRoot`), is
+(`b:sql_type_override`), that runs into a capital and a small letter (`ignoreRoot`), or that
+stands between a sigil or a letter and an opening brace (`$override{$pkg}`, a Perl hash) is
 part of an identifier, so a code comment that says "the highest priority" beside one stays
 clean. `executed`, `OVERRIDES`, `ignore_previous`, and a verb straight after an escaped line
 break still count, the word `credentials` counts wherever it stands (`aws_credentials`), and
 in UTF-16 text every spelling counts. Documentation that says "highest priority" and then
 one of those words on its own within 256 bytes is still matched; so is a name outside those
-two shapes (`.gitignore`, `shouldIgnore(`, `ignore_errors`), and a `<system>` tag in Perl POD
-(`C<system>`) or a type argument (`List<Developer>`) near one. A shorter window for "the
-highest priority" and a POD exemption were tried and are on the declined list
-([record](verification/2026-11-26-dde-source-and-priority-claims.md)). One-sentence requests are
+shapes (`.gitignore`, `shouldIgnore(`, `ignore_errors`), and a `<system>` tag in Perl POD
+(`C<system>`) or a type argument (`List<Developer>`) near one. A plain `<system>` or
+`<developer>` tag followed by a comma, a space, and another tag is an item in a list
+(`C<system>, C<truncate>`, "`<system>, <user>`") and opens nothing in ASCII text; a tag
+followed by anything else, a log row's `<system>,Ignore …` or `<system>, Ignore …` included,
+is read as before, and in UTF-16 every plain tag opens. A shorter window for "the highest priority" and a POD exemption were tried
+and are on the declined list
+([record](verification/2026-11-26-dde-source-and-priority-claims.md); the brace and the
+comma are in the [November 28 record](verification/2026-11-28-role-spoof-brace-and-list.md)). One-sentence requests are
 read by other rules.
 `agent_prompt_injection_phrases`, a note, reads "reveal
 your system prompt" in the second person (so "the debug view can show the system
