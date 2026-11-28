@@ -428,6 +428,12 @@ custom button appearances are excluded because their rendered text can differ
 from the caption. See [the extraction boundaries](../rules.md#pdf-text-strings)
 and the PDF string cases in [the probe](probe_detection_gaps.py).
 
+Calendar events, contact cards and saved notebook HTML now have directed
+[reader probes](probe_detection_gaps.py). Parameterized organizer fields can
+change the value type, and notebook metadata or plain output can quote HTML as
+source. These contexts are excluded from the new views.
+[Supported fields and output types](../rules.md#calendar-contact-card-and-notebook-readings).
+
 ## Keeping the detector current
 
 **Chat-template tokens.** `agent_role_spoof_action` and `agent_fake_chat_marker` list role
