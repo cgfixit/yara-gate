@@ -1777,6 +1777,7 @@
    "source": "showcase"
   },
   {
+<<<<<<< HEAD
    "bytes": 6144,
    "channel": "Repository",
    "expected": {
@@ -1861,6 +1862,8 @@
    "source": "showcase"
   },
   {
+=======
+>>>>>>> origin/claude/serene-brown-qb93an
    "bytes": 134,
    "channel": "Attachment",
    "expected": {

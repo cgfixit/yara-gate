@@ -590,6 +590,7 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+<<<<<<< HEAD
         "extracted_ole_object",
         "detection",
         "Repository",
@@ -616,6 +617,8 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+=======
+>>>>>>> origin/claude/serene-brown-qb93an
         "svg_cdata_override",
         "detection",
         "Attachment",

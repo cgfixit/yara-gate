@@ -1283,6 +1283,7 @@ def word_page_split_field() -> bytes:
     )
 
 
+<<<<<<< HEAD
 def extracted_ole_object() -> bytes:
     """An OLE object as an unzip of a Word package drops it: a compound file named
     ``oleObject1.bin`` whose one ``Ole10Native`` stream holds an inert note."""
@@ -1330,6 +1331,8 @@ def office_menu_oleobject() -> bytes:
     )
 
 
+=======
+>>>>>>> origin/claude/serene-brown-qb93an
 def dde_scanner_source() -> bytes:
     """A DDE scanner's own source, which names the Word namespace, DDE, and the field
     element names it looks for, as oletools' msodde.py does."""
