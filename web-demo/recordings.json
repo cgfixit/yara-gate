@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "7b0e622d05406866defbd003bd62c1e6adc52e79",
-  "captured_at": "2026-11-28T03:39:52+00:00",
+  "source_revision": "ca6a20c6e37d096412dfaa57391ad91f64383c59",
+  "captured_at": "2026-11-28T03:53:59+00:00",
   "cases": [
     {
       "id": "note",
@@ -3459,6 +3459,15 @@
                 "zip:1"
               ],
               "view": "raw"
+            },
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [],
+              "view": "raw"
             }
           ],
           "advisory": false,
@@ -3492,6 +3501,15 @@
                 "zip:1"
               ],
               "view": "raw"
+            },
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [],
+              "view": "raw"
             }
           ],
           "advisory": false,
@@ -3524,6 +3542,15 @@
               "member_path": [
                 "zip:1"
               ],
+              "view": "raw"
+            },
+            {
+              "rule_id": "heuristic_ooxml_dde",
+              "offset": null,
+              "length": null,
+              "severity": "block",
+              "source": "heuristic",
+              "member_path": [],
               "view": "raw"
             }
           ],
@@ -3617,12 +3644,12 @@
       "id": "word_dde_split_field",
       "kind": "detection",
       "channel": "Attachment",
-      "pair": "word_dde_prose_page",
+      "pair": "word_page_split_field",
       "title": "A DDEAUTO field split across runs",
       "description": "An emailed Word report whose field type is written across three runs, with a comment and a character reference inside the word. Word and LibreOffice join it into one DDEAUTO instruction. The command only echoes a word.",
       "results": {
         "default": {
-          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
           "verdict": "block",
           "findings": [
             {
@@ -3632,7 +3659,7 @@
               "severity": "block",
               "source": "heuristic",
               "member_path": [
-                "zip:1"
+                "zip:2"
               ],
               "view": "raw"
             }
@@ -3647,16 +3674,16 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
             "html-unescaped": 1,
-            "text-folded": 1
+            "text-folded": 2
           },
-          "bytes_scanned": 2510,
+          "bytes_scanned": 4138,
           "exit_code": 1
         },
         "agent-ingest": {
-          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
           "verdict": "block",
           "findings": [
             {
@@ -3666,7 +3693,7 @@
               "severity": "block",
               "source": "heuristic",
               "member_path": [
-                "zip:1"
+                "zip:2"
               ],
               "view": "raw"
             }
@@ -3681,16 +3708,16 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
             "html-unescaped": 1,
-            "text-folded": 1
+            "text-folded": 2
           },
-          "bytes_scanned": 2510,
+          "bytes_scanned": 4138,
           "exit_code": 1
         },
         "agent-document": {
-          "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+          "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
           "verdict": "block",
           "findings": [
             {
@@ -3700,7 +3727,7 @@
               "severity": "block",
               "source": "heuristic",
               "member_path": [
-                "zip:1"
+                "zip:2"
               ],
               "view": "raw"
             }
@@ -3715,26 +3742,26 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
             "html-unescaped": 1,
-            "text-folded": 1
+            "text-folded": 2
           },
-          "bytes_scanned": 2510,
+          "bytes_scanned": 4138,
           "exit_code": 1
         }
       }
     },
     {
-      "id": "word_dde_prose_page",
+      "id": "word_page_split_field",
       "kind": "control",
       "channel": "Attachment",
       "pair": "word_dde_split_field",
-      "title": "A report that explains DDE and numbers its page",
-      "description": "A training note that names DDE and DDEAUTO in its text and has an ordinary page-number field. Neither field is a DDE field, so it is clean.",
+      "title": "The same report with a split page-number field",
+      "description": "The same report whose page-number field type is split the same way, across three runs with a comment and a character reference. It joins into PAGE, an ordinary field, so it is clean.",
       "results": {
         "default": {
-          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
           "verdict": "clean",
           "findings": [],
           "advisory": false,
@@ -3747,15 +3774,17 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
-            "ooxml-text": 1
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
           },
-          "bytes_scanned": 1721,
+          "bytes_scanned": 3737,
           "exit_code": 0
         },
         "agent-ingest": {
-          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
           "verdict": "clean",
           "findings": [],
           "advisory": false,
@@ -3768,15 +3797,17 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
-            "ooxml-text": 1
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
           },
-          "bytes_scanned": 1721,
+          "bytes_scanned": 3737,
           "exit_code": 0
         },
         "agent-document": {
-          "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+          "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
           "verdict": "clean",
           "findings": [],
           "advisory": false,
@@ -3789,11 +3820,13 @@
           "policy_reason": null,
           "compiled_rules": 89,
           "tool_version": "0.2.0",
-          "units_scanned": 3,
+          "units_scanned": 4,
           "views_scanned": {
-            "ooxml-text": 1
+            "html-unescaped": 1,
+            "ooxml-text": 1,
+            "text-folded": 1
           },
-          "bytes_scanned": 1721,
+          "bytes_scanned": 3737,
           "exit_code": 0
         }
       }
