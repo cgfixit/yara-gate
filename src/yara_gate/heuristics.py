@@ -1449,7 +1449,7 @@ def dde_field(data: bytes, check: Callable[[], None] | None = None) -> bool | No
     """
     if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:4] in (b"<\x00?\x00", b"\x00<\x00?"):
         big = data[:2] == b"\xfe\xff" or data[:1] == b"\x00"
-        text = data.decode("utf-16-be" if big else "utf-16-le", "replace").lstrip("﻿")
+        text = data.decode("utf-16-be" if big else "utf-16-le", "replace").lstrip("\ufeff")
         data = text.encode("utf-8")
     if data.lstrip(_BEFORE_XML_PART)[:1] != b"<" or (
         b"instrText" not in data and b"fldSimple" not in data
