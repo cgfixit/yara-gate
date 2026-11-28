@@ -189,6 +189,20 @@ CASES: list[tuple[str, str, bytes, bytes, bytes]] = [
         b'CreateObject("WScript.Shell").Run "a.exe"\n',
     ),
     (
+        "win_cmd_fetch_start",
+        "cmd",
+        b"",
+        b"For example, REM curl --version [report.exe]; start [fixture.exe]\n",
+        b"REM curl --version [report.exe]; start [fixture.exe]\n",
+    ),
+    (
+        "win_cmd_fetch_start",
+        "txt",
+        b"",
+        "For example, REM curl --version [report.exe]; start [fixture.exe]\n".encode("utf-16le"),
+        "REM curl --version [report.exe]; start [fixture.exe]\n".encode("utf-16le"),
+    ),
+    (
         "win_reg_run_interpreter",
         "reg",
         b"REGEDIT4\n",
