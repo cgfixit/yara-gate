@@ -7,7 +7,8 @@ check against public sources. Public Google challenged that pilot. This
 baseline uses Harness's existing test-only search endpoint and read-only
 fixture hosts. It verifies search capture through the real parser, chat
 tool boundary and Ollama inference while holding the input bytes fixed.
-Live-provider acceptance remains open.
+The [live follow-up](2026-11-27-harness-live-search-and-articles.md)
+records successful keyed search through Harness.
 
 ## Frozen inputs and controls
 
@@ -180,9 +181,10 @@ completion-loss budget under enforcement unverified.
 ## Decision
 
 Keep both policies in observe-only evaluation. The controlled fixture
-search enabled a complete capture-and-replay comparison. Live provider
+search enabled a complete capture-and-replay comparison. The
+[live follow-up](2026-11-27-harness-live-search-and-articles.md) covers keyed
 search, real articles that quote injections, and the separate adaptive
-round remain necessary for #294. The measured results cover read-only chat
+round. The measured results cover read-only chat
 search and fetch. Restored or cached evidence beyond this slice, citation
 corruption, memory poisoning, and unauthorized actions still require their
 own evidence. Harness capture delivery remains tracked upstream.
