@@ -203,7 +203,26 @@ The three files stay advisory; the declined list has the reason.
 
 ## Checks
 
-BATTERY
+On `aa3ab98`, which holds the final code and this record:
+
+| Check | Result |
+| --- | --- |
+| `lint_rules.py` | 89 compiled and linted; vendor overrides (2) |
+| `check_rule_generator.py`, `check_rules_lock.py`, `uv lock --check` | passed |
+| `check_rule_pairs.py` | 120 rules passed, with the three pairs above |
+| `probe_match_cap.py` | 3,447 flooded texts over 84 rules, 0 blind spots, 0 fail |
+| `check_added_rules.py` | 271 plus 4 vendor-override cases |
+| `measure_precision.py --fail-over` (328 files) | exit 0, 0 incomplete |
+| `probe_rule_coverage.py --verify` | passed |
+| `probe_detection_gaps.py --verify` | exit 0 |
+| `probe_ooxml_reader_agreement.py` | MISS 0, wide 5, ok 77 (the views are unchanged; run as a check) |
+| `check_worst_case_timing.py` | 106 adversarial inputs of 4 MiB, pass |
+| `check_scan_only.py`, `check_intake.py` | passed |
+| `yara-gate selftest` | pass |
+| `yara-gate conform`, `build_conformance.py --check` | 110 fixtures, 330 checks, 0 changes; manifest current |
+| `scripts/record_pages_demo.py`, `scripts/build_pages.py` | 109 scenarios x 3 policies; 327 recordings validated |
+| `check_text_controls.py`, `check_doc_links.py`, `zizmor --offline --pedantic` | passed |
+| Ruff, `ruff format --check`, `mypy --strict src scripts` | passed |
 
 ## Second independent attempt to break it
 
