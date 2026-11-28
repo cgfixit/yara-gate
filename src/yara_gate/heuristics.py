@@ -69,7 +69,7 @@ def heuristic_findings(
     findings.extend(model_header_findings(path, data))
     keras, keras_error = keras_config_findings(path, data, check)
     findings.extend(keras)
-    findings.extend(ooxml_structure_findings(path, data))
+    findings.extend(ooxml_structure_findings(path, data, check))
     mcp, mcp_error = mcp_tool_findings(path, data, check)
     findings.extend(mcp)
     office, error = office_findings(path, data)
@@ -1372,33 +1372,154 @@ def _keras_unsafe(node: dict[object, object]) -> bool:
     )
 
 
-def ooxml_structure_findings(path: Path, data: bytes) -> list[Finding]:
+def ooxml_structure_findings(
+    path: Path, data: bytes, check: Callable[[], None] | None = None
+) -> list[Finding]:
     name = path.as_posix().lower()
     findings: list[Finding] = []
     if name.endswith("vbaproject.bin"):
         findings.append(_block("heuristic_ooxml_vba"))
     if "oleobject" in name:
         findings.append(_advisory("heuristic_ooxml_oleobject"))
-    if b"http://schemas.openxmlformats.org" not in data:
-        return findings
-    if b"altChunk" in data:
+    dde = dde_field(data, check)
+    if dde is None:
+        # The fields were too deep or too long to read; the byte test the check used before
+        # field instructions were read holds the part instead.
+        dde = (
+            b"http://schemas.openxmlformats.org" in data
+            and b"DDE" in data
+            and (b"instrText" in data or b"fldChar" in data)
+        )
+    if b"http://schemas.openxmlformats.org" in data and b"altChunk" in data:
         findings.append(_advisory("heuristic_ooxml_altchunk"))
-    # Word reads a field instruction from an XML part, and an XML part opens with a tag after an
-    # optional byte order mark and white space. Text that opens with anything else, such as a
-    # DDE detector's own source, is not a part Word can read. A container is still read whole:
-    # a stored zip holds its parts' bytes, and the namespace address can stand in one part and
-    # the field in another (a Strict or character-referenced document.xml).
-    if (
-        b"DDE" in data
-        and (b"instrText" in data or b"fldChar" in data)
-        and (data.lstrip(_BEFORE_XML_PART)[:1] == b"<" or sniff(data) != "text")
-    ):
+    if dde:
         findings.append(_block("heuristic_ooxml_dde"))
     return findings
 
 
 # A UTF-8 byte order mark and white space, which may stand before a part's first tag.
 _BEFORE_XML_PART = b"\xef\xbb\xbf \t\r\n"
+# The elements a Word field is written with, under any prefix: a simple field and its
+# instruction attribute, and a complex field's characters and instruction runs (deleted ones
+# too, read wide). Attribute values are quoted, so a ">" inside one is not the tag's end; XML
+# allows no "<" in one, so a tag that does not close is given up at the next "<".
+_FIELD_TAG = re.compile(
+    rb"""<(/?)(?:[^\s<>/:="']++:)?(fldSimple|fldChar|instrText|delInstrText)\b"""
+    rb"""((?:[^<>"']++|"[^"<]*+"|'[^'<]*+')*+)>"""
+)
+_FIELD_CHAR_TYPE = re.compile(rb"""(?:^|\s)(?:[^\s:="']++:)?fldCharType\s*+=\s*+["'](\w++)["']""")
+_FIELD_INSTR = re.compile(
+    rb"""(?:^|\s)(?:[^\s:="']++:)?instr\s*+=\s*+(?:"([^"<]*+)"|'([^'<]*+)')"""
+)
+_XML_COMMENT = re.compile(rb"<!--.*?(?:-->|\Z)", re.DOTALL)
+_XML_CDATA = re.compile(rb"<!\[CDATA\[(.*?)(?:\]\]>|\Z)", re.DOTALL)
+_XML_CHAR_REF = re.compile(rb"&(?:#x([0-9A-Fa-f]{1,6})|#([0-9]{1,7})|(lt|gt|amp|quot|apos));")
+_XML_NAMED = {b"lt": b"<", b"gt": b">", b"amp": b"&", b"quot": b'"', b"apos": b"'"}
+# A field whose type is DDE or DDEAUTO, in any case, after white space.
+_DDE_TYPE = re.compile(rb"\s*+ddeauto(?![0-9A-Za-z_])|\s*+dde(?![0-9A-Za-z_])", re.IGNORECASE)
+_FIELD_MAX_DEPTH = 64
+_FIELD_MAX_TEXT = 1 << 20
+# How much of a field's instruction, nested ones included, is kept to look for "dde" in.
+_FIELD_WHOLE_KEPT = 1 << 16
+
+
+def _xml_unescape(text: bytes) -> bytes:
+    def one(match: re.Match[bytes]) -> bytes:
+        if match.group(3) is not None:
+            return _XML_NAMED[match.group(3)]
+        code = int(match.group(1), 16) if match.group(1) is not None else int(match.group(2))
+        try:
+            return chr(code).encode("utf-8")
+        except (ValueError, OverflowError):
+            return b""
+
+    return _XML_CHAR_REF.sub(one, text) if b"&" in text else text
+
+
+def dde_field(data: bytes, check: Callable[[], None] | None = None) -> bool | None:
+    """Whether an XML part holds a Word field whose type is DDE or DDEAUTO.
+
+    The instruction is read as LibreOffice reads it on import: the ``instr`` of a simple field,
+    and the instruction runs of a complex field joined from its begin to its separate (or end)
+    character, after UTF-16, character references, comments, and CDATA, under any prefix. A
+    field whose instruction opens with a nested field counts when "dde" stands anywhere in
+    it, since its type is the nested field's result. Text that does not open with a tag after
+    a byte order mark and white space is no part Word reads and is False. None when the fields
+    nest deeper or run longer than the reader follows, for the caller to hold.
+    """
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff") or data[:4] in (b"<\x00?\x00", b"\x00<\x00?"):
+        big = data[:2] == b"\xfe\xff" or data[:1] == b"\x00"
+        text = data.decode("utf-16-be" if big else "utf-16-le", "replace").lstrip("﻿")
+        data = text.encode("utf-8")
+    if data.lstrip(_BEFORE_XML_PART)[:1] != b"<" or (
+        b"instrText" not in data and b"fldSimple" not in data
+    ):
+        return False
+    if b"<!" in data:
+        data = _XML_COMMENT.sub(b"", data)
+        data = _XML_CDATA.sub(
+            lambda m: m.group(1).replace(b"&", b"&amp;").replace(b"<", b"&lt;"), data
+        )
+    # Each open complex field: its instruction so far, whether it still reads one, whether a
+    # nested field opened it, and every instruction byte inside it, nested ones included.
+    stack: list[tuple[bytearray, list[bool], bytearray]] = []
+    total = 0
+
+    def dde(instruction: bytes, nested: bool, whole: bytes) -> bool:
+        if _DDE_TYPE.match(instruction):
+            return True
+        return nested and b"dde" in whole.lower()
+
+    for count, match in enumerate(_FIELD_TAG.finditer(data)):
+        if check is not None and count % 4096 == 0:
+            check()
+        closing, element, attributes = match.groups()
+        if closing:
+            continue
+        if element == b"fldSimple":
+            instr = _FIELD_INSTR.search(attributes)
+            if instr is not None:
+                value = _xml_unescape(
+                    instr.group(1) if instr.group(1) is not None else instr.group(2)
+                )
+                total += len(value)
+                if dde(value, False, value):
+                    return True
+        elif element == b"fldChar":
+            kind = _FIELD_CHAR_TYPE.search(attributes)
+            kind_name = kind.group(1) if kind is not None else b""
+            if kind_name == b"begin":
+                if stack and stack[-1][1][0] and not stack[-1][0].strip():
+                    stack[-1][1][1] = True
+                stack.append((bytearray(), [True, False], bytearray()))
+                if len(stack) > _FIELD_MAX_DEPTH:
+                    return None
+            elif kind_name in (b"separate", b"end") and stack:
+                instruction, state, whole = stack[-1]
+                if state[0] and dde(bytes(instruction), state[1], bytes(whole)):
+                    return True
+                state[0] = False
+                if kind_name == b"end":
+                    stack.pop()
+                    if stack:
+                        outer = stack[-1][2]
+                        outer.extend(whole[: _FIELD_WHOLE_KEPT - len(outer)])
+        elif not attributes.endswith(b"/"):
+            end = data.find(b"<", match.end())
+            value = _xml_unescape(data[match.end() : end if end >= 0 else len(data)])
+            total += len(value)
+            if total > _FIELD_MAX_TEXT:
+                return None
+            if not stack:
+                # Instruction text outside any field is no field to Word; read it wide.
+                if dde(value, False, value):
+                    return True
+                continue
+            if stack[-1][1][0]:
+                stack[-1][0].extend(value)
+            whole = stack[-1][2]
+            whole.extend(value[: _FIELD_WHOLE_KEPT - len(whole)])
+    return any(state[0] and dde(bytes(i), state[1], bytes(w)) for i, state, w in stack)
 
 
 # A JSON string, a comment opener, or a comma, for ``_jsonc``. A string holds no raw line break.

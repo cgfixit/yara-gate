@@ -889,6 +889,60 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             zipped("word/document.xml", docx_xml + b"<w:instrText>DDE</w:instrText>"),
             zipped("word/document.xml", docx_xml + b"<w:t>hi</w:t>"),
         ),
+        # A field is read as LibreOffice reads it: a simple field's instr, and a complex field's
+        # instruction runs joined, after UTF-16, character references, and comments, in any
+        # case and either namespace. Prose that names DDE beside a PAGE field, and a hyperlink
+        # whose address holds DDEAUTO, are no DDE field (both were held before).
+        (
+            "heuristic_ooxml_dde",
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:fldSimple w:instr=" DDEAUTO &quot;inert&quot; &quot;inert&quot; "/>'
+                b"</w:document>",
+            ),
+            zipped(
+                "word/document.xml",
+                docx_xml + b"<w:r><w:t>The DDE protocol is in chapter 4.</w:t></w:r>"
+                b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> PAGE '
+                b'</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+        ),
+        (
+            "heuristic_ooxml_dde",
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> DD'
+                b"</w:instrText></w:r><w:r><w:instrText>e<!-- x -->&#97;uto inert inert"
+                b'</w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+            zipped(
+                "word/document.xml",
+                docx_xml + b'<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> '
+                b'HYPERLINK "https://example.invalid/DDEAUTO" </w:instrText></w:r><w:r>'
+                b'<w:fldChar w:fldCharType="end"/></w:r></w:document>',
+            ),
+        ),
+        (
+            "heuristic_ooxml_dde",
+            _deflated(
+                "word/document.xml",
+                b"\xff\xfe"
+                + (
+                    '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://purl.oclc'
+                    '.org/ooxml/wordprocessingml/main"><w:fldSimple w:instr=" DDE inert inert "/>'
+                    "</w:document>"
+                ).encode("utf-16-le"),
+            ),
+            _deflated(
+                "word/document.xml",
+                b"\xff\xfe"
+                + (
+                    '<?xml version="1.0" encoding="UTF-16"?><w:document xmlns:w="http://purl.oclc'
+                    '.org/ooxml/wordprocessingml/main"><w:fldSimple w:instr=" PAGE "/>'
+                    "</w:document>"
+                ).encode("utf-16-le"),
+            ),
+        ),
         # A stored zip holds its parts' bytes. In a Strict document the namespace address in
         # [Content_Types].xml and the field in document.xml meet only in the outer file.
         (

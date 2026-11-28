@@ -1199,6 +1199,44 @@ def word_dde_field() -> bytes:
     )
 
 
+def _word_fields(paragraph: str) -> bytes:
+    """A Word file with one paragraph of the runs given, after a title paragraph."""
+    word = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    document = (
+        f'<?xml version="1.0"?><w:document {word}><w:body><w:p><w:r><w:t>Quarterly vendor '
+        f"review.</w:t></w:r></w:p><w:p>{paragraph}</w:p></w:body></w:document>"
+    )
+    return _stored_zip(
+        (("[Content_Types].xml", _OOXML_TYPES), ("word/document.xml", document.encode()))
+    )
+
+
+def word_dde_split_field() -> bytes:
+    """A DDEAUTO field whose type is split across three instruction runs, with a comment and a
+    character reference inside the word, as Word and LibreOffice join it. The command only
+    echoes a word; nothing here is run."""
+    return _word_fields(
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> dd</w:instrText></w:r>'
+        "<w:r><w:instrText>e<!-- revised -->&#97;</w:instrText></w:r>"
+        '<w:r><w:instrText xml:space="preserve">uto c:\\windows\\system32\\cmd.exe '
+        '"/k echo inert" </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def word_dde_prose_page() -> bytes:
+    """A report that explains DDE in its text and numbers its page with an ordinary field."""
+    return _word_fields(
+        "<w:r><w:t>Training note: DDE and DDEAUTO fields can start programs, so the "
+        "gateway holds them.</w:t></w:r>"
+        '<w:r><w:t xml:space="preserve"> Page </w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
 def dde_scanner_source() -> bytes:
     """A DDE scanner's own source, which names the Word namespace, DDE, and the field
     element names it looks for, as oletools' msodde.py does."""
