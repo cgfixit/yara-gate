@@ -1693,7 +1693,7 @@
    "source": "showcase"
   },
   {
-   "bytes": 863,
+   "bytes": 1570,
    "channel": "Attachment",
    "expected": {
     "agent-document": {
@@ -1736,12 +1736,12 @@
    "id": "word_dde_split_field",
    "kind": "detection",
    "name": "report.docx",
-   "pair": "word_dde_prose_page",
-   "sha256": "ff5eb67b26e72b3327573002de9ed2e7f86aef94bd0d837201935f8f55b7b611",
+   "pair": "word_page_split_field",
+   "sha256": "483ad9091620e7062a805ad0e7c4210e3a42b5f27e0a1acf53c0b6e0e74b98d9",
    "source": "showcase"
   },
   {
-   "bytes": 925,
+   "bytes": 1605,
    "channel": "Attachment",
    "expected": {
     "agent-document": {
@@ -1769,11 +1769,11 @@
      "views": []
     }
    },
-   "id": "word_dde_prose_page",
+   "id": "word_page_split_field",
    "kind": "control",
    "name": "report.docx",
    "pair": "word_dde_split_field",
-   "sha256": "ce09fb01371f33d2d2b39bb372dc969f670f62f7af09b00461f3d1ad9dcfbc6e",
+   "sha256": "375fdc2a77b267fed585e7692ab90faf19db615bac28124a8bcbe4d6eb94d1b2",
    "source": "showcase"
   },
   {
