@@ -1383,21 +1383,26 @@ def ooxml_structure_findings(
         findings.append(_block("heuristic_ooxml_vba"))
     if "oleobject" in name:
         findings.append(_advisory("heuristic_ooxml_oleobject"))
-    office = b"http://schemas.openxmlformats.org" in data
-    if office and b"altChunk" in data:
+    # Each field's instruction is read (``dde_field``), which holds a DDE field whose bytes the
+    # test below does not see: a Strict, UTF-16, or character-referenced part names no
+    # transitional address.
+    field = dde_field(data, check)
+    if b"http://schemas.openxmlformats.org" not in data:
+        if field:
+            findings.append(_block("heuristic_ooxml_dde"))
+        return findings
+    if b"altChunk" in data:
         findings.append(_advisory("heuristic_ooxml_altchunk"))
     # Word reads a field instruction from an XML part, and an XML part opens with a tag after an
     # optional byte order mark and white space. Text that opens with anything else, such as a
     # DDE detector's own source, is not a part Word can read. A container is still read whole:
     # a stored zip holds its parts' bytes, and the namespace address can stand in one part and
-    # the field in another. Beside that byte test, each field's instruction is read
-    # (``dde_field``), which holds a DDE field whose bytes the test does not see.
-    if (
-        office
-        and b"DDE" in data
+    # the field in another.
+    if field or (
+        b"DDE" in data
         and (b"instrText" in data or b"fldChar" in data)
         and (data.lstrip(_BEFORE_XML_PART)[:1] == b"<" or sniff(data) != "text")
-    ) or dde_field(data, check):
+    ):
         findings.append(_block("heuristic_ooxml_dde"))
     return findings
 
