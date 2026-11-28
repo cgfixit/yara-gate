@@ -545,6 +545,14 @@ Rich text (`/RV`, `/RC`), default values (`/DV`), XMP streams, inherited field t
 and export-only choice keys have no additional extraction here. The same rules and
 severities apply. See [string verification](verification/2026-11-14-pdf-text-strings.md).
 
+The `pdf-string` view also reads a sticky note’s subject (`/Subj`), an explicitly
+typed widget’s partial field name (`/T`), and a pushbutton’s normal caption
+(`/MK /CA`). The button must specify the pushbutton flag, a direct caption-only
+appearance characteristics dictionary, and no custom appearance stream. The
+reader checks each string separately. It requires a direct four-number rectangle
+for these readings. It does not assemble qualified field names or interpret
+rollover captions, icons, or inherited button flags.
+
 ### Marked-content ActualText
 
 `pdf-actual-text` reads each `/ActualText` string written in a content stream's own

@@ -5917,6 +5917,49 @@ def pdf_string_cases() -> list[Case]:
         ),
         case("pdf form value as UTF-16BE hex", document(field=utf16(PHRASE))),
         case("pdf form value as octal escapes", document(field=octal(PHRASE))),
+        case("pdf review-note subject", samples.pdf_note_subject(PHRASE)),
+        case("ordinary pdf review-note subject", samples.pdf_note_subject(twin), "clean"),
+        case("pdf field name", samples.pdf_named_field(PHRASE)),
+        case("ordinary pdf field name", samples.pdf_named_field(twin), "clean"),
+        case("pdf button caption", samples.pdf_button_caption(PHRASE)),
+        case("ordinary pdf button caption", samples.pdf_button_caption(twin), "clean"),
+        case(
+            "pdf caption is an indirect text string",
+            document(
+                field=b"(Draft)",
+                field_type=b"/Btn",
+                field_labels=b"/Ff 65536 /MK << /CA 10 0 R >>",
+                extra={10: utf16(PHRASE)},
+            ),
+        ),
+        *[
+            case(
+                f"unused pdf caption: {why}",
+                document(
+                    field=b"(Draft)",
+                    field_type=b"/Btn",
+                    field_labels=flags + b" /MK << /CA " + utf16(PHRASE) + layout + b" >>",
+                ),
+                "clean",
+            )
+            for why, flags, layout in (
+                ("checkbox", b"/Ff 0", b""),
+                ("icon only", b"/Ff 65536", b" /TP 1"),
+                ("custom appearance", b"/Ff 65536 /AP << >>", b""),
+            )
+        ],
+        case(
+            "unrelated PDF subject and name",
+            document(extra={10: b"<< /T " + utf16(PHRASE) + b" /Subj " + utf16(PHRASE) + b" >>"}),
+            "clean",
+        ),
+        case(
+            "review subject on a link",
+            document(
+                extra={10: b"<< /Subtype /Link /Rect [0 0 10 10] /Subj " + utf16(PHRASE) + b" >>"}
+            ),
+            "clean",
+        ),
         case("pdf alternate field name", samples.pdf_form_label(PHRASE)),
         case("pdf alternate field name (benign)", samples.pdf_form_label(twin), "clean"),
         case(
