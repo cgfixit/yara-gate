@@ -86,6 +86,7 @@ from yara_gate.models import (
     result_from_findings,
 )
 from yara_gate.odftext import odf_text_views
+from yara_gate.organizer import organizer_text
 from yara_gate.pdfannotations import PdfStrings, pdf_string_texts, shown_string
 from yara_gate.pdftext import pdf_text
 from yara_gate.rtftext import rtf_texts
@@ -812,6 +813,8 @@ def _reader_pieces(
     yield from _with_folded_pieces("pdf-annotation", strings.annotations, budget)
     # Form field values and labels, document information strings, and outline titles.
     yield from _with_folded_pieces("pdf-string", strings.shown, budget)
+    if organizer := organizer_text(unit.data, budget):
+        yield from _with_folded_pieces(*organizer, budget)
     # Both readings' pieces share their views, so a rule is reported once per view.
     for reading, _ in readings:
         yield from _with_folded_pieces(
@@ -827,10 +830,20 @@ def _reader_pieces(
             config_unescaped_texts(unit.name, reading, budget),
             budget,
         )
-        cells = notebook_texts(unit.name, reading, budget)
+        html_outputs: list[str] = []
+        cells = notebook_texts(unit.name, reading, budget, html_outputs=html_outputs)
         yield from _with_folded_pieces(
             "notebook-text",
             [text for text, lines, _ in cells if lines >= 2],
+            budget,
+        )
+        yield from _with_folded_pieces(
+            "notebook-html",
+            (
+                block
+                for markup in html_outputs
+                for block in html_text_blocks("output.html", markup, budget)
+            ),
             budget,
         )
         # A comment inside a code cell is inside a JSON string in the raw text.

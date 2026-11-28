@@ -332,6 +332,9 @@
       "feed-text": "one RSS or Atom text node or escaped HTML block with its markup removed",
       "xml-text": "one XML text node that a comment, CDATA section, or entity split, rejoined",
       "markdown-text": "one Markdown paragraph with its inline markup removed",
+      "icalendar-text": "one unfolded plain-text field of a calendar event",
+      "vcard-text": "one unfolded plain-text field of a contact card",
+      "notebook-html": "one rendered text block in a saved notebook HTML output",
       "notebook-text": "one notebook cell with its lines rejoined",
       "config-unescaped": "one YAML or TOML string with its escapes decoded",
       "comment-text": "consecutive source comment lines rejoined",
@@ -371,7 +374,7 @@
       rebuilt: "Split across formatting", decoded: "Encoded", container: "Inside an archive or message",
       structure: "File structure", pattern: "Plain pattern"
     };
-    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-header", "ooxml-comment", "html-text", "feed-text", "xml-text", "markdown-text", "notebook-text", "comment-text", "pdf-paragraph", "rtf-text"]);
+    const rebuiltViews = new Set(["ooxml-text", "odf-text", "ooxml-cell", "ooxml-header", "ooxml-comment", "html-text", "feed-text", "xml-text", "markdown-text", "notebook-text", "icalendar-text", "vcard-text", "notebook-html", "comment-text", "pdf-paragraph", "rtf-text"]);
     function methodsOf(findings) {
       const tags = new Set();
       // A rule that already matched the bytes as sent needed no derived view.
