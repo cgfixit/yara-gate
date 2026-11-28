@@ -14,7 +14,8 @@ Run these from the repository root.
 
 - [`check_harness_replay.py`](check_harness_replay.py) reconciles the frozen task
   manifest and capture receipts with both policy outputs from each of three
-  runs. See the [protocol and file formats](../docs/research/shadow-evaluation-protocol.md#checking-the-harness-replay).
+  runs. Add `--score` to report item and task rates and timed replay percentiles
+  after reconciliation. See the [protocol and file formats](../docs/research/shadow-evaluation-protocol.md#checking-the-harness-replay).
 
 ## Demo build and deployment
 
