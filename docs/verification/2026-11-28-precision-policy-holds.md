@@ -1,6 +1,6 @@
 # Benign files each policy holds, beside the per-rule rate (2026-11-28)
 
-Source: `main` at `0480d67`, branch `claude/precision-policy-holds`. Linux x86_64, Python 3.12,
+Source: `main` at `0480d67`, branch `claude/serene-brown-qb93an`. Linux x86_64, Python 3.12,
 YARA-X 1.24.0, 89 compiled local rules, no vendor packs. Only
 `docs/verification/measure_precision.py` changes; the scanner, the rules, and the policies do
 not. This answers finding 5 of [#376](https://github.com/cgfixit/yara-gate/issues/376). The
