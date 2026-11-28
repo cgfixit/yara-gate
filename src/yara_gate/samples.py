@@ -1283,6 +1283,53 @@ def word_page_split_field() -> bytes:
     )
 
 
+def extracted_ole_object() -> bytes:
+    """An OLE object as an unzip of a Word package drops it: a compound file named
+    ``oleObject1.bin`` whose one ``Ole10Native`` stream holds an inert note."""
+    stream = _pad(b"\x1d\x00\x00\x00\x02\x00note.txt\x00inert embedded note\x00")
+    fat = [_FREESECT] * 128
+    fat[0] = _FATSECT
+    fat[1] = 2
+    fat[2] = _ENDOFCHAIN
+    # Sector 0 is the FAT, sectors 1-2 the directory, and the stream fills sectors 3-10.
+    for sector in range(3, 11):
+        fat[sector] = sector + 1 if sector < 10 else _ENDOFCHAIN
+    header = bytearray(512)
+    header[0:8] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    struct.pack_into("<HHHH", header, 24, 0x003E, 0x0003, 0xFFFE, 9)
+    struct.pack_into("<H", header, 32, 6)
+    struct.pack_into("<III", header, 44, 1, 1, 0)
+    struct.pack_into("<I", header, 56, 4096)
+    struct.pack_into("<II", header, 60, _ENDOFCHAIN, 0)
+    struct.pack_into("<II", header, 68, _ENDOFCHAIN, 0)
+    for index in range(109):
+        struct.pack_into("<I", header, 76 + 4 * index, _FREESECT)
+    struct.pack_into("<I", header, 76, 0)
+    entries = [
+        _dir_entry("Root Entry", 5, _NOSTREAM, _NOSTREAM, 1, _ENDOFCHAIN, 0),
+        _dir_entry("\x01Ole10Native", 2, _NOSTREAM, _NOSTREAM, _NOSTREAM, 3, 4096),
+    ]
+    empty = _dir_entry("", 0, _NOSTREAM, _NOSTREAM, _NOSTREAM, _ENDOFCHAIN, 0)
+    entries += [empty] * 6
+    fat_bytes = b"".join(struct.pack("<I", item) for item in fat)
+    return bytes(header) + fat_bytes + b"".join(entries) + stream
+
+
+def office_menu_oleobject() -> bytes:
+    """An office suite's own popup-menu file, named ``oleobject.xml`` as LibreOffice names
+    the menu it shows on an embedded object."""
+    return (
+        b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        b'<menu:menupopup xmlns:menu="http://openoffice.org/2001/menu">\n'
+        b'  <menu:menuitem menu:id=".uno:ObjectMenue"/>\n'
+        b'  <menu:menuitem menu:id=".uno:OleObjectEdit"/>\n'
+        b"  <menu:menuseparator/>\n"
+        b'  <menu:menuitem menu:id=".uno:Cut"/>\n'
+        b'  <menu:menuitem menu:id=".uno:Copy"/>\n'
+        b"</menu:menupopup>\n"
+    )
+
+
 def dde_scanner_source() -> bytes:
     """A DDE scanner's own source, which names the Word namespace, DDE, and the field
     element names it looks for, as oletools' msodde.py does."""

@@ -1,7 +1,7 @@
 {
   "schema": 2,
-  "source_revision": "bc22bcbebaaac50f7197e7b94b1a7aa5528823ba",
-  "captured_at": "2026-11-28T05:00:48+00:00",
+  "source_revision": "f284707cb74affae389f3937ffc26b024e343115",
+  "captured_at": "2026-11-28T16:36:24+00:00",
   "cases": [
     {
       "id": "note",
@@ -3827,6 +3827,170 @@
             "text-folded": 1
           },
           "bytes_scanned": 3737,
+          "exit_code": 0
+        }
+      }
+    },
+    {
+      "id": "extracted_ole_object",
+      "kind": "detection",
+      "channel": "Repository",
+      "pair": "office_menu_oleobject",
+      "title": "An OLE object unzipped from a Word file",
+      "description": "A compound file named oleObject1.bin, as an unzip of a Word package leaves it, whose one stream packages an inert note. Office opens such an object on a double-click, so it is reported and both agent policies hold it.",
+      "results": {
+        "default": {
+          "sha256": "4484732ea6e1cc6405b2a55283e1635c85021f97e38e10cae176aeb675b99b6c",
+          "verdict": "advisory",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_oleobject",
+              "offset": null,
+              "length": null,
+              "severity": "advisory",
+              "source": "heuristic",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 6144,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "4484732ea6e1cc6405b2a55283e1635c85021f97e38e10cae176aeb675b99b6c",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_oleobject",
+              "offset": null,
+              "length": null,
+              "severity": "advisory",
+              "source": "heuristic",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": "agent-ingest holds advisory and note findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 6144,
+          "exit_code": 1
+        },
+        "agent-document": {
+          "sha256": "4484732ea6e1cc6405b2a55283e1635c85021f97e38e10cae176aeb675b99b6c",
+          "verdict": "block",
+          "findings": [
+            {
+              "rule_id": "heuristic_ooxml_oleobject",
+              "offset": null,
+              "length": null,
+              "severity": "advisory",
+              "source": "heuristic",
+              "member_path": [],
+              "view": "raw"
+            }
+          ],
+          "advisory": true,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": "agent-document holds advisory findings",
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 6144,
+          "exit_code": 1
+        }
+      }
+    },
+    {
+      "id": "office_menu_oleobject",
+      "kind": "control",
+      "channel": "Repository",
+      "pair": "extracted_ole_object",
+      "title": "An office suite's menu file named oleobject.xml",
+      "description": "The popup-menu file an office suite shows on an embedded object, named the way LibreOffice names its own. It is XML text outside any embeddings folder, not a compound file, so it is clean.",
+      "results": {
+        "default": {
+          "sha256": "f153069fe3ddbc3ad44f0a28aa40f467172fe93e16e41a41aa98f9d5b47d31d4",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "default",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 314,
+          "exit_code": 0
+        },
+        "agent-ingest": {
+          "sha256": "f153069fe3ddbc3ad44f0a28aa40f467172fe93e16e41a41aa98f9d5b47d31d4",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-ingest",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 314,
+          "exit_code": 0
+        },
+        "agent-document": {
+          "sha256": "f153069fe3ddbc3ad44f0a28aa40f467172fe93e16e41a41aa98f9d5b47d31d4",
+          "verdict": "clean",
+          "findings": [],
+          "advisory": false,
+          "note": false,
+          "incomplete_reason": null,
+          "ruleset_sha256": "3908ac77b20adf78c88dc40951def100f06b8c8c83dde486b37c8bb23fc5ce54",
+          "engine_version": "1.24.0",
+          "skipped_rule_files": 0,
+          "policy": "agent-document",
+          "policy_reason": null,
+          "compiled_rules": 89,
+          "tool_version": "0.2.0",
+          "units_scanned": 1,
+          "views_scanned": {},
+          "bytes_scanned": 314,
           "exit_code": 0
         }
       }

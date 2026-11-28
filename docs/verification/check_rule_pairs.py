@@ -16,6 +16,7 @@ from pathlib import Path
 
 from yara_gate.samples import (
     _stored_zip,
+    _vba_project_ole,
     base64_text,
     docm_with_autoopen,
     eicar_bytes,
@@ -878,6 +879,19 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             "heuristic_ooxml_oleobject",
             zipped("word/embeddings/oleObject1.bin", b"embed"),
             zipped("word/document.xml", b"<w:document/>"),
+        ),
+        (
+            # A compound file outside an embeddings folder is still an OLE object; a text
+            # file named like LibreOffice's own popup menu is not.
+            "heuristic_ooxml_oleobject",
+            zipped("oleObject1.bin", _vba_project_ole()),
+            zipped(
+                "soffice.cfg/modules/swriter/popupmenu/oleobject.xml",
+                b'<?xml version="1.0" encoding="UTF-8"?>\n'
+                b'<menu:menupopup xmlns:menu="http://openoffice.org/2001/menu">\n'
+                b'  <menu:menuitem menu:id=".uno:ObjectMenue"/>\n'
+                b"</menu:menupopup>\n",
+            ),
         ),
         (
             "heuristic_ooxml_altchunk",

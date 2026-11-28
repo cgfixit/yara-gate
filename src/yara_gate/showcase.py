@@ -590,6 +590,32 @@ CASES: tuple[Case, ...] = (
         CLEAN,
     ),
     _case(
+        "extracted_ole_object",
+        "detection",
+        "Repository",
+        "office_menu_oleobject",
+        "An OLE object unzipped from a Word file",
+        "A compound file named oleObject1.bin, as an unzip of a Word package leaves it, whose "
+        "one stream packages an inert note. Office opens such an object on a double-click, "
+        "so it is reported and both agent policies hold it.",
+        "oleObject1.bin",
+        samples.extracted_ole_object(),
+        HELD,
+    ),
+    _case(
+        "office_menu_oleobject",
+        "control",
+        "Repository",
+        "extracted_ole_object",
+        "An office suite's menu file named oleobject.xml",
+        "The popup-menu file an office suite shows on an embedded object, named the way "
+        "LibreOffice names its own. It is XML text outside any embeddings folder, not a "
+        "compound file, so it is clean.",
+        "oleobject.xml",
+        samples.office_menu_oleobject(),
+        CLEAN,
+    ),
+    _case(
         "svg_cdata_override",
         "detection",
         "Attachment",
