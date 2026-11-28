@@ -242,6 +242,12 @@ Expect an advisory, exit 0, on a long base64 blob in a text file, on hidden HTML
 
 Do not expect a block on a brand-new payload that no rule mentions. Updating the packs helps for signatures that have been published. It does not make YARA understand a file.
 
+For Windows fetch-and-launch checks, look at the matching combination in the
+report's view. A documentary introduction or recognized numbered listing covers
+its own match. A separate combination can be advisory even in a real security
+write-up. Review the context before releasing a hold.
+[Windows script-host rules](docs/rules.md#windows-script-host-and-document-checks)
+
 ## 8. When something looks wrong
 
 - Exit 2 and the file still in `quarantine/` is the fail-closed result. Fix the cause (run `uv sync --frozen` again, remove a broken user rule, run `setup` to restore a missing vendor file) and scan again. A file over the size cap or an encrypted document stays incomplete by design.

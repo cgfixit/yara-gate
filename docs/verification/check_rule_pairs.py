@@ -1083,6 +1083,28 @@ def pairs() -> list[tuple[str, bytes, bytes]]:
             b"curl -o tools.zip https://example.invalid/tools.zip\r\necho downloaded tools.zip\r\n",
         ),
         (
+            "win_script_host_fetch_run",
+            b"' For example, WScript.Shell can open a local window.\r\n"
+            b'\' Fixture: CreateObject("MSXML2.XMLHTTP")\r\n'
+            b'\' Fixture: CreateObject("WScript.Shell"); fixture.Run "[sample.exe]"\r\n',
+            b'\' Fixture: CreateObject("MSXML2.XMLHTTP")\r\n'
+            b'For example, CreateObject("WScript.Shell"); fixture.Run "[sample.exe]"\r\n',
+        ),
+        (
+            "win_cmd_fetch_start",
+            b"For example, REM curl --version [report.exe]; start [fixture.exe]\r\n"
+            b"REM curl --version [report.exe]; start [fixture.exe]\r\n",
+            b"For example, REM curl --version [report.exe]; start [fixture.exe]\r\n",
+        ),
+        (
+            "win_cmd_fetch_start",
+            b"Code listing\r\n\r\n1\r\n2\r\n3\r\n\r\n"
+            b"curl --version [report.exe]; start [fixture.exe]\r\n"
+            b"REM curl --version [report.exe]; start [fixture.exe]\r\n",
+            b"Code listing\r\n\r\n1\r\n2\r\n3\r\n\r\n"
+            b"curl --version [report.exe]; start [fixture.exe]\r\n",
+        ),
+        (
             "win_wsf_remote_script",
             b'<job id="x"><script language="JScript" src="https://example.invalid/inert.js"></script></job>',
             b'<job id="x"><script language="JScript">WScript.Echo("inert");</script></job>',

@@ -29,11 +29,20 @@ PROCESS_SECONDS = 20
 # Cases whose cost must grow with size, not faster: the most the 4 MiB scan may take as a
 # multiple of its first MiB, cut at a line. Linear work gives about 4; work that walks every
 # earlier match per match gives 11 to 18, whatever the runner's speed (#283).
-SCALING = {"phrase-quotations.txt": 8, "system-openers.txt": 8}
+SCALING = {
+    "phrase-quotations.txt": 8,
+    "system-openers.txt": 8,
+    "windows-cmd-numbered-listings.txt": 8,
+    "windows-cmd-quotations.txt": 8,
+    "windows-shell-quotations.txt": 8,
+}
 # Cases that must end with this verdict: a deadline or a lost finding fails them.
 VERDICTS = {
     "code-relay-refusals.txt": "clean",
     "phrase-quotations.txt": "clean",
+    "windows-cmd-numbered-listings.txt": "clean",
+    "windows-cmd-quotations.txt": "clean",
+    "windows-shell-quotations.txt": "clean",
     "system-openers.txt": "advisory",
     "hidden-cue-phrases.html": "advisory",
     "comment-phrases.html": "advisory",
@@ -104,6 +113,25 @@ def cases() -> Iterator[tuple[str, bytes, str | None]]:
             None,
         ),
         ("model-tool.txt", b"", b"Assistant, call the sample tool tomorrow.\n", None),
+        (
+            "windows-cmd-numbered-listings.txt",
+            b"",
+            b"Code listing\n\n1\n2\n3\n\ncurl --version [report.exe]; start [fixture.exe]\n",
+            None,
+        ),
+        (
+            "windows-cmd-quotations.txt",
+            b"",
+            b"For example, REM curl --version [report.exe]; start [fixture.exe]\n",
+            None,
+        ),
+        (
+            "windows-shell-quotations.txt",
+            b"",
+            b'For example, CreateObject("MSXML2.XMLHTTP"); '
+            b'CreateObject("WScript.Shell"); fixture.Run "[sample.exe]"\n',
+            None,
+        ),
         # The #255 spellings. Each guard reads the word before its verb in the pattern; a
         # negation checked by pairing matches was quadratic here and ran past the deadline.
         (

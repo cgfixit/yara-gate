@@ -162,7 +162,7 @@ These rules key on the file's own markup or header, not its extension. Each file
 | [`win_msc_console_remote`](../rules/local/windows_script_hosts.yar) | An `<MMC_ConsoleFile>` whose `<String>` holds a URL, `javascript:`, `vbscript:`, or a UNC path, or that names `apds.dll` (the GrimResource shape) | Advisory |
 | [`win_reg_run_interpreter`](../rules/local/windows_script_hosts.yar) | A registry export whose `Run`, `RunOnce`, `RunServices`, or `Winlogon` value starts `powershell`, `mshta`, `wscript`, `cscript`, `rundll32`, `regsvr32`, `certutil`, `bitsadmin`, `msiexec`, or `cmd /c`, or that sets an IFEO `Debugger` | Advisory |
 | [`win_script_encoded_body`](../rules/local/windows_script_hosts.yar) | A Windows Script Encoder body: the `#@~^` opening marker with its six-character length field and `==`, plus the `==^#~@` closing marker, the `.vbe`/`.jse` form the script engines decode at run time | Advisory |
-| [`win_script_host_fetch_run`](../rules/local/windows_script_host_payload.yar) | `CreateObject(`, `ActiveXObject(`, or `GetObject(` plus a download or file-write class (`MSXML2.XMLHTTP`, `Microsoft.XMLHTTP`, `WinHttp.WinHttpRequest`, `ADODB.Stream`) plus `WScript.Shell` or `Shell.Application` followed by `.Run`, `.Exec`, or `.ShellExecute`; the body of a `.vbs`, `.js`, `.jse`, or `.wsf` without `<hta:application>` | Advisory |
+| [`win_script_host_fetch_run`](../rules/local/windows_script_host_payload.yar) | `CreateObject(`, `ActiveXObject(`, or `GetObject(` plus a download or file-write class (`MSXML2.XMLHTTP`, `Microsoft.XMLHTTP`, `WinHttp.WinHttpRequest`, `ADODB.Stream`) plus `WScript.Shell` or `Shell.Application` followed by `.Run`, `.Exec`, or `.ShellExecute` within 512 bytes | Advisory |
 | [`win_cmd_fetch_start`](../rules/local/windows_script_host_payload.yar) | A downloader (`iwr`, `irm`, `Invoke-WebRequest`, `curl`, `wget`, `certutil -urlcache`, `bitsadmin /transfer`) that names a runnable suffix, then `start`, `call`, `cmd /c`, an interpreter (`msiexec`, `wscript`, `mshta`, `powershell`, …), or `.\` launching a runnable suffix on the same line or the next | Advisory |
 | [`doc_onenote_embedded_launcher`](../rules/local/doc_onenote_embedded.yar) | A `.one` header plus a `FileDataStoreObject` whose payload starts with `MZ`, a shell-link header, or script text (`<hta:`, `<script`, `@echo`, `WScript.Shell`, `powershell`, `CreateObject(`, …) | Advisory |
 | [`doc_spreadsheet_formula_exec`](../rules/local/doc_spreadsheet_formula.yar) | A CSV, SYLK, or IQY cell that starts a DDE launch (`=cmd\|…`), calls `DDE(`, `WEBSERVICE(`, or an `IMPORT*(` function, calls a Win32 DLL from an Excel 4.0 macro, or an IQY `WEB` header followed by a URL | Advisory |
@@ -173,6 +173,17 @@ These rules key on the file's own markup or header, not its extension. Each file
 | [`win_browser_credential_decrypt`](../rules/local/credential_store_theft.yar) | `Login Data`, `encrypted_key` or `app_bound_encrypted_key`, and `CryptUnprotectData` or `ProtectedData.Unprotect` in one file: the Chromium saved-password decryption at the core of an infostealer | Advisory |
 
 An administrator's HTA that shells out, a console that links an intranet page, a `.reg` that registers a legitimate tool, a notebook with a `.lnk` attachment, an IQY against an internal server, a vendor site that still uses `ms-appinstaller:`, and a deployment script that runs `msiexec /i https://…` all match, as does a deployment VBScript or batch file that downloads an installer and runs it, and a legacy administration script that was run through the Script Encoder. They stay advisory. A notebook whose attachment is a PDF or an image, an HTA without a shell object, a write-up that only names the `#@~^` and `^#~@` markers, a logon script that only maps a drive through `WScript.Shell`, an inventory script that only posts through `XMLHTTP`, the old `ActiveXObject("Microsoft.XMLHTTP")` AJAX polyfill, a download with no launch, a `.reg` that runs an ordinary program, a CSV formula such as `=SUM(A1:A2)`, an `ms-settings:` link, and `certutil -hashfile` do not match. Microsoft disabled the `ms-appinstaller:` handler by default in [December 2023](https://www.microsoft.com/en-us/security/blog/2023/12/28/financially-motivated-threat-actors-misusing-app-installer/) after Storm-0569, Storm-1113, Sangria Tempest, and Storm-1674 abused it; older or re-enabled installs still honor it.
+
+The two fetch-and-launch rules scan the bytes of scripts and documents, including
+renamed files and supported text views. An introduction can exempt the matching
+`WScript.Shell` reference or downloader it introduces. The command rule also
+recognizes a rendered line-number gutter immediately before a downloader in
+extracted text. Separate matching commands still report. Both rules keep
+advisory severity, which `agent-ingest` and
+`agent-document` hold. Unmarked excerpts and legitimate installation scripts can
+still produce findings. These rules match lexical patterns and cannot establish
+whether a script or an excerpt is safe.
+[Verification and boundaries](verification/2026-11-28-windows-fetch-doc-scope.md)
 
 ### Windows defense evasion
 
