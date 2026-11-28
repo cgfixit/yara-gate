@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Iterator, Sequence
+from itertools import chain
 from typing import NamedTuple
 
 from yara_gate.content import (
@@ -384,6 +385,40 @@ def _shown_values(entry: dict[bytes, PdfValue]) -> Iterator[PdfValue]:
             yield value
 
 
+_RECT_NUMBER = re.compile(rb"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
+
+
+def _review_labels(entry: dict[bytes, PdfValue]) -> Iterator[PdfValue]:
+    """Review-note subject, named widget and caption-only pushbutton (ISO 32000-1,
+    tables 170, 189 and 220). Each label is one string, independent of the field value."""
+    subtype = entry.get(b"/Subtype")
+    if subtype not in (b"/Text", b"/Widget") or entry.get(b"/Type", b"/Annot") != b"/Annot":
+        return
+    rect = entry.get(b"/Rect")
+    if (
+        not isinstance(rect, list)
+        or len(rect) != 4
+        or not all(isinstance(n, bytes) and _RECT_NUMBER.fullmatch(n) for n in rect)
+    ):
+        return
+    if subtype == b"/Text" and b"/Subj" in entry:
+        yield entry[b"/Subj"]
+    if subtype != b"/Widget" or entry.get(b"/FT") not in _FIELD_TYPES:
+        return
+    if b"/T" in entry:
+        yield entry[b"/T"]
+    # A supplied appearance stream or an icon-only layout need not draw the caption.
+    if entry.get(b"/FT") != b"/Btn" or b"/AP" in entry:
+        return
+    flags = entry.get(b"/Ff")
+    if not isinstance(flags, bytes) or len(flags) > 10 or not flags.isdigit():
+        return
+    appearance = entry.get(b"/MK")
+    if int(flags) & (1 << 16) and isinstance(appearance, dict):
+        if appearance.get(b"/TP", b"0") == b"0" and b"/CA" in appearance:
+            yield appearance[b"/CA"]
+
+
 def _option_labels(options: list[PdfValue]) -> Iterator[PdfValue]:
     """A choice field shows the second string of an export/display pair (ISO 32000-1, 12.7.4.4)."""
     for option in options:
@@ -455,12 +490,16 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
     actual: list[PdfValue] = []
     strings: dict[tuple[int, int], list[bytes]] = {}
     labels: dict[bytes | tuple[int, int], None] = {}
+    review_labels: dict[bytes | tuple[int, int], None] = {}
     option_arrays: set[tuple[int, int]] = set()
 
-    def label(value: PdfValue) -> None:
-        if isinstance(value, (bytes, tuple)):
-            labels[value] = None
-        if len(labels) > MAX_TEXT_PIECES:
+    def label(value: PdfValue, target: dict[bytes | tuple[int, int], None]) -> None:
+        if not isinstance(value, (bytes, tuple)) or value in labels:
+            return
+        if target is labels:
+            review_labels.pop(value, None)
+        target[value] = None
+        if len(labels) + len(review_labels) > MAX_TEXT_PIECES:
             raise ContentLimit("text pieces exceed 100000")
 
     def collect(entries: Iterator[dict[bytes, PdfValue]]) -> None:
@@ -470,16 +509,18 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
             shown.extend(_shown_values(entry))
             if b"/ActualText" in entry and _property_list(entry):
                 actual.append(entry[b"/ActualText"])
+            for value in _review_labels(entry):
+                label(value, review_labels)
             field_type = entry.get(b"/FT")
             widget = entry.get(b"/Subtype") == b"/Widget" and _annotation(entry)
             if widget or (field_type in _FIELD_TYPES and b"/T" in entry):
                 if b"/TU" in entry:
-                    label(entry[b"/TU"])
+                    label(entry[b"/TU"], labels)
                 if field_type == b"/Ch":
                     options = entry.get(b"/Opt")
                     if isinstance(options, list):
                         for option in _option_labels(options):
-                            label(option)
+                            label(option, labels)
                     elif isinstance(options, tuple):
                         option_arrays.add(options)
             if len(values) + len(shown) + len(actual) > MAX_TEXT_PIECES:
@@ -564,9 +605,10 @@ def pdf_string_texts(data: bytes, objects: PdfObjects, budget: Budget) -> PdfStr
                 continue
             if isinstance(options, list):
                 for option in _option_labels(options):
-                    label(option)
+                    label(option, labels)
     seen_labels = set(texts)
-    for value in labels:
+    # Preserve the first match from existing tooltip and option readings.
+    for value in chain(labels, review_labels):
         budget.check()
         values_to_read = strings.get(value, []) if isinstance(value, tuple) else [value]
         for token in values_to_read:
