@@ -156,7 +156,7 @@ report whose DDEAUTO field type is split across three runs with a comment and a 
 reference (clean on `135992d`, a block now), and the same report whose page-number field is
 split the same way (clean on both). Both are full packages LibreOffice opens; it reads the
 first as `ddeauto c:\windows\system32\cmd.exe "/k echo inert"` and the second as a page
-number. The catalog is 53 pairs and three unfinished scans (109 scenarios). The 107 cases
+number. After `main` gained five pairs in [#371](https://github.com/cgfixit/yara-gate/pull/371) and [#373](https://github.com/cgfixit/yara-gate/pull/373) and was merged in (`bc22bcb`), the catalog is 59 pairs and three unfinished scans (121 scenarios): `agent-ingest` holds 59 of 59, `agent-document` 34, the default policy blocks 7, the 59 twins give 0 findings in 177 recordings, and the manifest has 122 fixtures and 366 checks; `main`'s 119 recorded cases are unchanged. Before that merge the catalog was 53 pairs and three unfinished scans (109 scenarios). The 107 cases
 recorded on `135992d` are unchanged. `agent-ingest` holds 53 of 53, `agent-document` 28, the
 default policy blocks 7, and the 53 twins give 0 findings in 159 recordings. The conformance
 manifest gains two fixtures and no fixture moved (84 lines added, none removed): 110
